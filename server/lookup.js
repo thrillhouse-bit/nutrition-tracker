@@ -55,7 +55,7 @@ function offResolve(nutriments, base, basis) {
   return h
 }
 
-function normalizeOFF(product, barcode) {
+export function normalizeOFF(product, barcode) {
   const nut = product.nutriments || {}
   const basis = offServingBasis(product)
 
@@ -116,7 +116,7 @@ function fdcAmount(food, id) {
   return row ? n(row.value ?? row.amount) : null
 }
 
-function normalizeUSDA(food, requestedBarcode = null) {
+export function normalizeUSDA(food, requestedBarcode = null) {
   const label = food.labelNutrients // present on Branded foods, per serving
   if (label) {
     return {

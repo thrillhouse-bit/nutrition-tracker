@@ -143,6 +143,19 @@ class PgStore {
     return rows.length > 0
   }
 
+  // Distinct foods you've logged before, most-recently-logged first, with how
+  // many times each was logged — powers one-tap re-logging.
+  async recentFoods(limit = 20) {
+    const sql = await this.ready()
+    return sql`
+      select f.*, max(e.logged_at) as last_logged, count(*)::int as times_logged
+      from log_entries e
+      join foods f on f.id = e.food_id
+      group by f.id
+      order by max(e.logged_at) desc
+      limit ${limit}`
+  }
+
   async getLatestTargets() {
     const sql = await this.ready()
     const rows = await sql`
@@ -272,6 +285,25 @@ class JsonStore {
     d.entries.splice(i, 1)
     await this.persist()
     return true
+  }
+
+  async recentFoods(limit = 20) {
+    const d = await this.load()
+    const agg = new Map()
+    for (const e of d.entries) {
+      const a = agg.get(e.food_id) || { food_id: e.food_id, last_logged: e.logged_at, times_logged: 0 }
+      a.times_logged += 1
+      if (e.logged_at > a.last_logged) a.last_logged = e.logged_at
+      agg.set(e.food_id, a)
+    }
+    return [...agg.values()]
+      .sort((x, y) => (x.last_logged < y.last_logged ? 1 : -1))
+      .slice(0, limit)
+      .map((a) => {
+        const f = d.foods.find((f) => f.id === a.food_id)
+        return f ? { ...f, last_logged: a.last_logged, times_logged: a.times_logged } : null
+      })
+      .filter(Boolean)
   }
 
   async getLatestTargets() {

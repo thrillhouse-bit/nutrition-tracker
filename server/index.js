@@ -68,6 +68,12 @@ app.post('/api/ocr', asyncH(async (req, res) => {
 }))
 
 // --- foods ----------------------------------------------------------------
+// Recently-logged foods, for one-tap re-logging.
+app.get('/api/foods/recent', asyncH(async (req, res) => {
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
+  res.json({ foods: await store.recentFoods(limit) })
+}))
+
 // Persist a food (manual entry, or an OCR/search result the user confirmed)
 // so it can be referenced by log entries and re-used later.
 app.post('/api/foods', asyncH(async (req, res) => {

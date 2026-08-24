@@ -7,6 +7,10 @@ const CORE_FIELDS = [
   ...NUTRIENTS.map((n) => n.key),
 ]
 
+// Units where entering a raw amount (weigh-out) is more natural than a serving
+// count — the bulk-bin / deli case.
+const MASS_VOLUME = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'millilitre', 'oz', 'fl oz', 'l', 'kg'])
+
 function coreChanged(a, b) {
   return CORE_FIELDS.some((k) => (a[k] ?? '') !== (b[k] ?? ''))
 }
@@ -23,18 +27,26 @@ function defaultMeal() {
 export default function FoodConfirm({ food, onLog, onBack, logging }) {
   const [draft, setDraft] = useState(() => ({ ...food }))
   const [servings, setServings] = useState(1)
+  const [mode, setMode] = useState('servings') // 'servings' | 'amount'
+  const [amount, setAmount] = useState(() => num(food.serving_size) || 100)
   const [meal, setMeal] = useState(defaultMeal())
   const [editing, setEditing] = useState(false)
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }))
 
-  const totals = useMemo(() => {
-    const s = num(servings)
-    return Object.fromEntries(NUTRIENTS.map((n) => [n.key, num(draft[n.key]) * s]))
-  }, [draft, servings])
+  const canAmount = MASS_VOLUME.has(String(draft.serving_unit || '').toLowerCase()) && num(draft.serving_size) > 0
+
+  // Nutrients are stored per serving; logging by amount just converts the
+  // weighed amount back into a serving multiplier.
+  const effServings = mode === 'amount' && canAmount ? num(amount) / num(draft.serving_size) : num(servings)
+
+  const totals = useMemo(
+    () => Object.fromEntries(NUTRIENTS.map((n) => [n.key, num(draft[n.key]) * effServings])),
+    [draft, effServings],
+  )
 
   const submit = () => {
-    const payload = { servings_consumed: num(servings) || 1, meal }
+    const payload = { servings_consumed: num(effServings) || 1, meal }
     // Don't mutate a canonical cached/looked-up product: if the user edited the
     // numbers, log a fresh food instead of overwriting the shared one.
     if (food.id && !coreChanged(food, draft)) {
@@ -60,26 +72,62 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
             {draft.source || 'manual'}
           </span>
         </div>
-        <p className="mt-1 text-sm text-slate-400">
-          Per serving: {draft.serving_size ? fmt(draft.serving_size, 2) : '1'} {draft.serving_unit || 'serving'}
-        </p>
       </div>
 
-      {/* Servings selector */}
+      {/* Quantity selector: servings, or a weighed amount for bulk items */}
       <div className="rounded-2xl bg-white/5 p-3">
-        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Servings</div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => step(-0.5)} aria-label="Fewer servings">−</Button>
-          <input
-            type="number"
-            step="0.25"
-            min="0"
-            value={servings}
-            onChange={(e) => setServings(e.target.value)}
-            className={`${inputCls} text-center text-lg font-bold`}
-          />
-          <Button variant="outline" onClick={() => step(0.5)} aria-label="More servings">+</Button>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Quantity</div>
+          {canAmount && (
+            <div className="flex rounded-lg bg-black/25 p-0.5 text-xs">
+              <button
+                onClick={() => setMode('servings')}
+                className={`rounded-md px-2 py-1 ${mode === 'servings' ? 'bg-white/10 text-slate-100' : 'text-slate-400'}`}
+              >
+                Servings
+              </button>
+              <button
+                onClick={() => setMode('amount')}
+                className={`rounded-md px-2 py-1 lowercase ${mode === 'amount' ? 'bg-white/10 text-slate-100' : 'text-slate-400'}`}
+              >
+                {draft.serving_unit}
+              </button>
+            </div>
+          )}
         </div>
+
+        {mode === 'amount' && canAmount ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className={`${inputCls} text-center text-lg font-bold`}
+            />
+            <span className="text-slate-400">{draft.serving_unit}</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => step(-0.5)} aria-label="Fewer servings">−</Button>
+            <input
+              type="number"
+              step="0.25"
+              min="0"
+              value={servings}
+              onChange={(e) => setServings(e.target.value)}
+              className={`${inputCls} text-center text-lg font-bold`}
+            />
+            <Button variant="outline" onClick={() => step(0.5)} aria-label="More servings">+</Button>
+          </div>
+        )}
+
+        <div className="mt-2 text-xs text-slate-500">
+          {mode === 'amount' && canAmount
+            ? `≈ ${fmt(effServings, 2)} serving${effServings === 1 ? '' : 's'} (1 = ${fmt(draft.serving_size, 0)} ${draft.serving_unit})`
+            : `1 serving = ${draft.serving_size ? fmt(draft.serving_size, 2) : '1'} ${draft.serving_unit || 'serving'}`}
+        </div>
+
         <div className="mt-3 flex flex-wrap gap-2">
           {MEALS.map((m) => (
             <button
@@ -95,7 +143,7 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
         </div>
       </div>
 
-      {/* Totals for the chosen serving count */}
+      {/* Totals for the chosen quantity */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {NUTRIENTS.map((n) => (
           <div key={n.key} className="rounded-xl bg-white/5 px-3 py-2">

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api/client.js'
 import { dayBounds, MEALS, num, fmt } from './lib/nutrition.js'
 import { Button, Modal, ErrorNote, Spinner, inputCls } from './components/ui.jsx'
-import Scanner from './components/Scanner.jsx'
+// The barcode scanner pulls in the large zxing library — load it only when the
+// user actually opens the scanner, keeping it out of the initial bundle.
+const Scanner = lazy(() => import('./components/Scanner.jsx'))
 import LabelScan from './components/LabelScan.jsx'
 import ManualEntry from './components/ManualEntry.jsx'
 import SearchFood from './components/SearchFood.jsx'
@@ -69,6 +71,7 @@ export default function App() {
   const [draftFood, setDraftFood] = useState(null)
   const [flowError, setFlowError] = useState('')
   const [logging, setLogging] = useState(false)
+  const [recents, setRecents] = useState([])
 
   // Entry editing
   const [editingEntry, setEditingEntry] = useState(null)
@@ -95,7 +98,10 @@ export default function App() {
   }, [])
 
   // ---- add-food flow -----------------------------------------------------
-  const openMenu = () => { setFlowError(''); setDraftFood(null); setFlow('menu') }
+  const openMenu = () => {
+    setFlowError(''); setDraftFood(null); setFlow('menu')
+    api.recentFoods(12).then((r) => setRecents(r.foods || [])).catch(() => setRecents([]))
+  }
   const closeFlow = () => { setFlow(null); setDraftFood(null); setFlowError('') }
 
   const onBarcode = async (code) => {
@@ -221,25 +227,57 @@ export default function App() {
       {/* Add-food modal */}
       <Modal open={!!flow} onClose={closeFlow} title={flowTitle} wide={flow === 'confirm' || flow === 'search'}>
         {flow === 'menu' && (
-          <div className="grid grid-cols-2 gap-3">
-            {ADD_OPTIONS.map((o) => (
-              <button
-                key={o.key}
-                onClick={() => { setFlowError(''); setFlow(o.key) }}
-                className="flex flex-col items-start gap-1 rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
-              >
-                <span className="text-2xl">{o.icon}</span>
-                <span className="font-semibold text-slate-100">{o.label}</span>
-                <span className="text-xs text-slate-400">{o.hint}</span>
-              </button>
-            ))}
+          <div className="space-y-4">
+            {recents.length > 0 && (
+              <div>
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+                  Recent — tap to re-log
+                </div>
+                <div className="flex max-h-52 flex-col gap-1.5 overflow-y-auto">
+                  {recents.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => toConfirm(f)}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-3 py-2 text-left hover:bg-white/10"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-slate-100">{f.name}</div>
+                        <div className="truncate text-xs text-slate-400">
+                          {f.brand ? `${f.brand} · ` : ''}
+                          {f.serving_size ? `${fmt(f.serving_size, 0)} ${f.serving_unit}` : f.serving_unit}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-sm font-bold tabular-nums text-slate-50">{fmt(f.calories, 0)}</div>
+                        <div className="text-[11px] text-slate-400">kcal</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              {ADD_OPTIONS.map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => { setFlowError(''); setFlow(o.key) }}
+                  className="flex flex-col items-start gap-1 rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
+                >
+                  <span className="text-2xl">{o.icon}</span>
+                  <span className="font-semibold text-slate-100">{o.label}</span>
+                  <span className="text-xs text-slate-400">{o.hint}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {flow === 'scan' && (
           <div className="space-y-3">
             <ErrorNote>{flowError}</ErrorNote>
-            <Scanner onDetected={onBarcode} />
+            <Suspense fallback={<Spinner label="Loading scanner…" />}>
+              <Scanner onDetected={onBarcode} />
+            </Suspense>
           </div>
         )}
 

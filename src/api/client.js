@@ -39,6 +39,9 @@ export const api = {
   createFood: (food) =>
     req('/foods', { method: 'POST', body: JSON.stringify(food) }),
 
+  // Recently-logged foods for one-tap re-log.
+  recentFoods: (limit = 20) => req(`/foods/recent?limit=${limit}`),
+
   // Log entries
   listEntries: ({ from, to }) =>
     req(`/entries?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
