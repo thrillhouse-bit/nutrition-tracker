@@ -316,7 +316,9 @@ class PgStore {
 // --------------------------------------------------------------------------
 // Local JSON-file backend (dev fallback)
 // --------------------------------------------------------------------------
-class JsonStore {
+// Exported so tests can instantiate it against a scratch file instead of
+// mutating the real dev store the `store` singleton points at.
+export class JsonStore {
   constructor(file) {
     this.file = file
     this.data = null
@@ -335,11 +337,15 @@ class JsonStore {
   }
 
   async persist() {
-    // Serialize writes so concurrent mutations don't clobber the file.
-    this.writing = this.writing.then(async () => {
+    // Serialize writes so concurrent mutations don't clobber the file. Chain
+    // onto BOTH outcomes of the previous write: chaining only onto success
+    // poisons the queue after a single failed write — every later persist
+    // re-rejects with the old error even once its cause is gone.
+    const write = async () => {
       await fs.mkdir(path.dirname(this.file), { recursive: true })
       await fs.writeFile(this.file, JSON.stringify(this.data, null, 2))
-    })
+    }
+    this.writing = this.writing.then(write, write)
     return this.writing
   }
 
@@ -383,6 +389,15 @@ class JsonStore {
       .map((e) => this.#withFood(e))
   }
 
+  // Store logged_at in UTC ISO form, matching what Postgres's timestamptz cast
+  // does. listEntries compares these as strings, so an offset-form timestamp
+  // (e.g. "…T02:00:00+05:00") stored verbatim sorts wrongly against the UTC
+  // range bounds and silently drops entries PgStore would return.
+  #utcIso(ts) {
+    const d = new Date(ts)
+    return isNaN(d) ? ts : d.toISOString()
+  }
+
   async addEntry({ food_id, servings_consumed = 1, meal = null, logged_at = null }) {
     const d = await this.load()
     const entry = {
@@ -390,7 +405,7 @@ class JsonStore {
       food_id: Number(food_id),
       servings_consumed: Number(servings_consumed),
       meal: meal || null,
-      logged_at: logged_at || new Date().toISOString(),
+      logged_at: logged_at ? this.#utcIso(logged_at) : new Date().toISOString(),
       created_at: new Date().toISOString(),
     }
     d.entries.push(entry)
@@ -410,7 +425,7 @@ class JsonStore {
     if (!entry) return null
     if (patch.servings_consumed !== undefined) entry.servings_consumed = Number(patch.servings_consumed)
     if (patch.meal !== undefined) entry.meal = patch.meal || null
-    if (patch.logged_at !== undefined) entry.logged_at = patch.logged_at
+    if (patch.logged_at !== undefined) entry.logged_at = patch.logged_at ? this.#utcIso(patch.logged_at) : patch.logged_at
     await this.persist()
     return this.#withFood(entry)
   }

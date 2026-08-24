@@ -112,9 +112,12 @@ export default function App() {
   useEffect(() => { loadEntries(date) }, [date, refreshKey, loadEntries])
 
   // Composite Today: plan (baseline/adjusted + rationale), signals, recommendation.
+  // Send this browser's own day bounds so the composite's intake covers the
+  // same entries the log list shows (the server's midnight may be in another
+  // timezone).
   useEffect(() => {
     let alive = true
-    api.today(ymd(date)).then((r) => alive && setTodayData(r)).catch(() => alive && setTodayData(null))
+    api.today(ymd(date), dayBounds(date)).then((r) => alive && setTodayData(r)).catch(() => alive && setTodayData(null))
     return () => { alive = false }
   }, [date, refreshKey])
 

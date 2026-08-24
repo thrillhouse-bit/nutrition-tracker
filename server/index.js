@@ -184,9 +184,13 @@ async function resolveOuraToken() {
 app.get('/api/oura/summary', asyncH(async (req, res) => {
   const token = await resolveOuraToken()
   if (!token) return res.json({ configured: false, activity: null })
+  // Default to the SERVER-LOCAL day like every sibling endpoint (garmin/energy/
+  // today). The old toISOString().slice(0,10) default was the UTC day, so for
+  // part of every day this endpoint silently queried a different date than
+  // /api/energy/summary on the same box.
   const day = String(req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
     ? req.query.date
-    : new Date().toISOString().slice(0, 10)
+    : localYmd()
   const activity = await ouraDailySummary(token, day)
   res.json({ configured: true, activity })
 }))
@@ -263,6 +267,9 @@ app.post('/api/garmin/webhook', asyncH(async (req, res) => {
   const accountId = accounts[0]?.id // single-account personal app
   if (accountId) {
     for (const d of dailies) {
+      // Skip malformed elements instead of throwing: a 500 here makes Garmin
+      // retry the whole batch and loses the valid summaries around the junk.
+      if (!d || typeof d !== 'object') continue
       const norm = garminNormalizeDaily(d)
       if (norm.day) await store.upsertGarminDaily({ account_id: accountId, ...norm, raw: d })
     }
@@ -327,12 +334,19 @@ app.get('/api/today/summary', asyncH(async (req, res) => {
 // Unified energy expenditure ("out") for a day: Oura preferred, Garmin fallback.
 app.get('/api/energy/summary', asyncH(async (req, res) => {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
-  const token = await resolveOuraToken()
-  if (token) {
-    const a = await ouraDailySummary(token, day)
-    if (a && a.total_calories != null) {
-      return res.json({ date: day, source: 'oura', out: a.total_calories, active_calories: a.active_calories, steps: a.steps })
+  // Oura preferred — but a failing Oura (API down, refresh rejected) must fall
+  // through to Garmin, not turn the whole unified read into a 500. The fallback
+  // is this endpoint's entire purpose.
+  try {
+    const token = await resolveOuraToken()
+    if (token) {
+      const a = await ouraDailySummary(token, day)
+      if (a && a.total_calories != null) {
+        return res.json({ date: day, source: 'oura', out: a.total_calories, active_calories: a.active_calories, steps: a.steps })
+      }
     }
+  } catch {
+    // fall through to Garmin
   }
   const gaccts = await store.listGarminAccounts()
   if (gaccts.length) {
@@ -368,9 +382,9 @@ async function buildPlan(date, nowDate) {
   return { date, baseline, adjusted, rationale, signals, influence, rulesVersion }
 }
 
-async function todayComposite(date, nowDate) {
+async function todayComposite(date, nowDate, bounds = null) {
   const plan = await buildPlan(date, nowDate)
-  const { from, to } = dayRange(date)
+  const { from, to } = bounds || dayRange(date)
   const entries = await store.listEntries({ from, to })
   const intake = sumIntake(entries)
   const nowHour = nowDate.getHours() + nowDate.getMinutes() / 60
@@ -383,9 +397,18 @@ async function todayComposite(date, nowDate) {
 }
 
 // Composite for the Today screen (context + recommendation + progress + log).
+// The client may pass its own local-day bounds (the same from/to contract as
+// /api/entries): the server's local midnight is not the user's, and without
+// this the composite intake/recommendation silently disagreed with the entry
+// list the client fetches for the very same calendar day.
 app.get('/api/today', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
-  res.json(await todayComposite(date, new Date()))
+  const { from, to } = req.query
+  const bounds =
+    typeof from === 'string' && typeof to === 'string' && !isNaN(Date.parse(from)) && !isNaN(Date.parse(to))
+      ? { from, to }
+      : null
+  res.json(await todayComposite(date, new Date(), bounds))
 }))
 
 // Plan for a day: baseline vs. adjusted targets + rationale + signals used.
