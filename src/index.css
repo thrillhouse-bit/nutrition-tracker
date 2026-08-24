@@ -39,15 +39,22 @@
   --color-oncobalt: #ffffff;
   --color-cobalt-soft: #e9ecf9;  /* rare pale cobalt wash */
 
-  /* Context swatches (pale, semantic only) */
-  --color-sage: #c4d2bc;         /* recovery context */
-  --color-lavender: #cbc5de;     /* training context */
+  /* Context swatches (pale, semantic only) — design v2 names in comments.
+     Recovery = Mist (sleep/readiness), Training = Sand (workout/timing). The
+     canonical mist/sand/berry names and the legacy sage/lavender aliases both
+     resolve to the same hexes so existing utilities keep working. */
+  --color-mist: #dce6d7;         /* recovery context (v2 "Mist") */
+  --color-sand: #eacd91;         /* training context (v2 "Sand") */
+  --color-berry: #8e3044;        /* warning / failure / destructive (v2 "Berry") */
+  --color-sage: #dce6d7;         /* alias → mist */
+  --color-lavender: #eacd91;     /* alias → sand */
 
   /* Legacy semantic tokens kept so restyled sub-components still resolve.
-     The design itself signals status with shape + word in ink, not hue. */
+     The design itself signals status with shape + word in ink, not hue;
+     destructive/error is Berry. */
   --color-good: #2f7d54;
   --color-warn: #9a6400;
-  --color-alert: #a5311d;
+  --color-alert: #8e3044;        /* → berry: the design's failure/destructive */
 
   --radius: 0px;                 /* sharp rectangles everywhere */
 }

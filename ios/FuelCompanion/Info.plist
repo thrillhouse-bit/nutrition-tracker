@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist — the app-specific keys for FuelCompanion. Bundle id, version,
+  display name, and the standard launch keys are supplied by the Xcode project
+  (authored via a separate XcodeGen spec), so they are intentionally NOT
+  duplicated here to avoid two sources of truth.
+
+  Deliberately ABSENT: NSHealthUpdateUsageDescription. This app requests READ
+  access only (toShare: []), so no write/share usage string is needed. No
+  clinical Health keys (NSHealthClinicalHealthRecordsShareUsageDescription) are
+  present, by design — no medical data is read.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Plain-language reason shown in Apple's Health permission sheet. Frames
+         the data as fueling context, never medical. -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>FuelCompanion reads your workouts, active energy, exercise minutes, sleep, and (optionally) heart-rate variability and resting heart rate to explain and time your fueling. This data is read only, sent to your own fueling dashboard, and never used for medical purposes.</string>
+
+    <!-- Background execution: `fetch` for BGAppRefreshTask, `processing` for the
+         longer BGProcessingTask. HealthKit background delivery itself is granted
+         by the entitlement, not by a background mode. -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>processing</string>
+    </array>
+
+    <!-- Must match BackgroundSync.refreshTaskId / processingTaskId EXACTLY, or
+         BGTaskScheduler.register traps at launch.
+         TODO: replace the "com.example.FuelCompanion" prefix with the real
+         bundle id and keep these in lockstep with BackgroundSync.swift. -->
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.example.FuelCompanion.refresh</string>
+        <string>com.example.FuelCompanion.sync</string>
+    </array>
+
+    <!-- App Transport Security: the PWA is expected to be served over HTTPS, so
+         no ATS exception is declared (the secure default stands). If you must
+         point baseURL at an http:// dev server, add a scoped
+         NSAppTransportSecurity → NSExceptionDomains entry here for that host
+         only — do NOT set NSAllowsArbitraryLoads. -->
+</dict>
+</plist>

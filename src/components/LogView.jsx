@@ -6,7 +6,7 @@ import { EmptyState, TextButton } from './ui.jsx'
 // the shared add-food sheet in App at the right step, so the scanning / OCR /
 // search / manual plumbing lives in one place — these are just entry points.
 const ALTS = [
-  { key: 'label', title: 'Photograph the label', caption: 'On-device OCR. Works offline.' },
+  { key: 'label', title: 'Photograph the label', caption: 'Capture the label now. We’ll extract it when you’re online.' },
   { key: 'manual', title: 'Enter it manually', caption: 'Search, or type the panel yourself.' },
   { key: 'search', title: 'Search foods', caption: 'Find produce and items without a barcode.' },
 ]
@@ -33,7 +33,7 @@ function EntryRow({ entry, onEdit, onDelete }) {
     ? new Date(entry.logged_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
     : ''
   return (
-    <div className="flex items-center gap-3 border-t border-line py-2.5">
+    <div className="flex min-h-11 items-center gap-3 border-t border-line py-2.5">
       <button
         className="flex min-w-0 flex-1 items-baseline gap-3 text-left disabled:cursor-default"
         onClick={() => !pending && onEdit(entry)}
@@ -54,7 +54,7 @@ function EntryRow({ entry, onEdit, onDelete }) {
       <span className="numeral shrink-0 text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
       <button
         onClick={() => onDelete(entry.id)}
-        className="shrink-0 px-1.5 py-1 text-faint hover:text-alert"
+        className="flex h-11 w-11 shrink-0 items-center justify-center text-faint hover:text-alert"
         aria-label="Delete entry"
       >
         ✕
@@ -158,7 +158,7 @@ export default function LogView({
         <section>
           <div className="flex items-center justify-between pb-1.5">
             <h2 className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted">Quick add · Recent</h2>
-            <TextButton className="text-[9.5px] uppercase" onClick={() => openAdd('menu')}>
+            <TextButton className="-my-2 py-2.5 text-[9.5px] uppercase" onClick={() => openAdd('menu')}>
               All foods
             </TextButton>
           </div>

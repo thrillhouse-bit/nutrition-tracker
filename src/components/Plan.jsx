@@ -36,10 +36,9 @@ function TargetRow({ n, label, base, adj }) {
       <span className="w-[72px] text-right tnum text-sm text-muted">
         {fmt(b, n.decimals)}{unit && ` ${unit}`}
       </span>
-      <span className="w-[116px] text-right leading-none">
-        <span className="numeral text-[24px] tnum text-ink">
-          {fmt(a, n.decimals)}{unit && ` ${unit}`}
-        </span>
+      <span className="w-[132px] whitespace-nowrap text-right leading-none">
+        <span className="numeral text-[22px] tnum text-ink">{fmt(a, n.decimals)}</span>
+        {unit && <span className="ml-0.5 text-[10px] font-medium text-muted">{unit}</span>}
         {changed ? (
           <span className="ml-1.5 align-middle text-[10px] font-bold tracking-tight text-cobalt tnum">
             {delta > 0 ? '+' : '−'}{fmt(Math.abs(delta), n.decimals)}
@@ -168,11 +167,11 @@ export default function Plan({ date, refreshKey, onChanged }) {
     const has = (f) => rationale.some((r) => r.factor === f)
     if (has('workout')) {
       const label = (wv?.shortLabel || wv?.label || 'your workout').toUpperCase()
-      out.push({ tone: 'sage', text: 'HIGHER-CARBOHYDRATE DAY' })
-      out.push({ tone: 'lavender', text: `ADJUSTED FOR ${label}` })
+      out.push({ tone: 'outline', text: 'HIGHER-CARBOHYDRATE DAY' })
+      out.push({ tone: 'sand', text: `ADJUSTED FOR ${label}` })
     }
-    if (has('readiness')) out.push({ tone: 'sage', text: 'HIGHER-PROTEIN DAY' })
-    if (has('sleep')) out.push({ tone: 'sage', text: 'STEADY-FUELING NOTE' })
+    if (has('readiness')) out.push({ tone: 'mist', text: 'HIGHER-PROTEIN DAY' })
+    if (has('sleep')) out.push({ tone: 'mist', text: 'STEADY-FUELING NOTE' })
     if (out.length === 0) out.push({ tone: 'neutral', text: 'MATCHES BASELINE' })
     return out
   }, [rationale, wv])
@@ -271,13 +270,14 @@ export default function Plan({ date, refreshKey, onChanged }) {
         </div>
       ) : (
         <>
-          {/* Context tags — sharp rectangles, sage = recovery, lavender = training */}
+          {/* Context tags — sharp rectangles. Mist = recovery, Sand = training,
+              outline (transparent) = a higher-macro day that isn't a fill swatch. */}
           <div className="mt-3.5 flex flex-wrap gap-1.5">
             {tags.map((t, i) => (
               <span
                 key={i}
                 className={`inline-flex items-center border border-line-strong px-2.5 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink ${
-                  t.tone === 'sage' ? 'bg-sage' : t.tone === 'lavender' ? 'bg-lavender' : 'bg-transparent'
+                  t.tone === 'sand' ? 'bg-sand' : t.tone === 'mist' ? 'bg-mist' : 'bg-transparent'
                 }`}
               >
                 {t.text}
@@ -299,7 +299,7 @@ export default function Plan({ date, refreshKey, onChanged }) {
             <div className="flex pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
               <span className="flex-1">Target</span>
               <span className="w-[72px] text-right">Baseline</span>
-              <span className="w-[116px] text-right">Today</span>
+              <span className="w-[132px] text-right">Today</span>
             </div>
             <div className="border-b border-line">
               {rowDefs.map((d) => (

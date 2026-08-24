@@ -19,9 +19,9 @@ function since(ts) {
 // The three real influence signals, in the design's order, with the design's
 // one-line descriptions. Keys map straight onto `influence[...]`.
 const SIGNALS = [
-  { key: 'sleep', label: 'Sleep', hint: 'Duration and timing from Oura' },
-  { key: 'readiness', label: 'Readiness', hint: 'Daily score, used for carbohydrate shifts' },
-  { key: 'workouts', label: 'Workouts', hint: 'Planned and completed sessions from Garmin' },
+  { key: 'sleep', label: 'Sleep', hint: 'Informs timing and recovery context' },
+  { key: 'readiness', label: 'Readiness', hint: 'Available for plan context' },
+  { key: 'workouts', label: 'Workouts', hint: 'Primary driver of target changes' },
 ]
 
 // STATE REFERENCE legend — shape + word, never colour alone. Static, straight
@@ -42,8 +42,20 @@ const CTA =
 // One provider row: name, shape+word status, a device/context sub-line, and a
 // state-appropriate action. MANAGE / How-to-sync expand an inline panel that
 // carries the accounts + the per-provider enable/demo toggles.
+// Plain-language "what is read" per HealthKit category, for the Apple panel.
+const APPLE_CATEGORY_LABEL = {
+  workouts: 'Workouts & timing',
+  activeEnergy: 'Active energy',
+  exercise: 'Exercise minutes',
+  sleep: 'Sleep duration & timing',
+  hrv: 'Heart-rate variability (context)',
+  restingHR: 'Resting heart rate (context)',
+  steps: 'Steps',
+}
+const APPLE_READS = ['workouts', 'activeEnergy', 'exercise', 'sleep', 'hrv', 'restingHR', 'steps']
+
 function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
-  const { id, name, connect, categories = [], status, demo, enabled, last_synced_at } = provider
+  const { id, name, connect, categories = [], status, demo, enabled, last_synced_at, permissions, partial } = provider
   const oauth = connect === 'oauth'
   const connectedish = status === 'connected' || status === 'stale' || status === 'syncing'
   const isDemo = status === 'demo'
@@ -130,13 +142,18 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
               Sync error — reconnect to resume
             </div>
           )}
+          {!isDemo && partial && (
+            <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-muted">
+              Partial — some categories share no data
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {action}
           {/* Non-connected oauth still needs a way to reach demo/enable options. */}
           {oauth && !connectedish && (
-            <TextButton chevron className="text-[11px]" onClick={() => setOpen((v) => !v)}>
+            <TextButton chevron className="py-2 text-[11px]" onClick={() => setOpen((v) => !v)}>
               {open ? 'Hide options' : 'Options'}
             </TextButton>
           )}
@@ -181,15 +198,49 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
               </p>
             </div>
           ) : (
-            // Apple Health: no cloud API — data arrives from a companion / export.
-            <div className="space-y-1.5 text-sm">
-              <p className="text-muted">
-                Apple Health has no cloud connection. An Apple Watch / iPhone companion (or a Health export) sends your
-                workouts and energy to this app privately.
-              </p>
-              <p className="text-[11px] text-faint">
-                Samples POST to <code className="bg-fill px-1">/api/apple/ingest</code> on your own server — no
-                credentials, nothing leaves your instance.
+            // Apple Health: no cloud API — a native iOS/watch companion reads
+            // HealthKit on-device and syncs it to your own server.
+            <div className="space-y-3 text-sm">
+              <div>
+                <div className="eyebrow pb-1.5">What it reads &amp; why</div>
+                <p className="text-muted">
+                  The Apple Watch / iPhone companion reads your workouts &amp; timing, active energy, exercise, and
+                  sleep — plus heart-rate / HRV as optional context — to explain and time your fueling. It never reads
+                  clinical data and never changes a target on its own.
+                </p>
+              </div>
+
+              {/* Per-category status — available vs. shares no data (never "denied"). */}
+              {permissions?.requested?.length > 0 && (
+                <div>
+                  <div className="eyebrow pb-1.5">Categories</div>
+                  <div className="grid grid-cols-1 gap-y-1">
+                    {APPLE_READS.filter((c) => permissions.requested.includes(c) || (permissions.available || []).includes(c)).map((c) => {
+                      const on = (permissions.available || []).includes(c)
+                      return (
+                        <div key={c} className="flex items-center justify-between gap-3">
+                          <span className="text-[12px] text-ink">{APPLE_CATEGORY_LABEL[c] || c}</span>
+                          <StatusMark status={on ? 'fresh' : 'unavailable'} label={on ? 'Shared' : 'No data'} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="eyebrow pb-1.5">Storage &amp; control</div>
+                <p className="text-muted">
+                  The companion reads these on your iPhone / Apple Watch and syncs them to your own server. Nothing is
+                  sent to any third party. You choose which signals influence your plan, and you can delete synced data
+                  at any time.
+                </p>
+              </div>
+
+              <p className="text-[11px] leading-relaxed text-faint">
+                Choose exactly what to share in the iOS <span className="font-semibold text-muted">Health app → Sharing → this app</span>.
+                Categories you don’t share simply show “No data”; we can’t see them. Samples reach your server at{' '}
+                <code className="bg-fill px-1">/api/apple/ingest</code>.
               </p>
             </div>
           )}
@@ -285,8 +336,9 @@ export default function Connections({ refreshKey, onChanged }) {
       {/* Header */}
       <header className="pb-3.5">
         <h2 className="serif text-3xl leading-none text-ink">Connections</h2>
-        <p className="mt-2.5 max-w-[300px] text-[12.5px] leading-relaxed text-muted">
-          Two sources, read-only. Nothing leaves your own server, and you choose which signals reach a recommendation.
+        <p className="mt-2.5 max-w-[320px] text-[12.5px] leading-relaxed text-muted">
+          Three read-only sources. You control which signals inform recommendations. Manage or delete synced data at any
+          time.
         </p>
       </header>
 
@@ -344,8 +396,8 @@ export default function Connections({ refreshKey, onChanged }) {
               toggle claiming to control something that does not exist. */}
           <div className="flex items-center justify-between gap-3 border-y border-line py-2.5">
             <span className="min-w-0">
-              <span className="block text-[13.5px] font-medium text-ink">Stress &amp; HRV trend</span>
-              <span className="mt-1 block text-[11px] leading-snug text-muted">Off — not used in any recommendation</span>
+              <span className="block text-[13.5px] font-medium text-ink">Heart-rate &amp; HRV trend</span>
+              <span className="mt-1 block text-[11px] leading-snug text-muted">Context only — shown for explanation, never changes a target</span>
             </span>
             <span className="pointer-events-none opacity-55" aria-disabled="true" title="Not used in any recommendation">
               <Toggle checked={false} onChange={() => {}} label="Stress and HRV — not used" />
@@ -357,22 +409,22 @@ export default function Connections({ refreshKey, onChanged }) {
 
       {/* Footer — history controls + privacy line */}
       <footer className="mt-6 flex items-start justify-between gap-4 border-t border-line pt-3">
-        <p className="max-w-[210px] text-[11px] leading-relaxed text-muted">
-          Synced records stay on your own server and can be removed at any time. OAuth tokens never leave it.
+        <p className="max-w-[220px] text-[11px] leading-relaxed text-muted">
+          Removes the Oura, Garmin, and Apple Health records synced to this app. Your data inside those apps is
+          untouched, and OAuth tokens never leave your server.
         </p>
         <div className="text-right">
-          <TextButton
-            className="text-[10px] font-semibold uppercase tracking-[0.1em]"
+          {/* Destructive → Berry, per the design's failure/destructive colour. */}
+          <button
             onClick={() =>
               setDeleteNote(
-                deleteNote
-                  ? null
-                  : 'History deletion is not wired to an endpoint yet — nothing was removed.',
+                deleteNote ? null : 'History deletion is not wired to an endpoint yet — nothing was removed.',
               )
             }
+            className="text-[10px] font-semibold uppercase leading-[1.5] tracking-[0.1em] text-alert hover:opacity-80"
           >
-            Delete synced history
-          </TextButton>
+            Delete synced<br />history
+          </button>
           {deleteNote && <p className="mt-1 max-w-[150px] text-[10px] leading-snug text-faint">{deleteNote}</p>}
         </div>
       </footer>

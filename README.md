@@ -200,23 +200,41 @@ behind Garmin's partner portal and could not be confirmed from public docs.
 They are marked **`VERIFY`** in `server/integrations/garmin.js` and must be
 checked against the partner documentation once access is granted.
 
-### Apple Health (ingest)
+### Apple Health & Apple Watch — native companion
 
-Apple Health has **no cloud API** — HealthKit data lives on-device and cannot be
-pulled server-to-server, so there is no OAuth flow to run and nothing to fetch.
-Apple is therefore an **ingest (push-in) provider**: a native iOS companion app
-(or a Health-export importer) reads HealthKit on the device and **POSTs
-normalized samples** to your own server at `POST /api/apple/ingest`. The server
-stores them as wearable signals exactly like Oura's or Garmin's, and the plan
-engine treats them the same way — same provenance/freshness, same influence
-toggles.
+Apple Health has **no cloud API**, and **the browser PWA cannot connect to Apple
+Watch** — HealthKit data only leaves the device through a native app the user
+installs. A native **iOS + watchOS companion** (SwiftUI) provides that bridge and
+lives in [`ios/`](./ios/) with full build/verify docs. Apple is an **ingest
+(push-in) provider**: the companion reads HealthKit on the device and **POSTs
+normalized samples** to your own server at `POST /api/apple/ingest`, where they
+become wearable signals exactly like Oura's or Garmin's — same provider-neutral
+model, provenance/freshness, and influence toggles.
 
-- **Token gate.** The endpoint is protected by the optional `APPLE_INGEST_TOKEN`
-  env var, sent by the companion as the **`x-ingest-token`** header. If the token
-  is **unset the endpoint is open**, which is only acceptable on a **private,
-  non-public** instance; set the token for anything reachable from the network.
-- **Nothing leaves your instance.** Samples are pushed from your device to your
-  own server and stored there — there is no third-party cloud in the path.
+- **Minimum, read-only permissions:** workouts & timing, active energy, exercise,
+  and sleep — plus heart-rate / HRV as **context only** (never changes a target,
+  proven by `test/apple.test.js`). No clinical data; no workout recording (reads
+  approved workouts only). Missing categories show "No data", never "denied".
+- **The watch** is a minimal glance — next action, pre/post-workout fuel targets,
+  today's calories/protein — plus a "Log later on iPhone" handoff (no scanning on
+  the watch). The phone is the HealthKit bridge and sends it a `PlanSummary`.
+- **Token gate.** `POST /api/apple/ingest` is protected by the optional
+  `APPLE_INGEST_TOKEN` env var, sent as the **`x-ingest-token`** header. Unset =
+  open, acceptable only on a **private, non-public** instance.
+- **Storage & control.** The companion reads on your iPhone/Apple Watch and syncs
+  to **your own server** — nothing is sent to any third party; you choose which
+  signals influence the plan and can delete synced data at any time.
+
+See [`ios/README.md`](./ios/README.md) for capabilities, entitlements, the exact
+HealthKit types, and the device-test matrix (the native targets are review-ready
+source — building and device-testing require a Mac + a paired iPhone/Apple Watch).
+
+### Deploy & verify (real Oura credentials on a live host)
+
+The Oura OAuth flow is production-ready; wiring real credentials is a deployment
+step. Set `OURA_CLIENT_ID/SECRET/REDIRECT_URI` on the host, connect once, and
+verify **from the box** with `scripts/verify_deploy.sh https://<your-domain>` —
+see [`docs/DEPLOY-VERIFY.md`](./docs/DEPLOY-VERIFY.md).
 
 ### On-watch app (Connect IQ)
 

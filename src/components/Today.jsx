@@ -75,7 +75,7 @@ function LogRow({ entry, onEdit, onDelete }) {
   const pending = entry._pending
   const tag = sourceTag(food)
   return (
-    <div className="flex items-center gap-2 border-t border-line first:border-t-0">
+    <div className="flex min-h-11 items-center gap-2 border-t border-line first:border-t-0">
       <button
         onClick={() => !pending && onEdit(entry)}
         disabled={pending}
@@ -93,7 +93,7 @@ function LogRow({ entry, onEdit, onDelete }) {
       </button>
       <button
         onClick={() => onDelete(entry.id)}
-        className="shrink-0 px-1.5 py-1 text-faint hover:text-alert"
+        className="flex h-11 w-11 shrink-0 items-center justify-center text-faint hover:text-alert"
         aria-label="Delete entry"
       >
         ✕
@@ -146,12 +146,12 @@ export default function Today({ date, data, entries, loading, online, syncing, p
       <div>
         <div className="flex items-end justify-between">
           <div className="flex items-end gap-1.5">
-            <button onClick={onPrevDay} aria-label="Previous day" className="pb-1 text-xl leading-none text-muted hover:text-ink">‹</button>
+            <button onClick={onPrevDay} aria-label="Previous day" className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink">‹</button>
             <h1 className="serif text-[32px] leading-none text-ink">{dayLabel(date)}</h1>
           </div>
           <div className="flex items-end gap-1.5">
             <span className="eyebrow tnum pb-0.5 text-muted">{dateBadge(date)}</span>
-            <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="pb-1 text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
+            <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-my-2 -mr-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
           </div>
         </div>
         {!isToday(date) && (
@@ -271,7 +271,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
       <section>
         <div className="flex items-center justify-between">
           <h3 className="eyebrow">Today's log</h3>
-          <TextButton chevron onClick={() => openAdd('menu')} className="text-[10.5px] uppercase tracking-[0.1em]">
+          <TextButton chevron onClick={() => openAdd('menu')} className="-my-2 py-2.5 text-[10.5px] uppercase tracking-[0.1em]">
             View all {entries.length}
           </TextButton>
         </div>
