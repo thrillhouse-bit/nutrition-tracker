@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+    <!-- Surfaces apiBaseUrl as a free-text field the user edits in the Connect
+         IQ mobile app / Garmin Express, then syncs to the watch. A change fires
+         AppBase.onSettingsChanged(). -->
+    <setting propertyKey="@Properties.apiBaseUrl" title="@Strings.SettingApiBaseUrlTitle">
+        <settingConfig type="alphaNumeric" maxLength="200"/>
+    </setting>
+</settings>

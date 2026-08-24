@@ -66,4 +66,11 @@ export const api = {
   // navigation to /api/oura/connect, not a fetch).
   ouraAccounts: () => req('/oura/accounts'),
   disconnectOura: (id) => req(`/oura/accounts/${id}`, { method: 'DELETE' }),
+
+  // Unified energy "out" for a day (Oura preferred, Garmin fallback).
+  energySummary: (ymd) => req(`/energy/summary?date=${encodeURIComponent(ymd)}`),
+
+  // Garmin accounts (connect is a browser navigation to /api/garmin/connect).
+  garminAccounts: () => req('/garmin/accounts'),
+  disconnectGarmin: (id) => req(`/garmin/accounts/${id}`, { method: 'DELETE' }),
 }

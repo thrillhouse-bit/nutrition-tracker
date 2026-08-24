@@ -1,0 +1,14 @@
+# Build configuration for the Nutrition widget.
+#
+# The manifest declares which devices are targeted; the build picks ONE with
+# `monkeyc -d <device>`. The two paths below are the SDK defaults made explicit:
+#   - source code is compiled from source/
+#   - resources (strings, drawables, settings, properties) are auto-discovered
+#     from resources/ (and any resources-<qualifier>/ overlays you add later).
+#
+# No per-device or per-language overlays are needed yet, so there is nothing
+# else to configure here.
+
+project.manifest = manifest.xml
+
+base.sourcePath = source

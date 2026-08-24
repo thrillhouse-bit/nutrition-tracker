@@ -60,3 +60,28 @@ create table if not exists oura_accounts (
   expires_at    timestamptz,
   created_at    timestamptz not null default now()
 );
+
+-- Connected Garmin accounts (OAuth 2.0 PKCE). Same shape as oura_accounts.
+create table if not exists garmin_accounts (
+  id            bigint generated always as identity primary key,
+  label         text,
+  access_token  text not null,
+  refresh_token text not null,
+  expires_at    timestamptz,
+  created_at    timestamptz not null default now()
+);
+
+-- Garmin daily summaries. Garmin's Health API PUSHES these to our webhook, so
+-- we store them and serve today's expenditure from here. One row per account
+-- per calendar day (upserted).
+create table if not exists garmin_dailies (
+  id              bigint generated always as identity primary key,
+  account_id      bigint not null references garmin_accounts (id) on delete cascade,
+  day             text not null,               -- 'YYYY-MM-DD' (Garmin calendarDate)
+  total_calories  numeric,
+  active_calories numeric,
+  steps           numeric,
+  raw             jsonb,
+  created_at      timestamptz not null default now(),
+  unique (account_id, day)
+);

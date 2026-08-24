@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<drawables>
+    <!-- Placeholder launcher icon: a navy rounded square with an amber plate.
+         60x60 RGBA PNG. Replace with your own artwork (Garmin recommends a
+         transparent-background PNG; the launcher scales one bitmap across the
+         device family). Referenced from manifest.xml as @Drawables.LauncherIcon. -->
+    <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
+</drawables>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<strings>
+    <!-- Shown under the launcher icon and in the glance carousel. -->
+    <string id="AppName">Nutrition</string>
+
+    <!-- Label for the user-editable API URL setting (Connect IQ mobile app /
+         Garmin Express). -->
+    <string id="SettingApiBaseUrlTitle">Web app URL</string>
+</strings>
