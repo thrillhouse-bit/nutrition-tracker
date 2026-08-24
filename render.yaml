@@ -1,0 +1,38 @@
+# Render blueprint — one deploy of the whole app (Express serves the built PWA
+# + the /api routes from a single HTTPS origin, which is what OAuth and the
+# camera/service-worker need). Deploy with: Render dashboard → New → Blueprint →
+# pick this repo. Render builds the Dockerfile and provisions HTTPS.
+#
+# Secrets are `sync: false` — Render prompts for each value in the dashboard and
+# never stores them in git. Set them by name; the app reads them at runtime.
+services:
+  - type: web
+    name: nutrition-tracker
+    runtime: docker
+    plan: free                    # fine for verification; upgrade for always-on
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- Oura (required to wire real credentials) ---
+      # OURA_REDIRECT_URI must be https://<this-service-url>/api/oura/callback
+      # and must exactly match the Redirect URI on your Oura app.
+      - key: OURA_CLIENT_ID
+        sync: false
+      - key: OURA_CLIENT_SECRET
+        sync: false
+      - key: OURA_REDIRECT_URI
+        sync: false
+      # --- Persistence (recommended so Oura tokens survive restarts) ---
+      # A Neon Postgres connection string. Without it the app uses an in-container
+      # JSON store that resets on each deploy (fine for a quick test, not for keeps).
+      - key: DATABASE_URL
+        sync: false
+      # --- Optional extras ---
+      - key: ANTHROPIC_API_KEY     # label OCR (Claude vision)
+        sync: false
+      - key: FDC_API_KEY           # USDA fallback
+        sync: false
+      - key: APPLE_INGEST_TOKEN    # gate the Apple companion's ingest
+        sync: false

@@ -12,6 +12,38 @@ so the steps below are host-agnostic.
 > actually doing. Every claim of "Oura is live" must come from a probe run
 > against the deployment — that's what `scripts/verify_deploy.sh` is for.
 
+## Turnkey path (Render + Neon), start to finish
+
+The app is a single Docker image (Express serves the built PWA **and** `/api`
+from one HTTPS origin). A [`render.yaml`](../render.yaml) blueprint makes the
+deploy near one-click. Order matters because the Oura redirect URI needs the
+final host URL.
+
+1. **Deploy the app (get an HTTPS URL).** Render dashboard → **New → Blueprint**
+   → pick `thrillhouse-bit/nutrition-tracker` → it reads `render.yaml` and builds
+   the Dockerfile. When it's live you get a URL like
+   `https://nutrition-tracker-xxxx.onrender.com`. (Health check is `/api/health`.)
+2. **(Recommended) Add a database** so Oura tokens survive restarts. Create a
+   free [Neon](https://neon.tech) project, copy the connection string, and once
+   (Neon SQL editor) paste the contents of [`schema.sql`](../schema.sql) to
+   create the tables. Set `DATABASE_URL` on Render to that string.
+   *Quick-test alternative:* skip the DB and verify immediately after connecting
+   Oura — the in-container JSON store keeps the token until the next deploy.
+3. **Register the Oura app** (see below) with the redirect URI
+   `https://<your-render-url>/api/oura/callback`.
+4. **Set the Oura env vars on Render** (dashboard → your service → Environment):
+   `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, and `OURA_REDIRECT_URI` = the callback
+   URL above. Save → Render redeploys.
+5. **Connect once:** open the URL → **Connections → Connect Oura** → authorize.
+6. **Verify from the box:** send me the URL and I'll run
+   `scripts/verify_deploy.sh https://<your-render-url>` from here and report the
+   real result (or run it yourself).
+
+> Other hosts work identically — Railway/Fly/Cloud Run/a VPS all build the same
+> Dockerfile; only the env-var UI and TLS setup differ. On a VPS, put Caddy in
+> front for HTTPS and mount a volume at `server/.data` (or use Neon) for
+> persistence.
+
 ## 1. Get Oura OAuth credentials
 
 1. Create an app at the [Oura developer portal](https://cloud.ouraring.com/oauth/applications) → note the **client id** and **client secret**.
