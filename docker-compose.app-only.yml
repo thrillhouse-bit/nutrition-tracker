@@ -10,17 +10,33 @@
 # The 127.0.0.1 bind is deliberate: the app must not be reachable on the bare
 # IP:3001 from the internet — TLS, HSTS, and the hostname all belong to the
 # resident proxy in this arrangement.
+#
+# The traefik.* labels below are inert unless the resident proxy IS Traefik
+# with the Docker provider (`--providers.docker=true` in its own container
+# args) — on any other resident server (Caddy, nginx) nothing reads Docker
+# labels, so they're harmless to leave in. Set SITE_ADDRESS in .env to the
+# app's domain; a running Traefik auto-discovers the router the moment the
+# label appears on `docker compose up`, no Traefik restart needed. Match
+# TRAEFIK_CERT_RESOLVER to the resolver NAME in the resident Traefik's own
+# `--certificatesresolvers.<name>.acme.*` flags (inspect its container args
+# to find it — "letsencrypt" is a common default, not a universal one).
 services:
   app:
     build: .
     restart: unless-stopped
-    env_file: .env                      # OURA_* / DATABASE_URL / etc.
+    env_file: .env                      # OURA_* / DATABASE_URL / SITE_ADDRESS / etc.
     environment:
       NODE_ENV: production
     volumes:
       - app-data:/app/server/.data      # persists the local JSON store (unused when DATABASE_URL is set)
     ports:
       - "127.0.0.1:3001:3001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fuel.rule=Host(`${SITE_ADDRESS}`)"
+      - "traefik.http.routers.fuel.entrypoints=websecure"
+      - "traefik.http.routers.fuel.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.services.fuel.loadbalancer.server.port=3001"
 
 volumes:
   app-data:

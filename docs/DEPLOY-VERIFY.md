@@ -151,6 +151,29 @@ systemctl reload nginx
 certbot --nginx -d omnifuelapp.tech             # adds the HTTPS server block
 ```
 
+*Resident Traefik* (Docker, `--providers.docker=true`) is different in kind from
+the other two: there's no config file to edit — Traefik discovers routes from
+**labels on the container itself**, and `docker-compose.app-only.yml` already
+carries them (inert on any other resident proxy, since nothing else reads
+Docker labels). Confirm two facts before relying on them —
+`docker inspect <traefik-container> --format '{{json .Config.Cmd}}'` shows
+the entrypoint names and the cert resolver's name (its
+`--certificatesresolvers.<name>.acme.*` flag — "letsencrypt" is this
+project's example, not a given), then in `.env`:
+
+```bash
+SITE_ADDRESS=omnifuelapp.tech
+TRAEFIK_CERT_RESOLVER=letsencrypt   # must match the resident Traefik's resolver name
+```
+
+```bash
+docker compose -f docker-compose.app-only.yml up -d --build
+```
+
+No reload step: the running Traefik picks up the new container's labels and
+requests its certificate automatically. `docker logs <traefik-container>` is
+where an ACME failure (rate limit, DNS not yet propagated) would show up.
+
 **3. Verify from outside, same as any other deploy:**
 
 ```bash
