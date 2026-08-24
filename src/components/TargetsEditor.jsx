@@ -69,6 +69,8 @@ export default function TargetsEditor({ targets, onSave, health }) {
             <dd className={`text-right ${health.ocr === 'configured' ? 'text-emerald-400' : 'text-amber-400'}`}>{health.ocr}</dd>
             <dt className="text-slate-500">USDA fallback</dt>
             <dd className={`text-right ${health.usda === 'configured' ? 'text-emerald-400' : 'text-slate-400'}`}>{health.usda}</dd>
+            <dt className="text-slate-500">Oura wearable</dt>
+            <dd className={`text-right ${health.oura === 'configured' ? 'text-emerald-400' : 'text-slate-400'}`}>{health.oura || 'not-configured'}</dd>
           </dl>
           {health.backend === 'json-file' && (
             <p className="mt-2 text-xs text-slate-500">

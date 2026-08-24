@@ -43,9 +43,31 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
 - **Label OCR:** set `ANTHROPIC_API_KEY`. Optionally set `ANTHROPIC_MODEL`
   (defaults to `claude-opus-5`; `claude-haiku-4-5` is much cheaper per scan).
 - **Better whole-food coverage:** set `FDC_API_KEY` (free USDA key).
+- **Energy balance (Oura):** set `OURA_TOKEN` to show calories in − activity out
+  on Today. See [Wearables](#wearables-oura) for how to get a token.
 
 `GET /api/health` reports which of these are configured; the Targets screen shows
 the same status.
+
+## Wearables (Oura)
+
+With `OURA_TOKEN` set, Today shows an **Energy balance** card: calories logged
+(in) vs. Oura's total daily expenditure (out) = net deficit/surplus, plus steps.
+`GET /api/oura/summary?date=YYYY-MM-DD` returns the day's activity; the server
+holds the token, and the integration (`server/integrations/oura.js`) is
+token-agnostic on purpose.
+
+**Getting a token.** Oura **deprecated Personal Access Tokens in Dec 2025** — an
+existing PAT still works as `OURA_TOKEN`, but a new token comes from **OAuth 2.0**
+(register an app at the [Oura developer portal](https://cloud.ouraring.com/oauth/applications),
+authorize, exchange the code for an access token). One account per token today.
+
+**Multiple people?** In theory yes, and OAuth 2.0 is the mechanism: each person
+authorizes your app against *their* Oura account and you store a token per
+connected account. You can never read anyone's data without them consenting via
+Oura's login. That's *multiple connected data sources* — separate from turning
+the whole app into a multi-user product. Not built yet; the token-agnostic
+integration is the groundwork for it (and for the Garmin Health API later).
 
 ## Data model
 
@@ -72,6 +94,7 @@ Full DDL in [`schema.sql`](./schema.sql).
 | POST | `/entries` | log a food (`food_id` or inline `food`) |
 | PATCH/DELETE | `/entries/:id` | edit / remove an entry |
 | GET / PUT | `/targets` | read / set daily targets |
+| GET | `/oura/summary?date=` | Oura activity/expenditure for a day (if configured) |
 
 ## MVP feature scope
 
@@ -91,11 +114,11 @@ Full DDL in [`schema.sql`](./schema.sql).
 
 ### Deferred (v2)
 
-- **Wearables (planned):** pull activity/expenditure from **Oura** (Cloud API
-  v2 — easy, personal token) and **Garmin** (Health API — gated behind Garmin's
-  developer program; apply early) to show net calories (in − out); optionally an
-  on-watch **Connect IQ** glance for the Fenix line. Oura first. The backend's
-  integration layer (`server/`) is the natural home for these pulls.
+- **Wearables:** **Oura** energy-balance is in (token-gated — see
+  [Wearables](#wearables-oura)); still to come: the **OAuth 2.0 connect flow**
+  (multi-account), **Garmin** (Health API — gated behind Garmin's developer
+  program; apply early), and optionally an on-watch **Connect IQ** glance for the
+  Fenix line.
 - Apple Health / Google Fit sync, recipe builder, meal planning.
 
 ## Deploying

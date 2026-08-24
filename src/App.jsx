@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api/client.js'
-import { dayBounds, MEALS, num, fmt } from './lib/nutrition.js'
+import { dayBounds, MEALS, num, fmt, ymd } from './lib/nutrition.js'
 import { enqueue, dequeue, getQueue, pendingEntry } from './lib/outbox.js'
 import { Button, Modal, ErrorNote, Spinner, inputCls } from './components/ui.jsx'
 // The barcode scanner pulls in the large zxing library — load it only when the
@@ -68,6 +68,7 @@ export default function App() {
   const [targets, setTargets] = useState(null)
   const [health, setHealth] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [oura, setOura] = useState(null) // Oura activity for the selected day (null = none/off)
 
   // Add-food flow
   const [flow, setFlow] = useState(null) // 'menu' | 'scan' | 'label' | 'search' | 'manual' | 'lookup' | 'confirm'
@@ -99,6 +100,15 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadEntries(date) }, [date, refreshKey, loadEntries])
+
+  // Oura activity for the selected day (null when unconfigured or no data yet).
+  useEffect(() => {
+    let alive = true
+    api.ouraSummary(ymd(date))
+      .then((r) => alive && setOura(r.configured ? r.activity : null))
+      .catch(() => alive && setOura(null))
+    return () => { alive = false }
+  }, [date, refreshKey])
 
   useEffect(() => {
     api.getTargets().then((r) => setTargets(r.targets)).catch(() => {})
@@ -301,6 +311,7 @@ export default function App() {
             online={online}
             syncing={syncing}
             onSync={flushOutbox}
+            oura={oura}
           />
         )}
         {tab === 'history' && <HistoryView targets={targets} refreshKey={refreshKey} />}

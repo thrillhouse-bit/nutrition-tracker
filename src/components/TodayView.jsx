@@ -52,7 +52,7 @@ function EntryRow({ entry, onEdit, onDelete }) {
   )
 }
 
-export default function TodayView({ date, entries, targets, loading, onEdit, onDelete, onPrevDay, onNextDay, onToday, pendingCount = 0, online = true, syncing = false, onSync }) {
+export default function TodayView({ date, entries, targets, loading, onEdit, onDelete, onPrevDay, onNextDay, onToday, pendingCount = 0, online = true, syncing = false, onSync, oura = null }) {
   const totals = useMemo(() => sumEntries(entries), [entries])
 
   const byMeal = useMemo(() => {
@@ -116,6 +116,40 @@ export default function TodayView({ date, entries, targets, loading, onEdit, onD
           )}
         </div>
       </div>
+
+      {/* Energy balance (Oura) — calories in vs. total expenditure out */}
+      {oura && oura.total_calories != null && (
+        (() => {
+          const net = num(totals.calories) - num(oura.total_calories)
+          const deficit = net <= 0
+          return (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Energy balance</span>
+                <span className="text-[11px] text-slate-500">
+                  Oura{oura.steps != null ? ` · ${fmt(oura.steps, 0)} steps` : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-base font-bold tabular-nums text-slate-50">{fmt(totals.calories, 0)}</div>
+                  <div className="text-[11px] text-slate-400">In</div>
+                </div>
+                <div>
+                  <div className="text-base font-bold tabular-nums text-slate-50">{fmt(oura.total_calories, 0)}</div>
+                  <div className="text-[11px] text-slate-400">Out</div>
+                </div>
+                <div>
+                  <div className={`text-base font-bold tabular-nums ${deficit ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {fmt(Math.abs(net), 0)}
+                  </div>
+                  <div className="text-[11px] text-slate-400">{deficit ? 'deficit' : 'surplus'}</div>
+                </div>
+              </div>
+            </div>
+          )
+        })()
+      )}
 
       {/* Macro + micro bars */}
       <div className="grid gap-3 sm:grid-cols-2">
