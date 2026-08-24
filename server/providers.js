@@ -23,16 +23,19 @@ import { garminConfigured } from './integrations/garmin.js'
 export const PROVIDERS = {
   oura: { id: 'oura', name: 'Oura', connect: 'oauth', categories: ['sleep', 'readiness'] },
   garmin: { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['workouts', 'training load', 'expenditure', 'steps'] },
-  apple: { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'expenditure', 'steps', 'sleep'] },
+  apple: { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'active energy', 'exercise', 'sleep', 'heart rate'] },
 }
 
-// Per-metric provider preference when more than one source has data.
+// Per-metric provider preference when more than one source has data. `hrv` is
+// context-only — it appears in the composed signals for explanation but the
+// rules engine (server/plan.js) never reads it, so it can never change a target.
 const PREFERENCE = {
   readiness: ['oura', 'garmin'],
   sleep: ['oura', 'apple', 'garmin'],
   workout: ['garmin', 'apple', 'oura'],
   expenditure: ['garmin', 'apple', 'oura'],
   steps: ['garmin', 'apple'],
+  hrv: ['apple', 'oura'],
 }
 
 const HOURS = (ms) => ms / 3600000
@@ -74,6 +77,7 @@ export function demoSignals(nowDate = new Date()) {
       expenditure: sig(1760, { unit: 'kcal', active: 405, provider: 'apple', recorded_at: fetched, fetched_at: fetched, demo: true }),
       steps: sig(4050, { unit: 'steps', provider: 'apple', recorded_at: fetched, fetched_at: fetched, demo: true }),
       sleep: sig(7.2, { unit: 'h', provider: 'apple', recorded_at: morning.toISOString(), fetched_at: fetched, demo: true }),
+      hrv: sig(62, { unit: 'ms', provider: 'apple', recorded_at: morning.toISOString(), fetched_at: fetched, demo: true }),
     },
   }
 }
@@ -101,9 +105,21 @@ export async function providerStatus(store, id, nowDate = new Date()) {
     return { ...meta, status, demo: false, last_synced_at: settings?.last_synced_at || null }
   }
   if (id === 'apple') {
+    // Apple has no OAuth account; "connected" means the companion synced today's
+    // HealthKit data. permissions.available < requested → partial (some
+    // categories returned no data — never presented as "denied").
+    const perms = settings?.settings?.permissions || null
+    const partial = !!(perms?.requested?.length && (perms.available?.length || 0) < perms.requested.length)
     const has = (await store.listAppleSignals?.(ymd(nowDate)))?.length
-    if (has) return { ...meta, status: 'connected', demo: false, last_synced_at: settings?.last_synced_at || null }
-    return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
+    const lastSync = settings?.last_synced_at || null
+    if (has) return { ...meta, status: 'connected', demo: false, last_synced_at: lastSync, permissions: perms, partial }
+    // Synced before but nothing today: stale if the last sync was recent, else
+    // disconnected. Only fall back to demo when the companion never connected.
+    if (settings?.connected_at) {
+      const ageH = lastSync ? HOURS(nowDate.getTime() - new Date(lastSync).getTime()) : Infinity
+      return { ...meta, status: ageH <= 48 ? 'stale' : 'disconnected', demo: false, last_synced_at: lastSync, permissions: perms, partial }
+    }
+    return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null, permissions: perms }
   }
   return { ...meta, status: 'disconnected', demo: false }
 }

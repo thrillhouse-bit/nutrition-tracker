@@ -436,19 +436,60 @@ app.put('/api/connections/:provider', asyncH(async (req, res) => {
   res.json({ provider: id, enabled: row.enabled !== false, demo: row.demo !== false })
 }))
 
+// The HealthKit categories the companion may read (minimum fueling context).
+// HRV / resting HR are context-only and never drive a target change.
+const APPLE_CATEGORIES = ['workouts', 'activeEnergy', 'exercise', 'sleep', 'hrv', 'restingHR', 'steps']
+// Map ingested metric keys back to their HealthKit category, so "available"
+// permissions can be inferred from which metrics actually arrived.
+const APPLE_METRIC_CATEGORY = {
+  workout: 'workouts', expenditure: 'activeEnergy', active_energy: 'activeEnergy',
+  exercise: 'exercise', exercise_minutes: 'exercise', sleep: 'sleep',
+  hrv: 'hrv', resting_hr: 'restingHR', steps: 'steps',
+}
+
+// Record which HealthKit categories the companion could read. HealthKit hides
+// read-denials by design, so we NEVER record "denied" — only "requested" and
+// "available" (a category is available when its data arrived or the companion
+// reports it authorized). Missing data reads as unavailable, not refused.
+function normalizeApplePermissions(p, rows) {
+  const clean = (a) => (Array.isArray(a) ? [...new Set(a.filter((x) => APPLE_CATEGORIES.includes(x)))] : [])
+  const fromRows = [...new Set(rows.map((r) => APPLE_METRIC_CATEGORY[r.metric]).filter(Boolean))]
+  const available = clean(p?.available).length ? clean(p?.available) : fromRows
+  const requested = clean(p?.requested).length ? clean(p?.requested) : available
+  return { requested, available, updated_at: new Date().toISOString() }
+}
+
 // Apple Health ingest: a native HealthKit companion / Health export POSTs
 // normalized samples here (there is no Apple cloud API). Token-gated if
 // APPLE_INGEST_TOKEN is set.
 app.post('/api/apple/ingest', asyncH(async (req, res) => {
   const token = process.env.APPLE_INGEST_TOKEN
   if (token && req.get('x-ingest-token') !== token) return res.status(401).json({ error: 'Invalid ingest token.' })
-  const { date, samples } = req.body || {}
+  const { date, samples, permissions } = req.body || {}
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
-  const rows = Array.isArray(samples) ? samples : []
+  // Keep only well-formed samples; a metric name is required and everything
+  // else is optional. Absent metrics are simply not stored (never inferred as
+  // denied). Timestamps default to now so a minimal client still works.
+  const nowIso = new Date().toISOString()
+  const rows = (Array.isArray(samples) ? samples : [])
+    .filter((s) => s && typeof s.metric === 'string' && s.metric)
+    .map((s) => ({
+      metric: s.metric,
+      value: s.value ?? null,
+      unit: s.unit || null,
+      recorded_at: s.recorded_at || nowIso,
+      fetched_at: s.fetched_at || nowIso,
+      extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
+    }))
   const n = await store.replaceAppleSignals(day, rows)
   const cur = await store.getIntegration('apple')
-  await store.setIntegration('apple', { connected_at: cur.connected_at || new Date().toISOString(), last_synced_at: new Date().toISOString() })
-  res.json({ ingested: n, day })
+  const perms = normalizeApplePermissions(permissions, rows)
+  await store.setIntegration('apple', {
+    connected_at: cur.connected_at || nowIso,
+    last_synced_at: nowIso,
+    settings: { ...(cur.settings || {}), permissions: perms },
+  })
+  res.json({ ingested: n, day, permissions: perms })
 }))
 
 // Insights: nutrition trends over a window; signal correlations flagged as

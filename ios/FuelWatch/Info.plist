@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist — the watchOS APP target.
+
+  Style assumption: this is a MODERN, single-target SwiftUI watch app, so it
+  uses `WKApplication = YES` (the current model) rather than the legacy split of
+  a WatchKit app stub + a separate WatchKit Extension (`WKWatchKitApp` +
+  `WKExtensionDelegateClassName`). Do NOT mix the two — pick this one and delete
+  the legacy keys if a template added them.
+
+  No background modes are declared: WatchConnectivity `applicationContext` /
+  `sendMessage` / `transferUserInfo` do not require a `WKBackgroundModes` entry.
+  The complication (Widget Extension) has its OWN Info.plist, not this one.
+
+  TODO (developer): set the real bundle id / display name / team in the target's
+  build settings; several values below intentionally read from build variables.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Fuel</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+
+	<!-- Modern SwiftUI watch app entry model. -->
+	<key>WKApplication</key>
+	<true/>
+
+	<!-- Links this watch app to its iPhone companion so WatchConnectivity has a
+	     counterpart. TODO: set to the iOS (phone) app's bundle identifier. -->
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>com.example.fuel</string>
+</dict>
+</plist>

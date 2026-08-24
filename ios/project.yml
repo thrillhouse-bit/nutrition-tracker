@@ -1,0 +1,88 @@
+# XcodeGen spec for the Fuel native companion (iOS app + watchOS app + watch
+# complication). Generate the Xcode project on a Mac with:
+#
+#     brew install xcodegen        # once
+#     cd ios && xcodegen generate  # produces Fuel.xcodeproj
+#     open Fuel.xcodeproj
+#
+# This is UNBUILT scaffolding — there is no Xcode/macOS in the authoring
+# environment. Fill in every `# TODO:` (team + bundle ids) before building, and
+# expect to reconcile the watch bundle-id chain in Xcode's Signing tab (Apple is
+# picky: the watch app id must be `<iOS app id>.watchkitapp`, and the
+# complication `<watch app id>.complication`).
+name: Fuel
+
+options:
+  bundleIdPrefix: com.example.fuel    # TODO: your reverse-DNS prefix
+  deploymentTarget:
+    iOS: "16.0"
+    watchOS: "10.0"                    # 10.0 for .containerBackground; the code guards older APIs
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""              # TODO: your Apple Developer Team ID
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: NO
+
+targets:
+  # --- iOS companion: hosts the PWA (WKWebView) + the HealthKit bridge --------
+  FuelCompanion:
+    type: application
+    platform: iOS
+    sources:
+      - path: FuelCompanion
+      - path: Shared               # shared contract types compiled into the app
+    dependencies:
+      - target: FuelWatch
+        embed: true                # the watch app rides along in the iOS app
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.fuel.companion   # TODO
+        INFOPLIST_FILE: FuelCompanion/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FuelCompanion/FuelCompanion.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # Background task ids in Info.plist (BGTaskSchedulerPermittedIdentifiers)
+        # must match BackgroundSync.swift's identifiers exactly.
+
+  # --- watchOS app: glanceable receiver of the phone-computed PlanSummary -----
+  FuelWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: FuelWatch
+        excludes:
+          - "Complication/**"      # the complication is its own extension target
+      - path: Shared               # PlanSummary + HealthModel(FuelJSON) into the watch app
+    dependencies:
+      - target: FuelWatchComplication
+        embed: true
+    settings:
+      base:
+        # Apple requires this to be the iOS app id + ".watchkitapp".
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.fuel.companion.watchkitapp   # TODO
+        INFOPLIST_FILE: FuelWatch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FuelWatch/FuelWatch.entitlements
+        # Info.plist's WKCompanionAppBundleIdentifier must equal FuelCompanion's id.
+
+  # --- watch complication: a WidgetKit accessory (summary data only) ----------
+  FuelWatchComplication:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: FuelWatch/Complication
+      - path: FuelWatch/Store/SummaryPersistence.swift  # shared App Group reader
+      - path: Shared/PlanSummary.swift
+      - path: Shared/HealthModel.swift                  # FuelJSON
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.fuel.companion.watchkitapp.complication   # TODO
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Fuel
+        INFOPLIST_KEY_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        # App Group (group.com.example.fuelwatch) must be enabled on the watch app
+        # AND this extension so the persisted PlanSummary is shared. TODO: set the
+        # real group id in SummaryPersistence.swift + both .entitlements.
