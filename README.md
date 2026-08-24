@@ -88,14 +88,42 @@ Full DDL in [`schema.sql`](./schema.sql).
 
 - Offline **write** queue (log while offline, sync later) — today only offline
   *reads* work, via the service worker's NetworkFirst cache.
+- **Wearables (planned):** pull activity/expenditure from **Oura** (Cloud API
+  v2 — easy, personal token) and **Garmin** (Health API — gated behind Garmin's
+  developer program; apply early) to show net calories (in − out); optionally an
+  on-watch **Connect IQ** glance for the Fenix line. Oura first. The backend's
+  integration layer (`server/`) is the natural home for these pulls.
 - Apple Health / Google Fit sync, recipe builder, meal planning.
 
 ## Deploying
 
-The Express server is written so each route is portable to serverless functions
-(e.g. Vercel `/api/*`) later. For now the simplest host is any Node platform
-(Render, Railway, Fly, a small VPS) serving `dist/` behind the API, with a
-reverse proxy mapping `/api` → the Express app and `DATABASE_URL` pointed at Neon.
+**Why you need to:** the camera (barcode scanning) and the service worker only
+work over **HTTPS** (or `localhost`). To scan on your phone, the app must be
+served from a secure origin — so deploy it and put it behind TLS.
+
+In production the Express server serves the built PWA **and** the API from one
+origin, so the frontend's relative `/api` calls just work — no separate frontend
+host, no CORS.
+
+```bash
+npm run build && npm start      # serves dist/ + /api on PORT (default 3001)
+```
+
+Or with Docker (host-agnostic — Render, Railway, Fly, Cloud Run, a VPS):
+
+```bash
+docker build -t nutrition-tracker .
+docker run -p 3001:3001 \
+  -e DATABASE_URL="postgres://…neon…" \
+  -e ANTHROPIC_API_KEY="sk-ant-…" \
+  -e FDC_API_KEY="…" \
+  nutrition-tracker
+```
+
+Put a reverse proxy (Caddy/nginx) in front for TLS. With `DATABASE_URL` set,
+run `npm run db:init` once against Neon first. Each route is written to stay
+portable to serverless functions (e.g. Vercel `/api/*`) if you'd rather split
+them later.
 
 ## Notes
 

@@ -1,9 +1,14 @@
 // Express API: proxies nutrition lookups (keeping keys server-side) and gates
 // all reads/writes to the storage layer. The frontend only ever calls /api/*.
 import 'dotenv/config'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import { store, backend } from './db.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
 
@@ -136,6 +141,17 @@ app.put('/api/targets', asyncH(async (req, res) => {
   const targets = await store.setTargets(req.body || {})
   res.json({ targets })
 }))
+
+// In production (or any time a build exists) the same process serves the
+// built PWA alongside the API, so one container/host handles everything and
+// the frontend's relative /api calls are same-origin. In dev, Vite serves the
+// app and proxies /api here instead.
+const distDir = path.join(__dirname, '..', 'dist')
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir))
+  // SPA fallback for any non-/api GET.
+  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')))
+}
 
 const PORT = Number(process.env.PORT || 3001)
 app.listen(PORT, () => {
