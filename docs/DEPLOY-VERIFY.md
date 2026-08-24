@@ -80,6 +80,86 @@ Because you choose the domain up front, there's **no chicken-and-egg**: set
 later: `git pull && docker compose up -d --build`. Data lives in the `app-data`
 volume (survives rebuilds).
 
+## If the box already serves web traffic (sidecar path)
+
+Probe before you deploy: if `curl -s -o /dev/null -w '%{http_code}\n' http://<vps-ip>/`
+answers with **any** HTTP status, something on that VPS already owns ports
+80/443, and the standard compose (which brings its own Caddy on those ports)
+would collide with it — worst case taking the resident sites down. Run
+[`scripts/vps_discover.sh`](../scripts/vps_discover.sh) **on the VPS** for a
+read-only survey and a recommendation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thrillhouse-bit/nutrition-tracker/main/scripts/vps_discover.sh | bash
+```
+
+When it says the ports are occupied, deploy the app **behind the resident
+server** instead:
+
+**1. Run the app container only**, bound to loopback (never the public IP —
+TLS and the hostname belong to the resident proxy in this arrangement):
+
+```bash
+git clone https://github.com/thrillhouse-bit/nutrition-tracker
+cd nutrition-tracker
+# .env: OURA_CLIENT_ID / OURA_CLIENT_SECRET / OURA_REDIRECT_URI
+#       (+ optional DATABASE_URL, APPLE_INGEST_TOKEN — SITE_ADDRESS not needed;
+#        it only feeds the bundled Caddy, which this path doesn't run)
+docker compose -f docker-compose.app-only.yml up -d --build
+curl -s http://127.0.0.1:3001/api/health   # prove the app is up before touching the proxy
+```
+
+**2. Add the domain to the resident server.** Validate first, then **reload,
+never restart** — a reload refuses a bad config and keeps the old server
+serving; a restart stops the healthy server to load the broken one.
+
+*Resident Caddy* — append to `/etc/caddy/Caddyfile`:
+
+```
+omnifuelapp.tech {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3001
+}
+```
+
+```bash
+caddy validate --config /etc/caddy/Caddyfile   # must pass before reload
+systemctl reload caddy                          # reload, not restart
+```
+
+Caddy fetches the certificate automatically on first request.
+
+*Resident nginx* — new file `/etc/nginx/sites-available/omnifuelapp.tech`:
+
+```nginx
+server {
+    listen 80;
+    server_name omnifuelapp.tech;
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/omnifuelapp.tech /etc/nginx/sites-enabled/
+nginx -t                                        # must pass before reload
+systemctl reload nginx
+certbot --nginx -d omnifuelapp.tech             # adds the HTTPS server block
+```
+
+**3. Verify from outside, same as any other deploy:**
+
+```bash
+scripts/verify_deploy.sh https://omnifuelapp.tech
+```
+
+The sidecar and standard paths serve the identical app — only who terminates
+TLS differs. Data still lives in the `app-data` volume either way.
+
 ## 1. Get Oura OAuth credentials
 
 1. Create an app at the [Oura developer portal](https://cloud.ouraring.com/oauth/applications) → note the **client id** and **client secret**.
