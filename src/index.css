@@ -1,17 +1,39 @@
 @import 'tailwindcss';
 
-/* Tailwind v4 is CSS-first: theme tokens live here instead of tailwind.config.js.
-   Kept intentionally minimal — this is plumbing, not the final visual design
-   (Claude Design comes later). */
+/* ------------------------------------------------------------------------
+   Editorial health-tech design system.
+   Warm paper ground, near-black ink, cobalt for confident/primary states,
+   restrained sage (recovery) + lavender (training) semantics. Bodoni-style
+   high-contrast serif for titles & large numerals; Archivo-style sans for
+   everything else. Crisp rules, editorial spacing, minimal card rounding,
+   no glass, no gradients.
+   ------------------------------------------------------------------------ */
 @theme {
-  --color-bg: #0b1220;
-  --color-panel: #131c2e;
-  --color-panel-2: #1b2740;
-  --color-line: #263349;
-  --color-accent: #10b981;
-  --color-accent-2: #34d399;
-  --color-warn: #f59e0b;
-  --color-danger: #ef4444;
+  --font-serif: 'Bodoni Moda', 'Didot', 'Times New Roman', Georgia, serif;
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --color-paper: #f4f2ea;      /* warm ivory ground */
+  --color-card: #ffffff;       /* white sheets = a meaningful moment */
+  --color-ink: #17150e;        /* deep near-black type */
+  --color-muted: #6c6a5f;      /* secondary text */
+  --color-faint: #9a988b;      /* metadata / hairline text */
+  --color-line: #d8d4c8;       /* crisp grid rules */
+  --color-line-strong: #211f17;
+
+  --color-cobalt: #1f3fd1;     /* primary actions, active nav, scanning */
+  --color-cobalt-soft: #e7ebfb;
+  --color-oncobalt: #ffffff;
+
+  --color-sage: #5f8a6e;       /* recovery context */
+  --color-sage-soft: #e7efe8;
+  --color-lavender: #6f68a6;   /* training context */
+  --color-lavender-soft: #ecebf5;
+
+  --color-good: #2f7d54;
+  --color-warn: #9a6400;
+  --color-alert: #a5311d;
+
+  --radius: 8px;
 }
 
 html,
@@ -22,16 +44,41 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: #e5edf7;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Respect the notch / home indicator on installed iOS PWAs. */
+  text-rendering: optimizeLegibility;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Hide number-input spinners; quantities use their own controls. */
+/* High-contrast serif for titles and large numerals. */
+.serif {
+  font-family: var(--font-serif);
+}
+.numeral {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+.eyebrow {
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+/* Visible focus for accessibility (never rely on color alone). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+}
+
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;

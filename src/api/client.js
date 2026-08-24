@@ -73,4 +73,13 @@ export const api = {
   // Garmin accounts (connect is a browser navigation to /api/garmin/connect).
   garminAccounts: () => req('/garmin/accounts'),
   disconnectGarmin: (id) => req(`/garmin/accounts/${id}`, { method: 'DELETE' }),
+
+  // --- fueling intelligence ---
+  today: (ymd) => req(`/today?date=${encodeURIComponent(ymd)}`),
+  planToday: (ymd) => req(`/plan/today?date=${encodeURIComponent(ymd)}`),
+  signals: () => req('/signals'),
+  insights: (window = 7) => req(`/insights?window=${window}`),
+  connections: () => req('/connections'),
+  setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
+  setProvider: (id, patch) => req(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
 }

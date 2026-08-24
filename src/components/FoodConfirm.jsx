@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NUTRIENTS, MEALS, num, fmt } from '../lib/nutrition.js'
-import { Button, Field, inputCls } from './ui.jsx'
+import { Button, Card, Field, inputCls } from './ui.jsx'
 
 const CORE_FIELDS = [
   'name', 'brand', 'serving_size', 'serving_unit',
@@ -65,30 +65,30 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
       <div>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold leading-tight text-slate-50">{draft.name || 'Food'}</h3>
-            {draft.brand && <p className="text-sm text-slate-400">{draft.brand}</p>}
+            <h3 className="serif text-xl font-semibold leading-tight text-ink">{draft.name || 'Food'}</h3>
+            {draft.brand && <p className="text-sm text-muted">{draft.brand}</p>}
           </div>
-          <span className="shrink-0 rounded-full bg-white/5 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-400">
+          <span className="eyebrow shrink-0 rounded-md border border-line px-2 py-1 text-muted">
             {draft.source || 'manual'}
           </span>
         </div>
       </div>
 
       {/* Quantity selector: servings, or a weighed amount for bulk items */}
-      <div className="rounded-2xl bg-white/5 p-3">
+      <Card className="p-3">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Quantity</div>
+          <div className="eyebrow">Quantity</div>
           {canAmount && (
-            <div className="flex rounded-lg bg-black/25 p-0.5 text-xs">
+            <div className="flex rounded-md border border-line p-0.5 text-xs">
               <button
                 onClick={() => setMode('servings')}
-                className={`rounded-md px-2 py-1 ${mode === 'servings' ? 'bg-white/10 text-slate-100' : 'text-slate-400'}`}
+                className={`rounded-md px-2 py-1 ${mode === 'servings' ? 'bg-cobalt text-oncobalt' : 'text-muted'}`}
               >
                 Servings
               </button>
               <button
                 onClick={() => setMode('amount')}
-                className={`rounded-md px-2 py-1 lowercase ${mode === 'amount' ? 'bg-white/10 text-slate-100' : 'text-slate-400'}`}
+                className={`rounded-md px-2 py-1 lowercase ${mode === 'amount' ? 'bg-cobalt text-oncobalt' : 'text-muted'}`}
               >
                 {draft.serving_unit}
               </button>
@@ -103,9 +103,9 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
               min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className={`${inputCls} text-center text-lg font-bold`}
+              className={`${inputCls} numeral text-center text-lg`}
             />
-            <span className="text-slate-400">{draft.serving_unit}</span>
+            <span className="text-muted">{draft.serving_unit}</span>
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -116,13 +116,13 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
               min="0"
               value={servings}
               onChange={(e) => setServings(e.target.value)}
-              className={`${inputCls} text-center text-lg font-bold`}
+              className={`${inputCls} numeral text-center text-lg`}
             />
             <Button variant="outline" onClick={() => step(0.5)} aria-label="More servings">+</Button>
           </div>
         )}
 
-        <div className="mt-2 text-xs text-slate-500">
+        <div className="mt-2 text-xs text-faint">
           {mode === 'amount' && canAmount
             ? `≈ ${fmt(effServings, 2)} serving${effServings === 1 ? '' : 's'} (1 = ${fmt(draft.serving_size, 0)} ${draft.serving_unit})`
             : `1 serving = ${draft.serving_size ? fmt(draft.serving_size, 2) : '1'} ${draft.serving_unit || 'serving'}`}
@@ -134,37 +134,37 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
               key={m}
               onClick={() => setMeal(m)}
               className={`rounded-full px-3 py-1 text-sm capitalize transition ${
-                meal === m ? 'bg-emerald-500 text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                meal === m ? 'bg-cobalt text-oncobalt' : 'border border-line text-muted hover:bg-black/5'
               }`}
             >
               {m}
             </button>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Totals for the chosen quantity */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {NUTRIENTS.map((n) => (
-          <div key={n.key} className="rounded-xl bg-white/5 px-3 py-2">
-            <div className="text-sm font-bold tabular-nums text-slate-50">
+          <div key={n.key} className="rounded-md border border-line bg-card px-3 py-2">
+            <div className="numeral text-lg leading-none text-ink">
               {fmt(totals[n.key], n.decimals)}
-              <span className="ml-0.5 text-xs font-normal text-slate-400">{n.unit}</span>
+              <span className="ml-0.5 font-sans text-xs font-normal text-muted">{n.unit}</span>
             </div>
-            <div className="text-[11px] text-slate-400">{n.label}</div>
+            <div className="eyebrow mt-1">{n.label}</div>
           </div>
         ))}
       </div>
 
       <button
         onClick={() => setEditing((e) => !e)}
-        className="text-sm font-medium text-emerald-400 hover:text-emerald-300"
+        className="text-sm font-semibold text-cobalt hover:brightness-110"
       >
         {editing ? 'Hide details' : 'Edit details'}
       </button>
 
       {editing && (
-        <div className="space-y-3 rounded-2xl border border-white/10 p-3">
+        <div className="space-y-3 rounded-lg border border-line bg-card p-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Name">
               <input value={draft.name || ''} onChange={(e) => set('name', e.target.value)} className={inputCls} />
@@ -189,7 +189,7 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
               </Field>
             ))}
           </div>
-          <p className="text-xs text-slate-500">Values are per single serving.</p>
+          <p className="text-xs text-faint">Values are per single serving.</p>
         </div>
       )}
 
