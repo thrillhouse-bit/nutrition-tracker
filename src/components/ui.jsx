@@ -1,54 +1,97 @@
-// Shared editorial primitives. Paper ground, cobalt primary, high-contrast
-// serif numerals, crisp hairlines. Status is never color-only — every state
-// carries a label or glyph too (accessibility).
+// Shared primitives for the Fueling Intelligence visual system.
+//
+// Rules from the design: sharp rectangles (no rounded corners except true
+// circles), hairline rules in ink, cobalt as the single accent, status shown by
+// SHAPE + WORD (never color alone), Bodoni numerals, Archivo labels. White is a
+// moment that matters. Every control has a visible focus ring and a real label.
 import { fmt } from '../lib/nutrition.js'
 
+/* --- buttons ------------------------------------------------------------- */
+// Block CTA: uppercase, tracked, bold, sharp. The design's primary language.
 export function Button({ variant = 'primary', className = '', ...props }) {
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold tracking-tight transition disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-2'
+    'inline-flex items-center justify-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-[0.13em] transition disabled:opacity-40 disabled:pointer-events-none'
   const variants = {
-    primary: 'bg-cobalt text-oncobalt hover:brightness-110 active:brightness-95',
-    outline: 'border border-line-strong text-ink hover:bg-black/5',
-    ghost: 'text-ink hover:bg-black/5',
-    quiet: 'text-muted hover:text-ink hover:bg-black/5',
-    danger: 'border border-alert/40 text-alert hover:bg-alert/5',
+    primary: 'bg-cobalt text-oncobalt hover:bg-cobalt-ink',
+    outline: 'border-[1.5px] border-ink text-ink hover:bg-fill',
+    subtle: 'border-[1.5px] border-line-strong text-muted hover:bg-fill',
+    danger: 'border-[1.5px] border-alert/60 text-alert hover:bg-alert/5',
   }
   return <button className={`${base} ${variants[variant] || variants.primary} ${className}`} {...props} />
 }
 
-export const inputCls =
-  'w-full rounded-md border border-line bg-card px-3 py-2.5 text-ink placeholder:text-faint outline-none focus:border-cobalt focus:ring-2 focus:ring-cobalt/20'
+// Inline text action — cobalt, sentence case, optional trailing chevron.
+export function TextButton({ children, chevron = false, className = '', ...props }) {
+  return (
+    <button
+      className={`inline-flex items-center gap-1.5 text-cobalt font-semibold tracking-[0.02em] hover:text-cobalt-ink ${className}`}
+      {...props}
+    >
+      {children}
+      {chevron && <span aria-hidden className="text-[1.1em] leading-none">›</span>}
+    </button>
+  )
+}
 
-export function Field({ label, children, hint }) {
+/* --- inputs -------------------------------------------------------------- */
+export const inputCls =
+  'w-full border border-line bg-card px-3 py-3 text-ink placeholder:text-faint outline-none focus:border-cobalt'
+
+export function Field({ label, children, hint, right }) {
   return (
     <label className="block">
-      {label && <span className="eyebrow mb-1 block">{label}</span>}
+      {(label || right) && (
+        <span className="mb-1.5 flex items-baseline justify-between">
+          {label && <span className="eyebrow">{label}</span>}
+          {right}
+        </span>
+      )}
       {children}
       {hint && <span className="mt-1 block text-xs text-faint">{hint}</span>}
     </label>
   )
 }
 
-// A white sheet slides up from the bottom — reserved for meaningful moments
-// (confirm, save, a recommendation detail).
-export function Sheet({ open, onClose, title, children, size = 'md' }) {
+/* --- surfaces ------------------------------------------------------------ */
+// Sharp panel. `white` for a moment that matters; otherwise a hairline frame.
+export function Card({ className = '', children, as: Tag = 'div', white = false, ...props }) {
+  const skin = white ? 'bg-card border border-line shadow-[0_1px_0_rgb(18_18_16/0.06)]' : 'bg-card border border-line'
+  return (
+    <Tag className={`${skin} ${className}`} {...props}>
+      {children}
+    </Tag>
+  )
+}
+
+export function Rule({ className = '' }) {
+  return <hr className={`border-0 border-t border-line ${className}`} />
+}
+
+export function SectionTitle({ children, right, className = '' }) {
+  return (
+    <div className={`mb-2 flex items-baseline justify-between ${className}`}>
+      <h3 className="eyebrow">{children}</h3>
+      {right}
+    </div>
+  )
+}
+
+// Bottom sheet — a white moment that slides up. Sharp top edge, grabber bar,
+// warm dim behind. Reserved for confirm / save / a recommendation detail.
+export function Sheet({ open, onClose, title, children, size = 'md', grabber = true }) {
   if (!open) return null
   const width = size === 'lg' ? 'sm:max-w-xl' : 'sm:max-w-md'
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/30 sm:items-center"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/25 sm:items-center" onClick={onClose}>
       <div
-        className={`w-full ${width} max-h-[92vh] overflow-y-auto rounded-t-xl border border-line bg-card p-5 shadow-2xl sm:rounded-xl`}
+        className={`w-full ${width} max-h-[92vh] overflow-y-auto border border-line bg-card p-5 shadow-[0_-3px_14px_rgb(18_18_16/0.12)]`}
         onClick={(e) => e.stopPropagation()}
       >
+        {grabber && <div className="mx-auto mb-4 h-1 w-11 bg-line-strong" />}
         {title && (
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="serif text-xl font-semibold text-ink">{title}</h2>
-            <button onClick={onClose} className="rounded-md px-2 py-1 text-muted hover:bg-black/5" aria-label="Close">
-              ✕
-            </button>
+            <h2 className="serif text-xl text-ink">{title}</h2>
+            <button onClick={onClose} className="px-2 py-1 text-muted hover:text-ink" aria-label="Close">✕</button>
           </div>
         )}
         {children}
@@ -58,89 +101,105 @@ export function Sheet({ open, onClose, title, children, size = 'md' }) {
 }
 export const Modal = Sheet // alias for existing call sites
 
-export function Card({ className = '', children, as: Tag = 'div', ...props }) {
-  return (
-    <Tag className={`rounded-lg border border-line bg-card ${className}`} {...props}>
-      {children}
-    </Tag>
-  )
-}
-
-export function SectionTitle({ children, right }) {
-  return (
-    <div className="mb-2 flex items-baseline justify-between">
-      <h3 className="eyebrow">{children}</h3>
-      {right}
-    </div>
-  )
-}
-
-export function Rule({ className = '' }) {
-  return <hr className={`border-0 border-t border-line ${className}`} />
-}
-
+/* --- data marks ---------------------------------------------------------- */
 // Big serif numeral with a small label — the editorial data mark.
-export function Stat({ label, value, unit, decimals = 0, size = 'md' }) {
-  const cls = size === 'lg' ? 'text-3xl' : 'text-xl'
+export function Stat({ label, value, unit, decimals = 0, size = 'md', className = '' }) {
+  const cls = size === 'lg' ? 'text-3xl' : size === 'sm' ? 'text-lg' : 'text-2xl'
   return (
-    <div>
-      <div className={`numeral ${cls} font-semibold leading-none text-ink`}>
+    <div className={className}>
+      <div className={`numeral ${cls} leading-none text-ink`}>
         {typeof value === 'number' ? fmt(value, decimals) : value}
-        {unit ? <span className="ml-0.5 font-sans text-xs font-medium text-muted">{unit}</span> : null}
+        {unit ? <span className="ml-1 font-sans text-xs font-medium text-muted">{unit}</span> : null}
       </div>
-      {label && <div className="eyebrow mt-1">{label}</div>}
+      {label && <div className="eyebrow mt-2">{label}</div>}
     </div>
   )
 }
 
-// Thin progress meter; over-target reads amber and is labelled, not just colored.
-export function Meter({ value, target, over }) {
+// Thin rectangular meter — ink fill on a faint track. Over-target reads cobalt
+// and is labelled by the caller, not by color alone.
+export function Meter({ value, target, over, height = 3, className = '' }) {
   const pct = target > 0 ? Math.min(100, (value / target) * 100) : 0
   const isOver = over ?? (target > 0 && value > target)
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/10">
-      <div className={`h-full rounded-full ${isOver ? 'bg-warn' : 'bg-cobalt'}`} style={{ width: `${pct}%` }} />
+    <div className={`w-full bg-track ${className}`} style={{ height }}>
+      <div className={isOver ? 'h-full bg-cobalt' : 'h-full bg-ink'} style={{ width: `${pct}%` }} />
     </div>
   )
 }
 
-const STATUS = {
-  connected: { text: 'Connected', dot: '●', cls: 'text-good' },
-  syncing: { text: 'Syncing', dot: '◐', cls: 'text-cobalt' },
-  stale: { text: 'Stale', dot: '◑', cls: 'text-warn' },
-  demo: { text: 'Demo data', dot: '◇', cls: 'text-lavender' },
-  disconnected: { text: 'Not connected', dot: '○', cls: 'text-faint' },
-  error: { text: 'Error', dot: '▲', cls: 'text-alert' },
-  fresh: { text: 'Fresh', dot: '●', cls: 'text-good' },
-  unavailable: { text: 'No data', dot: '○', cls: 'text-faint' },
-}
-
-// Status pill that shows a glyph + word (never color alone).
-export function StatusTag({ status, className = '' }) {
-  const s = STATUS[status] || STATUS.disconnected
+// Segmented progress — N cells, `filled` of them inked, a fixed-width language
+// for the day's calorie budget.
+export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' }) {
+  const n = Math.max(0, Math.min(total, Math.round(filled)))
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${s.cls} ${className}`}>
-      <span aria-hidden>{s.dot}</span>
-      {s.text}
-    </span>
+    <div className={`flex gap-0.5 ${className}`} style={{ height }}>
+      {Array.from({ length: total }, (_, i) => (
+        <div key={i} className={`flex-1 ${i < n ? 'bg-ink' : 'bg-track'}`} />
+      ))}
+    </div>
   )
 }
 
-// Provenance line for any wearable-derived value: source + freshness + demo.
+// A small context swatch (recovery = sage, training = lavender, neutral = ink).
+export function Swatch({ tone = 'ink', size = 9, className = '' }) {
+  const bg = tone === 'sage' ? 'bg-sage' : tone === 'lavender' ? 'bg-lavender' : tone === 'cobalt' ? 'bg-cobalt' : 'bg-ink'
+  return <span aria-hidden className={`inline-block border border-line-strong ${bg} ${className}`} style={{ width: size, height: size }} />
+}
+
+/* --- status: shape + word, never color alone ----------------------------- */
+const HATCH = 'repeating-linear-gradient(45deg,#121210 0 1.5px,transparent 1.5px 4px)'
+
+// The connection/state marks from the design's STATE REFERENCE.
+function MarkGlyph({ status }) {
+  const box = { width: 11, height: 11 }
+  if (status === 'connected' || status === 'fresh')
+    return <span aria-hidden className="flex shrink-0 items-center justify-center bg-ink text-[8px] font-bold leading-none text-oncobalt" style={box}>✓</span>
+  if (status === 'error')
+    return <span aria-hidden className="flex shrink-0 items-center justify-center bg-ink text-[9px] font-bold leading-none text-oncobalt" style={box}>!</span>
+  if (status === 'syncing')
+    return <span aria-hidden className="shrink-0 border border-ink" style={{ ...box, backgroundImage: HATCH }} />
+  if (status === 'stale' || status === 'unavailable')
+    return <span aria-hidden className="shrink-0 border border-ink bg-paper" style={box} />
+  if (status === 'demo')
+    return <span aria-hidden className="flex shrink-0 items-center justify-center border border-ink bg-paper" style={box}><span className="bg-ink" style={{ width: 3, height: 3 }} /></span>
+  // disconnected
+  return <span aria-hidden className="shrink-0 border border-dashed border-line-heavy" style={box} />
+}
+
+const WORDS = {
+  connected: 'Connected', syncing: 'Syncing', stale: 'Stale', disconnected: 'Not connected',
+  error: 'Error', demo: 'Demo data', fresh: 'Fresh', unavailable: 'No data',
+}
+
+// Shape + word status mark. Word carries the meaning so color is never the only
+// signal. `label` overrides the default word.
+export function StatusMark({ status, label, className = '' }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+      <MarkGlyph status={status} />
+      <span className="eyebrow text-ink/80">{label || WORDS[status] || WORDS.disconnected}</span>
+    </span>
+  )
+}
+export const StatusTag = StatusMark // compat alias
+
+// Provenance for any wearable-derived value: source + freshness (or demo).
 export function SourceLabel({ signal, className = '' }) {
   if (!signal) return null
   const provider = signal.provider ? signal.provider[0].toUpperCase() + signal.provider.slice(1) : 'Signal'
-  const fresh = signal.demo ? 'demo' : signal.freshness
+  const status = signal.demo ? 'demo' : signal.freshness || 'fresh'
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] text-faint ${className}`}>
-      <span className="font-medium text-muted">{provider}</span>
-      <span aria-hidden>·</span>
-      <StatusTag status={signal.demo ? 'demo' : signal.freshness} />
+    <span className={`inline-flex items-center gap-1.5 text-[11px] text-muted ${className}`}>
+      <span className="font-semibold uppercase tracking-[0.1em]">{provider}</span>
+      <span aria-hidden className="text-faint">·</span>
+      <StatusMark status={status} className="[&_.eyebrow]:text-muted" />
     </span>
   )
 }
 
-// Accessible on/off switch.
+/* --- controls ------------------------------------------------------------ */
+// Square on/off switch — cobalt when on, ink outline when off, labelled ON/OFF.
 export function Toggle({ checked, onChange, label, id }) {
   return (
     <button
@@ -149,17 +208,26 @@ export function Toggle({ checked, onChange, label, id }) {
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${checked ? 'border-cobalt bg-cobalt' : 'border-line bg-black/10'}`}
+      className={`relative h-7 w-[50px] shrink-0 transition ${checked ? 'bg-cobalt' : 'border-[1.5px] border-line-heavy bg-transparent'}`}
     >
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+      <span
+        className={`absolute top-1/2 h-[21px] w-[21px] -translate-y-1/2 ${checked ? 'right-[3px] bg-white' : 'left-[2px] bg-ink/30'}`}
+      />
+      <span
+        aria-hidden
+        className={`absolute top-1/2 -translate-y-1/2 text-[9px] font-bold tracking-[0.08em] ${checked ? 'left-2 text-oncobalt' : 'right-1.5 text-muted'}`}
+      >
+        {checked ? 'ON' : 'OFF'}
+      </span>
     </button>
   )
 }
 
+/* --- feedback ------------------------------------------------------------ */
 export function Spinner({ label }) {
   return (
     <div className="flex items-center justify-center gap-3 py-8 text-muted">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-cobalt" />
+      <span className="h-4 w-4 animate-spin border-2 border-line border-t-cobalt" />
       {label && <span className="text-sm">{label}</span>}
     </div>
   )
@@ -168,29 +236,36 @@ export function Spinner({ label }) {
 export function ErrorNote({ children }) {
   if (!children) return null
   return (
-    <div className="rounded-md border border-alert/30 bg-alert/5 px-3 py-2 text-sm text-alert">{children}</div>
-  )
-}
-
-export function EmptyState({ title, children }) {
-  return (
-    <div className="rounded-lg border border-dashed border-line py-10 text-center">
-      {title && <div className="serif text-lg text-ink">{title}</div>}
-      {children && <div className="mt-1 text-sm text-muted">{children}</div>}
+    <div className="flex items-start gap-2 border border-alert/40 bg-alert/5 px-3 py-2 text-sm text-alert">
+      <span aria-hidden className="mt-0.5 flex h-3 w-3 shrink-0 items-center justify-center bg-alert text-[9px] font-bold leading-none text-white">!</span>
+      <span>{children}</span>
     </div>
   )
 }
 
-// A "Why?" disclosure for transparent recommendations/adjustments.
-export function Why({ items = [], label = 'Why?' }) {
+// Dashed hairline panel — the design's insufficient-data / empty language.
+export function EmptyState({ title, children, className = '' }) {
+  return (
+    <div className={`border border-dashed border-line-strong px-4 py-10 text-center ${className}`}>
+      {title && <div className="serif text-lg text-ink">{title}</div>}
+      {children && <div className="mt-1.5 text-sm text-muted">{children}</div>}
+    </div>
+  )
+}
+
+// A "Why?" disclosure — a circled ? that opens a transparent rationale list.
+export function Why({ items = [], label = 'Why this?' }) {
   if (!items.length) return null
   return (
-    <details className="group mt-3">
-      <summary className="cursor-pointer list-none text-sm font-semibold text-cobalt">
-        {label} <span className="text-muted group-open:hidden">▸</span>
-        <span className="hidden text-muted group-open:inline">▾</span>
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center justify-between py-3">
+        <span className="flex items-center gap-2.5">
+          <span aria-hidden className="flex h-[19px] w-[19px] items-center justify-center rounded-full border-[1.5px] border-cobalt text-[11px] font-bold text-cobalt">?</span>
+          <span className="text-sm font-semibold tracking-[0.02em] text-cobalt">{label}</span>
+        </span>
+        <span aria-hidden className="text-cobalt transition group-open:rotate-90">›</span>
       </summary>
-      <ul className="mt-2 space-y-1.5 border-l-2 border-line pl-3 text-sm text-muted">
+      <ul className="mb-1 space-y-1.5 border-l-2 border-line pl-3 text-sm text-muted">
         {items.map((it, i) => (
           <li key={i}>{it}</li>
         ))}

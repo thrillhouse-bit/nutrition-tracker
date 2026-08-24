@@ -55,8 +55,8 @@ export default function LabelScan({ onParsed }) {
       />
 
       <div
-        className={`flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg border ${
-          preview ? 'border-line bg-black/5' : 'border-dashed border-line bg-card'
+        className={`flex aspect-[4/3] w-full items-center justify-center overflow-hidden border ${
+          preview ? 'border-line bg-fill' : 'border-dashed border-line bg-card'
         }`}
       >
         {preview ? (

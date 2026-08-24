@@ -31,6 +31,8 @@ const TABS = [
   { key: 'insights', label: 'Insights' },
   { key: 'connections', label: 'Connections' },
 ]
+// The tab bar abbreviates the last one, matching the design artboards.
+const TAB_SHORT = { connections: 'Connect' }
 
 // Editor for an existing log entry (servings + meal + delete).
 function EntryEditor({ entry, onSave, onDelete, saving }) {
@@ -53,7 +55,7 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
           <button
             key={m || 'none'}
             onClick={() => setMeal(m)}
-            className={`rounded-md px-3 py-1 text-sm capitalize transition ${meal === m ? 'bg-cobalt text-oncobalt' : 'border border-line text-muted hover:bg-black/5'}`}
+            className={`px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] transition ${meal === m ? 'bg-cobalt text-oncobalt' : 'border border-line-strong text-muted hover:bg-fill'}`}
           >
             {m || 'untagged'}
           </button>
@@ -75,7 +77,6 @@ export default function App() {
   const [entries, setEntries] = useState([])
   const [loadingEntries, setLoadingEntries] = useState(true)
   const [todayData, setTodayData] = useState(null) // /api/today composite (plan + signals + recommendation)
-  const [health, setHealth] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [toast, setToast] = useState(null)
 
@@ -116,8 +117,6 @@ export default function App() {
     api.today(ymd(date)).then((r) => alive && setTodayData(r)).catch(() => alive && setTodayData(null))
     return () => { alive = false }
   }, [date, refreshKey])
-
-  useEffect(() => { api.health().then(setHealth).catch(() => {}) }, [])
 
   // Keep recents populated for the Log tab and the add-food menu without needing
   // to open the sheet first; refresh after each log so re-log stays current.
@@ -274,18 +273,15 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col">
-      {/* Masthead */}
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-paper/90 px-4 py-3 backdrop-blur">
-        <h1 className="serif text-lg font-semibold tracking-tight text-ink">Fuel</h1>
-        {!online ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-warn"><span aria-hidden>◐</span> Offline</span>
-        ) : (
-          health && <span className="text-[11px] text-faint">{health.backend === 'postgres' ? 'synced' : 'local'}</span>
-        )}
-      </header>
+      {/* Offline strip — the only global chrome; each screen owns its own title. */}
+      {!online && (
+        <div className="flex items-center justify-center gap-2 border-b border-line bg-rail px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+          <span aria-hidden className="h-2 w-2 bg-ink" /> Offline — logs queue and sync when you reconnect
+        </div>
+      )}
 
       {toast && (
-        <div className={`mx-4 mt-3 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${toast.kind === 'success' ? 'border-good/30 bg-sage-soft text-good' : 'border-alert/30 bg-alert/5 text-alert'}`}>
+        <div className={`mx-4 mt-3 flex items-center justify-between gap-3 border px-3 py-2 text-sm ${toast.kind === 'success' ? 'border-cobalt/40 bg-cobalt-soft text-cobalt' : 'border-alert/40 bg-alert/5 text-alert'}`}>
           <span>{toast.text}</span>
           <button onClick={() => setToast(null)} className="px-1.5 opacity-70 hover:opacity-100" aria-label="Dismiss">✕</button>
         </div>
@@ -313,30 +309,35 @@ export default function App() {
         {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} />}
       </main>
 
-      {/* Bottom nav — five editorial tabs */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto grid max-w-xl grid-cols-5 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium tracking-tight ${tab === t.key ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
-          >
-            <span aria-hidden className={`h-0.5 w-6 rounded-full ${tab === t.key ? 'bg-cobalt' : 'bg-transparent'}`} />
-            {t.label}
-          </button>
-        ))}
+      {/* Bottom nav — rail bar, active tab drawn with a cobalt top rule */}
+      <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-xl border-t border-line-strong bg-rail pb-[env(safe-area-inset-bottom)]">
+        {TABS.map((t) => {
+          const active = tab === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.09em] ${active ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
+            >
+              {active && <span aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-cobalt" />}
+              {TAB_SHORT[t.key] || t.label}
+            </button>
+          )
+        })}
       </nav>
 
-      {/* Add-food sheet */}
-      <Sheet open={!!flow} onClose={closeFlow} title={flowTitle} size={flow === 'confirm' || flow === 'search' ? 'lg' : 'md'}>
+      {/* Add-food sheet. The confirm step owns its own header (the design shows
+          the product name as the title), so no sheet title there. */}
+      <Sheet open={!!flow} onClose={closeFlow} title={flow === 'confirm' ? undefined : flowTitle} size={flow === 'confirm' || flow === 'search' ? 'lg' : 'md'}>
         {flow === 'menu' && (
           <div className="space-y-4">
             {recents.length > 0 && (
               <div>
                 <div className="eyebrow mb-2">Recent — tap to re-log</div>
-                <div className="flex max-h-52 flex-col gap-1.5 overflow-y-auto">
+                <div className="flex max-h-52 flex-col overflow-y-auto border-b border-line">
                   {recents.map((f) => (
-                    <button key={f.id} onClick={() => toConfirm(f)} className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2 text-left hover:bg-black/5">
+                    <button key={f.id} onClick={() => toConfirm(f)} className="flex items-center justify-between gap-3 border-t border-line px-1 py-2.5 text-left hover:bg-fill">
                       <div className="min-w-0">
                         <div className="truncate font-medium text-ink">{f.name}</div>
                         <div className="truncate text-xs text-muted">{f.brand ? `${f.brand} · ` : ''}{f.serving_size ? `${fmt(f.serving_size, 0)} ${f.serving_unit}` : f.serving_unit}</div>
@@ -349,7 +350,7 @@ export default function App() {
             )}
             <div className="grid grid-cols-2 gap-3">
               {ADD_OPTIONS.map((o) => (
-                <button key={o.key} onClick={() => { setFlowError(''); setFlow(o.key) }} className="flex flex-col items-start gap-1 rounded-md border border-line p-4 text-left hover:border-cobalt hover:bg-cobalt-soft/40">
+                <button key={o.key} onClick={() => { setFlowError(''); setFlow(o.key) }} className="flex flex-col items-start gap-1 border-[1.5px] border-ink p-4 text-left transition hover:bg-fill">
                   <span className="font-semibold text-ink">{o.label}</span>
                   <span className="text-xs text-muted">{o.hint}</span>
                 </button>

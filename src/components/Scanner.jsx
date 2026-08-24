@@ -78,11 +78,11 @@ export default function Scanner({ onDetected }) {
 
   return (
     <div className="space-y-3">
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-line bg-ink">
+      <div className="relative aspect-[4/3] w-full overflow-hidden border border-line bg-ink">
         <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
         {/* Aiming guide */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-24 w-4/5 rounded-lg border-2 border-cobalt shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+          <div className="h-24 w-4/5 border-2 border-cobalt shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
         </div>
         {starting && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-oncobalt">

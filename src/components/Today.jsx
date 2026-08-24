@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import { NUTRIENTS, sumEntries, entryNutrient, fmt, num, ymd } from '../lib/nutrition.js'
-import { Card, Meter, SourceLabel, StatusTag, Why, Button, EmptyState } from './ui.jsx'
+import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState } from './ui.jsx'
 
-const meta = Object.fromEntries(NUTRIENTS.map((n) => [n.key, n]))
 const isToday = (d) => ymd(d) === ymd(new Date())
+
 function dayLabel(d) {
   if (isToday(d)) return 'Today'
   const y = new Date(); y.setDate(y.getDate() - 1)
@@ -11,46 +11,93 @@ function dayLabel(d) {
   return new Date(d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
 }
 
-// One compact context reading (a signal), with source + freshness provenance.
-function ContextItem({ label, signal, render }) {
-  if (!signal || signal.value == null) {
-    return (
-      <div className="min-w-0">
-        <div className="eyebrow">{label}</div>
-        <div className="numeral text-lg text-faint">—</div>
-        <StatusTag status="unavailable" />
-      </div>
-    )
-  }
+// The masthead's right-hand date badge, e.g. "SAT 23 AUG" (the eyebrow class
+// uppercases it). Built from parts so the day sits between weekday and month.
+function dateBadge(d) {
+  const dt = new Date(d)
+  const wk = dt.toLocaleDateString(undefined, { weekday: 'short' })
+  const mo = dt.toLocaleDateString(undefined, { month: 'short' })
+  return `${wk} ${dt.getDate()} ${mo}`
+}
+
+// Wall-clock helpers. Sync/updated stamps read naturally (locale, AM/PM);
+// log-row times read 24h to match the artboard's dense "13:41" column.
+function timeShort(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+function timeHm(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+// Decimal sleep hours -> {h, m}, so 7.7 renders "7h 42m".
+function hoursToHm(v) {
+  const mins = Math.max(0, Math.round(num(v) * 60))
+  return { h: Math.floor(mins / 60), m: mins % 60 }
+}
+
+// A short provenance tag for a logged food, when its origin is knowable. Barcode
+// items (and OFF matches) are "Scanned"; a photographed panel is "Label". Manual
+// and search entries carry no capture claim, so no tag — never invent one.
+function sourceTag(food) {
+  const s = (food?.source || '').toLowerCase()
+  if (food?.barcode) return 'Scanned'
+  if (s === 'off' || s === 'barcode' || s === 'openfoodfacts') return 'Scanned'
+  if (s === 'label' || s === 'ocr') return 'Label'
+  return null
+}
+
+// One column of the recovery/training context strip: a semantic swatch + label,
+// the reading itself, and its source/freshness provenance beneath. A missing
+// reading shows an em-dash and an explicit "No data" mark, never a zero.
+function ContextCell({ tone, label, signal, missing, children }) {
   return (
-    <div className="min-w-0">
-      <div className="eyebrow">{label}</div>
-      <div className="numeral text-lg text-ink">{render(signal.value)}</div>
-      <SourceLabel signal={signal} />
+    <div className="min-w-0 px-3 py-3">
+      <div className="flex items-center gap-1.5">
+        <Swatch tone={tone} size={9} />
+        <span className="eyebrow">{label}</span>
+      </div>
+      <div className="mt-2.5">{children}</div>
+      <div className="mt-2">
+        {missing ? <StatusTag status="unavailable" /> : <SourceLabel signal={signal} />}
+      </div>
     </div>
   )
 }
 
-function EntryRow({ entry, onEdit, onDelete }) {
+// A chronological log line: time, name (+ capture/pending tags), calories.
+// Tapping edits (pending entries are not yet editable); ✕ deletes.
+function LogRow({ entry, onEdit, onDelete }) {
   const food = entry.food || {}
   const pending = entry._pending
+  const tag = sourceTag(food)
   return (
-    <div className="flex items-center gap-3 border-b border-line py-2.5 last:border-0">
-      <button className="min-w-0 flex-1 text-left disabled:cursor-default" onClick={() => !pending && onEdit(entry)} disabled={pending}>
-        <div className="flex items-center gap-2">
-          <span className="truncate font-medium text-ink">{food.name || 'Food'}</span>
-          {pending && <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">pending</span>}
-        </div>
-        <div className="truncate text-xs text-muted">
-          {fmt(entry.servings_consumed, 2)} × {food.serving_size ? `${fmt(food.serving_size, 0)} ${food.serving_unit}` : food.serving_unit || 'serving'}
-          {entry.meal ? ` · ${entry.meal}` : ''}
-        </div>
+    <div className="flex items-center gap-2 border-t border-line first:border-t-0">
+      <button
+        onClick={() => !pending && onEdit(entry)}
+        disabled={pending}
+        className="flex min-w-0 flex-1 items-baseline gap-3.5 py-2 text-left disabled:cursor-default"
+      >
+        <span className="w-[42px] shrink-0 tnum text-[10.5px] font-medium text-muted">{timeHm(entry.logged_at)}</span>
+        <span className="min-w-0 flex-1 truncate text-[14.5px] leading-tight text-ink">
+          {food.name || 'Food'}
+          {tag && <span className="ml-1.5 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-muted">· {tag}</span>}
+          {pending && (
+            <span className="ml-1.5 rounded bg-warn/15 px-1 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-warn">pending</span>
+          )}
+        </span>
+        <span className="shrink-0 numeral text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
       </button>
-      <div className="shrink-0 text-right">
-        <div className="numeral text-base text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</div>
-        <div className="eyebrow">kcal</div>
-      </div>
-      <button onClick={() => onDelete(entry.id)} className="shrink-0 rounded px-2 py-1 text-faint hover:bg-alert/5 hover:text-alert" aria-label="Delete entry">✕</button>
+      <button
+        onClick={() => onDelete(entry.id)}
+        className="shrink-0 px-1.5 py-1 text-faint hover:text-alert"
+        aria-label="Delete entry"
+      >
+        ✕
+      </button>
     </div>
   )
 }
@@ -60,119 +107,195 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
   const signals = data?.signals || {}
-  const adjustedNote = (data?.rationale || []).length > 0
 
   const calTarget = num(targets.calories)
-  const calLeft = calTarget - num(totals.calories)
+  const calDone = num(totals.calories)
+  const calLeft = calTarget - calDone
+  const calPct = calTarget > 0 ? Math.min(1, calDone / calTarget) : 0
   const secondary = NUTRIENTS.filter((n) => n.key !== 'calories')
+
+  // Sync line — honest about what actually reported. Show the live providers if
+  // any signal is a real (non-demo) reading; otherwise say plainly that these are
+  // sample readings or that nothing is connected. Never imply a live sync.
+  const present = ['readiness', 'sleep', 'workout'].map((k) => signals[k]).filter(Boolean)
+  const liveProviders = [...new Set(present.filter((s) => !s.demo && s.provider).map((s) => s.provider.toUpperCase()))]
+  const syncTime = timeShort(data?.generatedAt)
+  const syncLive = liveProviders.length > 0
+  let syncText
+  if (syncLive) {
+    syncText = `${liveProviders.join(' + ')} · SYNCED${syncTime ? ` ${syncTime}` : ''}`
+  } else if (present.length > 0) {
+    syncText = 'SAMPLE SIGNALS · NOT A LIVE SYNC'
+  } else {
+    syncText = 'NO WEARABLES CONNECTED'
+  }
+
+  // Context readings.
+  const rd = signals.readiness
+  const sl = signals.sleep
+  const wo = signals.workout
+  const rdMissing = !rd || rd.value == null
+  const slMissing = !sl || sl.value == null
+  const woLabel = wo?.value?.shortLabel || wo?.value?.label
+  const woTime = wo?.value?.time
+  const hm = slMissing ? null : hoursToHm(sl.value)
 
   return (
     <div className="space-y-5">
-      {/* Day nav */}
-      <div className="flex items-center justify-between">
-        <button onClick={onPrevDay} className="rounded px-2 py-1 text-muted hover:bg-black/5" aria-label="Previous day">‹</button>
-        <div className="text-center">
-          <div className="serif text-xl text-ink">{dayLabel(date)}</div>
-          {!isToday(date) && <button onClick={onToday} className="text-xs font-semibold text-cobalt">Back to today</button>}
+      {/* Masthead: day nav + Bodoni title + date badge, then the sync line */}
+      <div>
+        <div className="flex items-end justify-between">
+          <div className="flex items-end gap-1.5">
+            <button onClick={onPrevDay} aria-label="Previous day" className="pb-1 text-xl leading-none text-muted hover:text-ink">‹</button>
+            <h1 className="serif text-[32px] leading-none text-ink">{dayLabel(date)}</h1>
+          </div>
+          <div className="flex items-end gap-1.5">
+            <span className="eyebrow tnum pb-0.5 text-muted">{dateBadge(date)}</span>
+            <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="pb-1 text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
+          </div>
         </div>
-        <button onClick={onNextDay} disabled={isToday(date)} className="rounded px-2 py-1 text-muted hover:bg-black/5 disabled:opacity-30" aria-label="Next day">›</button>
+        {!isToday(date) && (
+          <button onClick={onToday} className="mt-1 text-xs font-semibold text-cobalt hover:text-cobalt-ink">‹ Back to today</button>
+        )}
+        <div className="mt-2.5 flex items-center gap-2">
+          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${syncLive ? 'bg-cobalt' : 'border border-line-heavy bg-transparent'}`} />
+          <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{syncText}</span>
+        </div>
       </div>
 
+      {/* Offline / pending-sync strip */}
       {(pendingCount > 0 || !online) && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
+        <div className="flex items-center justify-between gap-3 border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
           <span>{!online && '◐ Offline. '}{pendingCount > 0 ? `${pendingCount} log${pendingCount === 1 ? '' : 's'} waiting to sync` : 'Logs save locally and sync later.'}</span>
-          {pendingCount > 0 && online && <button onClick={onSync} disabled={syncing} className="shrink-0 rounded border border-warn/40 px-2 py-1 text-xs font-semibold disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>}
-        </div>
-      )}
-
-      {/* Context strip — recovery / training, concise, with provenance */}
-      <div className="grid grid-cols-3 gap-3">
-        <ContextItem label="Readiness" signal={signals.readiness} render={(v) => Math.round(v)} />
-        <ContextItem label="Sleep" signal={signals.sleep} render={(v) => `${Number(v).toFixed(1)}h`} />
-        <div className="min-w-0">
-          <div className="eyebrow">Training</div>
-          {signals.workout?.value ? (
-            <>
-              <div className="numeral truncate text-lg text-ink">{signals.workout.value.shortLabel || signals.workout.value.label || 'Session'}</div>
-              <SourceLabel signal={signals.workout} />
-            </>
-          ) : (
-            <>
-              <div className="numeral text-lg text-faint">rest</div>
-              <StatusTag status="unavailable" />
-            </>
+          {pendingCount > 0 && online && (
+            <button onClick={onSync} disabled={syncing} className="shrink-0 border border-warn/40 px-2 py-1 text-xs font-semibold disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>
           )}
         </div>
+      )}
+
+      {/* Context strip — recovery / training, three columns split by hairlines */}
+      <div className="grid grid-cols-3 divide-x divide-line border-y border-line-strong">
+        <ContextCell tone="sage" label="Readiness" signal={rd} missing={rdMissing}>
+          {rdMissing ? (
+            <div className="numeral text-[30px] leading-none text-faint">—</div>
+          ) : (
+            <div className="numeral text-[30px] leading-none text-ink">{Math.round(num(rd.value))}</div>
+          )}
+        </ContextCell>
+
+        <ContextCell tone="sage" label="Sleep" signal={sl} missing={slMissing}>
+          {slMissing ? (
+            <div className="numeral text-[30px] leading-none text-faint">—</div>
+          ) : (
+            <div className="numeral text-[30px] leading-none text-ink">
+              {hm.h}<span className="font-sans text-[15px] font-normal">h</span> {hm.m}<span className="font-sans text-[15px] font-normal">m</span>
+            </div>
+          )}
+        </ContextCell>
+
+        <ContextCell tone="lavender" label="Training" signal={wo} missing={!wo}>
+          {!wo ? (
+            <div className="numeral text-[17px] leading-[1.15] text-faint">—</div>
+          ) : woLabel ? (
+            <div className="numeral text-[17px] leading-[1.15] text-ink">
+              {woLabel}
+              {woTime && <><br /><span className="tnum">{woTime}</span></>}
+            </div>
+          ) : (
+            <div className="numeral text-[17px] leading-[1.15] text-faint">Rest</div>
+          )}
+        </ContextCell>
       </div>
 
-      {/* The white "next action" sheet — the focal point */}
-      {rec && (
-        <Card className="border-cobalt/25 p-5 shadow-sm">
-          <div className="eyebrow mb-1 text-cobalt">Next action</div>
-          <h2 className="serif text-2xl leading-tight text-ink">{rec.title}</h2>
-          {rec.detail && <p className="mt-1.5 text-[15px] text-ink/80">{rec.detail}</p>}
-          <Why items={rec.why} />
-          <div className="mt-4">
-            <Button onClick={() => openAdd('menu')} className="w-full">Log food</Button>
+      {/* The white "next action" sheet — the focal moment */}
+      {rec ? (
+        <Card white className="px-4 pb-1 pt-3.5">
+          <div className="flex items-center justify-between">
+            <span className="eyebrow text-cobalt">Recommendation</span>
+            {syncTime && <span className="tnum text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted">Updated {syncTime}</span>}
           </div>
+          <h2 className="serif mt-2.5 text-[29px] leading-[1.05] tracking-[-0.01em] text-ink">{rec.title}</h2>
+          {rec.detail && <p className="mt-2 max-w-[300px] text-[13.5px] leading-[1.45] text-ink/80">{rec.detail}</p>}
+          {rec.why?.length > 0 && (
+            <div className="mt-2.5 border-t border-line">
+              <Why items={rec.why} />
+            </div>
+          )}
         </Card>
-      )}
-      {!rec && (
-        <Card className="p-5">
-          <div className="eyebrow mb-1 text-cobalt">Next action</div>
+      ) : (
+        <Card white className="px-4 py-4">
+          <div className="eyebrow mb-2 text-cobalt">Recommendation</div>
           <p className="text-sm text-muted">{loading ? 'Reading your plan…' : 'Log a few items and connect a wearable to get a fueling recommendation.'}</p>
-          <div className="mt-4"><Button onClick={() => openAdd('menu')} className="w-full">Log food</Button></div>
         </Card>
       )}
 
-      {/* Compact progress */}
+      {/* Intake so far — the calorie headline, budget bar, and macro grid */}
       <section>
-        <div className="mb-2 flex items-baseline justify-between">
-          <h3 className="eyebrow">Today's fuel {adjustedNote && <span className="ml-1 text-cobalt">· adjusted</span>}</h3>
-          <span className="text-[11px] text-faint">{isToday(date) ? 'so far' : ''}</span>
-        </div>
-        <div className="mb-4 flex items-end justify-between">
-          <div className="numeral text-4xl leading-none text-ink">{fmt(totals.calories, 0)}</div>
-          <div className="text-right text-sm text-muted">
-            of {fmt(calTarget, 0)} kcal
-            {calTarget > 0 && <div className={calLeft < 0 ? 'text-warn' : 'text-good'}>{calLeft < 0 ? `${fmt(-calLeft, 0)} over` : `${fmt(calLeft, 0)} left`}</div>}
+        <div className="flex items-end justify-between">
+          <div>
+            <div className="eyebrow">Intake so far</div>
+            <div className="mt-2.5 flex items-baseline gap-2">
+              <span className="numeral text-[38px] leading-[0.9] text-ink">{fmt(calDone, 0)}</span>
+              <span className="tnum text-[12.5px] text-muted">/ {fmt(calTarget, 0)} kcal</span>
+            </div>
           </div>
+          {calTarget > 0 && (
+            <span className={`tnum pb-1 text-[10px] font-medium uppercase tracking-[0.1em] ${calLeft < 0 ? 'text-cobalt' : 'text-muted'}`}>
+              {calLeft < 0 ? `${fmt(-calLeft, 0)} over` : `${fmt(calLeft, 0)} left`}
+            </span>
+          )}
         </div>
-        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+
+        <SegmentBar total={15} filled={15 * calPct} height={7} className="mt-2.5" />
+
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
           {secondary.map((n) => {
             const v = num(totals[n.key]); const t = num(targets[n.key])
             return (
               <div key={n.key}>
-                <div className="mb-1 flex items-baseline justify-between text-sm">
-                  <span className="font-medium text-ink">{n.label}</span>
-                  <span className="text-muted tabular-nums">
-                    <span className={t > 0 && v > t ? 'text-warn' : 'text-ink'}>{fmt(v, n.decimals)}</span>
-                    {t > 0 ? <span className="text-faint"> / {fmt(t, n.decimals)} {n.unit}</span> : <span className="text-faint"> {n.unit}</span>}
+                <div className="flex items-baseline justify-between">
+                  <span className="eyebrow">{n.label}</span>
+                  <span className="tnum">
+                    <span className={`numeral text-[15px] ${t > 0 && v > t ? 'text-cobalt' : 'text-ink'}`}>{fmt(v, n.decimals)}</span>
+                    <span className="text-[10.5px] text-muted">{t > 0 ? ` / ${fmt(t, n.decimals)} ${n.unit}` : ` ${n.unit}`}</span>
                   </span>
                 </div>
-                <Meter value={v} target={t} />
+                <Meter value={v} target={t} height={3} className="mt-1.5" />
               </div>
             )
           })}
         </div>
       </section>
 
-      {/* Chronological log */}
+      {/* Today's log — chronological, on the paper ground */}
       <section>
-        <div className="mb-1 flex items-center justify-between">
-          <h3 className="eyebrow">Log</h3>
-          <button onClick={() => openAdd('menu')} className="text-xs font-semibold text-cobalt">＋ Add</button>
+        <div className="flex items-center justify-between">
+          <h3 className="eyebrow">Today's log</h3>
+          <TextButton chevron onClick={() => openAdd('menu')} className="text-[10.5px] uppercase tracking-[0.1em]">
+            View all {entries.length}
+          </TextButton>
         </div>
         {loading && entries.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted">Loading…</div>
         ) : entries.length === 0 ? (
-          <EmptyState title="Nothing logged yet">Tap Log food to scan a barcode, photograph a label, or add manually.</EmptyState>
+          <EmptyState title="Nothing logged yet" className="mt-2">Tap Log food to scan a barcode, photograph a label, or add manually.</EmptyState>
         ) : (
-          <Card className="px-3">
-            {entries.map((e) => <EntryRow key={e.id} entry={e} onEdit={onEditEntry} onDelete={onDeleteEntry} />)}
-          </Card>
+          <div className="mt-1">
+            {entries.map((e) => <LogRow key={e.id} entry={e} onEdit={onEditEntry} onDelete={onDeleteEntry} />)}
+          </div>
         )}
       </section>
+
+      {/* Bottom action — full-width LOG FOOD beside a square scan button */}
+      <div className="flex gap-2.5 pt-1">
+        <Button onClick={() => openAdd('menu')} className="flex-1">Log food</Button>
+        <Button variant="outline" onClick={() => openAdd('scan')} aria-label="Scan a barcode" className="w-[60px] shrink-0 px-0">
+          <span aria-hidden className="relative block h-[18px] w-[22px] border-y-2 border-ink">
+            <span className="absolute -bottom-0.5 -top-0.5 left-0 w-0.5 bg-ink" />
+            <span className="absolute -bottom-0.5 -top-0.5 right-0 w-0.5 bg-ink" />
+          </span>
+        </Button>
+      </div>
     </div>
   )
 }
