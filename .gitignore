@@ -1,0 +1,20 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Secrets & env
+.env
+.env.*
+!.env.example
+
+# Local JSON dev store (used when DATABASE_URL is unset)
+server/.data/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log
+npm-debug.log*

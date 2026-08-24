@@ -1,0 +1,42 @@
+@import 'tailwindcss';
+
+/* Tailwind v4 is CSS-first: theme tokens live here instead of tailwind.config.js.
+   Kept intentionally minimal — this is plumbing, not the final visual design
+   (Claude Design comes later). */
+@theme {
+  --color-bg: #0b1220;
+  --color-panel: #131c2e;
+  --color-panel-2: #1b2740;
+  --color-line: #263349;
+  --color-accent: #10b981;
+  --color-accent-2: #34d399;
+  --color-warn: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: #e5edf7;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Respect the notch / home indicator on installed iOS PWAs. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Hide number-input spinners; quantities use their own controls. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
