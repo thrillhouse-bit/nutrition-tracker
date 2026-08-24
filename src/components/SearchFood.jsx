@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { fmt } from '../lib/nutrition.js'
-import { ErrorNote, Spinner, inputCls } from './ui.jsx'
+import { ErrorNote, Spinner, EmptyState, inputCls } from './ui.jsx'
 
 // Debounced text search against USDA + Open Food Facts. Good for produce, bulk
 // bins, and restaurant/deli items that have no barcode.
@@ -45,27 +45,27 @@ export default function SearchFood({ onPick }) {
       {busy && <Spinner label="Searching…" />}
       <ErrorNote>{error}</ErrorNote>
       {!busy && q.trim().length >= 2 && results.length === 0 && (
-        <p className="py-4 text-center text-sm text-slate-400">
-          No matches. Try manual entry, or add a USDA key for better whole-food coverage.
-        </p>
+        <EmptyState title="No matches">
+          Try manual entry, or add a USDA key for better whole-food coverage.
+        </EmptyState>
       )}
       <div className="space-y-2">
         {results.map((food, i) => (
           <button
             key={i}
             onClick={() => onPick(food)}
-            className="flex w-full items-center justify-between gap-3 rounded-xl bg-white/5 px-3 py-2.5 text-left hover:bg-white/10"
+            className="flex w-full items-center justify-between gap-3 border border-line bg-card px-3 py-2.5 text-left transition hover:bg-fill"
           >
             <div className="min-w-0">
-              <div className="truncate font-medium text-slate-100">{food.name}</div>
-              <div className="truncate text-xs text-slate-400">
+              <div className="truncate font-medium text-ink">{food.name}</div>
+              <div className="truncate text-xs text-muted">
                 {food.brand ? `${food.brand} · ` : ''}
                 {food.serving_size ? `${fmt(food.serving_size, 0)} ${food.serving_unit}` : food.serving_unit} · {food.source}
               </div>
             </div>
             <div className="shrink-0 text-right">
-              <div className="text-sm font-bold tabular-nums text-slate-50">{fmt(food.calories, 0)}</div>
-              <div className="text-[11px] text-slate-400">kcal</div>
+              <div className="numeral text-lg leading-none text-ink">{fmt(food.calories, 0)}</div>
+              <div className="eyebrow mt-1">kcal</div>
             </div>
           </button>
         ))}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NUTRIENTS } from '../lib/nutrition.js'
-import { Button, Field, inputCls } from './ui.jsx'
+import { Button, Field, SectionTitle, inputCls } from './ui.jsx'
 
 const EMPTY = {
   name: '', brand: '', serving_size: '', serving_unit: 'g',
@@ -23,7 +23,7 @@ export default function ManualEntry({ onSubmit }) {
   }
 
   return (
-    <form onSubmit={go} className="space-y-3">
+    <form onSubmit={go} className="space-y-4">
       <Field label="Name">
         <input autoFocus value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="e.g. Deli turkey" />
       </Field>
@@ -40,12 +40,17 @@ export default function ManualEntry({ onSubmit }) {
           </Field>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        {NUTRIENTS.map((n) => (
-          <Field key={n.key} label={`${n.label} (${n.unit})`}>
-            <input type="number" value={f[n.key]} onChange={(e) => set(n.key, e.target.value)} className={inputCls} />
-          </Field>
-        ))}
+      <div className="space-y-3 border-t border-line pt-4">
+        <SectionTitle right={<span className="text-xs text-faint">per serving</span>}>
+          Nutrition facts
+        </SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          {NUTRIENTS.map((n) => (
+            <Field key={n.key} label={`${n.label} (${n.unit})`}>
+              <input type="number" value={f[n.key]} onChange={(e) => set(n.key, e.target.value)} className={inputCls} />
+            </Field>
+          ))}
+        </div>
       </div>
       <Button type="submit" className="w-full" disabled={!f.name.trim()}>
         Continue

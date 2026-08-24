@@ -1,13 +1,41 @@
 # Nutrition Tracker
 
-A personal-use Progressive Web App for tracking daily nutrition by scanning
-barcodes and food labels. Single user, no accounts, every "premium" feature just
-on: full macro + micronutrient tracking, unlimited scans, no ads.
+A personal-use Progressive Web App for **fueling intelligence**: it pairs
+food logging with wearable recovery and training signals (Oura, Garmin, Apple
+Health) to surface one clear, transparent, **non-medical** recommendation —
+*given my recovery, training, and intake so far, what should I do next?* Single
+user, no accounts, every "premium" feature just on: full macro + micronutrient
+tracking, unlimited scans, no ads.
+
+Logging is the foundation and works **fully standalone** — scan a barcode, scan
+a label, search, or type it in, with no wearables connected. The wearable layer
+sits on top: when a provider is connected it sharpens the day's targets and the
+next-action suggestion, but nothing about the core loop depends on it.
 
 **Core loop:** open the installed PWA → tap **＋** → scan a barcode → confirm the
-product and serving → log it → the Today screen shows running totals against your
-targets. No barcode (bulk bins, deli, produce)? Photograph the Nutrition Facts
-panel and Claude reads it, or search by name, or type it in.
+product and serving → log it → the **Today** screen shows a recovery/training
+context strip, running totals against your targets, and a single focal
+"what should I do next?" recommendation you can expand to see *why*. No barcode
+(bulk bins, deli, produce)? Photograph the Nutrition Facts panel and Claude
+reads it, or search by name, or type it in.
+
+**Works with nothing connected.** The app ships with a seeded **demo scenario**
+(an evening run) so the whole experience — context strip, adjusted targets,
+next-action recommendation — is explorable before you connect any account. Demo
+data is **always clearly labelled as demo** and is never presented as a live
+connection.
+
+## Navigation
+
+Five tabs:
+
+| Tab | What it holds |
+|---|---|
+| **Today** | Home. A context strip (recovery/training with source + freshness), a focal **next-action recommendation** with a **"Why?"** disclosure, compact progress vs. targets, and the chronological log. |
+| **Log** | The four ways to add food — scan barcode, scan label, search, manual — plus one-tap re-log of recents, grouped by meal. |
+| **Plan** | Baseline vs. adjusted daily targets with a plain-language rationale for **every** adjustment. The baseline is editable and is **never** changed silently by the engine. |
+| **Insights** | Nutrition trends over 7 / 14 / 30 days with an explicit insufficient-data state. Recovery/training correlations are shown cautiously — never causal, never medical. |
+| **Connections** | Provider rows (Oura, Garmin, Apple Health) with live status (connected / stale / demo / disconnected / error), last-sync, categories, connect / reconnect / disconnect, per-provider **enable** + **demo** toggles, and toggles for what may influence the plan (readiness / sleep / workouts). Includes a privacy note. |
 
 ## Stack
 
@@ -43,22 +71,44 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
 - **Label OCR:** set `ANTHROPIC_API_KEY`. Optionally set `ANTHROPIC_MODEL`
   (defaults to `claude-opus-5`; `claude-haiku-4-5` is much cheaper per scan).
 - **Better whole-food coverage:** set `FDC_API_KEY` (free USDA key).
-- **Energy balance (Oura):** connect via **OAuth 2.0** — set `OURA_CLIENT_ID`,
+- **Wearable signals (Oura):** connect via **OAuth 2.0** — set `OURA_CLIENT_ID`,
   `OURA_CLIENT_SECRET`, and `OURA_REDIRECT_URI`, then hit **Connect Oura** in the
-  Targets tab — to show calories in − activity out on Today. A legacy `OURA_TOKEN`
-  (PATs deprecated Dec 2025) still works as a single-account fallback. See
-  [Wearables](#wearables-oura).
-- **Energy balance (Garmin):** a push-based alternative source for the same
-  card — set `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and
+  Connections tab — to feed recovery/readiness and expenditure into the plan and
+  the Today context strip. A legacy `OURA_TOKEN` (PATs deprecated Dec 2025) still
+  works as a single-account fallback. See [Wearables](#wearables-oura).
+- **Wearable signals (Garmin):** a push-based alternative source for the same
+  signals — set `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and
   `GARMIN_REDIRECT_URI`, then **Connect Garmin**. Today prefers Oura and falls
   back to Garmin (`GET /api/energy/summary`). Garmin's Health API is gated by a
   partner program that was **on hold as of 2026**, so you may not be able to
   obtain credentials yet — see [Wearables](#wearables-oura).
+- **Wearable signals (Apple Health):** no OAuth — Apple has no cloud API, so it
+  is an **ingest** provider. A native iOS companion (or a Health-export importer)
+  POSTs normalized samples to `POST /api/apple/ingest`, token-gated by the
+  optional `APPLE_INGEST_TOKEN`. See [Apple Health](#apple-health-ingest).
 
-`GET /api/health` reports which of these are configured; the Targets screen shows
-the same status.
+`GET /api/health` reports which of these are configured; the Connections screen
+shows the same status.
 
 ## Wearables (Oura)
+
+### Provider abstraction & non-medical framing
+
+Wearables sit behind a **provider abstraction**: each source (Oura, Garmin,
+Apple Health) is an adapter that normalizes its own payload into shared signals
+(readiness/recovery, sleep, workouts, expenditure). Adding a provider means
+adding an adapter, not touching the UI or the plan engine. Every composed signal
+carries **provenance** (which provider produced it) and **freshness** (fresh /
+stale / unavailable), both surfaced in the Today context strip and on the
+Connections tab, so a stale or missing signal is visible rather than silently
+treated as current.
+
+Signals feed only the **fueling and nutrition-planning** suggestions — adjusted
+targets and the next-action recommendation. This app makes **no medical,
+diagnostic, injury, or disease claims** of any kind; the recovery/training
+correlations in Insights are shown cautiously and are explicitly non-causal.
+Which categories may influence the plan (readiness / sleep / workouts) is your
+choice, set per-toggle on the Connections tab.
 
 Today shows an **Energy balance** card: calories logged (in) vs. Oura's total
 daily expenditure (out) = net deficit/surplus, plus steps.
@@ -79,7 +129,7 @@ account), but new tokens require OAuth 2.0. One-time setup:
    production it's `https://<your-domain>/api/oura/callback`.
 3. Put the three values — `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`,
    `OURA_REDIRECT_URI` — in `.env`.
-4. In the app, open the **Targets/Settings** tab → the **Oura** card →
+4. In the app, open the **Connections** tab → the **Oura** card →
    **Connect Oura**, authorize on Oura, and you're returned to the app.
 
 The connect flow requests the `email personal daily` scopes.
@@ -120,7 +170,7 @@ One-time setup:
    production it's `https://<your-domain>/api/garmin/callback`.
 3. Put `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and `GARMIN_REDIRECT_URI`
    in `.env`.
-4. In the app, open **Targets/Settings** → the **Garmin** card → **Connect
+4. In the app, open **Connections** → the **Garmin** card → **Connect
    Garmin**, authorize on Garmin, and you're returned to the app.
 
 The flow:
@@ -150,6 +200,24 @@ behind Garmin's partner portal and could not be confirmed from public docs.
 They are marked **`VERIFY`** in `server/integrations/garmin.js` and must be
 checked against the partner documentation once access is granted.
 
+### Apple Health (ingest)
+
+Apple Health has **no cloud API** — HealthKit data lives on-device and cannot be
+pulled server-to-server, so there is no OAuth flow to run and nothing to fetch.
+Apple is therefore an **ingest (push-in) provider**: a native iOS companion app
+(or a Health-export importer) reads HealthKit on the device and **POSTs
+normalized samples** to your own server at `POST /api/apple/ingest`. The server
+stores them as wearable signals exactly like Oura's or Garmin's, and the plan
+engine treats them the same way — same provenance/freshness, same influence
+toggles.
+
+- **Token gate.** The endpoint is protected by the optional `APPLE_INGEST_TOKEN`
+  env var, sent by the companion as the **`x-ingest-token`** header. If the token
+  is **unset the endpoint is open**, which is only acceptable on a **private,
+  non-public** instance; set the token for anything reachable from the network.
+- **Nothing leaves your instance.** Samples are pushed from your device to your
+  own server and stored there — there is no third-party cloud in the path.
+
 ### On-watch app (Connect IQ)
 
 A companion on-watch app for the Fenix line lives in
@@ -168,7 +236,18 @@ Health API hold above.
   Every successful lookup is cached here, so repeat scans never hit the network.
 - **`log_entries`** — id, food_id, logged_at, servings_consumed, meal (optional).
 - **`daily_targets`** — versioned; the latest `effective_from` row drives the
-  Today rings.
+  Today rings and the Plan tab's editable **baseline**.
+- **`integrations`** — one row per provider (`oura` | `garmin` | `apple`):
+  `enabled` / `demo` flags, `connected_at` / `last_synced_at` timestamps, and a
+  `settings` blob (incl. which categories may influence the plan). Backs the
+  Connections tab.
+- **`wearable_signals`** — normalized per-provider, per-metric, per-day signal
+  samples (readiness, sleep, workouts, expenditure, …) with `recorded_at` (when
+  the wearable measured it) and `fetched_at` (when we ingested it), which is what
+  drives the freshness label.
+- **`daily_plans`** — a per-day snapshot of baseline + adjusted targets, the
+  rationale, the signals used, and the rules version — so a day's **"Why?"** is
+  reproducible after the fact rather than recomputed against changed inputs.
 
 Full DDL in [`schema.sql`](./schema.sql).
 
@@ -184,7 +263,11 @@ Full DDL in [`schema.sql`](./schema.sql).
 | GET | `/entries?from=&to=` | log entries in a time range |
 | POST | `/entries` | log a food (`food_id` or inline `food`) |
 | PATCH/DELETE | `/entries/:id` | edit / remove an entry |
-| GET / PUT | `/targets` | read / set daily targets |
+| GET / PUT | `/targets` | read / set daily targets (the Plan baseline) |
+| GET | `/today?date=` | composite for the Today screen: intake, baseline + adjusted targets, rationale, composed signals, and the next-action recommendation |
+| GET | `/plan/today?date=` | baseline vs. adjusted targets + rationale + the signals used |
+| GET | `/signals` | composed wearable signals (one per metric) with provenance + freshness |
+| GET | `/insights?window=7\|14\|30` | nutrition trends over the window + insufficient-data flag + a cautious (non-causal) correlations note |
 | GET | `/oura/connect` | start OAuth — redirects to Oura's consent screen |
 | GET | `/oura/callback` | OAuth callback — stores the account, returns to the app |
 | GET | `/oura/accounts` | list connected accounts (no tokens) + config state |
@@ -197,6 +280,10 @@ Full DDL in [`schema.sql`](./schema.sql).
 | DELETE | `/garmin/accounts/:id` | disconnect a Garmin account |
 | GET | `/garmin/summary?date=` | a stored Garmin day (served from the store, not fetched) |
 | GET | `/energy/summary?date=` | unified expenditure (out): Oura if connected, else Garmin |
+| POST | `/apple/ingest` | ingest Apple Health samples (token-gated by `APPLE_INGEST_TOKEN`) |
+| GET | `/connections` | provider statuses (incl. demo) + the plan-influence toggles |
+| PUT | `/connections/influence` | set which signal categories (readiness / sleep / workouts) may influence the plan |
+| PUT | `/connections/:provider` | set a provider's `enabled` / `demo` flags |
 | GET | `/today/summary?date=` | nutrition totals vs. targets for a day (used by the Connect IQ watch app) |
 
 ## MVP feature scope
@@ -204,9 +291,18 @@ Full DDL in [`schema.sql`](./schema.sql).
 - [x] Barcode scan → lookup → log
 - [x] Label photo → Claude vision parse → confirm/edit → log
 - [x] Manual food entry (name + macros) → log
-- [x] Today view: running totals vs. targets, editable/deletable log
+- [x] Today view: context strip, running totals vs. targets, editable/deletable log
 - [x] History view: past days + 7-day average
 - [x] Editable daily targets (versioned)
+- [x] Explainable **adjusted targets** — baseline vs. adjusted with a
+  plain-language rationale for every adjustment (baseline never changed silently)
+- [x] Focal **next-action recommendation** with a "Why?" disclosure
+- [x] Provider abstraction with per-signal **provenance + freshness**
+  (Oura, Garmin, Apple Health behind one adapter shape)
+- [x] Seeded **demo scenario** (evening run) so the full experience works with no
+  accounts connected, always labelled as demo
+- [x] Insights: nutrition trends over 7 / 14 / 30 days with an explicit
+  insufficient-data state and cautious (non-causal) correlations
 - [x] Local caching of scanned products for instant re-lookup
 - [x] Recent-foods quick re-log (one tap; cached for offline use)
 - [x] Installable PWA with offline app shell (last-loaded data readable offline)
@@ -224,8 +320,10 @@ Full DDL in [`schema.sql`](./schema.sql).
   gates it is partner-approval-only and was on hold as of 2026, and the exact
   wire details are marked `VERIFY` until access is granted. The on-watch
   **Connect IQ** glance for the Fenix (`garmin-connectiq/`) is in too — a
-  separate program that needs no partner approval.
-- Apple Health / Google Fit sync, recipe builder, meal planning.
+  separate program that needs no partner approval. **Apple Health** is now in as
+  an **ingest** provider — no cloud API, so a companion POSTs samples to
+  `POST /api/apple/ingest` (token-gated) — see [Apple Health](#apple-health-ingest).
+- Google Fit sync, recipe builder, meal planning.
 
 ## Deploying
 

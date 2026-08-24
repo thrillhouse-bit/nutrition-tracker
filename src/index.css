@@ -1,17 +1,55 @@
 @import 'tailwindcss';
 
-/* Tailwind v4 is CSS-first: theme tokens live here instead of tailwind.config.js.
-   Kept intentionally minimal — this is plumbing, not the final visual design
-   (Claude Design comes later). */
+/* ------------------------------------------------------------------------
+   Fueling Intelligence — editorial health-tech visual system.
+   Recreated from the Claude Design handoff (Fueling Intelligence.dc.html).
+
+   Ground is warm ivory paper; type is near-black ink. Structure is drawn with
+   hairline rules and sharp rectangles — NO rounded corners except true circles
+   (status dots, the "?" badge). Cobalt is the single accent for primary action,
+   the selected state, and confident data. Pale sage and lavender are used ONLY
+   as recovery / training context swatches and bands, never as macro colors.
+   Bodoni Moda (high-contrast serif) for titles and large numerals; Archivo for
+   labels, controls, and body. White = a moment that matters (a recommendation,
+   a confirmation, a saved action).
+   ------------------------------------------------------------------------ */
 @theme {
-  --color-bg: #0b1220;
-  --color-panel: #131c2e;
-  --color-panel-2: #1b2740;
-  --color-line: #263349;
-  --color-accent: #10b981;
-  --color-accent-2: #34d399;
-  --color-warn: #f59e0b;
-  --color-danger: #ef4444;
+  --font-serif: 'Bodoni Moda', 'Didot', 'Times New Roman', Georgia, serif;
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Grounds */
+  --color-paper: #f7f4ec;      /* screen ground */
+  --color-rail: #f1ede3;       /* bottom tab bar */
+  --color-scrim: #e3dfd4;      /* a screen dimmed behind a white sheet */
+  --color-card: #ffffff;       /* white sheet = a meaningful moment */
+
+  /* Ink + its translucencies (the design draws almost everything in ink) */
+  --color-ink: #121210;        /* deep near-black type */
+  --color-muted: rgb(18 18 16 / 0.68);   /* secondary text / labels */
+  --color-faint: rgb(18 18 16 / 0.55);   /* tertiary metadata */
+  --color-line: rgb(18 18 16 / 0.16);    /* hairline rule */
+  --color-line-strong: rgb(18 18 16 / 0.25);
+  --color-line-heavy: rgb(18 18 16 / 0.66);
+  --color-fill: rgb(18 18 16 / 0.06);    /* faintest panel wash */
+  --color-track: rgb(18 18 16 / 0.16);   /* meter track */
+
+  /* Cobalt — the one accent */
+  --color-cobalt: #1f35c4;
+  --color-cobalt-ink: #16289b;   /* hover / pressed */
+  --color-oncobalt: #ffffff;
+  --color-cobalt-soft: #e9ecf9;  /* rare pale cobalt wash */
+
+  /* Context swatches (pale, semantic only) */
+  --color-sage: #c4d2bc;         /* recovery context */
+  --color-lavender: #cbc5de;     /* training context */
+
+  /* Legacy semantic tokens kept so restyled sub-components still resolve.
+     The design itself signals status with shape + word in ink, not hue. */
+  --color-good: #2f7d54;
+  --color-warn: #9a6400;
+  --color-alert: #a5311d;
+
+  --radius: 0px;                 /* sharp rectangles everywhere */
 }
 
 html,
@@ -22,16 +60,56 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: #e5edf7;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Respect the notch / home indicator on installed iOS PWAs. */
+  text-rendering: optimizeLegibility;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Hide number-input spinners; quantities use their own controls. */
+/* These helper classes live in the `components` layer so that Tailwind utility
+   classes (in the later `utilities` layer) can override them — e.g. `eyebrow
+   text-cobalt` must read cobalt, and `numeral font-semibold` must go bold. An
+   unlayered rule would beat every utility on color/weight and silently mute a
+   cobalt eyebrow (a bug we hit once already). */
+@layer components {
+  /* High-contrast serif for titles and large numerals. */
+  .serif {
+    font-family: var(--font-serif);
+    font-weight: 400;
+  }
+  .numeral {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.01em;
+  }
+  /* Tabular figures in the sans face (times, small stats). */
+  .tnum {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  /* The uppercase tracked micro-label used throughout the design. */
+  .eyebrow {
+    font-family: var(--font-sans);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 0.625rem;
+    line-height: 1;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+}
+
+/* Visible focus for accessibility (never rely on color alone). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+}
+
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;

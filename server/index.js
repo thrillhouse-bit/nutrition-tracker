@@ -33,6 +33,8 @@ import {
   normalizeDaily as garminNormalizeDaily,
   expiryFrom as garminExpiryFrom,
 } from './integrations/garmin.js'
+import { computeAdjustedTargets, computeRecommendation } from './plan.js'
+import { allProviderStatuses, composeSignals } from './providers.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -340,6 +342,149 @@ app.get('/api/energy/summary', asyncH(async (req, res) => {
     }
   }
   res.json({ date: day, source: null, out: null, active_calories: null, steps: null })
+}))
+
+// --- fueling intelligence -------------------------------------------------
+function sumIntake(entries) {
+  const totals = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]))
+  for (const e of entries) {
+    const s = Number(e.servings_consumed) || 0
+    for (const k of NUTRIENT_KEYS) totals[k] += (Number(e.food?.[k]) || 0) * s
+  }
+  return totals
+}
+
+// Which signal categories the user allows to influence the plan.
+async function planInfluence() {
+  const row = await store.getIntegration('plan')
+  return { readiness: true, sleep: true, workouts: true, ...(row.settings?.influence || {}) }
+}
+
+async function buildPlan(date, nowDate) {
+  const baseline = await store.getLatestTargets()
+  const signals = await composeSignals(store, nowDate)
+  const influence = await planInfluence()
+  const { adjusted, rationale, rulesVersion } = computeAdjustedTargets(baseline, signals, { influence })
+  return { date, baseline, adjusted, rationale, signals, influence, rulesVersion }
+}
+
+async function todayComposite(date, nowDate) {
+  const plan = await buildPlan(date, nowDate)
+  const { from, to } = dayRange(date)
+  const entries = await store.listEntries({ from, to })
+  const intake = sumIntake(entries)
+  const nowHour = nowDate.getHours() + nowDate.getMinutes() / 60
+  const recommendation = computeRecommendation({
+    baseline: plan.baseline, adjusted: plan.adjusted, intake, signals: plan.signals, nowHour, influence: plan.influence,
+  })
+  // Snapshot the plan so "why?" is reproducible for the day.
+  await store.savePlan(date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  return { date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signals: plan.signals, recommendation, entries, generatedAt: nowDate.toISOString() }
+}
+
+// Composite for the Today screen (context + recommendation + progress + log).
+app.get('/api/today', asyncH(async (req, res) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
+  res.json(await todayComposite(date, new Date()))
+}))
+
+// Plan for a day: baseline vs. adjusted targets + rationale + signals used.
+app.get('/api/plan/today', asyncH(async (req, res) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
+  const plan = await buildPlan(date, new Date())
+  await store.savePlan(date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  res.json(plan)
+}))
+
+// Composed wearable signals (one per metric) with provenance + freshness.
+app.get('/api/signals', asyncH(async (req, res) => {
+  const now = new Date()
+  res.json({ date: localYmd(now), signals: await composeSignals(store, now) })
+}))
+
+// Connections: provider statuses (incl. demo) + the plan-influence toggles.
+app.get('/api/connections', asyncH(async (req, res) => {
+  const providers = await allProviderStatuses(store)
+  const withEnabled = []
+  for (const p of providers) {
+    const s = await store.getIntegration(p.id)
+    withEnabled.push({ ...p, enabled: s.enabled !== false })
+  }
+  res.json({ providers: withEnabled, influence: await planInfluence() })
+}))
+
+app.put('/api/connections/influence', asyncH(async (req, res) => {
+  const cur = await planInfluence()
+  const b = req.body || {}
+  const influence = {
+    readiness: b.readiness != null ? !!b.readiness : cur.readiness,
+    sleep: b.sleep != null ? !!b.sleep : cur.sleep,
+    workouts: b.workouts != null ? !!b.workouts : cur.workouts,
+  }
+  const row = await store.getIntegration('plan')
+  await store.setIntegration('plan', { settings: { ...(row.settings || {}), influence } })
+  res.json({ influence })
+}))
+
+app.put('/api/connections/:provider', asyncH(async (req, res) => {
+  const id = req.params.provider
+  if (!['oura', 'garmin', 'apple'].includes(id)) return res.status(404).json({ error: 'Unknown provider.' })
+  const patch = {}
+  if (req.body?.enabled != null) patch.enabled = !!req.body.enabled
+  if (req.body?.demo != null) patch.demo = !!req.body.demo
+  const row = await store.setIntegration(id, patch)
+  res.json({ provider: id, enabled: row.enabled !== false, demo: row.demo !== false })
+}))
+
+// Apple Health ingest: a native HealthKit companion / Health export POSTs
+// normalized samples here (there is no Apple cloud API). Token-gated if
+// APPLE_INGEST_TOKEN is set.
+app.post('/api/apple/ingest', asyncH(async (req, res) => {
+  const token = process.env.APPLE_INGEST_TOKEN
+  if (token && req.get('x-ingest-token') !== token) return res.status(401).json({ error: 'Invalid ingest token.' })
+  const { date, samples } = req.body || {}
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
+  const rows = Array.isArray(samples) ? samples : []
+  const n = await store.replaceAppleSignals(day, rows)
+  const cur = await store.getIntegration('apple')
+  await store.setIntegration('apple', { connected_at: cur.connected_at || new Date().toISOString(), last_synced_at: new Date().toISOString() })
+  res.json({ ingested: n, day })
+}))
+
+// Insights: nutrition trends over a window; signal correlations flagged as
+// insufficient-data until enough history exists (never causal/medical copy).
+app.get('/api/insights', asyncH(async (req, res) => {
+  const window = [7, 14, 30].includes(Number(req.query.window)) ? Number(req.query.window) : 7
+  const now = new Date()
+  const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1))
+  const end = new Date(now); end.setHours(0, 0, 0, 0); end.setDate(end.getDate() + 1)
+  const entries = await store.listEntries({ from: start.toISOString(), to: end.toISOString() })
+  const targets = await store.getLatestTargets()
+
+  const byDay = new Map()
+  for (const e of entries) {
+    const key = localYmd(new Date(e.logged_at))
+    if (!byDay.has(key)) byDay.set(key, sumIntake([]))
+    const t = byDay.get(key)
+    const s = Number(e.servings_consumed) || 0
+    for (const k of NUTRIENT_KEYS) t[k] += (Number(e.food?.[k]) || 0) * s
+  }
+  const days = [...byDay.entries()].map(([date, totals]) => ({ date, totals })).sort((a, b) => (a.date < b.date ? -1 : 1))
+  const tracked = days.length
+  const avg = (k) => (tracked ? Math.round(days.reduce((a, d) => a + d.totals[k], 0) / tracked) : null)
+  const calTarget = Number(targets?.calories) || 0
+  const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
+
+  res.json({
+    window,
+    insufficientData: tracked < 3,
+    nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
+    days,
+    correlations: {
+      available: false,
+      note: 'Recovery/training correlations need several days of retained wearable history — connect a provider and revisit after a few days.',
+    },
+  })
 }))
 
 // In production (or any time a build exists) the same process serves the

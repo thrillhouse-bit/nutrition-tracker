@@ -54,12 +54,19 @@ export default function LabelScan({ onParsed }) {
         onChange={onPick}
       />
 
-      <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+      <div
+        className={`flex aspect-[4/3] w-full items-center justify-center overflow-hidden border ${
+          preview ? 'border-line bg-fill' : 'border-dashed border-line bg-card'
+        }`}
+      >
         {preview ? (
           <img src={preview} alt="Nutrition label" className="h-full w-full object-contain" />
         ) : (
-          <div className="px-6 text-center text-sm text-slate-400">
-            Photograph the Nutrition Facts panel — Claude reads it into the fields for you.
+          <div className="px-6 text-center">
+            <div className="eyebrow mb-2 text-cobalt">Label scan</div>
+            <p className="text-sm text-muted">
+              Photograph the Nutrition Facts panel — Claude reads it into the fields for you.
+            </p>
           </div>
         )}
       </div>
