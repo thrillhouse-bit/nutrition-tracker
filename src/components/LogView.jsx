@@ -30,12 +30,17 @@ function EntryRow({ entry, onEdit, onDelete }) {
   const food = entry.food || {}
   const pending = entry._pending
   const time = entry.logged_at
-    ? new Date(entry.logged_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    // 24h to match Today's log column — the locale 12h form ("10:05 AM") wraps
+    // inside the w-[42px] column this row shares with Today's and breaks the
+    // row baselines.
+    ? new Date(entry.logged_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
     : ''
   return (
     <div className="flex min-h-11 items-center gap-3 border-t border-line py-2.5">
       <button
-        className="flex min-w-0 flex-1 items-baseline gap-3 text-left disabled:cursor-default"
+        // self-stretch: same 44px-row pattern as Today's EntryRow — the button
+        // otherwise shrinks to its text and under-fills the touch target.
+        className="flex min-w-0 flex-1 items-baseline gap-3 self-stretch text-left disabled:cursor-default"
         onClick={() => !pending && onEdit(entry)}
         disabled={pending}
       >

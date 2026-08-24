@@ -55,7 +55,7 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
           <button
             key={m || 'none'}
             onClick={() => setMeal(m)}
-            className={`px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] transition ${meal === m ? 'bg-cobalt text-oncobalt' : 'border border-line-strong text-muted hover:bg-fill'}`}
+            className={`min-h-11 px-3 text-xs font-semibold uppercase tracking-[0.08em] transition ${meal === m ? 'bg-cobalt text-oncobalt' : 'border border-line-strong text-muted hover:bg-fill'}`}
           >
             {m || 'untagged'}
           </button>
@@ -112,9 +112,12 @@ export default function App() {
   useEffect(() => { loadEntries(date) }, [date, refreshKey, loadEntries])
 
   // Composite Today: plan (baseline/adjusted + rationale), signals, recommendation.
+  // Send this browser's own day bounds so the composite's intake covers the
+  // same entries the log list shows (the server's midnight may be in another
+  // timezone).
   useEffect(() => {
     let alive = true
-    api.today(ymd(date)).then((r) => alive && setTodayData(r)).catch(() => alive && setTodayData(null))
+    api.today(ymd(date), dayBounds(date)).then((r) => alive && setTodayData(r)).catch(() => alive && setTodayData(null))
     return () => { alive = false }
   }, [date, refreshKey])
 
@@ -301,6 +304,7 @@ export default function App() {
             onPrevDay={() => shiftDay(-1)}
             onNextDay={() => shiftDay(1)}
             onToday={() => setDate(new Date())}
+            onViewLog={() => setTab('log')}
           />
         )}
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}

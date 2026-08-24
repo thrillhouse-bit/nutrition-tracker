@@ -9,6 +9,17 @@ describe('freshnessOf', () => {
     expect(freshnessOf(null, now)).toBe('unavailable')
     expect(freshnessOf(undefined, now)).toBe('unavailable')
   })
+
+  // Regression: the >48h branch returned 'stale' (a copy of the <=48h branch),
+  // so a week-old reading stayed "stale" forever and — because the plan engine
+  // only excludes 'unavailable' — could still change targets.
+  it('is unavailable once a reading is older than 48h, not stale forever', () => {
+    expect(freshnessOf(new Date(now - 72 * 3600000).toISOString(), now)).toBe('unavailable')
+    expect(freshnessOf(new Date(now - 7 * 24 * 3600000).toISOString(), now)).toBe('unavailable')
+  })
+  it('still reads stale just inside the 48h window (control)', () => {
+    expect(freshnessOf(new Date(now - 47 * 3600000).toISOString(), now)).toBe('stale')
+  })
 })
 
 describe('provider abstraction', () => {

@@ -79,7 +79,9 @@ function LogRow({ entry, onEdit, onDelete }) {
       <button
         onClick={() => !pending && onEdit(entry)}
         disabled={pending}
-        className="flex min-w-0 flex-1 items-baseline gap-3.5 py-2 text-left disabled:cursor-default"
+        // self-stretch: the row is min-h-11 but the button shrank to its text
+        // (measured 41px) — stretching it makes the whole 44px row tappable.
+        className="flex min-w-0 flex-1 items-baseline gap-3.5 self-stretch py-2 text-left disabled:cursor-default"
       >
         <span className="w-[42px] shrink-0 tnum text-[10.5px] font-medium text-muted">{timeHm(entry.logged_at)}</span>
         <span className="min-w-0 flex-1 truncate text-[14.5px] leading-tight text-ink">
@@ -102,7 +104,7 @@ function LogRow({ entry, onEdit, onDelete }) {
   )
 }
 
-export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd }) {
+export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog }) {
   const totals = useMemo(() => sumEntries(entries), [entries])
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
@@ -271,7 +273,10 @@ export default function Today({ date, data, entries, loading, online, syncing, p
       <section>
         <div className="flex items-center justify-between">
           <h3 className="eyebrow">Today's log</h3>
-          <TextButton chevron onClick={() => openAdd('menu')} className="-my-2 py-2.5 text-[10.5px] uppercase tracking-[0.1em]">
+          {/* "View all" views: it goes to the Log tab's grouped day view. It
+              used to open the Add sheet — a logging flow under a reviewing
+              label. */}
+          <TextButton chevron onClick={() => (onViewLog ? onViewLog() : openAdd('menu'))} className="-my-2 text-[10.5px] uppercase tracking-[0.1em]">
             View all {entries.length}
           </TextButton>
         </div>

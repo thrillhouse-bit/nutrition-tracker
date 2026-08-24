@@ -38,12 +38,16 @@ export default defineConfig({
         ],
       },
       includeAssets: ['icon.svg', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
+      // Installed identity matches the in-app v2 system: the app titles itself
+      // "Fuel" (index.html) and paints ivory (#f7f4ec theme-color meta) — the
+      // old emerald/navy manifest gave the home-screen install a different
+      // product's icon, splash, and name.
       manifest: {
-        name: 'Nutrition Tracker',
-        short_name: 'Nutrition',
+        name: 'Fuel',
+        short_name: 'Fuel',
         description: 'Scan barcodes and labels to track daily macros and micronutrients.',
-        theme_color: '#10b981',
-        background_color: '#0b1220',
+        theme_color: '#f7f4ec',
+        background_color: '#f7f4ec',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

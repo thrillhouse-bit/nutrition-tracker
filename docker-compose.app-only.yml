@@ -1,0 +1,26 @@
+# App-only variant for a VPS that ALREADY runs a web server on ports 80/443
+# (Caddy, nginx, Traefik, a panel stack — anything). The full docker-compose.yml
+# brings its own Caddy and would collide with the resident server's ports,
+# which can knock the box's existing sites offline. This variant runs ONLY the
+# app container, bound to loopback, and the resident server reverse-proxies to
+# it — see docs/DEPLOY-VERIFY.md "If the box already serves web traffic".
+#
+#   docker compose -f docker-compose.app-only.yml up -d --build
+#
+# The 127.0.0.1 bind is deliberate: the app must not be reachable on the bare
+# IP:3001 from the internet — TLS, HSTS, and the hostname all belong to the
+# resident proxy in this arrangement.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env                      # OURA_* / DATABASE_URL / etc.
+    environment:
+      NODE_ENV: production
+    volumes:
+      - app-data:/app/server/.data      # persists the local JSON store (unused when DATABASE_URL is set)
+    ports:
+      - "127.0.0.1:3001:3001"
+
+volumes:
+  app-data:

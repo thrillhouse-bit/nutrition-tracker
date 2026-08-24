@@ -47,7 +47,10 @@ export function freshnessOf(recordedAt, now = Date.now()) {
   if (!Number.isFinite(age)) return 'unavailable'
   if (age <= 18) return 'fresh'
   if (age <= 48) return 'stale'
-  return 'stale'
+  // Older than 48h is unavailable, not stale: plan.js's usable() only excludes
+  // 'unavailable', so returning 'stale' here let arbitrarily old readings keep
+  // adjusting targets.
+  return 'unavailable'
 }
 
 function sig(value, extra) {
@@ -170,6 +173,18 @@ async function realSignals(store, id, nowDate) {
   return {}
 }
 
+// Demo may only stand in for a provider that was never configured/connected —
+// the same predicate providerStatus uses to report `status: 'demo'`. Falling
+// back to demo whenever a provider merely had no data *today* fed the plan a
+// seeded evening run for a really-connected account whose watch hadn't synced
+// yet, while the Connections tab said stale, demo: false.
+function neverConnected(id, settings) {
+  if (id === 'oura') return !(ouraConfigured() || ouraOAuthConfigured())
+  if (id === 'garmin') return !garminConfigured()
+  if (id === 'apple') return !settings?.connected_at
+  return false
+}
+
 // --- compose one signal per metric, respecting provenance + toggles -------
 export async function composeSignals(store, nowDate = new Date()) {
   const settings = {}
@@ -182,7 +197,7 @@ export async function composeSignals(store, nowDate = new Date()) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
     const real = await realSignals(store, id, nowDate)
     if (Object.keys(real).length) perProvider[id] = real
-    else if (settings[id]?.demo !== false) perProvider[id] = demo[id] || {}
+    else if (settings[id]?.demo !== false && neverConnected(id, settings[id])) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}
   }
 

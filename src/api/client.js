@@ -75,7 +75,15 @@ export const api = {
   disconnectGarmin: (id) => req(`/garmin/accounts/${id}`, { method: 'DELETE' }),
 
   // --- fueling intelligence ---
-  today: (ymd) => req(`/today?date=${encodeURIComponent(ymd)}`),
+  // Pass the client's own day bounds alongside the date: the server's local
+  // midnight is not necessarily the user's, and without bounds the composite's
+  // intake would disagree with the entry list fetched via listEntries.
+  today: (ymd, bounds) =>
+    req(
+      `/today?date=${encodeURIComponent(ymd)}${
+        bounds ? `&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}` : ''
+      }`,
+    ),
   planToday: (ymd) => req(`/plan/today?date=${encodeURIComponent(ymd)}`),
   signals: () => req('/signals'),
   insights: (window = 7) => req(`/insights?window=${window}`),

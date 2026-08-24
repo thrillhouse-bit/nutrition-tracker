@@ -24,7 +24,10 @@ export function Button({ variant = 'primary', className = '', ...props }) {
 export function TextButton({ children, chevron = false, className = '', ...props }) {
   return (
     <button
-      className={`inline-flex items-center gap-1.5 text-cobalt font-semibold tracking-[0.02em] hover:text-cobalt-ink ${className}`}
+      // min-h-11: every rendered TextButton measured 20-36px tall — under the
+      // 44px touch floor. Call sites with tight rhythm compensate with
+      // negative margins (the Toggle's hit-area pattern).
+      className={`inline-flex min-h-11 items-center gap-1.5 text-cobalt font-semibold tracking-[0.02em] hover:text-cobalt-ink ${className}`}
       {...props}
     >
       {children}
@@ -84,14 +87,16 @@ export function Sheet({ open, onClose, title, children, size = 'md', grabber = t
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/25 sm:items-center" onClick={onClose}>
       <div
-        className={`w-full ${width} max-h-[92vh] overflow-y-auto border border-line bg-card p-5 shadow-[0_-3px_14px_rgb(18_18_16/0.12)]`}
+        className={`w-full ${width} max-h-[92vh] overflow-y-auto border border-line bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-3px_14px_rgb(18_18_16/0.12)]`}
         onClick={(e) => e.stopPropagation()}
       >
         {grabber && <div className="mx-auto mb-4 h-1 w-11 bg-line-strong" />}
         {title && (
           <div className="mb-4 flex items-center justify-between">
             <h2 className="serif text-xl text-ink">{title}</h2>
-            <button onClick={onClose} className="px-2 py-1 text-muted hover:text-ink" aria-label="Close">✕</button>
+            {/* 44px hit area around the small glyph, the Toggle's pattern —
+                measured 29x32 before, the primary dismissal on every sheet */}
+            <button onClick={onClose} className="-mr-2 flex h-11 w-11 items-center justify-center text-muted hover:text-ink" aria-label="Close">✕</button>
           </div>
         )}
         {children}
