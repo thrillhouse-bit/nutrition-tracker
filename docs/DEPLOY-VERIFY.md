@@ -39,10 +39,46 @@ final host URL.
    `scripts/verify_deploy.sh https://<your-render-url>` from here and report the
    real result (or run it yourself).
 
-> Other hosts work identically — Railway/Fly/Cloud Run/a VPS all build the same
-> Dockerfile; only the env-var UI and TLS setup differ. On a VPS, put Caddy in
-> front for HTTPS and mount a volume at `server/.data` (or use Neon) for
-> persistence.
+> Other hosts work identically — Railway/Fly/Cloud Run all build the same
+> Dockerfile; only the env-var UI differs. A VPS is covered next.
+
+## VPS path (Docker Compose + Caddy, always-on)
+
+A VPS is the best option for a real deployment: always-on, a stable URL,
+persistent disk (Oura tokens survive restarts with **no external database**), and
+full control. The repo ships a [`docker-compose.yml`](../docker-compose.yml) +
+[`Caddyfile`](../Caddyfile) that run the app behind **Caddy**, which fetches and
+renews HTTPS certificates automatically.
+
+**Prereqs:** a Linux VPS with Docker + the Compose plugin, a **domain (or
+subdomain) whose A record points at the VPS IP**, and ports **80 + 443** open.
+(No domain handy? Use `<your-vps-ip>.sslip.io` as the address — it resolves to the
+IP and Caddy still issues a cert.)
+
+```bash
+# on the VPS
+git clone https://github.com/thrillhouse-bit/nutrition-tracker
+cd nutrition-tracker
+
+# create .env (SITE_ADDRESS + your Oura creds); ./set-env.sh appends safely
+cat > .env <<'EOF'
+SITE_ADDRESS=fuel.example.com
+OURA_CLIENT_ID=...
+OURA_CLIENT_SECRET=...
+OURA_REDIRECT_URI=https://fuel.example.com/api/oura/callback
+# optional: DATABASE_URL=postgres://...  ANTHROPIC_API_KEY=...  APPLE_INGEST_TOKEN=...
+EOF
+
+docker compose up -d --build      # builds the image, starts app + Caddy
+docker compose logs -f caddy      # watch the cert get issued
+```
+
+Because you choose the domain up front, there's **no chicken-and-egg**: set
+`SITE_ADDRESS` and `OURA_REDIRECT_URI` to your domain, register the Oura app with
+`https://<domain>/api/oura/callback`, then `docker compose up`. Open the site →
+**Connections → Connect Oura** → authorize → send me the URL to verify. To update
+later: `git pull && docker compose up -d --build`. Data lives in the `app-data`
+volume (survives rebuilds).
 
 ## 1. Get Oura OAuth credentials
 

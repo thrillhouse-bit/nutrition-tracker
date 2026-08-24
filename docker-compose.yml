@@ -1,0 +1,48 @@
+# One-command VPS deploy. The app container (Express serving the built PWA +
+# /api from one origin) sits behind Caddy, which terminates TLS with automatic
+# Let's Encrypt certificates — HTTPS is required for the camera, the service
+# worker, and OAuth.
+#
+#   1. Point a domain's A record at this VPS, and open ports 80 + 443.
+#   2. Create .env in this directory:
+#        SITE_ADDRESS=fuel.example.com
+#        OURA_CLIENT_ID=...
+#        OURA_CLIENT_SECRET=...
+#        OURA_REDIRECT_URI=https://fuel.example.com/api/oura/callback
+#        # optional: DATABASE_URL=postgres://...  ANTHROPIC_API_KEY=...  FDC_API_KEY=...  APPLE_INGEST_TOKEN=...
+#   3. docker compose up -d --build
+#
+# The JSON store persists in the `app-data` volume, so a plain single-box deploy
+# keeps Oura tokens across restarts with no external database. Set DATABASE_URL
+# (Neon or your own Postgres) if you want cross-device sync.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env                      # OURA_* / DATABASE_URL / etc. (SITE_ADDRESS ignored here)
+    environment:
+      NODE_ENV: production
+    volumes:
+      - app-data:/app/server/.data      # persists the local JSON store (unused when DATABASE_URL is set)
+    expose:
+      - "3001"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (your domain, e.g. fuel.example.com)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data                # keeps issued certificates across restarts
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

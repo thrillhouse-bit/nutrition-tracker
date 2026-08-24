@@ -1,0 +1,10 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt). The site address
+# comes from the SITE_ADDRESS env var set in docker-compose.yml (from .env), so
+# you never edit this file — just set SITE_ADDRESS to your domain.
+#
+# For a domainless quick test you can set SITE_ADDRESS=<your-vps-ip>.sslip.io
+# (sslip.io resolves that hostname to the IP, and Caddy will still fetch a cert).
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy app:3001
+}
