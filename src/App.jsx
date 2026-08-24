@@ -13,6 +13,7 @@ import FoodConfirm from './components/FoodConfirm.jsx'
 import TodayView from './components/TodayView.jsx'
 import HistoryView from './components/HistoryView.jsx'
 import TargetsEditor from './components/TargetsEditor.jsx'
+import OuraCard from './components/OuraCard.jsx'
 
 const RECENTS_KEY = 'nt_recents_v1'
 
@@ -69,6 +70,7 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [oura, setOura] = useState(null) // Oura activity for the selected day (null = none/off)
+  const [toast, setToast] = useState(null) // one-shot banner: { kind: 'success'|'error', text }
 
   // Add-food flow
   const [flow, setFlow] = useState(null) // 'menu' | 'scan' | 'label' | 'search' | 'manual' | 'lookup' | 'confirm'
@@ -113,6 +115,22 @@ export default function App() {
   useEffect(() => {
     api.getTargets().then((r) => setTargets(r.targets)).catch(() => {})
     api.health().then(setHealth).catch(() => {})
+  }, [])
+
+  // OAuth return handoff: the Oura consent flow bounces the browser back to
+  // /?oura=connected (or =error). Surface a one-shot toast, scrub the param so a
+  // refresh doesn't re-show it, and bump refreshKey so the Today Oura summary and
+  // the settings card refetch.
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('oura')
+    if (status !== 'connected' && status !== 'error') return
+    setToast(status === 'connected'
+      ? { kind: 'success', text: 'Oura connected ✓' }
+      : { kind: 'error', text: 'Oura connection failed' })
+    window.history.replaceState({}, '', window.location.pathname)
+    setRefreshKey((k) => k + 1)
+    const t = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(t)
   }, [])
 
   // Replay queued logs. A network error (no HTTP status) means we're still
@@ -294,6 +312,26 @@ export default function App() {
         )}
       </header>
 
+      {/* One-shot OAuth-return banner */}
+      {toast && (
+        <div
+          className={`mx-4 mt-3 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm ${
+            toast.kind === 'success'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+              : 'border-red-500/30 bg-red-500/10 text-red-200'
+          }`}
+        >
+          <span>{toast.text}</span>
+          <button
+            onClick={() => setToast(null)}
+            className="rounded-lg px-1.5 opacity-70 hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Content */}
       <main className="flex-1 px-4 pb-28 pt-4">
         {tab === 'today' && (
@@ -315,7 +353,12 @@ export default function App() {
           />
         )}
         {tab === 'history' && <HistoryView targets={targets} refreshKey={refreshKey} />}
-        {tab === 'settings' && <TargetsEditor targets={targets} onSave={saveTargets} health={health} />}
+        {tab === 'settings' && (
+          <div className="space-y-6">
+            <TargetsEditor targets={targets} onSave={saveTargets} health={health} />
+            <OuraCard refreshSignal={refreshKey} />
+          </div>
+        )}
       </main>
 
       {/* Bottom nav + add button */}

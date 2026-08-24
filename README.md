@@ -43,31 +43,53 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
 - **Label OCR:** set `ANTHROPIC_API_KEY`. Optionally set `ANTHROPIC_MODEL`
   (defaults to `claude-opus-5`; `claude-haiku-4-5` is much cheaper per scan).
 - **Better whole-food coverage:** set `FDC_API_KEY` (free USDA key).
-- **Energy balance (Oura):** set `OURA_TOKEN` to show calories in − activity out
-  on Today. See [Wearables](#wearables-oura) for how to get a token.
+- **Energy balance (Oura):** connect via **OAuth 2.0** — set `OURA_CLIENT_ID`,
+  `OURA_CLIENT_SECRET`, and `OURA_REDIRECT_URI`, then hit **Connect Oura** in the
+  Targets tab — to show calories in − activity out on Today. A legacy `OURA_TOKEN`
+  (PATs deprecated Dec 2025) still works as a single-account fallback. See
+  [Wearables](#wearables-oura).
 
 `GET /api/health` reports which of these are configured; the Targets screen shows
 the same status.
 
 ## Wearables (Oura)
 
-With `OURA_TOKEN` set, Today shows an **Energy balance** card: calories logged
-(in) vs. Oura's total daily expenditure (out) = net deficit/surplus, plus steps.
+Today shows an **Energy balance** card: calories logged (in) vs. Oura's total
+daily expenditure (out) = net deficit/surplus, plus steps.
 `GET /api/oura/summary?date=YYYY-MM-DD` returns the day's activity; the server
-holds the token, and the integration (`server/integrations/oura.js`) is
+holds every token, and the integration (`server/integrations/oura.js`) is
 token-agnostic on purpose.
 
-**Getting a token.** Oura **deprecated Personal Access Tokens in Dec 2025** — an
-existing PAT still works as `OURA_TOKEN`, but a new token comes from **OAuth 2.0**
-(register an app at the [Oura developer portal](https://cloud.ouraring.com/oauth/applications),
-authorize, exchange the code for an access token). One account per token today.
+**Connect via OAuth 2.0 (the primary path).** Oura **deprecated Personal Access
+Tokens in Dec 2025** — an existing PAT still works as `OURA_TOKEN` (single
+account), but new tokens require OAuth 2.0. One-time setup:
 
-**Multiple people?** In theory yes, and OAuth 2.0 is the mechanism: each person
-authorizes your app against *their* Oura account and you store a token per
-connected account. You can never read anyone's data without them consenting via
-Oura's login. That's *multiple connected data sources* — separate from turning
-the whole app into a multi-user product. Not built yet; the token-agnostic
-integration is the groundwork for it (and for the Garmin Health API later).
+1. Register an application at the
+   [Oura developer portal](https://cloud.ouraring.com/oauth/applications) — it
+   gives you a **client ID** and **client secret**.
+2. Set the app's **Redirect URI** to `<your-app-origin>/api/oura/callback`. For
+   local dev that's `http://localhost:5173/api/oura/callback` (Vite proxies
+   `/api` to the API server, and Oura returns the browser to the app origin); in
+   production it's `https://<your-domain>/api/oura/callback`.
+3. Put the three values — `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`,
+   `OURA_REDIRECT_URI` — in `.env`.
+4. In the app, open the **Targets/Settings** tab → the **Oura** card →
+   **Connect Oura**, authorize on Oura, and you're returned to the app.
+
+The connect flow requests the `email personal daily` scopes.
+
+**Multiple accounts.** You can connect more than one Oura account — each person
+authorizes their own via Oura's login, and each connected account is stored
+server-side with its own tokens. The Today Energy-balance card uses the first
+connected account. You can never read anyone's data without them authorizing
+through Oura. That's *multiple connected data sources* — separate from turning
+the whole app into a multi-user product.
+
+**Token storage.** OAuth access + refresh tokens live server-side (the Neon
+`oura_accounts` table, or the local JSON store) and are never returned to the
+client; the server refreshes the access token automatically before it expires.
+Tokens are stored **unencrypted** — fine for a personal single-user deployment,
+worth hardening if you host this for others.
 
 ## Data model
 
@@ -94,6 +116,10 @@ Full DDL in [`schema.sql`](./schema.sql).
 | POST | `/entries` | log a food (`food_id` or inline `food`) |
 | PATCH/DELETE | `/entries/:id` | edit / remove an entry |
 | GET / PUT | `/targets` | read / set daily targets |
+| GET | `/oura/connect` | start OAuth — redirects to Oura's consent screen |
+| GET | `/oura/callback` | OAuth callback — stores the account, returns to the app |
+| GET | `/oura/accounts` | list connected accounts (no tokens) + config state |
+| DELETE | `/oura/accounts/:id` | disconnect an account |
 | GET | `/oura/summary?date=` | Oura activity/expenditure for a day (if configured) |
 
 ## MVP feature scope
@@ -114,11 +140,10 @@ Full DDL in [`schema.sql`](./schema.sql).
 
 ### Deferred (v2)
 
-- **Wearables:** **Oura** energy-balance is in (token-gated — see
-  [Wearables](#wearables-oura)); still to come: the **OAuth 2.0 connect flow**
-  (multi-account), **Garmin** (Health API — gated behind Garmin's developer
-  program; apply early), and optionally an on-watch **Connect IQ** glance for the
-  Fenix line.
+- **Wearables:** **Oura** energy-balance and the **OAuth 2.0 connect flow**
+  (multi-account) are in — see [Wearables](#wearables-oura); still to come:
+  **Garmin** (Health API — gated behind Garmin's developer program; apply early),
+  and optionally an on-watch **Connect IQ** glance for the Fenix line.
 - Apple Health / Google Fit sync, recipe builder, meal planning.
 
 ## Deploying

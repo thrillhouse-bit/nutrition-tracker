@@ -11,7 +11,19 @@ import { store, backend } from './db.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
-import { ouraConfigured, getToken as ouraToken, dailySummary as ouraDailySummary } from './integrations/oura.js'
+import {
+  ouraConfigured,
+  getToken as ouraToken,
+  dailySummary as ouraDailySummary,
+  oauthConfigured as ouraOAuthConfigured,
+  signState as ouraSignState,
+  verifyState as ouraVerifyState,
+  authorizeUrl as ouraAuthorizeUrl,
+  exchangeCode as ouraExchangeCode,
+  fetchPersonalInfo as ouraPersonalInfo,
+  validAccessToken as ouraValidAccessToken,
+  expiryFrom as ouraExpiryFrom,
+} from './integrations/oura.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -32,7 +44,7 @@ app.get('/api/health', asyncH(async (req, res) => {
     backend, // 'postgres' | 'json-file'
     ocr: ocrConfigured() ? 'configured' : 'not-configured',
     usda: process.env.FDC_API_KEY ? 'configured' : 'not-configured',
-    oura: ouraConfigured() ? 'configured' : 'not-configured',
+    oura: ouraConfigured() ? 'legacy-token' : ouraOAuthConfigured() ? 'oauth' : 'not-configured',
     time: new Date().toISOString(),
   })
 }))
@@ -144,14 +156,62 @@ app.put('/api/targets', asyncH(async (req, res) => {
   res.json({ targets })
 }))
 
-// --- wearables: Oura activity/expenditure ---------------------------------
+// --- wearables: Oura ------------------------------------------------------
+
+// Resolve a usable access token: a legacy OURA_TOKEN wins (single account),
+// else the first connected OAuth account (refreshing if near expiry).
+async function resolveOuraToken() {
+  if (ouraConfigured()) return ouraToken()
+  if (!ouraOAuthConfigured()) return null
+  const accounts = await store.listOuraAccounts()
+  if (!accounts.length) return null
+  const primary = accounts[0]
+  return ouraValidAccessToken(primary, (t) => store.updateOuraTokens(primary.id, t))
+}
+
 app.get('/api/oura/summary', asyncH(async (req, res) => {
-  if (!ouraConfigured()) return res.json({ configured: false, activity: null })
+  const token = await resolveOuraToken()
+  if (!token) return res.json({ configured: false, activity: null })
   const day = String(req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
     ? req.query.date
     : new Date().toISOString().slice(0, 10)
-  const activity = await ouraDailySummary(ouraToken(), day)
+  const activity = await ouraDailySummary(token, day)
   res.json({ configured: true, activity })
+}))
+
+// Begin OAuth: redirect the browser to Oura's consent screen.
+app.get('/api/oura/connect', (req, res) => {
+  if (!ouraOAuthConfigured()) return res.status(501).send('Oura OAuth is not configured on the server.')
+  res.redirect(ouraAuthorizeUrl(ouraSignState()))
+})
+
+// OAuth callback: verify state, exchange the code, store the account, return.
+app.get('/api/oura/callback', asyncH(async (req, res) => {
+  const { code, state, error } = req.query
+  if (error || !code || !ouraVerifyState(state)) return res.redirect('/?oura=error')
+  const tokens = await ouraExchangeCode(String(code))
+  const info = await ouraPersonalInfo(tokens.access_token)
+  await store.saveOuraAccount({
+    label: info?.email || info?.id || 'Oura account',
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: ouraExpiryFrom(tokens.expires_in),
+  })
+  res.redirect('/?oura=connected')
+}))
+
+// Connected accounts (tokens stripped) + config state, for the settings UI.
+app.get('/api/oura/accounts', asyncH(async (req, res) => {
+  const accounts = (await store.listOuraAccounts()).map((a) => ({
+    id: a.id, label: a.label, expires_at: a.expires_at, created_at: a.created_at,
+  }))
+  res.json({ oauth: ouraOAuthConfigured(), legacy: ouraConfigured(), accounts })
+}))
+
+app.delete('/api/oura/accounts/:id', asyncH(async (req, res) => {
+  const ok = await store.deleteOuraAccount(req.params.id)
+  if (!ok) return res.status(404).json({ error: 'Account not found.' })
+  res.status(204).end()
 }))
 
 // In production (or any time a build exists) the same process serves the

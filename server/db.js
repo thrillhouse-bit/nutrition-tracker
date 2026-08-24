@@ -174,6 +174,36 @@ class PgStore {
       returning *`
     return rows[0]
   }
+
+  // Oura OAuth accounts (connected wearable data sources). Tokens are stored so
+  // the server can fetch and refresh; never exposed to the client.
+  async listOuraAccounts() {
+    const sql = await this.ready()
+    return sql`select * from oura_accounts order by id asc`
+  }
+
+  async saveOuraAccount({ label, access_token, refresh_token, expires_at }) {
+    const sql = await this.ready()
+    const rows = await sql`
+      insert into oura_accounts (label, access_token, refresh_token, expires_at)
+      values (${label}, ${access_token}, ${refresh_token}, ${expires_at})
+      returning *`
+    return rows[0]
+  }
+
+  async updateOuraTokens(id, { access_token, refresh_token, expires_at }) {
+    const sql = await this.ready()
+    await sql`
+      update oura_accounts
+      set access_token = ${access_token}, refresh_token = ${refresh_token}, expires_at = ${expires_at}
+      where id = ${id}`
+  }
+
+  async deleteOuraAccount(id) {
+    const sql = await this.ready()
+    const rows = await sql`delete from oura_accounts where id = ${id} returning id`
+    return rows.length > 0
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -323,6 +353,47 @@ class JsonStore {
     d.targets.push(row)
     await this.persist()
     return row
+  }
+
+  async listOuraAccounts() {
+    const d = await this.load()
+    return d.oura_accounts || []
+  }
+
+  async saveOuraAccount({ label, access_token, refresh_token, expires_at }) {
+    const d = await this.load()
+    d.oura_accounts = d.oura_accounts || []
+    d.seq.oura = (d.seq.oura || 0) + 1
+    const row = {
+      id: d.seq.oura,
+      label: label || null,
+      access_token,
+      refresh_token,
+      expires_at: expires_at || null,
+      created_at: new Date().toISOString(),
+    }
+    d.oura_accounts.push(row)
+    await this.persist()
+    return row
+  }
+
+  async updateOuraTokens(id, { access_token, refresh_token, expires_at }) {
+    const d = await this.load()
+    const a = (d.oura_accounts || []).find((x) => x.id === Number(id))
+    if (!a) return
+    a.access_token = access_token
+    a.refresh_token = refresh_token
+    a.expires_at = expires_at
+    await this.persist()
+  }
+
+  async deleteOuraAccount(id) {
+    const d = await this.load()
+    const i = (d.oura_accounts || []).findIndex((x) => x.id === Number(id))
+    if (i === -1) return false
+    d.oura_accounts.splice(i, 1)
+    await this.persist()
+    return true
   }
 }
 
