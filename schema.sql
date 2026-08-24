@@ -85,3 +85,46 @@ create table if not exists garmin_dailies (
   created_at      timestamptz not null default now(),
   unique (account_id, day)
 );
+
+-- Provider-agnostic "fueling intelligence" entities ------------------------
+
+-- One row per wearable provider: connection status + which signals influence
+-- the plan (user-controlled) + demo toggle.
+create table if not exists integrations (
+  provider       text primary key,             -- 'oura' | 'garmin' | 'apple'
+  enabled        boolean not null default true,
+  demo           boolean not null default true, -- allow demo data when no real data
+  connected_at   timestamptz,
+  last_synced_at timestamptz,
+  error          text,
+  settings       jsonb not null default '{}'::jsonb
+);
+
+-- Normalized wearable signals with provenance + freshness. Used for Apple
+-- Health (ingested by a native companion / Health export) and any provider we
+-- persist rather than fetch live. value is jsonb (a number, or an object for
+-- workouts).
+create table if not exists wearable_signals (
+  id          bigint generated always as identity primary key,
+  provider    text not null,
+  metric      text not null,                   -- readiness | sleep | workout | expenditure | steps
+  day         text not null,                   -- 'YYYY-MM-DD'
+  recorded_at timestamptz,                      -- when the sample was recorded on-device
+  fetched_at  timestamptz,                      -- when we received it
+  value       jsonb,
+  unit        text,
+  extra       jsonb
+);
+create index if not exists wearable_signals_lookup on wearable_signals (provider, day, metric);
+
+-- Snapshot of a day's plan: baseline vs. adjusted targets, the rationale for
+-- each adjustment, and the signals it was based on (so "why?" is reproducible).
+create table if not exists daily_plans (
+  date            text primary key,            -- 'YYYY-MM-DD'
+  baseline        jsonb,
+  adjusted        jsonb,
+  rationale       jsonb,
+  signal_snapshot jsonb,
+  rules_version   integer not null default 1,
+  generated_at    timestamptz not null default now()
+);

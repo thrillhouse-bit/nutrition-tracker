@@ -255,6 +255,62 @@ class PgStore {
     const rows = await sql`select * from garmin_dailies where account_id = ${account_id} and day = ${day} limit 1`
     return rows[0] || null
   }
+
+  // --- integrations (per-provider status/settings for the Connections tab) --
+  async getIntegration(provider) {
+    const sql = await this.ready()
+    const rows = await sql`select * from integrations where provider = ${provider} limit 1`
+    return rows[0] || { provider, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+  }
+
+  async setIntegration(provider, patch) {
+    const sql = await this.ready()
+    const m = { ...(await this.getIntegration(provider)), ...patch }
+    const rows = await sql`
+      insert into integrations (provider, enabled, demo, connected_at, last_synced_at, error, settings)
+      values (${provider}, ${m.enabled}, ${m.demo}, ${m.connected_at}, ${m.last_synced_at}, ${m.error}, ${JSON.stringify(m.settings || {})})
+      on conflict (provider) do update set
+        enabled = excluded.enabled, demo = excluded.demo, connected_at = excluded.connected_at,
+        last_synced_at = excluded.last_synced_at, error = excluded.error, settings = excluded.settings
+      returning *`
+    return rows[0]
+  }
+
+  // --- Apple Health signals (ingested by a native companion / Health export) -
+  async listAppleSignals(day) {
+    const sql = await this.ready()
+    return sql`select provider, metric, recorded_at, fetched_at, value, unit, extra from wearable_signals where provider = 'apple' and day = ${day}`
+  }
+
+  async replaceAppleSignals(day, rows) {
+    const sql = await this.ready()
+    await sql`delete from wearable_signals where provider = 'apple' and day = ${day}`
+    for (const r of rows) {
+      await sql`insert into wearable_signals (provider, metric, day, recorded_at, fetched_at, value, unit, extra)
+        values ('apple', ${r.metric}, ${day}, ${r.recorded_at}, ${r.fetched_at}, ${JSON.stringify(r.value ?? null)}, ${r.unit || null}, ${r.extra ? JSON.stringify(r.extra) : null})`
+    }
+    return rows.length
+  }
+
+  // --- daily plans (snapshot of baseline/adjusted targets + rationale) -------
+  async getPlan(date) {
+    const sql = await this.ready()
+    const rows = await sql`select * from daily_plans where date = ${date} limit 1`
+    return rows[0] || null
+  }
+
+  async savePlan(date, plan) {
+    const sql = await this.ready()
+    const rows = await sql`
+      insert into daily_plans (date, baseline, adjusted, rationale, signal_snapshot, rules_version)
+      values (${date}, ${JSON.stringify(plan.baseline || {})}, ${JSON.stringify(plan.adjusted || {})},
+              ${JSON.stringify(plan.rationale || [])}, ${JSON.stringify(plan.signal_snapshot || {})}, ${plan.rulesVersion || 1})
+      on conflict (date) do update set
+        baseline = excluded.baseline, adjusted = excluded.adjusted, rationale = excluded.rationale,
+        signal_snapshot = excluded.signal_snapshot, rules_version = excluded.rules_version, generated_at = now()
+      returning *`
+    return rows[0]
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -507,6 +563,57 @@ class JsonStore {
   async getGarminDaily(account_id, day) {
     const d = await this.load()
     return (d.garmin_dailies || []).find((x) => x.account_id === Number(account_id) && x.day === day) || null
+  }
+
+  async getIntegration(provider) {
+    const d = await this.load()
+    return (d.integrations || {})[provider] || { provider, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+  }
+
+  async setIntegration(provider, patch) {
+    const d = await this.load()
+    d.integrations = d.integrations || {}
+    const m = { ...(d.integrations[provider] || { provider, enabled: true, demo: true, settings: {} }), ...patch, provider }
+    d.integrations[provider] = m
+    await this.persist()
+    return m
+  }
+
+  async listAppleSignals(day) {
+    const d = await this.load()
+    return (d.wearable_signals || []).filter((s) => s.provider === 'apple' && s.day === day)
+  }
+
+  async replaceAppleSignals(day, rows) {
+    const d = await this.load()
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.provider === 'apple' && s.day === day))
+    for (const r of rows) {
+      d.wearable_signals.push({
+        provider: 'apple', metric: r.metric, day,
+        recorded_at: r.recorded_at || null, fetched_at: r.fetched_at || null,
+        value: r.value ?? null, unit: r.unit || null, extra: r.extra || null,
+      })
+    }
+    await this.persist()
+    return rows.length
+  }
+
+  async getPlan(date) {
+    const d = await this.load()
+    return (d.daily_plans || {})[date] || null
+  }
+
+  async savePlan(date, plan) {
+    const d = await this.load()
+    d.daily_plans = d.daily_plans || {}
+    const row = {
+      date, baseline: plan.baseline || {}, adjusted: plan.adjusted || {},
+      rationale: plan.rationale || [], signal_snapshot: plan.signal_snapshot || {},
+      rules_version: plan.rulesVersion || 1, generated_at: new Date().toISOString(),
+    }
+    d.daily_plans[date] = row
+    await this.persist()
+    return row
   }
 }
 
