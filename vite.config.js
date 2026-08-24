@@ -61,6 +61,12 @@ export default defineConfig({
     }),
   ],
   server: {
+    // host:true binds every interface, not just one loopback. Without it Vite
+    // picked a single loopback family on macOS, so `curl http://localhost:5173`
+    // succeeded while Chrome's `http://127.0.0.1:5173` got ERR_CONNECTION_REFUSED
+    // on the same machine (measured 24 Aug 2026). It also exposes the LAN URL,
+    // which is how you preview the PWA from a phone on the same network.
+    host: true,
     port: 5173,
     proxy: {
       '/api': { target: API_TARGET, changeOrigin: true },
