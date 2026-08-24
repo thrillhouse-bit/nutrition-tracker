@@ -14,6 +14,7 @@ import TodayView from './components/TodayView.jsx'
 import HistoryView from './components/HistoryView.jsx'
 import TargetsEditor from './components/TargetsEditor.jsx'
 import OuraCard from './components/OuraCard.jsx'
+import GarminCard from './components/GarminCard.jsx'
 
 const RECENTS_KEY = 'nt_recents_v1'
 
@@ -69,7 +70,7 @@ export default function App() {
   const [targets, setTargets] = useState(null)
   const [health, setHealth] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [oura, setOura] = useState(null) // Oura activity for the selected day (null = none/off)
+  const [energy, setEnergy] = useState(null) // unified energy summary for the selected day (null = none/off)
   const [toast, setToast] = useState(null) // one-shot banner: { kind: 'success'|'error', text }
 
   // Add-food flow
@@ -103,12 +104,13 @@ export default function App() {
 
   useEffect(() => { loadEntries(date) }, [date, refreshKey, loadEntries])
 
-  // Oura activity for the selected day (null when unconfigured or no data yet).
+  // Unified energy "out" for the selected day (Oura preferred, Garmin fallback;
+  // null when unconfigured or no data yet).
   useEffect(() => {
     let alive = true
-    api.ouraSummary(ymd(date))
-      .then((r) => alive && setOura(r.configured ? r.activity : null))
-      .catch(() => alive && setOura(null))
+    api.energySummary(ymd(date))
+      .then((r) => alive && setEnergy(r))
+      .catch(() => alive && setEnergy(null))
     return () => { alive = false }
   }, [date, refreshKey])
 
@@ -117,16 +119,23 @@ export default function App() {
     api.health().then(setHealth).catch(() => {})
   }, [])
 
-  // OAuth return handoff: the Oura consent flow bounces the browser back to
-  // /?oura=connected (or =error). Surface a one-shot toast, scrub the param so a
-  // refresh doesn't re-show it, and bump refreshKey so the Today Oura summary and
-  // the settings card refetch.
+  // OAuth return handoff: the Oura/Garmin consent flows bounce the browser back
+  // to /?oura=connected (or =error) or /?garmin=connected (or =error). Surface a
+  // one-shot toast for whichever param is present, scrub it so a refresh doesn't
+  // re-show it, and bump refreshKey so the Today energy summary and the settings
+  // cards refetch.
   useEffect(() => {
-    const status = new URLSearchParams(window.location.search).get('oura')
-    if (status !== 'connected' && status !== 'error') return
+    const params = new URLSearchParams(window.location.search)
+    const provider = ['oura', 'garmin'].find((p) => {
+      const s = params.get(p)
+      return s === 'connected' || s === 'error'
+    })
+    if (!provider) return
+    const status = params.get(provider)
+    const name = provider === 'garmin' ? 'Garmin' : 'Oura'
     setToast(status === 'connected'
-      ? { kind: 'success', text: 'Oura connected ✓' }
-      : { kind: 'error', text: 'Oura connection failed' })
+      ? { kind: 'success', text: `${name} connected ✓` }
+      : { kind: 'error', text: `${name} connection failed` })
     window.history.replaceState({}, '', window.location.pathname)
     setRefreshKey((k) => k + 1)
     const t = setTimeout(() => setToast(null), 4000)
@@ -349,7 +358,7 @@ export default function App() {
             online={online}
             syncing={syncing}
             onSync={flushOutbox}
-            oura={oura}
+            energy={energy}
           />
         )}
         {tab === 'history' && <HistoryView targets={targets} refreshKey={refreshKey} />}
@@ -357,6 +366,7 @@ export default function App() {
           <div className="space-y-6">
             <TargetsEditor targets={targets} onSave={saveTargets} health={health} />
             <OuraCard refreshSignal={refreshKey} />
+            <GarminCard refreshSignal={refreshKey} />
           </div>
         )}
       </main>

@@ -1,6 +1,7 @@
 // Express API: proxies nutrition lookups (keeping keys server-side) and gates
 // all reads/writes to the storage layer. The frontend only ever calls /api/*.
 import 'dotenv/config'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +25,14 @@ import {
   validAccessToken as ouraValidAccessToken,
   expiryFrom as ouraExpiryFrom,
 } from './integrations/oura.js'
+import {
+  garminConfigured,
+  pkcePair as garminPkcePair,
+  authorizeUrl as garminAuthorizeUrl,
+  exchangeCode as garminExchangeCode,
+  normalizeDaily as garminNormalizeDaily,
+  expiryFrom as garminExpiryFrom,
+} from './integrations/garmin.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -45,6 +54,7 @@ app.get('/api/health', asyncH(async (req, res) => {
     ocr: ocrConfigured() ? 'configured' : 'not-configured',
     usda: process.env.FDC_API_KEY ? 'configured' : 'not-configured',
     oura: ouraConfigured() ? 'legacy-token' : ouraOAuthConfigured() ? 'oauth' : 'not-configured',
+    garmin: garminConfigured() ? 'oauth' : 'not-configured',
     time: new Date().toISOString(),
   })
 }))
@@ -212,6 +222,124 @@ app.delete('/api/oura/accounts/:id', asyncH(async (req, res) => {
   const ok = await store.deleteOuraAccount(req.params.id)
   if (!ok) return res.status(404).json({ error: 'Account not found.' })
   res.status(204).end()
+}))
+
+// --- wearables: Garmin (data-in, OAuth 2.0 PKCE + push webhook) ------------
+// PKCE verifiers must be recalled at the callback but never leave the server;
+// stash them in-memory keyed by `state`, short TTL. (Single-process personal
+// app — fine; a restart mid-connect just means retrying the connect.)
+const garminPkce = new Map()
+
+app.get('/api/garmin/connect', (req, res) => {
+  if (!garminConfigured()) return res.status(501).send('Garmin OAuth is not configured on the server.')
+  const state = crypto.randomBytes(16).toString('hex')
+  const { verifier, challenge } = garminPkcePair()
+  garminPkce.set(state, { verifier, exp: Date.now() + 10 * 60 * 1000 })
+  res.redirect(garminAuthorizeUrl({ state, challenge }))
+})
+
+app.get('/api/garmin/callback', asyncH(async (req, res) => {
+  const { code, state, error } = req.query
+  const entry = garminPkce.get(String(state || ''))
+  garminPkce.delete(String(state || ''))
+  if (error || !code || !entry || entry.exp < Date.now()) return res.redirect('/?garmin=error')
+  const tokens = await garminExchangeCode({ code: String(code), verifier: entry.verifier })
+  await store.saveGarminAccount({
+    label: 'Garmin account',
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: garminExpiryFrom(tokens.expires_in),
+  })
+  res.redirect('/?garmin=connected')
+}))
+
+// Garmin PUSHES daily summaries here (its data model is webhook, not pull).
+// Body shape (VERIFY): { dailies: [ { calendarDate, activeKilocalories, bmrKilocalories, steps, ... } ] }
+app.post('/api/garmin/webhook', asyncH(async (req, res) => {
+  const dailies = Array.isArray(req.body?.dailies) ? req.body.dailies : []
+  const accounts = await store.listGarminAccounts()
+  const accountId = accounts[0]?.id // single-account personal app
+  if (accountId) {
+    for (const d of dailies) {
+      const norm = garminNormalizeDaily(d)
+      if (norm.day) await store.upsertGarminDaily({ account_id: accountId, ...norm, raw: d })
+    }
+  }
+  res.status(200).json({ received: dailies.length }) // 200 fast so Garmin doesn't retry
+}))
+
+app.get('/api/garmin/accounts', asyncH(async (req, res) => {
+  const accounts = (await store.listGarminAccounts()).map((a) => ({
+    id: a.id, label: a.label, expires_at: a.expires_at, created_at: a.created_at,
+  }))
+  res.json({ oauth: garminConfigured(), accounts })
+}))
+
+app.delete('/api/garmin/accounts/:id', asyncH(async (req, res) => {
+  const ok = await store.deleteGarminAccount(req.params.id)
+  if (!ok) return res.status(404).json({ error: 'Account not found.' })
+  res.status(204).end()
+}))
+
+// Stored Garmin expenditure for a day (served from pushed data, not a live pull).
+app.get('/api/garmin/summary', asyncH(async (req, res) => {
+  const accounts = await store.listGarminAccounts()
+  if (!accounts.length) return res.json({ configured: garminConfigured(), activity: null })
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
+  const row = await store.getGarminDaily(accounts[0].id, day)
+  const activity = row
+    ? { day: row.day, total_calories: row.total_calories, active_calories: row.active_calories, steps: row.steps }
+    : null
+  res.json({ configured: true, activity })
+}))
+
+// --- unified daily views --------------------------------------------------
+const NUTRIENT_KEYS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg']
+
+// Server's local calendar date, matching how the UI groups days.
+function localYmd(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function dayRange(ymd) {
+  const start = new Date(`${ymd}T00:00:00`) // server-local day
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return { from: start.toISOString(), to: end.toISOString() }
+}
+
+// Nutrition totals vs. targets for a day — used by the Garmin Connect IQ watch app.
+app.get('/api/today/summary', asyncH(async (req, res) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
+  const { from, to } = dayRange(date)
+  const entries = await store.listEntries({ from, to })
+  const totals = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]))
+  for (const e of entries) {
+    const s = Number(e.servings_consumed) || 0
+    for (const k of NUTRIENT_KEYS) totals[k] += (Number(e.food?.[k]) || 0) * s
+  }
+  const targets = await store.getLatestTargets()
+  const remaining = { calories: targets?.calories != null ? Number(targets.calories) - totals.calories : null }
+  res.json({ date, totals, targets, remaining })
+}))
+
+// Unified energy expenditure ("out") for a day: Oura preferred, Garmin fallback.
+app.get('/api/energy/summary', asyncH(async (req, res) => {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
+  const token = await resolveOuraToken()
+  if (token) {
+    const a = await ouraDailySummary(token, day)
+    if (a && a.total_calories != null) {
+      return res.json({ date: day, source: 'oura', out: a.total_calories, active_calories: a.active_calories, steps: a.steps })
+    }
+  }
+  const gaccts = await store.listGarminAccounts()
+  if (gaccts.length) {
+    const row = await store.getGarminDaily(gaccts[0].id, day)
+    if (row && row.total_calories != null) {
+      return res.json({ date: day, source: 'garmin', out: row.total_calories, active_calories: row.active_calories, steps: row.steps })
+    }
+  }
+  res.json({ date: day, source: null, out: null, active_calories: null, steps: null })
 }))
 
 // In production (or any time a build exists) the same process serves the

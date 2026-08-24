@@ -48,6 +48,12 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
   Targets tab — to show calories in − activity out on Today. A legacy `OURA_TOKEN`
   (PATs deprecated Dec 2025) still works as a single-account fallback. See
   [Wearables](#wearables-oura).
+- **Energy balance (Garmin):** a push-based alternative source for the same
+  card — set `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and
+  `GARMIN_REDIRECT_URI`, then **Connect Garmin**. Today prefers Oura and falls
+  back to Garmin (`GET /api/energy/summary`). Garmin's Health API is gated by a
+  partner program that was **on hold as of 2026**, so you may not be able to
+  obtain credentials yet — see [Wearables](#wearables-oura).
 
 `GET /api/health` reports which of these are configured; the Targets screen shows
 the same status.
@@ -91,6 +97,69 @@ client; the server refreshes the access token automatically before it expires.
 Tokens are stored **unencrypted** — fine for a personal single-user deployment,
 worth hardening if you host this for others.
 
+**Unified energy (out).** Today's **Energy balance** card now reads expenditure
+from a single `GET /api/energy/summary?date=YYYY-MM-DD` — Oura if an Oura
+account is connected, otherwise Garmin — so either wearable drives the same
+card without the client caring which one answered.
+
+### Garmin (data-in)
+
+Garmin mirrors the Oura shape — the same Energy-balance card, a day-at-a-time
+summary held server-side — but Garmin's API is **push, not pull**. You connect
+once via **OAuth 2.0 with PKCE**; after that Garmin **POSTs** daily summaries to
+a webhook as they're produced, the server stores each one, and a day is served
+back from the store rather than fetched on demand. `server/integrations/garmin.js`
+holds the credentials server-side, the same way `oura.js` does.
+
+One-time setup:
+
+1. Register an app in the Garmin **Health API** (part of the Garmin Connect
+   Developer Program) for a **client ID** and **client secret**.
+2. Set the app's **Redirect URI** to `<your-app-origin>/api/garmin/callback`.
+   For local dev that's `http://localhost:5173/api/garmin/callback`; in
+   production it's `https://<your-domain>/api/garmin/callback`.
+3. Put `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and `GARMIN_REDIRECT_URI`
+   in `.env`.
+4. In the app, open **Targets/Settings** → the **Garmin** card → **Connect
+   Garmin**, authorize on Garmin, and you're returned to the app.
+
+The flow:
+
+- `GET /api/garmin/connect` starts OAuth 2.0 (PKCE) and redirects to Garmin's
+  consent screen.
+- `GET /api/garmin/callback` stores the connected account (access + refresh
+  tokens, server-side, unencrypted, refreshed automatically — same posture as
+  Oura).
+- `POST /api/garmin/webhook` is where Garmin pushes daily summaries; the server
+  persists each one. A **backfill** request asks Garmin to re-send history for a
+  newly-connected account.
+- `GET /api/garmin/summary?date=YYYY-MM-DD` returns a day **from the store**
+  (Garmin never gets a live read — it already sent the data).
+- `GET /api/garmin/accounts` / `DELETE /api/garmin/accounts/:id` list and
+  disconnect connected accounts, exactly like the Oura pair.
+
+**Program on hold (2026).** The Garmin Connect Developer Program that gates the
+Health API is **partner-approval-only, and was on hold as of 2026** — you may
+not be able to obtain credentials yet. The integration is built and wired
+end-to-end; it is **ready when approved**, not usable today unless you already
+hold Garmin Health API access.
+
+**VERIFY the wire details.** Because the program is gated, the exact Garmin
+endpoint URLs, the OAuth scope name, and the summary payload field names live
+behind Garmin's partner portal and could not be confirmed from public docs.
+They are marked **`VERIFY`** in `server/integrations/garmin.js` and must be
+checked against the partner documentation once access is granted.
+
+### On-watch app (Connect IQ)
+
+A companion on-watch app for the Fenix line lives in
+[`garmin-connectiq/`](./garmin-connectiq/) — a separate Monkey C project with
+its own README. It shows the day's nutrition totals against targets on the
+watch, reading `GET /api/today/summary?date=`. **Connect IQ is a separate
+program from the Garmin Health / Developer Program** and needs no partner
+approval to build or sideload, so this piece works today regardless of the
+Health API hold above.
+
 ## Data model
 
 - **`foods`** — id, barcode (nullable), name, brand, serving_size, serving_unit,
@@ -121,6 +190,14 @@ Full DDL in [`schema.sql`](./schema.sql).
 | GET | `/oura/accounts` | list connected accounts (no tokens) + config state |
 | DELETE | `/oura/accounts/:id` | disconnect an account |
 | GET | `/oura/summary?date=` | Oura activity/expenditure for a day (if configured) |
+| GET | `/garmin/connect` | start Garmin OAuth 2.0 (PKCE) — redirects to Garmin's consent screen |
+| GET | `/garmin/callback` | OAuth callback — stores the account, returns to the app |
+| POST | `/garmin/webhook` | Garmin pushes daily summaries here; the server stores them |
+| GET | `/garmin/accounts` | list connected Garmin accounts (no tokens) + config state |
+| DELETE | `/garmin/accounts/:id` | disconnect a Garmin account |
+| GET | `/garmin/summary?date=` | a stored Garmin day (served from the store, not fetched) |
+| GET | `/energy/summary?date=` | unified expenditure (out): Oura if connected, else Garmin |
+| GET | `/today/summary?date=` | nutrition totals vs. targets for a day (used by the Connect IQ watch app) |
 
 ## MVP feature scope
 
@@ -141,9 +218,13 @@ Full DDL in [`schema.sql`](./schema.sql).
 ### Deferred (v2)
 
 - **Wearables:** **Oura** energy-balance and the **OAuth 2.0 connect flow**
-  (multi-account) are in — see [Wearables](#wearables-oura); still to come:
-  **Garmin** (Health API — gated behind Garmin's developer program; apply early),
-  and optionally an on-watch **Connect IQ** glance for the Fenix line.
+  (multi-account) are in — see [Wearables](#wearables-oura). **Garmin** data-in
+  (Health API, OAuth 2.0 + PKCE, push webhook) is now in as well —
+  **scaffolded, ready-when-approved**: the Garmin Connect Developer Program that
+  gates it is partner-approval-only and was on hold as of 2026, and the exact
+  wire details are marked `VERIFY` until access is granted. The on-watch
+  **Connect IQ** glance for the Fenix (`garmin-connectiq/`) is in too — a
+  separate program that needs no partner approval.
 - Apple Health / Google Fit sync, recipe builder, meal planning.
 
 ## Deploying

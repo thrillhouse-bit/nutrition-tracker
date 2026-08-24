@@ -204,6 +204,57 @@ class PgStore {
     const rows = await sql`delete from oura_accounts where id = ${id} returning id`
     return rows.length > 0
   }
+
+  // Garmin OAuth accounts + pushed daily summaries (Garmin's model is webhook
+  // push, so we store what it sends and serve `summary` from the store).
+  async listGarminAccounts() {
+    const sql = await this.ready()
+    return sql`select * from garmin_accounts order by id asc`
+  }
+
+  async saveGarminAccount({ label, access_token, refresh_token, expires_at }) {
+    const sql = await this.ready()
+    const rows = await sql`
+      insert into garmin_accounts (label, access_token, refresh_token, expires_at)
+      values (${label}, ${access_token}, ${refresh_token}, ${expires_at})
+      returning *`
+    return rows[0]
+  }
+
+  async updateGarminTokens(id, { access_token, refresh_token, expires_at }) {
+    const sql = await this.ready()
+    await sql`
+      update garmin_accounts
+      set access_token = ${access_token}, refresh_token = ${refresh_token}, expires_at = ${expires_at}
+      where id = ${id}`
+  }
+
+  async deleteGarminAccount(id) {
+    const sql = await this.ready()
+    const rows = await sql`delete from garmin_accounts where id = ${id} returning id`
+    return rows.length > 0
+  }
+
+  async upsertGarminDaily({ account_id, day, total_calories, active_calories, steps, raw }) {
+    const sql = await this.ready()
+    const rows = await sql`
+      insert into garmin_dailies (account_id, day, total_calories, active_calories, steps, raw)
+      values (${account_id}, ${day}, ${total_calories}, ${active_calories}, ${steps},
+              ${raw ? JSON.stringify(raw) : null})
+      on conflict (account_id, day) do update set
+        total_calories = excluded.total_calories,
+        active_calories = excluded.active_calories,
+        steps = excluded.steps,
+        raw = excluded.raw
+      returning *`
+    return rows[0]
+  }
+
+  async getGarminDaily(account_id, day) {
+    const sql = await this.ready()
+    const rows = await sql`select * from garmin_dailies where account_id = ${account_id} and day = ${day} limit 1`
+    return rows[0] || null
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -394,6 +445,68 @@ class JsonStore {
     d.oura_accounts.splice(i, 1)
     await this.persist()
     return true
+  }
+
+  async listGarminAccounts() {
+    const d = await this.load()
+    return d.garmin_accounts || []
+  }
+
+  async saveGarminAccount({ label, access_token, refresh_token, expires_at }) {
+    const d = await this.load()
+    d.garmin_accounts = d.garmin_accounts || []
+    d.seq.garmin = (d.seq.garmin || 0) + 1
+    const row = {
+      id: d.seq.garmin,
+      label: label || null,
+      access_token,
+      refresh_token,
+      expires_at: expires_at || null,
+      created_at: new Date().toISOString(),
+    }
+    d.garmin_accounts.push(row)
+    await this.persist()
+    return row
+  }
+
+  async updateGarminTokens(id, { access_token, refresh_token, expires_at }) {
+    const d = await this.load()
+    const a = (d.garmin_accounts || []).find((x) => x.id === Number(id))
+    if (!a) return
+    a.access_token = access_token
+    a.refresh_token = refresh_token
+    a.expires_at = expires_at
+    await this.persist()
+  }
+
+  async deleteGarminAccount(id) {
+    const d = await this.load()
+    const i = (d.garmin_accounts || []).findIndex((x) => x.id === Number(id))
+    if (i === -1) return false
+    d.garmin_accounts.splice(i, 1)
+    await this.persist()
+    return true
+  }
+
+  async upsertGarminDaily({ account_id, day, total_calories, active_calories, steps, raw }) {
+    const d = await this.load()
+    d.garmin_dailies = d.garmin_dailies || []
+    let row = d.garmin_dailies.find((x) => x.account_id === Number(account_id) && x.day === day)
+    if (!row) {
+      row = { account_id: Number(account_id), day }
+      d.garmin_dailies.push(row)
+    }
+    row.total_calories = total_calories ?? null
+    row.active_calories = active_calories ?? null
+    row.steps = steps ?? null
+    row.raw = raw ?? null
+    await this.persist()
+    return row
+  }
+
+  async getGarminDaily(account_id, day) {
+    const d = await this.load()
+    return (d.garmin_dailies || []).find((x) => x.account_id === Number(account_id) && x.day === day) || null
   }
 }
 

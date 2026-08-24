@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<properties>
+    <!-- Base URL of the nutrition-tracker web API. The app requests
+         {apiBaseUrl}/api/today/summary. Read in code via
+         Application.Properties.getValue("apiBaseUrl").
+
+         Default targets a local dev server. NOTE: on a real watch, requests are
+         proxied through the phone's Garmin Connect Mobile app, so "localhost"
+         only works in the simulator — set this to a URL reachable from the phone
+         (a LAN IP or a public/tunneled address). See README. -->
+    <property id="apiBaseUrl" type="string">http://localhost:3001</property>
+</properties>

@@ -52,7 +52,7 @@ function EntryRow({ entry, onEdit, onDelete }) {
   )
 }
 
-export default function TodayView({ date, entries, targets, loading, onEdit, onDelete, onPrevDay, onNextDay, onToday, pendingCount = 0, online = true, syncing = false, onSync, oura = null }) {
+export default function TodayView({ date, entries, targets, loading, onEdit, onDelete, onPrevDay, onNextDay, onToday, pendingCount = 0, online = true, syncing = false, onSync, energy = null }) {
   const totals = useMemo(() => sumEntries(entries), [entries])
 
   const byMeal = useMemo(() => {
@@ -117,17 +117,17 @@ export default function TodayView({ date, entries, targets, loading, onEdit, onD
         </div>
       </div>
 
-      {/* Energy balance (Oura) — calories in vs. total expenditure out */}
-      {oura && oura.total_calories != null && (
+      {/* Energy balance — calories in vs. expenditure out (Oura preferred, Garmin fallback) */}
+      {energy && energy.out != null && (
         (() => {
-          const net = num(totals.calories) - num(oura.total_calories)
+          const net = num(totals.calories) - num(energy.out)
           const deficit = net <= 0
           return (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Energy balance</span>
                 <span className="text-[11px] text-slate-500">
-                  Oura{oura.steps != null ? ` · ${fmt(oura.steps, 0)} steps` : ''}
+                  {energy.source === 'garmin' ? 'Garmin' : 'Oura'}{energy.steps != null ? ` · ${fmt(energy.steps, 0)} steps` : ''}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
@@ -136,7 +136,7 @@ export default function TodayView({ date, entries, targets, loading, onEdit, onD
                   <div className="text-[11px] text-slate-400">In</div>
                 </div>
                 <div>
-                  <div className="text-base font-bold tabular-nums text-slate-50">{fmt(oura.total_calories, 0)}</div>
+                  <div className="text-base font-bold tabular-nums text-slate-50">{fmt(energy.out, 0)}</div>
                   <div className="text-[11px] text-slate-400">Out</div>
                 </div>
                 <div>

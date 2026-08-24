@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Connect IQ application manifest for the Nutrition widget.
+
+  type="widget"        a glance + full widget (not a watch face or data field).
+  minApiLevel="3.1.0"  glances were introduced in Connect IQ 3.1.0, so that is
+                       the floor for a glance-capable app. Every device listed
+                       below ships a newer API level; this only sets the minimum.
+  entry="NutritionApp" the AppBase subclass in source/NutritionApp.mc.
+  id                   PLACEHOLDER application id. It is a valid 32-hex value so
+                       the app builds, runs in the simulator, and sideloads as-is,
+                       but REGENERATE it before publishing to the Connect IQ Store:
+                       VS Code command "Monkey C: Generate a New Application Id",
+                       or the manifest editor's "Generate Id" button.
+
+  <iq:products>: the devices this build targets. An UNKNOWN product id fails the
+  build, so edit this list to the devices you actually own/target. The
+  authoritative id list lives in the SDK (VS Code "Monkey C: Edit Products", or
+  bin/devices.xml under the installed SDK). The fenix 8 / epix 2 Pro size-suffixed
+  ids below are the current ones at time of writing — verify against your SDK's
+  device list and add/remove freely; they all share one screen family and API
+  floor, so a single build covers them.
+-->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        entry="NutritionApp"
+        id="0000000000000000000000000000dead"
+        launcherIcon="@Drawables.LauncherIcon"
+        name="@Strings.AppName"
+        type="widget"
+        minApiLevel="3.1.0">
+
+        <!-- Fenix line (primary target) plus the Epix siblings. -->
+        <iq:products>
+            <!-- fenix 7 family -->
+            <iq:product id="fenix7"/>
+            <iq:product id="fenix7s"/>
+            <iq:product id="fenix7x"/>
+            <!-- fenix 7 Pro family -->
+            <iq:product id="fenix7pro"/>
+            <iq:product id="fenix7spro"/>
+            <iq:product id="fenix7xpro"/>
+            <!-- fenix 8 family -->
+            <iq:product id="fenix843mm"/>
+            <iq:product id="fenix847mm"/>
+            <iq:product id="fenix851mm"/>
+            <iq:product id="fenix8solar47mm"/>
+            <iq:product id="fenix8solar51mm"/>
+            <!-- epix 2 / epix 2 Pro -->
+            <iq:product id="epix2"/>
+            <iq:product id="epix2pro42mm"/>
+            <iq:product id="epix2pro47mm"/>
+            <iq:product id="epix2pro51mm"/>
+        </iq:products>
+
+        <!-- Communications is required for Communications.makeWebRequest. -->
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+        </iq:permissions>
+
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>
