@@ -36,10 +36,9 @@ function TargetRow({ n, label, base, adj }) {
       <span className="w-[72px] text-right tnum text-sm text-muted">
         {fmt(b, n.decimals)}{unit && ` ${unit}`}
       </span>
-      <span className="w-[116px] text-right leading-none">
-        <span className="numeral text-[24px] tnum text-ink">
-          {fmt(a, n.decimals)}{unit && ` ${unit}`}
-        </span>
+      <span className="w-[132px] whitespace-nowrap text-right leading-none">
+        <span className="numeral text-[22px] tnum text-ink">{fmt(a, n.decimals)}</span>
+        {unit && <span className="ml-0.5 text-[10px] font-medium text-muted">{unit}</span>}
         {changed ? (
           <span className="ml-1.5 align-middle text-[10px] font-bold tracking-tight text-cobalt tnum">
             {delta > 0 ? '+' : '−'}{fmt(Math.abs(delta), n.decimals)}
@@ -299,7 +298,7 @@ export default function Plan({ date, refreshKey, onChanged }) {
             <div className="flex pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
               <span className="flex-1">Target</span>
               <span className="w-[72px] text-right">Baseline</span>
-              <span className="w-[116px] text-right">Today</span>
+              <span className="w-[132px] text-right">Today</span>
             </div>
             <div className="border-b border-line">
               {rowDefs.map((d) => (

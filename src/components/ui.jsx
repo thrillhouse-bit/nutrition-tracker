@@ -189,10 +189,11 @@ export function SourceLabel({ signal, className = '' }) {
   if (!signal) return null
   const provider = signal.provider ? signal.provider[0].toUpperCase() + signal.provider.slice(1) : 'Signal'
   const status = signal.demo ? 'demo' : signal.freshness || 'fresh'
+  // flex-wrap + no dot separator so this degrades to two clean lines
+  // ("OURA" / "▣ DEMO DATA") in a narrow column instead of overflowing it.
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] text-muted ${className}`}>
+    <span className={`inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted ${className}`}>
       <span className="font-semibold uppercase tracking-[0.1em]">{provider}</span>
-      <span aria-hidden className="text-faint">·</span>
       <StatusMark status={status} className="[&_.eyebrow]:text-muted" />
     </span>
   )
