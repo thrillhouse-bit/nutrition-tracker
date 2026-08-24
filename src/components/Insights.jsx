@@ -133,10 +133,12 @@ export default function Insights({ refreshKey }) {
             <Stat label="On-target days" value={num(nutrition?.onTargetDays)} />
           </Card>
 
-          {/* ENERGY VS TARGET — real line of logged calories. */}
+          {/* ENERGY — real line of logged calories. Titled by what it plots:
+              the only reference line is the observed average, so "vs target"
+              promised a comparison the graphic never made. */}
           <section>
             <SectionHead
-              label="Energy vs target"
+              label={`Energy · last ${window} days`}
               strong
               right={<span className="tnum text-[13px] text-muted">avg {fmt(avgCal)}</span>}
             />
@@ -192,15 +194,16 @@ export default function Insights({ refreshKey }) {
             {correlations?.available ? (
               <>
                 <p className="serif mt-2.5 text-xl leading-snug text-ink">{correlations.note}</p>
-                <div className="mt-2 flex items-center justify-between border-t border-line pt-3.5">
+                {/* No Details control until a details view exists — a chevron
+                    wired to nothing ships a dead affordance. */}
+                <div className="mt-2 border-t border-line pt-3.5">
                   <span className="text-[9.5px] font-medium uppercase tracking-[0.1em] text-faint">Observation only · not medical advice</span>
-                  <TextButton chevron>Details</TextButton>
                 </div>
               </>
             ) : (
               <>
                 <p className="mt-2.5 text-sm leading-relaxed text-muted">
-                  Observations comparing your fuelling with recovery and training open once enough connected history is
+                  Observations comparing your fueling with recovery and training open once enough connected history is
                   retained. Nothing here implies cause and effect.
                 </p>
                 {correlations?.note && <p className="mt-2 text-xs text-faint">{correlations.note}</p>}
@@ -211,11 +214,12 @@ export default function Insights({ refreshKey }) {
             )}
           </Card>
 
-          {/* SLEEP × FIBRE — a dashed "not enough data" card with a real progress
-              dot-bar bound to logged days. */}
+          {/* SLEEP × FIBER — a dashed "not enough data" card with a real progress
+              dot-bar bound to logged days. American spelling, like the Plan
+              tab's "Fiber" row and every other surface. */}
           <div className="border border-dashed border-line-heavy px-4 py-3.5">
             <div className="flex items-center justify-between">
-              <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Sleep × Fibre</span>
+              <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Sleep × Fiber</span>
               <span className="border border-line-strong px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">Not enough data</span>
             </div>
             <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted">

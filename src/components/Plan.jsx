@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NUTRIENTS, fmt, num, ymd } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Button, EmptyState, ErrorNote, Field, inputCls, Spinner, Toggle, Why } from './ui.jsx'
+import { Button, EmptyState, ErrorNote, Field, inputCls, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
 
 const meta = Object.fromEntries(NUTRIENTS.map((n) => [n.key, n]))
 const provLabel = (p) => (p ? p[0].toUpperCase() + p.slice(1) : 'Signal')
@@ -161,6 +161,13 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const workoutOK = !!(wSig && wv && wSig.freshness !== 'unavailable')
   const endurance = workoutOK && isEndurance(wv.kind)
 
+  // Demo must never look like a live connection. Today marks every context
+  // cell; Plan is the other adjusted-targets surface and inherited nothing —
+  // its first audit found zero "demo" on the rendered tab while a Sand tag
+  // read "ADJUSTED FOR RUN" off seeded data.
+  const anyDemo =
+    Object.values(signals).some((s) => s?.demo) || rationale.some((r) => r.demo)
+
   // Context tags derived from the rationale — the same reasons the table shows.
   const tags = useMemo(() => {
     const out = []
@@ -206,7 +213,9 @@ export default function Plan({ date, refreshKey, onChanged }) {
     const dayTarget = `DAY TARGET ${fmt(adjusted.protein_g)} g P · ${fmt(adjusted.carbs_g)} g C`
     if (workoutOK) {
       const wTime = wv.time || ''
-      const prov = (wSig.provider || '').toUpperCase()
+      // A bare provider name on seeded data reads as a live sync; say DEMO.
+      const prov = [(wSig.provider || '').toUpperCase(), wSig.demo ? 'DEMO' : null]
+        .filter(Boolean).join(' · ')
       if (endurance) {
         const preCarb = Math.max(30, round(num(adjusted.carbs_g) * 0.25, 5))
         const preProtein = Math.max(15, round(num(adjusted.protein_g) * 0.2, 5))
@@ -250,7 +259,10 @@ export default function Plan({ date, refreshKey, onChanged }) {
     <div>
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="serif text-[32px] leading-none text-ink">Plan</h2>
-        <span className="tnum text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{dateStamp(date)}</span>
+        <span className="flex items-baseline gap-2.5">
+          {anyDemo && <StatusMark status="demo" className="text-[10px] uppercase tracking-[0.1em]" />}
+          <span className="tnum text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{dateStamp(date)}</span>
+        </span>
       </header>
 
       {editing ? (
@@ -312,7 +324,10 @@ export default function Plan({ date, refreshKey, onChanged }) {
               <p className="max-w-[210px] text-[11.5px] leading-snug text-muted">
                 Nothing here is locked. Edit any adjusted value and the plan keeps it.
               </p>
-              <Button variant="outline" className="text-cobalt" onClick={() => setEditing(true)}>Edit targets</Button>
+              {/* No text-cobalt override: outline's own text-ink won the cascade
+                  anyway (class order doesn't beat stylesheet order), and the
+                  rendered ink matches the other outline buttons. */}
+              <Button variant="outline" onClick={() => setEditing(true)}>Edit targets</Button>
             </div>
           </section>
 

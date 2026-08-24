@@ -24,7 +24,7 @@ const SIGNALS = [
   { key: 'workouts', label: 'Workouts', hint: 'Primary driver of target changes' },
 ]
 
-// STATE REFERENCE legend — shape + word, never colour alone. Static, straight
+// STATE REFERENCE legend — shape + word, never color alone. Static, straight
 // from the artboard. `label` overrides StatusMark's default word where the
 // design's word differs (DISCONNECTED vs the component's "Not connected").
 const STATES = [
@@ -356,9 +356,9 @@ export default function Connections({ refreshKey, onChanged }) {
         ))}
       </section>
 
-      {/* State reference — shape + word, never colour alone (static legend) */}
+      {/* State reference — shape + word, never color alone (static legend) */}
       <section className="mt-6">
-        <div className="eyebrow pb-2">State reference · shape + word, never colour alone</div>
+        <div className="eyebrow pb-2">State reference · shape + word, never color alone</div>
         <div>
           {STATES.map((s) => (
             <div key={s.status} className="flex items-center gap-2.5 border-t border-line py-1.5 last:border-b">
@@ -414,14 +414,14 @@ export default function Connections({ refreshKey, onChanged }) {
           untouched, and OAuth tokens never leave your server.
         </p>
         <div className="text-right">
-          {/* Destructive → Berry, per the design's failure/destructive colour. */}
+          {/* Destructive → Berry, per the design's failure/destructive color. */}
           <button
             onClick={() =>
               setDeleteNote(
                 deleteNote ? null : 'History deletion is not wired to an endpoint yet — nothing was removed.',
               )
             }
-            className="text-[10px] font-semibold uppercase leading-[1.5] tracking-[0.1em] text-alert hover:opacity-80"
+            className="inline-flex min-h-11 items-center text-right text-[10px] font-semibold uppercase leading-[1.5] tracking-[0.1em] text-alert hover:opacity-80"
           >
             Delete synced<br />history
           </button>

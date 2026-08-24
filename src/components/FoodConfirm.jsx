@@ -96,7 +96,8 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
         : `for ${fmt(effServings, 2)} serving${effServings === 1 ? '' : 's'}`
 
   const segCls = (active) =>
-    `h-9 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] transition ${
+    // h-11 = the 44px touch floor; the switch measured 36px tall.
+    `h-11 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] transition ${
       active ? 'bg-cobalt text-oncobalt' : 'text-muted hover:bg-fill'
     }`
 
@@ -114,7 +115,10 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
       </div>
 
       {/* Product identity — big Bodoni name, then a muted sub-line */}
-      <h2 className="serif mt-3 text-[31px] leading-[1.06] tracking-[-0.01em] text-ink">{draft.name || 'Food'}</h2>
+      {/* line-clamp-3: an unclamped real-length product name set five lines of
+          31px Bodoni at 320px, pushing serving/meal/CTA below the fold; the
+          full name still appears in the editable Name field. */}
+      <h2 className="serif mt-3 line-clamp-3 text-[31px] leading-[1.06] tracking-[-0.01em] text-ink">{draft.name || 'Food'}</h2>
       {subParts.length > 0 && <p className="mt-2 text-[12px] text-muted">{subParts.join(' · ')}</p>}
 
       {/* SERVING — bordered −/value/+ stepper (or a weighed amount for bulk) */}
@@ -206,7 +210,9 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
             <div className="eyebrow">Calories</div>
             <div className="mt-2 text-[11.5px] text-muted">{qtyLabel}</div>
           </div>
-          <div className="numeral text-[54px] leading-[0.82] text-cobalt">{fmt(totals.calories, 0)}</div>
+          {/* leading-none, not 0.82: the tighter line box (measured 44.28px for
+              54px glyphs) overpainted the hairline into the macro band below */}
+          <div className="numeral text-[54px] leading-none text-cobalt">{fmt(totals.calories, 0)}</div>
         </div>
       </section>
 
@@ -227,7 +233,7 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
       <div className="mt-4 border-t border-line pt-3">
         <button
           onClick={() => setEditing((e) => !e)}
-          className="text-sm font-semibold text-cobalt hover:text-cobalt-ink"
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-cobalt hover:text-cobalt-ink"
         >
           {editing ? 'Hide details' : 'Edit details'}
         </button>

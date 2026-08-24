@@ -26,7 +26,9 @@
   /* Ink + its translucencies (the design draws almost everything in ink) */
   --color-ink: #121210;        /* deep near-black type */
   --color-muted: rgb(18 18 16 / 0.68);   /* secondary text / labels */
-  --color-faint: rgb(18 18 16 / 0.55);   /* tertiary metadata */
+  --color-faint: rgb(18 18 16 / 0.62);   /* tertiary metadata — 0.55 measured
+     4.02:1 on ivory, under WCAG AA's 4.5:1, on the strings that most need
+     reading (demo/not-medical disclosures); 0.62 measures 5.07:1 (24 Aug 2026) */
   --color-line: rgb(18 18 16 / 0.16);    /* hairline rule */
   --color-line-strong: rgb(18 18 16 / 0.25);
   --color-line-heavy: rgb(18 18 16 / 0.66);
