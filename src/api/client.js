@@ -61,4 +61,9 @@ export const api = {
 
   // Oura wearable: activity/expenditure for a local day (YYYY-MM-DD).
   ouraSummary: (ymd) => req(`/oura/summary?date=${encodeURIComponent(ymd)}`),
+
+  // Oura OAuth accounts (tokens never leave the server; connect is a browser
+  // navigation to /api/oura/connect, not a fetch).
+  ouraAccounts: () => req('/oura/accounts'),
+  disconnectOura: (id) => req(`/oura/accounts/${id}`, { method: 'DELETE' }),
 }

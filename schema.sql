@@ -49,3 +49,14 @@ create table if not exists daily_targets (
   sodium_mg      numeric,
   effective_from timestamptz not null default now()
 );
+
+-- Connected Oura accounts (OAuth). Tokens are server-side only; the API never
+-- returns them to the client. Multiple rows = multiple connected accounts.
+create table if not exists oura_accounts (
+  id            bigint generated always as identity primary key,
+  label         text,                          -- e.g. the account email, for display
+  access_token  text not null,
+  refresh_token text not null,
+  expires_at    timestamptz,
+  created_at    timestamptz not null default now()
+);
