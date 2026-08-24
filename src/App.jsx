@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api/client.js'
 import { dayBounds, MEALS, num, fmt } from './lib/nutrition.js'
+import { enqueue, dequeue, getQueue, pendingEntry } from './lib/outbox.js'
 import { Button, Modal, ErrorNote, Spinner, inputCls } from './components/ui.jsx'
 // The barcode scanner pulls in the large zxing library — load it only when the
 // user actually opens the scanner, keeping it out of the initial bundle.
@@ -12,6 +13,8 @@ import FoodConfirm from './components/FoodConfirm.jsx'
 import TodayView from './components/TodayView.jsx'
 import HistoryView from './components/HistoryView.jsx'
 import TargetsEditor from './components/TargetsEditor.jsx'
+
+const RECENTS_KEY = 'nt_recents_v1'
 
 const ADD_OPTIONS = [
   { key: 'scan', label: 'Scan barcode', icon: '📷', hint: 'Packaged groceries' },
@@ -73,6 +76,11 @@ export default function App() {
   const [logging, setLogging] = useState(false)
   const [recents, setRecents] = useState([])
 
+  // Offline write-queue
+  const [pending, setPending] = useState(() => getQueue())
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
+  const [syncing, setSyncing] = useState(false)
+
   // Entry editing
   const [editingEntry, setEditingEntry] = useState(null)
   const [savingEntry, setSavingEntry] = useState(false)
@@ -97,10 +105,63 @@ export default function App() {
     api.health().then(setHealth).catch(() => {})
   }, [])
 
+  // Replay queued logs. A network error (no HTTP status) means we're still
+  // offline — stop and keep the rest queued. An HTTP error means the payload is
+  // bad, so drop it rather than retry forever.
+  const flushOutbox = useCallback(async () => {
+    const q = getQueue()
+    if (!q.length || (typeof navigator !== 'undefined' && !navigator.onLine)) return
+    setSyncing(true)
+    let changed = false
+    for (const item of q) {
+      try {
+        await api.addEntry(item.payload)
+        dequeue(item.clientId)
+        changed = true
+      } catch (err) {
+        if (err.status) {
+          dequeue(item.clientId)
+          changed = true
+        } else {
+          break
+        }
+      }
+    }
+    setPending(getQueue())
+    setSyncing(false)
+    if (changed) setRefreshKey((k) => k + 1)
+  }, [])
+
+  useEffect(() => {
+    flushOutbox()
+    const goOnline = () => { setOnline(true); flushOutbox() }
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [flushOutbox])
+
   // ---- add-food flow -----------------------------------------------------
   const openMenu = () => {
     setFlowError(''); setDraftFood(null); setFlow('menu')
-    api.recentFoods(12).then((r) => setRecents(r.foods || [])).catch(() => setRecents([]))
+    api.recentFoods(12)
+      .then((r) => {
+        const foods = r.foods || []
+        setRecents(foods)
+        try { localStorage.setItem(RECENTS_KEY, JSON.stringify(foods)) } catch {}
+      })
+      .catch(() => {
+        // Offline: fall back to the last cached recents so re-logging still works.
+        try {
+          const cached = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]')
+          setRecents(Array.isArray(cached) ? cached : [])
+        } catch {
+          setRecents([])
+        }
+      })
   }
   const closeFlow = () => { setFlow(null); setDraftFood(null); setFlowError('') }
 
@@ -135,7 +196,21 @@ export default function App() {
       setDate(new Date())
       setRefreshKey((k) => k + 1)
     } catch (err) {
-      setFlowError(err.message || 'Could not log the entry.')
+      // No HTTP status = the request never reached the server (offline / dropped
+      // connection). Queue it, show it optimistically, and sync when back online.
+      const networkFailure = !err.status || (typeof navigator !== 'undefined' && !navigator.onLine)
+      if (networkFailure) {
+        enqueue({
+          clientId: crypto.randomUUID(),
+          payload: { ...payload, logged_at: payload.logged_at || new Date().toISOString() },
+          food: payload.food || draftFood, // denormalized so the pending row can render
+        })
+        setPending(getQueue())
+        closeFlow()
+        setDate(new Date())
+      } else {
+        setFlowError(err.message || 'Could not log the entry.')
+      }
     } finally {
       setLogging(false)
     }
@@ -143,6 +218,13 @@ export default function App() {
 
   // ---- entry edit / delete ----------------------------------------------
   const deleteEntry = async (id) => {
+    // A pending (offline, not-yet-synced) entry lives only in the outbox.
+    if (pending.some((i) => i.clientId === id)) {
+      dequeue(id)
+      setPending(getQueue())
+      setEditingEntry(null)
+      return
+    }
     setSavingEntry(true)
     try {
       await api.deleteEntry(id)
@@ -170,6 +252,14 @@ export default function App() {
 
   const shiftDay = (delta) => setDate((d) => { const n = new Date(d); n.setDate(n.getDate() + delta); return n })
 
+  // Merge queued-but-unsynced logs into the day they belong to, so offline logs
+  // show immediately alongside server data.
+  const { from: dayFrom, to: dayTo } = dayBounds(date)
+  const pendingForDay = pending
+    .filter((i) => i.payload.logged_at >= dayFrom && i.payload.logged_at < dayTo)
+    .map(pendingEntry)
+  const dayEntries = [...entries, ...pendingForDay].sort((a, b) => (a.logged_at < b.logged_at ? -1 : 1))
+
   // ---- flow modal content ------------------------------------------------
   const flowTitle = {
     menu: 'Add food', scan: 'Scan barcode', label: 'Scan label',
@@ -183,10 +273,14 @@ export default function App() {
         <h1 className="text-base font-black tracking-tight text-slate-50">
           <span className="text-emerald-400">◈</span> Nutrition
         </h1>
-        {health && (
-          <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-slate-400">
-            {health.backend === 'postgres' ? 'synced' : 'local'}
-          </span>
+        {!online ? (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">offline</span>
+        ) : (
+          health && (
+            <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-slate-400">
+              {health.backend === 'postgres' ? 'synced' : 'local'}
+            </span>
+          )
         )}
       </header>
 
@@ -195,7 +289,7 @@ export default function App() {
         {tab === 'today' && (
           <TodayView
             date={date}
-            entries={entries}
+            entries={dayEntries}
             targets={targets}
             loading={loadingEntries}
             onEdit={setEditingEntry}
@@ -203,6 +297,10 @@ export default function App() {
             onPrevDay={() => shiftDay(-1)}
             onNextDay={() => shiftDay(1)}
             onToday={() => setDate(new Date())}
+            pendingCount={pendingForDay.length}
+            online={online}
+            syncing={syncing}
+            onSync={flushOutbox}
           />
         )}
         {tab === 'history' && <HistoryView targets={targets} refreshKey={refreshKey} />}

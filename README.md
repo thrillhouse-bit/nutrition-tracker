@@ -82,12 +82,15 @@ Full DDL in [`schema.sql`](./schema.sql).
 - [x] History view: past days + 7-day average
 - [x] Editable daily targets (versioned)
 - [x] Local caching of scanned products for instant re-lookup
+- [x] Recent-foods quick re-log (one tap; cached for offline use)
 - [x] Installable PWA with offline app shell (last-loaded data readable offline)
+- [x] Offline **write** queue — log while offline; entries are held locally
+  (with their original timestamp), shown as "pending", and auto-synced on
+  reconnect. Barcode lookup / OCR still need network, but manual entry and
+  re-logging a recent food work fully offline.
 
 ### Deferred (v2)
 
-- Offline **write** queue (log while offline, sync later) — today only offline
-  *reads* work, via the service worker's NetworkFirst cache.
 - **Wearables (planned):** pull activity/expenditure from **Oura** (Cloud API
   v2 — easy, personal token) and **Garmin** (Health API — gated behind Garmin's
   developer program; apply early) to show net calories (in − out); optionally an

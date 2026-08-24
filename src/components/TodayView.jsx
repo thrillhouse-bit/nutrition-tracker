@@ -19,10 +19,20 @@ function dayLabel(date) {
 
 function EntryRow({ entry, onEdit, onDelete }) {
   const food = entry.food || {}
+  const pending = entry._pending
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2">
-      <button className="min-w-0 flex-1 text-left" onClick={() => onEdit(entry)}>
-        <div className="truncate font-medium text-slate-100">{food.name || 'Food'}</div>
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2 ${pending ? 'border border-dashed border-amber-400/30 bg-amber-400/5' : 'bg-white/5'}`}>
+      {/* Pending entries can't be edited server-side yet — tapping does nothing
+          until they sync; they can still be removed from the queue. */}
+      <button
+        className="min-w-0 flex-1 text-left disabled:cursor-default"
+        onClick={() => !pending && onEdit(entry)}
+        disabled={pending}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium text-slate-100">{food.name || 'Food'}</span>
+          {pending && <span className="shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">pending</span>}
+        </div>
         <div className="truncate text-xs text-slate-400">
           {fmt(entry.servings_consumed, 2)} × {food.serving_size ? `${fmt(food.serving_size, 0)} ${food.serving_unit}` : (food.serving_unit || 'serving')}
         </div>
@@ -42,7 +52,7 @@ function EntryRow({ entry, onEdit, onDelete }) {
   )
 }
 
-export default function TodayView({ date, entries, targets, loading, onEdit, onDelete, onPrevDay, onNextDay, onToday }) {
+export default function TodayView({ date, entries, targets, loading, onEdit, onDelete, onPrevDay, onNextDay, onToday, pendingCount = 0, online = true, syncing = false, onSync }) {
   const totals = useMemo(() => sumEntries(entries), [entries])
 
   const byMeal = useMemo(() => {
@@ -56,6 +66,27 @@ export default function TodayView({ date, entries, targets, loading, onEdit, onD
 
   return (
     <div className="space-y-5">
+      {/* Offline / pending-sync banner */}
+      {(pendingCount > 0 || !online) && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-sm">
+          <span className="text-amber-200">
+            {!online && '📴 Offline. '}
+            {pendingCount > 0
+              ? `${pendingCount} log${pendingCount === 1 ? '' : 's'} waiting to sync`
+              : 'Logs will be saved locally and synced later.'}
+          </span>
+          {pendingCount > 0 && online && (
+            <button
+              onClick={onSync}
+              disabled={syncing}
+              className="shrink-0 rounded-lg bg-amber-400/20 px-2.5 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-400/30 disabled:opacity-50"
+            >
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Day header */}
       <div className="flex items-center justify-between">
         <button onClick={onPrevDay} className="rounded-lg px-3 py-1.5 text-slate-400 hover:bg-white/5" aria-label="Previous day">‹</button>
