@@ -11,6 +11,7 @@ import { store, backend } from './db.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
+import { ouraConfigured, getToken as ouraToken, dailySummary as ouraDailySummary } from './integrations/oura.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -31,6 +32,7 @@ app.get('/api/health', asyncH(async (req, res) => {
     backend, // 'postgres' | 'json-file'
     ocr: ocrConfigured() ? 'configured' : 'not-configured',
     usda: process.env.FDC_API_KEY ? 'configured' : 'not-configured',
+    oura: ouraConfigured() ? 'configured' : 'not-configured',
     time: new Date().toISOString(),
   })
 }))
@@ -140,6 +142,16 @@ app.get('/api/targets', asyncH(async (req, res) => {
 app.put('/api/targets', asyncH(async (req, res) => {
   const targets = await store.setTargets(req.body || {})
   res.json({ targets })
+}))
+
+// --- wearables: Oura activity/expenditure ---------------------------------
+app.get('/api/oura/summary', asyncH(async (req, res) => {
+  if (!ouraConfigured()) return res.json({ configured: false, activity: null })
+  const day = String(req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.date
+    : new Date().toISOString().slice(0, 10)
+  const activity = await ouraDailySummary(ouraToken(), day)
+  res.json({ configured: true, activity })
 }))
 
 // In production (or any time a build exists) the same process serves the

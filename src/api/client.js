@@ -58,4 +58,7 @@ export const api = {
 
   // History: daily aggregates over a range.
   history: (days = 30) => req(`/history?days=${days}`),
+
+  // Oura wearable: activity/expenditure for a local day (YYYY-MM-DD).
+  ouraSummary: (ymd) => req(`/oura/summary?date=${encodeURIComponent(ymd)}`),
 }
