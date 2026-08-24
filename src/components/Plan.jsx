@@ -167,11 +167,11 @@ export default function Plan({ date, refreshKey, onChanged }) {
     const has = (f) => rationale.some((r) => r.factor === f)
     if (has('workout')) {
       const label = (wv?.shortLabel || wv?.label || 'your workout').toUpperCase()
-      out.push({ tone: 'sage', text: 'HIGHER-CARBOHYDRATE DAY' })
-      out.push({ tone: 'lavender', text: `ADJUSTED FOR ${label}` })
+      out.push({ tone: 'outline', text: 'HIGHER-CARBOHYDRATE DAY' })
+      out.push({ tone: 'sand', text: `ADJUSTED FOR ${label}` })
     }
-    if (has('readiness')) out.push({ tone: 'sage', text: 'HIGHER-PROTEIN DAY' })
-    if (has('sleep')) out.push({ tone: 'sage', text: 'STEADY-FUELING NOTE' })
+    if (has('readiness')) out.push({ tone: 'mist', text: 'HIGHER-PROTEIN DAY' })
+    if (has('sleep')) out.push({ tone: 'mist', text: 'STEADY-FUELING NOTE' })
     if (out.length === 0) out.push({ tone: 'neutral', text: 'MATCHES BASELINE' })
     return out
   }, [rationale, wv])
@@ -270,13 +270,14 @@ export default function Plan({ date, refreshKey, onChanged }) {
         </div>
       ) : (
         <>
-          {/* Context tags — sharp rectangles, sage = recovery, lavender = training */}
+          {/* Context tags — sharp rectangles. Mist = recovery, Sand = training,
+              outline (transparent) = a higher-macro day that isn't a fill swatch. */}
           <div className="mt-3.5 flex flex-wrap gap-1.5">
             {tags.map((t, i) => (
               <span
                 key={i}
                 className={`inline-flex items-center border border-line-strong px-2.5 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink ${
-                  t.tone === 'sage' ? 'bg-sage' : t.tone === 'lavender' ? 'bg-lavender' : 'bg-transparent'
+                  t.tone === 'sand' ? 'bg-sand' : t.tone === 'mist' ? 'bg-mist' : 'bg-transparent'
                 }`}
               >
                 {t.text}

@@ -141,9 +141,13 @@ export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' 
   )
 }
 
-// A small context swatch (recovery = sage, training = lavender, neutral = ink).
+// A small context swatch (recovery = mist, training = sand, neutral = ink).
+// Legacy sage/lavender tones alias to mist/sand.
 export function Swatch({ tone = 'ink', size = 9, className = '' }) {
-  const bg = tone === 'sage' ? 'bg-sage' : tone === 'lavender' ? 'bg-lavender' : tone === 'cobalt' ? 'bg-cobalt' : 'bg-ink'
+  const bg =
+    tone === 'mist' || tone === 'sage' ? 'bg-mist'
+      : tone === 'sand' || tone === 'lavender' ? 'bg-sand'
+        : tone === 'cobalt' ? 'bg-cobalt' : 'bg-ink'
   return <span aria-hidden className={`inline-block border border-line-strong ${bg} ${className}`} style={{ width: size, height: size }} />
 }
 
@@ -156,7 +160,7 @@ function MarkGlyph({ status }) {
   if (status === 'connected' || status === 'fresh')
     return <span aria-hidden className="flex shrink-0 items-center justify-center bg-ink text-[8px] font-bold leading-none text-oncobalt" style={box}>✓</span>
   if (status === 'error')
-    return <span aria-hidden className="flex shrink-0 items-center justify-center bg-ink text-[9px] font-bold leading-none text-oncobalt" style={box}>!</span>
+    return <span aria-hidden className="flex shrink-0 items-center justify-center bg-alert text-[9px] font-bold leading-none text-white" style={box}>!</span>
   if (status === 'syncing')
     return <span aria-hidden className="shrink-0 border border-ink" style={{ ...box, backgroundImage: HATCH }} />
   if (status === 'stale' || status === 'unavailable')
@@ -201,6 +205,8 @@ export function SourceLabel({ signal, className = '' }) {
 
 /* --- controls ------------------------------------------------------------ */
 // Square on/off switch — cobalt when on, ink outline when off, labelled ON/OFF.
+// The visible track is 50×28, but the button is 44px tall (a WCAG 2.5.5 target)
+// with the track centred inside, so the hit area is comfortable on touch.
 export function Toggle({ checked, onChange, label, id }) {
   return (
     <button
@@ -209,16 +215,18 @@ export function Toggle({ checked, onChange, label, id }) {
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative h-7 w-[50px] shrink-0 transition ${checked ? 'bg-cobalt' : 'border-[1.5px] border-line-heavy bg-transparent'}`}
+      className="relative flex h-11 w-[50px] shrink-0 items-center justify-center"
     >
-      <span
-        className={`absolute top-1/2 h-[21px] w-[21px] -translate-y-1/2 ${checked ? 'right-[3px] bg-white' : 'left-[2px] bg-ink/30'}`}
-      />
-      <span
-        aria-hidden
-        className={`absolute top-1/2 -translate-y-1/2 text-[9px] font-bold tracking-[0.08em] ${checked ? 'left-2 text-oncobalt' : 'right-1.5 text-muted'}`}
-      >
-        {checked ? 'ON' : 'OFF'}
+      <span className={`relative block h-7 w-[50px] transition ${checked ? 'bg-cobalt' : 'border-[1.5px] border-line-heavy bg-transparent'}`}>
+        <span
+          className={`absolute top-1/2 h-[21px] w-[21px] -translate-y-1/2 ${checked ? 'right-[3px] bg-white' : 'left-[2px] bg-ink/30'}`}
+        />
+        <span
+          aria-hidden
+          className={`absolute top-1/2 -translate-y-1/2 text-[9px] font-bold tracking-[0.08em] ${checked ? 'left-2 text-oncobalt' : 'right-1.5 text-muted'}`}
+        >
+          {checked ? 'ON' : 'OFF'}
+        </span>
       </span>
     </button>
   )

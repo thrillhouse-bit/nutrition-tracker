@@ -162,12 +162,12 @@ export default function Insights({ refreshKey }) {
               right={<StatusMark status="unavailable" label="Awaiting history" />}
             />
             <div className="relative mt-2.5 h-[62px] border-t border-b border-dashed border-line-strong">
-              <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-sage/50" />
+              <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-mist/60" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
               </div>
             </div>
-            <ChartCaption left="Sage band · recovery" right="Oura" />
+            <ChartCaption left="Mist band · recovery" right="Oura" />
           </section>
 
           {/* TRAINING LOAD · GARMIN — same: an empty lavender-bar skeleton, no
@@ -179,10 +179,10 @@ export default function Insights({ refreshKey }) {
             />
             <div className="mt-3 flex h-[46px] items-end gap-1 border-b border-line-strong">
               {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} aria-hidden className="h-3 flex-1 border border-line-strong border-b-0 bg-lavender/45" />
+                <div key={i} aria-hidden className="h-3 flex-1 border border-line-strong border-b-0 bg-sand/55" />
               ))}
             </div>
-            <ChartCaption left="Lavender bars · training" right="Garmin" />
+            <ChartCaption left="Sand bars · training" right="Garmin" />
           </section>
 
           {/* WHAT WE NOTICE — an observation only when correlations are available;
