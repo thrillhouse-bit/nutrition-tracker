@@ -187,6 +187,13 @@ const put = (path, body, headers = {}) =>
 // route in this file is read through this rather than a bare fetch().
 const get = (path, headers = {}) => fetch(`${base}${path}`, { headers: { Cookie: authCookie, ...headers } })
 
+const patch = (path, body, headers = {}) =>
+  fetch(`${base}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Cookie: authCookie, ...headers },
+    body: JSON.stringify(body),
+  })
+
 describe('POST /api/apple/ingest token gate', () => {
   const sample = { date: '2026-08-20', samples: [{ metric: 'sleep', value: 7.2, unit: 'h' }] }
 
@@ -239,6 +246,49 @@ describe('POST /api/apple/ingest token gate', () => {
     const res = await post('/api/apple/ingest', sample, { 'x-ingest-token': 'sekret' })
     expect(res.status).toBe(403)
     expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
+  })
+})
+
+describe('Input validation (zod) on mutating routes', () => {
+  it('PUT /api/targets rejects a non-numeric value before it reaches the store', async () => {
+    const res = await put('/api/targets', { calories: 'banana' })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/calories/i)
+    expect(fake.state.setTargetsCalls).toHaveLength(0) // never reached the store
+  })
+
+  it('PUT /api/targets rejects a negative value', async () => {
+    const res = await put('/api/targets', { protein_g: -5 })
+    expect(res.status).toBe(400)
+    expect(fake.state.setTargetsCalls).toHaveLength(0)
+  })
+
+  it('PUT /api/targets accepts a valid partial update (control)', async () => {
+    const res = await put('/api/targets', { calories: 2400 })
+    expect(res.status).toBe(200)
+    expect(fake.state.setTargetsCalls).toHaveLength(1)
+  })
+
+  it('POST /api/foods rejects a missing name', async () => {
+    const res = await post('/api/foods', { calories: 100 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/name/i)
+  })
+
+  it('POST /api/foods rejects a negative calorie count', async () => {
+    const res = await post('/api/foods', { name: 'Weird food', calories: -100 })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/entries rejects a non-positive servings_consumed', async () => {
+    const res = await post('/api/entries', { food_id: 1, servings_consumed: 0 })
+    expect(res.status).toBe(400)
+  })
+
+  it('PATCH /api/entries/:id rejects a negative servings_consumed', async () => {
+    fake.state.entries = [{ id: 5, food_id: 1, logged_at: '2026-08-20T12:00:00.000Z', servings_consumed: 1, meal: null }]
+    const res = await patch('/api/entries/5', { servings_consumed: -1 })
+    expect(res.status).toBe(400)
   })
 })
 
