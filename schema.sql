@@ -119,6 +119,24 @@ create table if not exists wearable_signals (
 );
 create index if not exists wearable_signals_lookup on wearable_signals (provider, day, metric);
 
+-- Biometric profile used to CALCULATE a starting baseline (server/planCalc.js)
+-- from height/weight/age/sex/activity/goal. Single-tenant app, so this is a
+-- singleton — id is pinned to 1 and every write upserts that one row, same
+-- shape as the `integrations` fixed-key upsert above but with no natural key
+-- of its own to key on. height_cm/weight_kg are the canonical stored units
+-- regardless of units_pref (display-only) — the client converts for imperial.
+create table if not exists profile (
+  id            integer primary key default 1 check (id = 1),
+  height_cm     numeric,
+  weight_kg     numeric,
+  sex           text check (sex in ('male', 'female')),
+  age_years     numeric,
+  units_pref    text not null default 'imperial' check (units_pref in ('imperial', 'metric')),
+  activity_level text check (activity_level in ('sedentary', 'light', 'moderate', 'active', 'very_active')),
+  goal          text check (goal in ('maintain', 'lose_fat', 'build_muscle', 'endurance')),
+  updated_at    timestamptz not null default now()
+);
+
 -- Snapshot of a day's plan: baseline vs. adjusted targets, the rationale for
 -- each adjustment, and the signals it was based on (so "why?" is reproducible).
 create table if not exists daily_plans (

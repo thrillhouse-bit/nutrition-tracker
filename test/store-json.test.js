@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { JsonStore } from '../server/db.js'
+import { JsonStore, DEFAULT_PROFILE } from '../server/db.js'
 
 // JsonStore behavioral contract tests. The JSON store is the dev fallback for
 // PgStore and the two must behave identically (routes only ever see `store`).
@@ -127,5 +127,34 @@ describe('JsonStore Oura readiness history (backfill)', () => {
     expect(n).toBe(1)
     const all = await s.listOuraHistory('2026-08-01', '2026-08-02')
     expect(all.map((r) => r.day)).toEqual(['2026-08-02'])
+  })
+})
+
+describe('JsonStore biometric profile (singleton)', () => {
+  it('returns the all-null default when nothing has been saved yet (never throws/404s)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.getProfile()).toEqual(DEFAULT_PROFILE)
+  })
+
+  it('setProfile merges a patch into what is already stored — earlier fields survive', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setProfile({ height_cm: 180, weight_kg: 80 })
+    const after = await s.setProfile({ sex: 'male', age_years: 40 }) // a second, later field-by-field save
+    expect(after).toMatchObject({ height_cm: 180, weight_kg: 80, sex: 'male', age_years: 40 })
+  })
+
+  it('sets updated_at itself on every save, ignoring any value the caller passes', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const saved = await s.setProfile({ height_cm: 180, updated_at: '1999-01-01T00:00:00.000Z' })
+    expect(saved.updated_at).not.toBe('1999-01-01T00:00:00.000Z')
+    expect(new Date(saved.updated_at).toString()).not.toBe('Invalid Date')
+  })
+
+  it('persists to disk and round-trips through a fresh JsonStore instance', async () => {
+    const file = path.join(dir, 'store.json')
+    const s = new JsonStore(file)
+    await s.setProfile({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
+    const reopened = new JsonStore(file)
+    expect(await reopened.getProfile()).toMatchObject({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
   })
 })

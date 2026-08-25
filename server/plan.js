@@ -45,7 +45,12 @@ export function computeAdjustedTargets(baseline = {}, signals = {}, opts = {}) {
     rationale.push({
       factor: 'workout',
       effect: `+${bump} g carbs`,
-      detail: `Higher-carbohydrate day — ${w.value.label || 'endurance workout'} detected${w.value.time ? ` around ${w.value.time}` : ''}.`,
+      // Explain the REASONING (carbs fuel endurance work, best eaten ahead of
+      // it), not just name the trigger — direct user feedback was "this
+      // section is unusable" on the old one-line "Higher-carbohydrate day —
+      // X detected" phrasing. Same facts as before (label, timing, the g
+      // bump), read as an explanation instead of a log line.
+      detail: `${w.value.label || 'An endurance workout'} is on your schedule${w.value.time ? ` around ${w.value.time}` : ''}, so today's plan adds ${bump} g of carbs to fuel it — carbohydrates are what endurance efforts burn through fastest, and they're most useful eaten in the few hours beforehand.`,
       source: w.provider,
       demo: !!w.demo,
     })
@@ -59,7 +64,10 @@ export function computeAdjustedTargets(baseline = {}, signals = {}, opts = {}) {
     rationale.push({
       factor: 'readiness',
       effect: `+${bump} g protein`,
-      detail: `Readiness ${round(r.value)} is below ~70 — a little more protein and steady fueling today.`,
+      // Same facts as before (the score, the ~70 threshold, the g bump), read
+      // as a reason rather than a bare log line — see the workout comment
+      // above for why.
+      detail: `Your readiness score is ${round(r.value)} today, below the ~70 mark that usually means recovery is still catching up — so the plan adds ${bump} g of protein and keeps fueling steady rather than cutting back.`,
       source: r.provider,
       demo: !!r.demo,
     })
@@ -71,7 +79,10 @@ export function computeAdjustedTargets(baseline = {}, signals = {}, opts = {}) {
     rationale.push({
       factor: 'sleep',
       effect: 'no change',
-      detail: `Sleep was ${Number(s.value).toFixed(1)} h — spread carbohydrates through the day and keep hydration up.`,
+      // Same facts as before (hours slept, the ~6.5h line, no target change),
+      // read as a reason rather than a bare log line — see the workout
+      // comment above for why.
+      detail: `You slept ${Number(s.value).toFixed(1)} h last night, under the ~6.5 h mark where energy tends to dip — no target change today, but spreading carbohydrates through the day and staying on top of hydration should help you feel steadier.`,
       source: s.provider,
       demo: !!s.demo,
     })
