@@ -154,6 +154,51 @@ from a single `GET /api/energy/summary?date=YYYY-MM-DD` — Oura if an Oura
 account is connected, otherwise Garmin — so either wearable drives the same
 card without the client caring which one answered.
 
+**Readiness contributors, sleep score, workouts (25 Aug 2026).** Beyond the
+readiness score, sleep duration, expenditure, and steps this app already
+pulled, it now also retains:
+- **HRV balance, resting heart rate, body temperature** — `daily_readiness`'s
+  `contributors` object, three named sub-**scores** in [1, 100] (not raw
+  biometrics — Oura's contributor scores compare a recent window to your own
+  baseline and report how that comparison scored, same shape as the
+  top-level readiness score), plus the genuinely raw
+  `temperature_deviation`/`temperature_trend_deviation` fields (°C). All
+  four ride alongside the readiness signal itself (`signals.readiness.contributors`,
+  `.temperature_deviation`, `.temperature_trend_deviation`) — available via
+  the API and persisted through backfill/resync; not yet given dedicated
+  Today/Insights UI chrome (kept out of scope for this pass — the context
+  strip's three columns are already pixel-tuned at 320px, and this felt like
+  a real design decision rather than a plumbing one).
+- **Sleep quality score** — `daily_sleep`'s 0-100 score (a different endpoint
+  from sleep *duration*), surfaced in Today's Sleep cell as "Score NN"
+  alongside the existing hours/minutes.
+- **Real workout detection** — `GET /v2/usercollection/workout` (auto-detected
+  or manually logged in the Oura app), stored per connected account
+  (`oura_workouts`, upserted on Oura's own workout id) and kept current by
+  the same daily backfill/resync that already covers readiness/sleep/
+  activity. The day's earliest-starting workout composes as the `workout`
+  signal, matching every other provider's one-workout-per-day shape; every
+  workout that day is retained for a future multi-workout view.
+
+All of the above uses the `daily` scope this app already requests — no new
+OAuth consent, no reconnect needed for already-connected accounts.
+
+**Not implemented: daily stress and SpO2.** Both are real Oura v2 endpoints
+(`daily_stress`, `daily_spo2`) but require OAuth scopes this app's connect
+flow does not currently request (`stress` and `spo2`/`spo2Daily`
+respectively — VERIFY the exact scope string against Oura's live docs before
+wiring either up). Concretely, adding them means: (1) add the scope(s) to
+`SCOPES` in `server/integrations/oura.js`; (2) every **already-connected**
+account's stored token was authorized under the old scope set and will 403
+on these endpoints until that person disconnects and reconnects through
+Oura's consent screen again — there is no silent scope upgrade; (3) SpO2
+specifically also needs a Gen3+ ring and an active Oura membership on the
+connected account, a hardware/subscription gate outside this app's control
+and unverifiable without a real qualifying account. Given the reconnect
+requirement and the unverifiable SpO2 gate, this is left undone rather than
+half-tested against assumptions about scope names and hardware this
+environment cannot confirm.
+
 ### Garmin (data-in)
 
 Garmin mirrors the Oura shape — the same Energy-balance card, a day-at-a-time

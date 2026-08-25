@@ -556,23 +556,73 @@ export class PgStore {
     let n = 0
     for (const r of rows) {
       if (r.day == null || r.score == null) continue // nothing to show without a score
+      // extra also carries readiness's own contributors/temperature fields
+      // (the audit's named three: hrv_balance, resting_heart_rate,
+      // body_temperature — contributor SCORES, never relabeled as raw
+      // biometrics — plus the genuinely raw temperature_deviation/
+      // temperature_trend_deviation in °C) and the day's sleep_score
+      // (daily_sleep's 0-100 quality score, a different Oura endpoint from
+      // the sleep-DURATION signal) — all fetched in the same backfill sweep
+      // as the readiness score this row is keyed on, same reasoning as
+      // steps/calories already being here.
+      const extra = {
+        total_calories: r.total_calories, active_calories: r.active_calories, steps: r.steps,
+        contributors: r.contributors || null,
+        temperature_deviation: r.temperature_deviation ?? null,
+        temperature_trend_deviation: r.temperature_trend_deviation ?? null,
+        sleep_score: r.sleep_score ?? null,
+      }
       await sql`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value, unit, extra)
-        values (${userId}, 'oura', 'readiness', ${r.day}, ${`${r.day}T12:00:00.000Z`}, ${new Date().toISOString()}, ${JSON.stringify(r.score)}, 'score', ${JSON.stringify({ total_calories: r.total_calories, active_calories: r.active_calories, steps: r.steps })})`
+        values (${userId}, 'oura', 'readiness', ${r.day}, ${`${r.day}T12:00:00.000Z`}, ${new Date().toISOString()}, ${JSON.stringify(r.score)}, 'score', ${JSON.stringify(extra)})`
       n++
     }
     return n
   }
 
-  // `extra` carries the steps/total_calories/active_calories snapshot saved
-  // alongside each day's readiness score (see saveOuraHistory) — selected
-  // here too so this matches JsonStore's return shape, which returns the
-  // whole stored row. GET /api/profile/activity-suggestion reads extra.steps;
-  // narrowing this select to day/value only would silently starve it on the
-  // Postgres backend while JsonStore kept working (the exact PgStore/JsonStore
-  // drift shape this codebase has been bitten by before).
+  // `extra` carries the steps/total_calories/active_calories/contributors/
+  // temperature/sleep_score snapshot saved alongside each day's readiness
+  // score (see saveOuraHistory) — selected here too so this matches
+  // JsonStore's return shape, which returns the whole stored row. GET
+  // /api/profile/activity-suggestion reads extra.steps; narrowing this
+  // select to day/value only would silently starve it on the Postgres
+  // backend while JsonStore kept working (the exact PgStore/JsonStore drift
+  // shape this codebase has been bitten by before).
   async listOuraHistory(userId, fromYmd, toYmd) {
     const sql = await this.ready()
     return sql`select day, value, extra from wearable_signals where user_id = ${userId} and provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
+  }
+
+  // --- Oura workouts (per connected account, see schema.sql's oura_workouts
+  // comment) — upserted on (account_id, oura_id) so a re-run backfill or an
+  // Oura-side edit updates the same row instead of duplicating it. Returns
+  // the count actually saved, matching saveOuraHistory's return shape.
+  async saveOuraWorkouts(accountId, workouts) {
+    const sql = await this.ready()
+    let n = 0
+    for (const w of workouts) {
+      if (w.id == null || w.day == null) continue
+      await sql`
+        insert into oura_workouts (account_id, oura_id, day, activity, intensity, source, label, calories, distance, start_datetime, end_datetime, raw)
+        values (${accountId}, ${w.id}, ${w.day}, ${w.activity}, ${w.intensity}, ${w.source}, ${w.label},
+                ${w.calories}, ${w.distance}, ${w.start_datetime}, ${w.end_datetime}, ${JSON.stringify(w)})
+        on conflict (account_id, oura_id) do update set
+          day = excluded.day, activity = excluded.activity, intensity = excluded.intensity,
+          source = excluded.source, label = excluded.label, calories = excluded.calories,
+          distance = excluded.distance, start_datetime = excluded.start_datetime,
+          end_datetime = excluded.end_datetime, raw = excluded.raw`
+      n++
+    }
+    return n
+  }
+
+  // Every workout attributed to `day` for one account, earliest start first
+  // — composeSignals picks the first as the day's primary workout signal
+  // (matching the single-workout-per-day shape every other provider's
+  // `workout` slot already assumes), but all of them are retained here for
+  // a future multi-workout view.
+  async listOuraWorkouts(accountId, day) {
+    const sql = await this.ready()
+    return sql`select * from oura_workouts where account_id = ${accountId} and day = ${day} order by start_datetime asc nulls last, id asc`
   }
 
   // --- Body weight log (per user per day) — same "no new table" reasoning
@@ -589,10 +639,24 @@ export class PgStore {
     return { day, kg }
   }
 
+  // Merges the user's own typed-in readings with any Apple Health
+  // bodyMass sync for the same window — a smart-scale reading (via the iOS
+  // companion, provider='apple') is just as real a weight signal as a
+  // manual one, so trend-weight should see either. A day with BOTH is not
+  // averaged or added: manual wins outright, so a deliberate correction (the
+  // user re-weighing, or fixing a bad auto-read) is never silently
+  // overridden by a later sync, and no day can double-count toward the
+  // trend by counting both. Every entry now says which it was.
   async listWeightEntries(userId, fromYmd, toYmd) {
     const sql = await this.ready()
-    const rows = await sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day between ${fromYmd} and ${toYmd} order by day`
-    return rows.map((r) => ({ day: r.day, kg: Number(r.value) }))
+    const [manualRows, appleRows] = await Promise.all([
+      sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day between ${fromYmd} and ${toYmd}`,
+      sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'apple' and metric = 'weight' and day between ${fromYmd} and ${toYmd}`,
+    ])
+    const byDay = new Map()
+    for (const r of appleRows) byDay.set(r.day, { day: r.day, kg: Number(r.value), source: 'apple' })
+    for (const r of manualRows) byDay.set(r.day, { day: r.day, kg: Number(r.value), source: 'manual' }) // manual wins a same-day conflict
+    return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
   }
 
   async deleteWeightEntry(userId, day) {
@@ -611,7 +675,11 @@ export class PgStore {
       delete from garmin_dailies using garmin_accounts
       where garmin_dailies.account_id = garmin_accounts.id and garmin_accounts.user_id = ${userId}
       returning garmin_dailies.id`
-    return signals.length + garmin.length
+    const ouraWorkouts = await sql`
+      delete from oura_workouts using oura_accounts
+      where oura_workouts.account_id = oura_accounts.id and oura_accounts.user_id = ${userId}
+      returning oura_workouts.id`
+    return signals.length + garmin.length + ouraWorkouts.length
   }
 
   // --- daily plans (per user snapshot of baseline/adjusted targets + rationale)
@@ -1137,11 +1205,21 @@ export class JsonStore {
     const now = new Date().toISOString()
     for (const r of rows) {
       if (r.day == null || r.score == null) continue
+      // See PgStore.saveOuraHistory for what extra now carries beyond
+      // steps/calories: contributors (scores, never relabeled as raw
+      // biometrics), the raw temperature_deviation/temperature_trend_
+      // deviation (°C), and the day's daily_sleep score.
       d.wearable_signals.push({
         user_id: uid, provider: 'oura', metric: 'readiness', day: r.day,
         recorded_at: `${r.day}T12:00:00.000Z`, fetched_at: now,
         value: r.score, unit: 'score',
-        extra: { total_calories: r.total_calories, active_calories: r.active_calories, steps: r.steps },
+        extra: {
+          total_calories: r.total_calories, active_calories: r.active_calories, steps: r.steps,
+          contributors: r.contributors || null,
+          temperature_deviation: r.temperature_deviation ?? null,
+          temperature_trend_deviation: r.temperature_trend_deviation ?? null,
+          sleep_score: r.sleep_score ?? null,
+        },
       })
       n++
     }
@@ -1157,6 +1235,39 @@ export class JsonStore {
       .sort((a, b) => (a.day < b.day ? -1 : 1))
   }
 
+  // --- Oura workouts (JsonStore mirror of PgStore's oura_workouts table) —
+  // one array of plain objects, upserted on (account_id, oura_id).
+  async saveOuraWorkouts(accountId, workouts) {
+    const d = await this.load()
+    d.oura_workouts = d.oura_workouts || []
+    const aid = Number(accountId)
+    let n = 0
+    for (const w of workouts) {
+      if (w.id == null || w.day == null) continue
+      let row = d.oura_workouts.find((x) => x.account_id === aid && x.oura_id === w.id)
+      if (!row) {
+        row = { account_id: aid, oura_id: w.id }
+        d.oura_workouts.push(row)
+      }
+      Object.assign(row, {
+        day: w.day, activity: w.activity, intensity: w.intensity, source: w.source, label: w.label,
+        calories: w.calories, distance: w.distance, start_datetime: w.start_datetime, end_datetime: w.end_datetime,
+        raw: w,
+      })
+      n++
+    }
+    await this.persist()
+    return n
+  }
+
+  async listOuraWorkouts(accountId, day) {
+    const d = await this.load()
+    const aid = Number(accountId)
+    return (d.oura_workouts || [])
+      .filter((x) => x.account_id === aid && x.day === day)
+      .sort((a, b) => (a.start_datetime || '').localeCompare(b.start_datetime || ''))
+  }
+
   // --- Body weight log (per user per day) — see PgStore's sibling methods
   // for why this reuses wearable_signals rather than a new table.
   async saveWeightEntry(userId, day, kg) {
@@ -1170,13 +1281,17 @@ export class JsonStore {
     return { day, kg }
   }
 
+  // See PgStore.listWeightEntries for why manual and Apple-synced readings
+  // are merged here (and manual wins a same-day conflict, never averaged
+  // or double-counted).
   async listWeightEntries(userId, fromYmd, toYmd) {
     const d = await this.load()
     const uid = Number(userId)
-    return (d.wearable_signals || [])
-      .filter((s) => s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day >= fromYmd && s.day <= toYmd)
-      .sort((a, b) => (a.day < b.day ? -1 : 1))
-      .map((s) => ({ day: s.day, kg: Number(s.value) }))
+    const inWindow = (s, provider) => s.user_id === uid && s.provider === provider && s.metric === 'weight' && s.day >= fromYmd && s.day <= toYmd
+    const byDay = new Map()
+    for (const s of (d.wearable_signals || []).filter((s) => inWindow(s, 'apple'))) byDay.set(s.day, { day: s.day, kg: Number(s.value), source: 'apple' })
+    for (const s of (d.wearable_signals || []).filter((s) => inWindow(s, 'manual'))) byDay.set(s.day, { day: s.day, kg: Number(s.value), source: 'manual' })
+    return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
   }
 
   async deleteWeightEntry(userId, day) {
@@ -1210,8 +1325,13 @@ export class JsonStore {
     d.garmin_dailies = (d.garmin_dailies || []).filter((g) => !garminAccountIds.has(g.account_id))
     const garminRemoved = beforeGarmin - d.garmin_dailies.length
 
+    const ouraAccountIds = new Set((d.oura_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    const beforeOuraWorkouts = (d.oura_workouts || []).length
+    d.oura_workouts = (d.oura_workouts || []).filter((w) => !ouraAccountIds.has(w.account_id))
+    const ouraWorkoutsRemoved = beforeOuraWorkouts - d.oura_workouts.length
+
     await this.persist()
-    return signalsRemoved + garminRemoved
+    return signalsRemoved + garminRemoved + ouraWorkoutsRemoved
   }
 
   async getPlan(userId, date) {

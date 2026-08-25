@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import { computeTrend } from '../server/weightTrend.js'
 
 // Route-level tests: the real Express app, an in-memory store (so no test ever
@@ -22,6 +22,7 @@ const fake = vi.hoisted(() => {
     appleSignals: {},
     ouraAccounts: [],
     ouraHistory: [], // { day, value }
+    ouraWorkouts: [], // { account_id, oura_id, day, ... }
     weightEntries: [], // { day, kg }
     manualWorkouts: {}, // day -> workout
     garminAccounts: [],
@@ -105,6 +106,20 @@ const fake = vi.hoisted(() => {
     listOuraAccounts: async (userId) => state.ouraAccounts,
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
+    saveOuraWorkouts: async (accountId, workouts) => {
+      let n = 0
+      for (const w of workouts) {
+        if (w.id == null || w.day == null) continue
+        const i = state.ouraWorkouts.findIndex((x) => x.account_id === accountId && x.oura_id === w.id)
+        const row = { account_id: accountId, oura_id: w.id, ...w }
+        if (i === -1) state.ouraWorkouts.push(row)
+        else state.ouraWorkouts[i] = row
+        n++
+      }
+      return n
+    },
+    listOuraWorkouts: async (accountId, day) =>
+      state.ouraWorkouts.filter((w) => w.account_id === accountId && w.day === day),
     saveOuraHistory: async (userId, rows) => {
       // Mirrors PgStore/JsonStore's scoredDays fix: only a day with an actual
       // score this run gets deleted-then-reinserted. A day present in `rows`
@@ -126,7 +141,13 @@ const fake = vi.hoisted(() => {
         state.ouraHistory.push({
           day: r.day,
           value: r.score,
-          extra: { total_calories: r.total_calories ?? null, active_calories: r.active_calories ?? null, steps: r.steps ?? null },
+          extra: {
+            total_calories: r.total_calories ?? null, active_calories: r.active_calories ?? null, steps: r.steps ?? null,
+            contributors: r.contributors ?? null,
+            temperature_deviation: r.temperature_deviation ?? null,
+            temperature_trend_deviation: r.temperature_trend_deviation ?? null,
+            sleep_score: r.sleep_score ?? null,
+          },
         })
         n++
       }
@@ -184,6 +205,8 @@ const oura = vi.hoisted(() => ({
   dailyReadiness: async () => null,
   readinessRange: async () => [],
   dailySleepHours: async () => null,
+  sleepScoreRange: async () => [],
+  workoutsRange: async () => [],
 }))
 
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
@@ -198,6 +221,8 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     dailyReadiness: (...args) => oura.dailyReadiness(...args),
     readinessRange: (...args) => oura.readinessRange(...args),
     dailySleepHours: (...args) => oura.dailySleepHours(...args),
+    sleepScoreRange: (...args) => oura.sleepScoreRange(...args),
+    workoutsRange: (...args) => oura.workoutsRange(...args),
   }
 })
 
@@ -436,6 +461,50 @@ describe('POST /api/garmin/webhook malformed dailies', () => {
   })
 })
 
+describe('POST /api/garmin/webhook — unsupported push types are reported, not silently discarded', () => {
+  const valid = { userId: 'garmin-user-abc', calendarDate: '2026-08-25', activeKilocalories: 500, bmrKilocalories: 1500, steps: 1000 }
+
+  it('reports a known-but-not-yet-ingested Garmin push type (sleeps) in the response', async () => {
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
+    const res = await post('/api/garmin/webhook', {
+      dailies: [valid],
+      sleeps: [{ userId: 'garmin-user-abc', calendarDate: '2026-08-25' }],
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.received).toBe(1) // dailies handling is unchanged
+    expect(body.unsupported).toEqual({ sleeps: 1 })
+  })
+
+  it('reports a genuinely unrecognized key the same way (still visible, not just the known list)', async () => {
+    const res = await post('/api/garmin/webhook', { someBrandNewGarminThing: [{ x: 1 }, { x: 2 }] })
+    expect(res.status).toBe(200)
+    expect((await res.json()).unsupported).toEqual({ someBrandNewGarminThing: 2 })
+  })
+
+  it('omits `unsupported` entirely when the payload is only dailies (control — no noise on the common case)', async () => {
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
+    const res = await post('/api/garmin/webhook', { dailies: [valid] })
+    expect('unsupported' in (await res.json())).toBe(false)
+  })
+
+  it('ignores a non-array value under an unknown key rather than misreporting its length (control)', async () => {
+    const res = await post('/api/garmin/webhook', { dailies: [], someKey: 'not an array' })
+    expect((await res.json()).unsupported).toBeUndefined()
+  })
+
+  it('multiple unsupported types in one push are all reported', async () => {
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
+    const res = await post('/api/garmin/webhook', {
+      dailies: [valid],
+      sleeps: [{ a: 1 }],
+      bodyComps: [{ b: 1 }, { b: 2 }],
+    })
+    const body = await res.json()
+    expect(body.unsupported).toEqual({ sleeps: 1, bodyComps: 2 })
+  })
+})
+
 describe('GET /api/oura/summary default day', () => {
   it("defaults to the server's local day like every sibling endpoint, not the UTC day", async () => {
     // 2026-08-24T20:00:00Z is already 2026-08-25 in Apia (UTC+13).
@@ -504,6 +573,9 @@ describe('POST /api/oura/backfill', () => {
   afterEach(() => {
     oura.activityRange = async () => []
     oura.readinessRange = async () => []
+    oura.sleepScoreRange = async () => []
+    oura.workoutsRange = async () => []
+    fake.state.ouraWorkouts = []
   })
 
   it('refuses with 400 when no Oura account is resolvable (control)', async () => {
@@ -549,12 +621,13 @@ describe('POST /api/oura/backfill', () => {
     expect(askedActivity.token).toBe('legacy-token')
     expect(askedReadiness.token).toBe('legacy-token')
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
-    expect(stored).toEqual([
-      // Readiness's score (70), never Activity's (55) — but Activity's own
-      // calories/steps context still rides alongside it (see backfillOuraHistory's
-      // day-merge in server/index.js), so it isn't lost by preferring Readiness's score.
-      { day: '2026-08-01', value: 70, extra: { total_calories: 2100, active_calories: 400, steps: 8000 } },
-    ])
+    expect(stored).toHaveLength(1)
+    expect(stored[0].day).toBe('2026-08-01')
+    expect(stored[0].value).toBe(70) // Readiness's score, never Activity's (55)
+    // Activity's own calories/steps context still rides alongside it (see
+    // backfillOuraHistory's day-merge in server/index.js), so it isn't lost
+    // by preferring Readiness's score.
+    expect(stored[0].extra).toMatchObject({ total_calories: 2100, active_calories: 400, steps: 8000 })
   })
 
   it('is idempotent: re-running backfill over the same days replaces rather than duplicates', async () => {
@@ -632,6 +705,72 @@ describe('POST /api/oura/backfill', () => {
     expect((await res.json()).daysSaved).toBe(1) // only 08-01 had a score to (re)save this run
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
     expect(stored.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched, not wiped
+  })
+
+  it('the legacy single-token path (no oura_accounts row) never stores workouts — there is no account to attach them to', async () => {
+    oura.legacy = true
+    fake.state.ouraAccounts = []
+    fake.state.ouraWorkouts = []
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    // Even though workoutsRange WOULD return real data, resolveOuraAccountId
+    // returns null on the legacy path — backfillOuraHistory must recognize
+    // that and skip workout storage entirely, not throw trying to attach a
+    // workout to an account that doesn't exist.
+    oura.workoutsRange = async () => [{ id: 'w1', day: '2026-08-01', activity: 'running' }]
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.workoutsSaved).toBe(0)
+    expect(fake.state.ouraWorkouts).toHaveLength(0)
+  })
+
+  // These two need the OAuth (non-legacy) path, since only a real
+  // oura_accounts row gives backfillOuraHistory an account id to attach
+  // workouts to — resolveOuraAccountId returns null on the legacy
+  // single-token path (proven above), by design.
+  describe('with a real connected OAuth account (not the legacy single-token path)', () => {
+    const OURA_ENV = ['OURA_CLIENT_ID', 'OURA_CLIENT_SECRET', 'OURA_REDIRECT_URI']
+    const saved = {}
+    beforeAll(() => {
+      for (const k of OURA_ENV) saved[k] = process.env[k]
+      process.env.OURA_CLIENT_ID = 'test-client-id'
+      process.env.OURA_CLIENT_SECRET = 'test-client-secret'
+      process.env.OURA_REDIRECT_URI = 'https://example.com/oura/callback'
+    })
+    afterAll(() => {
+      for (const k of OURA_ENV) {
+        if (saved[k] === undefined) delete process.env[k]
+        else process.env[k] = saved[k]
+      }
+    })
+    beforeEach(() => {
+      oura.legacy = false
+      fake.state.ouraAccounts = [{ id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() }]
+      fake.state.ouraHistory = []
+      fake.state.ouraWorkouts = []
+      oura.activityRange = async () => []
+      oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    })
+
+    it('a workout fetch failure does not fail the rest of the backfill (readiness/sleep still save)', async () => {
+      oura.workoutsRange = async () => { throw new Error('workout endpoint 500') }
+      const res = await post('/api/oura/backfill?days=10', {})
+      expect(res.status).toBe(200) // a workout-only failure must not fail the whole backfill
+      const body = await res.json()
+      expect(body.workoutsSaved).toBe(0)
+      expect(body.daysSaved).toBe(1) // readiness still saved
+    })
+
+    it('workouts fetched for a real connected account are saved and attributed to that account', async () => {
+      oura.workoutsRange = async () => [{ id: 'w1', day: '2026-08-01', activity: 'running', calories: 400 }]
+      const res = await post('/api/oura/backfill?days=10', {})
+      expect(res.status).toBe(200)
+      expect((await res.json()).workoutsSaved).toBe(1)
+      const stored = await fake.store.listOuraWorkouts(1, '2026-08-01')
+      expect(stored).toHaveLength(1)
+      expect(stored[0].oura_id).toBe('w1')
+    })
   })
 })
 

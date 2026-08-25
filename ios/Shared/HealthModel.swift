@@ -25,6 +25,7 @@ enum HealthCategory: String, CaseIterable, Codable {
     case hrv             // heartRateVariabilitySDNN — context only
     case restingHR       // restingHeartRate — context only
     case steps           // stepCount
+    case bodyMass        // HKQuantityType bodyMass — feeds the backend's trend-weight feature
 }
 
 /// The normalized metric keys the backend understands (server/providers.js).
@@ -36,6 +37,12 @@ enum SignalMetric: String, Codable {
     case sleep           // value = hours (Double)
     case hrv             // value = ms (Double) — context only
     case restingHR = "resting_hr" // value = bpm (Double) — context only
+    // "weight", not "bodyMass" — this is the backend's OWN vocabulary
+    // (server/db.js's saveWeightEntry/listWeightEntries, provider='manual'
+    // for a typed-in reading). A synced HealthKit reading lands in the same
+    // trend-weight feature under provider='apple' instead, merged by day at
+    // read time (manual wins a same-day conflict) — see listWeightEntries.
+    case weight          // value = kg (Double)
 }
 
 /// A workout normalized from HealthKit. `startHour` is a local-time float

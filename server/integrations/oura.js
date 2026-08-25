@@ -72,10 +72,47 @@ export function normalizeActivity(record = {}) {
 
 // Reduce one Oura daily_readiness record — a genuinely different score from
 // Activity's, combining sleep balance, HRV, resting heart rate, body
-// temperature, and recovery. VERIFY: the `score` field name matches Oura API
-// v2 docs, but unlike daily_activity (proven against this app's own live
-// traffic), this endpoint hasn't been exercised against a captured response.
+// temperature, and recovery.
+//
+// Oura's `contributors` object holds sub-SCORES in [1, 100] each — NOT raw
+// biometrics. `contributors.hrv_balance` is not a millisecond HRV reading,
+// `contributors.resting_heart_rate` is not a bpm reading; both compare a
+// recent window against the user's own long-term baseline and report how
+// that comparison scored, same shape as the top-level readiness score
+// itself. Keep only the three this app surfaces (per the audit's own
+// naming) rather than all eight, so nothing here implies coverage of
+// contributors nobody asked for or built a UI/test around.
+//
+// `temperature_deviation`/`temperature_trend_deviation` are the ACTUAL raw
+// values here, in degrees Celsius — Oura never reports absolute skin
+// temperature, only how far last night (or the recent trend) deviated from
+// the user's own established mean. These are genuinely different from
+// `contributors.body_temperature` (also fetched, kept separately, and never
+// relabeled as this raw deviation): one is a 1-100 score, the other a signed
+// °C number, and conflating them would be exactly the wrong-endpoint,
+// same-0-100-scale mislabeling this file's own history (see the comment
+// above) already got bitten by once for Activity vs. Readiness.
 export function normalizeReadiness(record = {}) {
+  const c = record.contributors || {}
+  return {
+    day: record.day || null,
+    score: n(record.score),
+    contributors: {
+      hrv_balance: n(c.hrv_balance),
+      resting_heart_rate: n(c.resting_heart_rate),
+      body_temperature: n(c.body_temperature),
+    },
+    temperature_deviation: n(record.temperature_deviation),
+    temperature_trend_deviation: n(record.temperature_trend_deviation),
+  }
+}
+
+// Oura's daily_sleep record — a 0-100 SLEEP QUALITY score, genuinely
+// different from dailySleepHours' raw duration (a different endpoint:
+// `sleep`, session-level, summed into hours). Do not confuse the two the
+// way this file's own history confused Activity and Readiness — they only
+// happen to share the word "sleep".
+export function normalizeSleepScore(record = {}) {
   return {
     day: record.day || null,
     score: n(record.score),
@@ -113,6 +150,27 @@ async function fetchRangeRows(endpoint, token, fromYmd, toYmd) {
   return Array.isArray(body?.data) ? body.data : []
 }
 
+// Oura v2 list endpoints are cursor-paginated (`next_token` in the response,
+// echoed back as a request param until it comes back null/absent). The
+// per-day summary endpoints above (activity/readiness/sleep-duration) never
+// bothered with this — one row per day over a <=90-day window reliably fits
+// one page — but workouts can run several a day, so a wide backfill window
+// is exactly the case pagination exists for. Hard-capped at 20 pages (Oura
+// has never been observed to need more for a 90-day window) so a server
+// bug that never returns a null next_token can't loop forever against a
+// live API.
+async function fetchAllPages(endpoint, token, params) {
+  const rows = []
+  let nextToken = null
+  for (let page = 0; page < 20; page++) {
+    const body = await ouraGet(endpoint, token, nextToken ? { ...params, next_token: nextToken } : params)
+    if (Array.isArray(body?.data)) rows.push(...body.data)
+    nextToken = body?.next_token || null
+    if (!nextToken) break
+  }
+  return rows
+}
+
 // Activity summary for a single local calendar day (YYYY-MM-DD). Returns null if
 // Oura has no record for that day yet (e.g. today, mid-morning).
 export async function dailySummary(token, ymd) {
@@ -148,10 +206,55 @@ export async function readinessRange(token, fromYmd, toYmd) {
 // Real sleep DURATION in hours for a day, from the session-level `sleep`
 // endpoint (summed across sessions — naps count, same as a wearable's own
 // daily total would). This is distinct from daily_sleep's 0-100 quality
-// score, which this app doesn't currently surface.
+// score (dailySleepScore below) — a different endpoint entirely.
 export async function dailySleepHours(token, ymd) {
   const rows = await fetchDailyRows('sleep', token, ymd)
   return normalizeSleepSessions(rows)
+}
+
+// The daily_sleep quality score (0-100) for a single day. Requires the same
+// `daily` scope this app already requests — no new OAuth consent needed.
+export async function dailySleepScore(token, ymd) {
+  const [match] = await fetchDailyRows('daily_sleep', token, ymd)
+  return match ? normalizeSleepScore(match) : null
+}
+
+export async function sleepScoreRange(token, fromYmd, toYmd) {
+  const rows = await fetchRangeRows('daily_sleep', token, fromYmd, toYmd)
+  return rows.map(normalizeSleepScore)
+}
+
+// Reduce one Oura workout record (GET /v2/usercollection/workout) — fields
+// per Oura's documented shape: id, day, activity, calories, distance
+// (meters), start_datetime, end_datetime, intensity, label, source. `id` is
+// what makes ingestion idempotent (store.upsertOuraWorkout keys on it) — a
+// re-run backfill, or Oura itself editing a workout after the fact, updates
+// the same row instead of duplicating it.
+export function normalizeWorkout(record = {}) {
+  return {
+    id: record.id != null ? String(record.id) : null,
+    day: record.day || null,
+    activity: record.activity || null,
+    intensity: record.intensity || null,
+    source: record.source || null,
+    label: record.label || null,
+    calories: n(record.calories),
+    distance: n(record.distance),
+    start_datetime: record.start_datetime || null,
+    end_datetime: record.end_datetime || null,
+  }
+}
+
+// Workouts (auto-detected or manually logged in the Oura app) for a date
+// range. Requires the same `daily` scope — VERIFY: Oura's docs list workout
+// under the same personal-data grant as the other usercollection endpoints
+// this app already calls with `daily`, but this hasn't been confirmed
+// against a real 403 (this app has never had an Oura workout-scope error to
+// observe). Paginated (fetchAllPages) since a wide backfill window can
+// easily hold more workouts than one page.
+export async function workoutsRange(token, fromYmd, toYmd) {
+  const rows = await fetchAllPages('workout', token, { start_date: fromYmd, end_date: toYmd })
+  return rows.map(normalizeWorkout).filter((w) => w.id != null && w.day != null)
 }
 
 // --- OAuth 2.0 (authorization code grant) ----------------------------------

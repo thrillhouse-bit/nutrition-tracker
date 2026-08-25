@@ -17,13 +17,27 @@
 // When a provider has no real data, it runs in DEMO mode (clearly labelled),
 // using a seeded evening-run scenario so the whole experience works with no
 // accounts. Demo data must never be presented as a live connection.
-import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailySummary as ouraDailySummary, dailyReadiness as ouraDailyReadiness, dailySleepHours as ouraDailySleepHours, validAccessToken as ouraValidToken } from './integrations/oura.js'
+import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailySummary as ouraDailySummary, dailyReadiness as ouraDailyReadiness, dailySleepHours as ouraDailySleepHours, dailySleepScore as ouraDailySleepScore, validAccessToken as ouraValidToken } from './integrations/oura.js'
 import { garminConfigured } from './integrations/garmin.js'
 
+// `categories` is human-readable metadata only — nothing in this codebase
+// reads it at runtime (grepped: zero references outside this file). It
+// still needs to stay honest, because it's the one place a future reader
+// (or another lane) would check "what does this provider actually give us"
+// without re-deriving it from realSignals/garmin.js/oura.js. Garmin's
+// previously listed 'workouts' and 'training load' — neither is true for a
+// real connected Garmin account: real Garmin workout detection was never
+// built (only demo data ever populates it). Insights' "Training load" chart
+// is no longer the empty skeleton this comment once described elsewhere —
+// a parallel change wired it to real data — but that data comes from Apple
+// Health workouts (store.aggregateWorkoutRows), never from Garmin, so the
+// distinction this comment exists to make still holds. See
+// docs/garmin-capability-matrix.md for the full per-metric status and what
+// each would need to become real for Garmin specifically.
 export const PROVIDERS = {
-  oura: { id: 'oura', name: 'Oura', connect: 'oauth', categories: ['readiness', 'sleep', 'expenditure', 'steps'] },
-  garmin: { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['workouts', 'training load', 'expenditure', 'steps'] },
-  apple: { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'active energy', 'exercise', 'sleep', 'heart rate'] },
+  oura: { id: 'oura', name: 'Oura', connect: 'oauth', categories: ['readiness', 'sleep', 'expenditure', 'steps', 'workouts'] },
+  garmin: { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['expenditure', 'steps'] },
+  apple: { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'active energy', 'exercise', 'sleep', 'heart rate', 'body weight'] },
 }
 
 // Per-metric provider preference when more than one source has data. `hrv` is
@@ -39,6 +53,23 @@ const PREFERENCE = {
 }
 
 const HOURS = (ms) => ms / 3600000
+
+// Oura's own `activity` strings (its taxonomy runs to 40+ values — VERIFY
+// against a real connected account's actual traffic; this list covers the
+// common ones, not confirmed exhaustive) mapped onto this app's own
+// workout-kind vocabulary (WORKOUT_KINDS, server/index.js), so an Oura
+// workout drives plan.js's isEndurance() the same way a manually-entered or
+// Garmin/Apple workout of the same real-world kind would. Anything not
+// listed here falls back to the generic 'workout' kind rather than guessing
+// — a wrong specific kind (e.g. calling a hike a run) would silently change
+// which plan rule fires; 'workout' never triggers the endurance carb bump,
+// which is the safe default when the mapping is uncertain.
+const OURA_ACTIVITY_TO_KIND = {
+  running: 'run', cycling: 'ride', biking: 'ride', swimming: 'swim', rowing: 'row',
+  walking: 'walk', hiking: 'hike', strength_training: 'strength', weightlifting: 'strength',
+  hiit: 'hiit', core_training: 'strength', cardio: 'cardio', yoga: 'mobility',
+  pilates: 'mobility', stretching: 'mobility',
+}
 
 // Freshness from when a sample was recorded (on the device/day) vs now.
 export function freshnessOf(recordedAt, now = Date.now()) {
@@ -132,46 +163,116 @@ export async function allProviderStatuses(store, userId, nowDate = new Date()) {
 }
 
 // --- real per-provider signals (best-effort) ------------------------------
-async function realSignals(store, userId, id, nowDate) {
-  const day = ymd(nowDate)
+async function realSignals(store, userId, id, queryDate, nowDate) {
+  const day = ymd(queryDate)
   try {
     if (id === 'oura') {
       let token = null
+      let account = null // stays null on the legacy single-token path — no account row to key workouts on
       if (ouraConfigured()) token = ouraToken()
       else if (ouraOAuthConfigured()) {
-        const a = (await store.listOuraAccounts(userId))[0]
-        if (a) token = await ouraValidToken(a, (t) => store.updateOuraTokens(userId, a.id, t))
+        account = (await store.listOuraAccounts(userId))[0]
+        if (account) token = await ouraValidToken(account, (t) => store.updateOuraTokens(userId, account.id, t))
       }
       if (!token) return {}
       const rec = `${day}T07:00:00`
       const fetchedAt = nowDate.toISOString()
       const out = {}
-      // Three separate Oura endpoints, fetched in parallel: daily_activity
-      // (expenditure/steps — previously fetched and then DISCARDED here,
-      // even though Garmin/Apple's equivalent fallback slots for these
-      // metrics list 'oura' as a candidate), daily_readiness (the actual
-      // Readiness score — this used to be daily_activity's score relabeled,
-      // a real bug: verified live, a person's Activity and Readiness scores
-      // read differently on the same day), and sleep (real duration in
-      // hours, matching every other provider's sleep shape). One endpoint
-      // having no data yet today (e.g. readiness not scored until first
-      // movement) must not blank out the others.
-      const [activity, readiness, sleepHours] = await Promise.all([
+      // Four calls in parallel: daily_activity (expenditure/steps —
+      // previously fetched and then DISCARDED here, even though Garmin/
+      // Apple's equivalent fallback slots for these metrics list 'oura' as
+      // a candidate), daily_readiness (the actual Readiness score — this
+      // used to be daily_activity's score relabeled, a real bug: verified
+      // live, a person's Activity and Readiness scores read differently on
+      // the same day), sleep (real duration in hours, matching every other
+      // provider's sleep shape), and daily_sleep (the separate 0-100 sleep
+      // QUALITY score — same demo shape already anticipated a `score` field
+      // on the sleep signal; this is what actually populates it for real
+      // data). One endpoint having no data yet today (e.g. readiness not
+      // scored until first movement) must not blank out the others.
+      const [activity, readiness, sleepHours, sleepScore] = await Promise.all([
         ouraDailySummary(token, day).catch(() => null),
         ouraDailyReadiness(token, day).catch(() => null),
         ouraDailySleepHours(token, day).catch(() => null),
+        ouraDailySleepScore(token, day).catch(() => null),
       ])
       if (readiness?.score != null) {
-        out.readiness = sig(readiness.score, { unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false })
+        // contributors are 1-100 sub-SCORES (never raw biometrics) and
+        // temperature_deviation/temperature_trend_deviation are the
+        // genuinely raw °C values — see normalizeReadiness's own comment for
+        // why these stay distinct. Both ride along on the readiness signal
+        // itself rather than a separate composed metric: they're properties
+        // OF that one reading, not an independent thing a plan-influence
+        // toggle could switch off on its own.
+        out.readiness = sig(readiness.score, {
+          unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false,
+          contributors: readiness.contributors,
+          temperature_deviation: readiness.temperature_deviation,
+          temperature_trend_deviation: readiness.temperature_trend_deviation,
+        })
       }
       if (sleepHours != null) {
-        out.sleep = sig(sleepHours, { unit: 'h', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false })
+        out.sleep = sig(sleepHours, {
+          unit: 'h', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false,
+          score: sleepScore?.score ?? null,
+        })
       }
       if (activity?.total_calories != null) {
-        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: fetchedAt, fetched_at: fetchedAt, demo: false })
+        // recorded_at anchored to the QUERIED day (noon, same reasoning as
+        // `rec` above), not the live fetch moment — viewing a past day fetches
+        // its data fresh right now, but the data itself is however old that
+        // day is; stamping recorded_at as "now" would make freshnessOf read
+        // a 5-day-old day's expenditure as "fresh" and let plan.js treat it
+        // as a live signal. fetched_at stays the real fetch moment — that
+        // metadata genuinely is about when we made this API call.
+        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, demo: false })
       }
       if (activity?.steps != null) {
-        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: fetchedAt, fetched_at: fetchedAt, demo: false })
+        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, demo: false })
+      }
+      // Real workout detection — stored, not live-fetched (oura_workouts is
+      // kept current by the same daily backfill/resync that already covers
+      // readiness/sleep/activity, so this avoids a 5th live Oura call on
+      // every /api/today). Picks the day's earliest-starting workout as the
+      // single "today" signal, matching the one-workout-per-day shape every
+      // other provider's `workout` slot already assumes; every workout that
+      // day is still retained in oura_workouts for a future multi-workout
+      // view. No account row (legacy single-token path) means no workouts —
+      // there's nowhere to have stored them.
+      //
+      // "walking" is filtered out before picking a candidate (owner, 25 Aug
+      // 2026): Oura logs an ordinary walk as its own workout the same as a
+      // run or a ride, but a walk isn't a fueling-relevant session — showing
+      // Plan's "Meal timing" a pre-fuel/recovery-fuel node for every walk
+      // would be noise the user has to mentally filter on every visit, not
+      // a real signal. Every OTHER Oura activity kind still counts; this is
+      // a name-specific exclusion, not a demotion of low-intensity activity
+      // generally (a filtered-out day still falls through to the next
+      // workout that day, if any, exactly as if the walk had never been
+      // logged — never a fabricated substitute).
+      if (account && typeof store.listOuraWorkouts === 'function') {
+        const workouts = await store.listOuraWorkouts(account.id, day).catch(() => [])
+        const w = workouts.find((x) => String(x.activity || '').toLowerCase() !== 'walking')
+        if (w) {
+          const kind = OURA_ACTIVITY_TO_KIND[String(w.activity || '').toLowerCase()] || 'workout'
+          const start = w.start_datetime ? new Date(w.start_datetime) : null
+          const end = w.end_datetime ? new Date(w.end_datetime) : null
+          const startHour = start && !isNaN(start) ? start.getHours() + start.getMinutes() / 60 : null
+          out.workout = sig(
+            {
+              label: w.label || (w.activity ? w.activity[0].toUpperCase() + w.activity.slice(1).replace(/_/g, ' ') : 'Workout'),
+              shortLabel: kind,
+              kind,
+              time: start && !isNaN(start) ? start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null,
+              startHour,
+              endHour: end && !isNaN(end) ? end.getHours() + end.getMinutes() / 60 : null,
+              durationMin: start && end && !isNaN(start) && !isNaN(end) ? Math.round((end - start) / 60000) : null,
+              estKcal: w.calories,
+              status: 'completed',
+            },
+            { provider: 'oura', recorded_at: w.start_datetime || fetchedAt, fetched_at: fetchedAt, demo: false },
+          )
+        }
       }
       return out
     }
@@ -180,10 +281,14 @@ async function realSignals(store, userId, id, nowDate) {
       if (!acct) return {}
       const row = await store.getGarminDaily(acct.id, day)
       if (!row) return {}
-      const rec = nowDate.toISOString()
+      // recorded_at anchored to the QUERIED day (see the matching Oura
+      // comment above) — was nowDate.toISOString(), which made a past day's
+      // expenditure/steps read as freshly recorded just for being fetched now.
+      const rec = `${day}T12:00:00`
+      const fetchedAt = nowDate.toISOString()
       const out = {}
-      if (row.total_calories != null) out.expenditure = sig(row.total_calories, { unit: 'kcal', active: row.active_calories, provider: 'garmin', recorded_at: rec, fetched_at: rec, demo: false })
-      if (row.steps != null) out.steps = sig(row.steps, { unit: 'steps', provider: 'garmin', recorded_at: rec, fetched_at: rec, demo: false })
+      if (row.total_calories != null) out.expenditure = sig(row.total_calories, { unit: 'kcal', active: row.active_calories, provider: 'garmin', recorded_at: rec, fetched_at: fetchedAt, demo: false })
+      if (row.steps != null) out.steps = sig(row.steps, { unit: 'steps', provider: 'garmin', recorded_at: rec, fetched_at: fetchedAt, demo: false })
       return out
     }
     if (id === 'apple') {
@@ -229,7 +334,17 @@ async function neverConnected(store, userId, id, settings) {
 }
 
 // --- compose one signal per metric, respecting provenance + toggles -------
-export async function composeSignals(store, nowDate = new Date(), userId) {
+// `queryDate` (defaults to `nowDate`) is which day's REAL provider data to
+// read — /api/today passes the day the user is actually viewing here, so
+// navigating to a past/future day shows that day's readiness/sleep/workout
+// instead of always today's (owner, 25 Aug 2026: signals stayed pinned to
+// "now" regardless of which day Today's prev/next arrows had navigated to).
+// `nowDate` still governs the DEMO scenario (demoSignals) and every
+// fetched_at stamp below — demo is a canned "what it looks like connected"
+// preview that was never meant to vary by day, and fetched_at genuinely is
+// "when we made this API call" metadata, distinct from which day the DATA
+// itself is about.
+export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate) {
   const settings = {}
   for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(userId, id)
   const demo = demoSignals(nowDate)
@@ -238,7 +353,7 @@ export async function composeSignals(store, nowDate = new Date(), userId) {
   const perProvider = {}
   for (const id of Object.keys(PROVIDERS)) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
-    const real = await realSignals(store, userId, id, nowDate)
+    const real = await realSignals(store, userId, id, queryDate, nowDate)
     if (Object.keys(real).length) perProvider[id] = real
     else if (settings[id]?.demo !== false && (await neverConnected(store, userId, id, settings[id]))) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}
