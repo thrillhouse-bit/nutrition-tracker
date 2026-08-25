@@ -796,6 +796,13 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
   if (userId == null) {
     return res.status(401).json({ error: 'Invalid ingest token.' })
   }
+  // A valid token proves who the companion is, not that this user still
+  // wants it syncing — the Connections tab's "enabled" toggle is supposed
+  // to be the actual off switch. Honor it here rather than only on read.
+  const integration = await store.getIntegration(userId, 'apple')
+  if (integration.enabled === false) {
+    return res.status(403).json({ error: 'Apple Health is disabled for this account.' })
+  }
   const { date, samples, permissions } = req.body || {}
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
   const nowIso = new Date().toISOString()

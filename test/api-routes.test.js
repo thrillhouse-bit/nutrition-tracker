@@ -229,6 +229,17 @@ describe('POST /api/apple/ingest token gate', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).ingested).toBe(1)
   })
+
+  // A valid token proves who the companion is, not that this account still
+  // wants it syncing — the Connections tab's "enabled" toggle must actually
+  // stop writes, not just change how they're displayed.
+  it('refuses the write once the account has disabled Apple Health, even with a valid token', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    fake.state.integrations.apple = { provider: 'apple', enabled: false, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+    const res = await post('/api/apple/ingest', sample, { 'x-ingest-token': 'sekret' })
+    expect(res.status).toBe(403)
+    expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
+  })
 })
 
 describe('POST /api/garmin/webhook malformed dailies', () => {
