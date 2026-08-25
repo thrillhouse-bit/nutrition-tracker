@@ -89,11 +89,14 @@ describe('Insights: per-section gating (not one coarse insufficientData wall)', 
     // The real ReadinessChart draws an <svg> inside the Readiness section —
     // it must be present, not the "Awaiting connected history" placeholder,
     // proving the section rendered off its own >= 2 real days rather than
-    // being swallowed by the food-logging gate.
-    expect(el.textContent).not.toContain('Awaiting connected history')
-    expect(el.textContent).toContain('Readiness')
-    const svgs = el.querySelectorAll('svg')
-    expect(svgs.length).toBeGreaterThan(0)
+    // being swallowed by the food-logging gate. Scoped to the Readiness
+    // <section> specifically (not a page-wide text search): Training load
+    // legitimately shows that same placeholder copy when it has no workout
+    // data of its own, which this fixture doesn't seed.
+    const readinessSection = Array.from(el.querySelectorAll('section')).find((s) => /readiness/i.test(s.textContent))
+    expect(readinessSection).toBeTruthy()
+    expect(readinessSection.textContent).not.toContain('Awaiting connected history')
+    expect(readinessSection.querySelector('svg')).toBeTruthy()
   })
 
   it('CONTROL: still shows the "not enough data" message for the nutrition-only stats/Energy parts in that same state', async () => {
