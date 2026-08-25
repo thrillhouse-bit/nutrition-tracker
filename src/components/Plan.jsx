@@ -342,9 +342,20 @@ export default function Plan({ date, refreshKey, onChanged }) {
     <div>
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="serif text-[32px] leading-none text-ink">Plan</h2>
-        <span className="flex items-baseline gap-2.5">
+        <span className="flex items-baseline gap-3">
           {anyDemo && <StatusMark status="demo" className="text-[10px] uppercase tracking-[0.1em]" />}
           <span className="tnum text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{dateStamp(date)}</span>
+          {/* The only way to adjust targets used to live below the tags, the
+              "Why this changed" disclosure, and the full target table — a
+              real scroll away, and the owner never spotted it (25 Aug 2026).
+              This is a shortcut to the SAME `editing` flow the button at the
+              bottom of the target table already opens, not a second edit
+              path — hidden once that flow (or the calculator) is already
+              open, and while there's no baseline yet, since the empty state
+              below already puts both actions front and center on their own. */}
+          {hasBaseline && !editing && !calculating && (
+            <TextButton onClick={() => setEditing(true)} className="text-[11px]">Edit</TextButton>
+          )}
         </span>
       </header>
 

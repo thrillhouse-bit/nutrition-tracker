@@ -187,6 +187,19 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   const calPct = calTarget > 0 ? Math.min(1, calDone / calTarget) : 0
   const secondary = NUTRIENTS.filter((n) => n.key !== 'calories')
 
+  // Energy balance — calories logged (in) vs. wearable-reported expenditure
+  // (out) = net deficit/surplus, plus steps. README has described this card
+  // since the original Oura integration (123d951) but the "Fueling-
+  // intelligence" redesign (d2e0829) never carried it into the rebuilt
+  // Today — signals.expenditure/signals.steps kept flowing through
+  // /api/today (composeSignals, with the same demo/freshness/provenance
+  // every other card here already uses) with no surface rendering them.
+  const exp = signals.expenditure
+  const steps = signals.steps
+  const expMissing = !exp || exp.value == null
+  const stepsMissing = !steps || steps.value == null
+  const netBalance = expMissing ? null : calDone - num(exp.value)
+
   // Sync line — honest about what actually reported. Show the live providers if
   // any signal is a real (non-demo) reading; otherwise say plainly that these are
   // sample readings or that nothing is connected. Never imply a live sync.
@@ -327,24 +340,37 @@ export default function Today({ date, data, entries, loading, online, syncing, p
         </ContextCell>
       </div>
 
-      {/* The white "next action" sheet — the focal moment. An audit measured
-          three near-equal-weight serif moments above the fold (masthead
-          32px, context numerals 30px, this title 29px) with nothing making
-          the recommendation clearly win, so this card gets more weight than
-          the ordinary `Card white` treatment: a heavier border
-          (border-line-strong, 1.5px vs. the default 1px border-line) and a
-          real lifted shadow (vs. `Card white`'s 1px/0.06-alpha hairline,
-          barely visible against paper) plus a touch more top/bottom padding.
-          Hand-rolled rather than `<Card white>` + className overrides:
-          `Card`'s skin string and any override both land in Tailwind's
-          `utilities` layer, and same-layer precedence there is generation-
-          order-dependent, not source order in the className string — not
-          worth relying on for a deliberate design decision. The other two
-          "white moment" surfaces that need a specific weight (Plan.jsx,
-          SmartPlanForm.jsx) already hand-write this same bg-card/border/
-          shadow trio rather than going through `Card` for the same reason. */}
+      {/* The "next action" sheet — the focal moment. An audit measured three
+          near-equal-weight serif moments above the fold (masthead 32px,
+          context numerals 30px, this title 29px) with nothing making the
+          recommendation clearly win, so this card gets more weight than the
+          ordinary `Card white` treatment: a heavier border (border-line-
+          strong, 1.5px vs. the default 1px border-line) and a real lifted
+          shadow (vs. `Card white`'s 1px/0.06-alpha hairline, barely visible
+          against paper) plus a touch more top/bottom padding. Background is
+          cobalt-soft, not bg-card's pure #fff — flagged 25 Aug 2026 (owner:
+          "stark", "jarring") as the one surface where that treatment reads
+          as a glaring white cutout rather than a lifted sheet, being the
+          first and most emphasized thing on the page. cobalt-soft is the
+          SAME wash the app already uses for a positive/highlighted moment
+          (App.jsx's success toast: border-cobalt/40 bg-cobalt-soft
+          text-cobalt) and pairs with the eyebrow/Why-this icon already
+          being cobalt here, so the card reads as one cohesive
+          cobalt-accented highlight instead of an unrelated color. Border
+          and shadow are untouched — both are neutral ink-alpha tones (see
+          index.css's --color-line-strong), so they read the same regardless
+          of what's under them, and the weight this whole treatment was
+          built to win stays intact. Hand-rolled rather than `<Card white>` +
+          className overrides: `Card`'s skin string and any override both
+          land in Tailwind's `utilities` layer, and same-layer precedence
+          there is generation-order-dependent, not source order in the
+          className string — not worth relying on for a deliberate design
+          decision. The other two "white moment" surfaces that need a
+          specific weight (Plan.jsx, SmartPlanForm.jsx) still hand-write the
+          bg-card/border/shadow trio for the same reason — this card is
+          deliberately the only one of the three that's no longer white. */}
       {rec ? (
-        <div className="border-[1.5px] border-line-strong bg-card px-4 pb-3.5 pt-4 shadow-[0_3px_10px_rgb(18_18_16/0.10)]">
+        <div className="border-[1.5px] border-line-strong bg-cobalt-soft px-4 pb-3.5 pt-4 shadow-[0_3px_10px_rgb(18_18_16/0.10)]">
           <div className="flex items-center justify-between">
             <span className="eyebrow text-cobalt">Recommendation</span>
             {/* Only the live branch gets a specific clock time — a fresh-
@@ -407,6 +433,52 @@ export default function Today({ date, data, entries, loading, online, syncing, p
               </div>
             )
           })}
+        </div>
+      </section>
+
+      {/* Energy balance — in vs. out, plus steps. Missing/disabled reads as
+          an em-dash, same "no data, never a silent number" rule as the
+          context strip and log rows above. Given a contained panel 25 Aug
+          2026 (owner: wanted a "face lift") — it used to be bare text
+          sitting directly on the page ground, the only numeral-bearing
+          section on Today with no visual container of its own (Intake so
+          far has its segment bar + macro grid, Recommendation its card).
+          bg-rail (not bg-card): this is a grouped INFO panel, not a
+          "moment that matters" the way Recommendation is — reusing the same
+          neutral wash the nav bar already reads as "contained chrome" keeps
+          the one white/cobalt-soft "this is special" cue meaningful instead
+          of every section fighting for the same visual weight. */}
+      <section className="border border-line bg-rail px-4 py-3.5">
+        <div className="flex items-baseline justify-between">
+          <span className="eyebrow">Energy balance</span>
+          {!stepsMissing && (
+            <span className="tnum text-[10.5px] font-medium uppercase tracking-[0.1em] text-muted">{fmt(steps.value, 0)} steps</span>
+          )}
+        </div>
+        <div className="mt-3 flex items-end gap-2.5">
+          <div className="flex-1">
+            <div className="numeral text-[22px] leading-none text-ink">{fmt(calDone, 0)}</div>
+            <div className="mt-1 eyebrow text-[9px]">In</div>
+          </div>
+          <span className="pb-3 text-muted">−</span>
+          <div className="flex-1">
+            <div className={`numeral text-[22px] leading-none ${expMissing ? 'text-faint' : 'text-ink'}`}>
+              {expMissing ? '—' : fmt(exp.value, 0)}
+            </div>
+            <div className="mt-1 eyebrow text-[9px]">Out</div>
+          </div>
+          <span className="pb-3 text-muted">=</span>
+          <div className="flex-1">
+            <div className={`numeral text-[22px] leading-none ${netBalance == null ? 'text-faint' : netBalance > 0 ? 'text-cobalt' : 'text-ink'}`}>
+              {netBalance == null ? '—' : fmt(Math.abs(netBalance), 0)}
+            </div>
+            <div className="mt-1 eyebrow text-[9px]">
+              {netBalance == null ? 'Balance' : netBalance === 0 ? 'Balanced' : netBalance > 0 ? 'Surplus' : 'Deficit'}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 border-t border-line pt-2">
+          {expMissing ? <StatusTag status="unavailable" /> : <SourceLabel signal={exp} />}
         </div>
       </section>
 

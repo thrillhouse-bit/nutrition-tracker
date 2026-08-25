@@ -369,8 +369,49 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-xl flex-col">
-      {/* Offline strip — the only global chrome; each screen owns its own title. */}
+    <div className="mx-auto flex min-h-full max-w-xl flex-col pt-[3.25rem]">
+      {/* Top nav — rail bar, active tab drawn with a cobalt bottom rule (moved
+          from the page bottom 25 Aug 2026, owner: it read as page furniture
+          down there and was easy to miss; the top keeps it the first thing
+          seen, same rail treatment). `body` (index.css) already applies
+          `padding-top: env(safe-area-inset-top)` globally, which pushes this
+          whole in-flow container down by the inset already — nav itself is
+          `fixed`, so it escapes that padding and has to re-apply the SAME
+          inset itself (below) to sit flush with the real top edge, exactly
+          like the old bottom nav did with safe-area-inset-bottom. Naively
+          adding `env(safe-area-inset-top)` to THIS container's pt as well
+          double-counted the inset — measured directly (real Chromium, CDP
+          Emulation.setSafeAreaInsetsOverride, inset=59px): body pushed the
+          container to y=59, and a naive `calc(3.375rem+env(...))` pt pushed
+          content to y=172, 61px past the nav's real bottom edge at y=111.
+          3.25rem (52px, the nav's own measured height at ZERO inset) is the
+          correct flat value — body's padding and the nav's own inset growth
+          already cancel out at every inset value, confirmed across
+          320/375/430px widths and 0/47/59px insets: content lands exactly
+          at the nav's bottom edge every time. 5 equal flex-1 columns at
+          320px = 64px each with zero gap between
+          them (a deliberate seamless rail, not a bug); tracking-[0.05em] on
+          the labels was chosen so the longest ones ("Insights", "Connect")
+          clear the next column's text at that width — a wider
+          tracking-[0.09em] measured only ~1.6-2px of margin each side. */}
+      <nav className="fixed inset-x-0 top-0 z-20 mx-auto flex max-w-xl border-b border-line-strong bg-rail pt-[env(safe-area-inset-top)]">
+        {TABS.map((t) => {
+          const active = tab === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] ${active ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
+            >
+              {active && <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-cobalt" />}
+              {TAB_SHORT[t.key] || t.label}
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* Offline strip — the only OTHER global chrome; each screen owns its own title. */}
       {!online && (
         <div className="flex items-center justify-center gap-2 border-b border-line bg-rail px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
           <span aria-hidden className="h-2 w-2 bg-ink" /> Offline — logs queue and sync when you reconnect
@@ -389,19 +430,11 @@ export default function App() {
         </div>
       )}
 
-      {/* pb-24 (a flat 96px) was measured against the nav's own height, which is
-          NOT flat: the nav grows by whatever env(safe-area-inset-bottom) the
-          device reports (0 on most Android/older iPhones, ~34px on a notched
-          iPhone's home-indicator area — see the nav's own
-          pb-[env(safe-area-inset-bottom)] below). At inset 0 the clearance
-          between the Log-food button and the nav's top edge measured a
-          comfortable 43.7-43.8px (320-430px widths, real Chromium via CDP
-          Emulation.setSafeAreaInsetsOverride); forcing a real device's 34px
-          inset the SAME fixed 96px shrank that to 9.7-9.8px — not negative,
-          but one flat guess away from being so on a deeper inset. Scaling the
-          padding by the same env() the nav already uses keeps the clearance
-          pinned at ~44px regardless of device (verified below). */}
-      <main className="flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4">
+      {/* No more bottom clearance math here — the nav moved to the top (see
+          above), so nothing fixed sits below the content anymore. Just a
+          flat, ordinary bottom pad plus the device's own home-indicator
+          inset so the last row of content never sits flush against it. */}
+      <main className="flex-1 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4">
         {tab === 'today' && (
           <Today
             {...shared}
@@ -423,32 +456,6 @@ export default function App() {
         {tab === 'insights' && <Insights refreshKey={refreshKey} />}
         {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} />}
       </main>
-
-      {/* Bottom nav — rail bar, active tab drawn with a cobalt top rule.
-          5 equal flex-1 columns at 320px = 64px each with zero gap between
-          them (a deliberate seamless rail, not a bug); at the old
-          tracking-[0.09em] the longest labels measured only ~1.6-2px of
-          margin each side ("Insights" 60.8/64px, "Connect" 59.9/64px) — a
-          hair from touching the next column's text. tracking-[0.05em]
-          recovers a few px per label at every width; not worth a narrow-
-          breakpoint variant (the app has no precedent for one) for a change
-          this small and this uniformly harmless at wider widths too. */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-xl border-t border-line-strong bg-rail pb-[env(safe-area-inset-bottom)]">
-        {TABS.map((t) => {
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              aria-current={active ? 'page' : undefined}
-              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] ${active ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
-            >
-              {active && <span aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-cobalt" />}
-              {TAB_SHORT[t.key] || t.label}
-            </button>
-          )
-        })}
-      </nav>
 
       {/* Add-food sheet. The confirm step owns its own header (the design shows
           the product name as the title), so no sheet title there. */}
