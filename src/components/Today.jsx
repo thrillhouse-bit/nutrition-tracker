@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { NUTRIENTS, sumEntries, entryNutrient, fmt, num, ymd } from '../lib/nutrition.js'
+import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
 import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState } from './ui.jsx'
 
 const isToday = (d) => ymd(d) === ymd(new Date())
@@ -82,6 +82,12 @@ function LogRow({ entry, onEdit, onDelete }) {
   const food = entry.food || {}
   const pending = entry._pending
   const tag = sourceTag(food)
+  // A manually-entered food whose nutrition fields were never filled in (as
+  // opposed to a food genuinely logged at 0, e.g. black coffee) would
+  // otherwise render as an indistinguishable "0 kcal" and count as a
+  // verified zero in the day's totals — entryIncomplete/sumEntries
+  // (nutrition.js) are what keep the two apart.
+  const incomplete = entryIncomplete(entry)
   return (
     <div className="flex min-h-11 items-center gap-2 border-t border-line first:border-t-0">
       <button
@@ -102,7 +108,16 @@ function LogRow({ entry, onEdit, onDelete }) {
             <span className="ml-1.5 rounded bg-sand px-1 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-ink">pending</span>
           )}
         </span>
-        <span className="shrink-0 numeral text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
+        {/* Shape + word, same "missing data" language as ContextCell's
+            em-dash + "No data" mark for a missing reading — never a silent
+            zero standing in for an unknown value. self-center: the row is
+            items-baseline for the text columns either side of it, which
+            would otherwise sit this glyph+word mark off the text baseline. */}
+        {incomplete ? (
+          <StatusTag status="unavailable" label="Needs details" className="shrink-0 self-center" />
+        ) : (
+          <span className="shrink-0 numeral text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
+        )}
       </button>
       <button
         onClick={() => onDelete(entry.id)}
