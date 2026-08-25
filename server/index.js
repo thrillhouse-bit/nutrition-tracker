@@ -815,7 +815,11 @@ async function planInfluence(userId) {
 
 async function buildPlan(userId, date, nowDate) {
   const baseline = await store.getLatestTargets(userId)
-  const signals = await composeSignals(store, nowDate, userId)
+  // Real Oura/Garmin/Apple data now reflects the DAY being viewed (owner, 25
+  // Aug 2026), not always the live current day — see composeSignals's own
+  // comment. Noon anchor avoids any DST/timezone edge landing `date` on the
+  // wrong calendar day.
+  const signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`))
   const influence = await planInfluence(userId)
   const { adjusted, rationale, rulesVersion } = computeAdjustedTargets(baseline, signals, { influence })
   return { date, baseline, adjusted, rationale, signals, influence, rulesVersion }
