@@ -79,6 +79,30 @@ const fake = vi.hoisted(() => {
     savePlan: async (userId, date, plan) => ({ date, ...plan }),
     replaceAppleSignals: async (userId, day, rows) => { state.appleSignals[day] = rows; return rows.length },
     listAppleSignals: async (userId, day) => state.appleSignals[day] || [],
+    // Real training-load history: derived from the same appleSignals state
+    // replaceAppleSignals/listAppleSignals already use, ranged like
+    // listOuraHistory below. This whole module is vi.mock'd out for the
+    // route tests (see the vi.mock('../server/db.js', ...) below), so —
+    // same reasoning as saveOuraHistory's fake above, which reimplements the
+    // scoredDays fix rather than importing it — the aggregation is
+    // reimplemented here rather than imported from the real db.js; it's
+    // proven equivalent to server/db.js's aggregateWorkoutRows by
+    // store-json.test.js and store-pg.test.js instead.
+    listAppleWorkoutHistory: async (userId, from, to) => {
+      const byDay = new Map()
+      for (const [day, samples] of Object.entries(state.appleSignals)) {
+        if (day < from || day > to) continue
+        for (const s of samples) {
+          if (s.metric !== 'workout') continue
+          if (!byDay.has(day)) byDay.set(day, { day, minutes: 0, sessions: 0 })
+          const bucket = byDay.get(day)
+          const mins = Number(s.value?.duration_min)
+          if (Number.isFinite(mins) && mins > 0) bucket.minutes += mins
+          bucket.sessions += 1
+        }
+      }
+      return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1))
+    },
     listOuraAccounts: async (userId) => state.ouraAccounts,
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
@@ -868,6 +892,57 @@ describe('GET /api/insights ouraReadiness', () => {
   })
 })
 
+describe('GET /api/insights workoutLoad', () => {
+  // Real Apple Health workout samples, wire shape (`duration_min`/`est_kcal` —
+  // see ios/Shared/HealthModel.swift's WorkoutValue.CodingKeys), seeded the
+  // same way the ingest route persists them (server/index.js POST
+  // /api/apple/ingest -> store.replaceAppleSignals).
+  it('sums same-day Apple workout minutes and counts sessions, inside the requested window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {
+      '2026-08-20': [
+        { metric: 'workout', value: { kind: 'run', duration_min: 30, est_kcal: 300, status: 'completed' } },
+        { metric: 'workout', value: { kind: 'strength', duration_min: 20, est_kcal: 150, status: 'completed' } },
+      ],
+      '2026-08-24': [
+        { metric: 'workout', value: { kind: 'ride', duration_min: 45, est_kcal: 500, status: 'completed' } },
+      ],
+    }
+    const res = await get('/api/insights?window=7')
+    const body = await res.json()
+    expect(body.workoutLoad).toEqual([
+      { date: '2026-08-20', minutes: 50, sessions: 2 },
+      { date: '2026-08-24', minutes: 45, sessions: 1 },
+    ])
+  })
+
+  it('omits workoutLoad entries outside the window (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {
+      '2026-07-01': [{ metric: 'workout', value: { kind: 'run', duration_min: 30, status: 'completed' } }],
+    }
+    const res = await get('/api/insights?window=7')
+    expect((await res.json()).workoutLoad).toEqual([])
+  })
+
+  it('ignores non-workout Apple signals on the same day (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {
+      '2026-08-20': [{ metric: 'steps', value: 5000 }, { metric: 'expenditure', value: 2000 }],
+    }
+    const res = await get('/api/insights?window=7')
+    expect((await res.json()).workoutLoad).toEqual([])
+  })
+
+  it('returns an empty array, not an error, when nothing has synced (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {}
+    const res = await get('/api/insights?window=7')
+    expect(res.status).toBe(200)
+    expect((await res.json()).workoutLoad).toEqual([])
+  })
+})
+
 describe('GET /api/insights weight trend', () => {
   it('returns an empty array when nothing has been logged (control)', async () => {
     fake.state.weightEntries = []
@@ -1195,5 +1270,102 @@ describe('GET /api/profile/activity-suggestion', () => {
     fake.state.ouraHistory = [{ day: '2026-08-20', value: 70, extra: { steps: 15000 } }] // would suggest very_active
     await get('/api/profile/activity-suggestion')
     expect(fake.state.profile.activity_level).toBeNull() // untouched
+  })
+})
+
+describe('GET /api/insights correlations', () => {
+  // A single entry that day carrying the given protein total. tzOffsetMinutes
+  // is pinned to 0 in every test below so day-bucketing lands on the UTC
+  // calendar day — matching server/correlations.js's own UTC-based
+  // nextDayYmd, so a test's expected pairing isn't accidentally right only
+  // because of the suite's Pacific/Apia server-local default (see the
+  // day-bucketing describe block above, which exists to catch exactly that
+  // kind of accidental agreement).
+  const proteinEntry = (day, proteinG) => ({
+    id: Math.random(),
+    food_id: 1,
+    logged_at: `${day}T12:00:00.000Z`,
+    servings_consumed: 1,
+    meal: null,
+    food: { id: 1, name: 'food', calories: 100, protein_g: proteinG, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0 },
+  })
+
+  it('reports available:true with the real r and n for a clearly-correlated dataset (protein day D vs readiness day D+1)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) }) // 2026-08-31
+    // 10 days of protein logged Aug 20-29, each paired with the FOLLOWING
+    // day's readiness (Aug 21-30) — both series increase in lockstep, a
+    // perfect linear relationship (r=1), well past both floors
+    // (MIN_OVERLAP_DAYS=6, R_THRESHOLD=0.5). Both series sit inside the
+    // 30-day window (Aug 2 - Aug 31).
+    const proteinDays = ['20', '21', '22', '23', '24', '25', '26', '27', '28', '29'].map((d) => `2026-08-${d}`)
+    const readinessDays = ['21', '22', '23', '24', '25', '26', '27', '28', '29', '30'].map((d) => `2026-08-${d}`)
+    fake.state.entries = proteinDays.map((day, i) => proteinEntry(day, 60 + i * 10)) // 60..150
+    fake.state.ouraHistory = readinessDays.map((day, i) => ({ day, value: 50 + i * 5 })) // 50..95
+
+    const res = await get('/api/insights?window=30&tzOffsetMinutes=0')
+    const body = await res.json()
+    expect(body.correlations).toEqual({
+      available: true,
+      r: 1,
+      n: 10,
+      note: 'Days you logged more protein tended to show higher next-day readiness (r=1.00 over 10 days).',
+    })
+  })
+
+  it('stays available:false below the sample-size floor even when the few points look correlated (control on MIN_OVERLAP_DAYS)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
+    // Only 3 overlapping day-pairs, perfectly correlated (r would be 1.0) —
+    // MIN_OVERLAP_DAYS=6 must still refuse this, because 3 points prove
+    // nothing on their own (see server/correlations.js's reasoning).
+    const proteinDays = ['20', '21', '22'].map((d) => `2026-08-${d}`)
+    const readinessDays = ['21', '22', '23'].map((d) => `2026-08-${d}`)
+    fake.state.entries = proteinDays.map((day, i) => proteinEntry(day, 60 + i * 10))
+    fake.state.ouraHistory = readinessDays.map((day, i) => ({ day, value: 50 + i * 5 }))
+
+    const res = await get('/api/insights?window=30&tzOffsetMinutes=0')
+    const body = await res.json()
+    expect(body.correlations.available).toBe(false)
+    expect(body.correlations.n).toBe(3)
+    expect(body.correlations.note).toMatch(/Only 3 days.*need at least 6/)
+  })
+
+  it('stays available:false above the sample-size floor when there is no real relationship (control on R_THRESHOLD)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
+    // 8 overlapping days (clears MIN_OVERLAP_DAYS=6) but the two series are
+    // unrelated — r ~= -0.019, well under R_THRESHOLD=0.5. Values computed
+    // and pinned by a standalone script; asserted loosely (< 0.5 in
+    // magnitude) rather than to the exact float so this test isn't
+    // re-deriving server/correlations.js's own arithmetic.
+    const proteinDays = ['20', '21', '22', '23', '24', '25', '26', '27'].map((d) => `2026-08-${d}`)
+    const readinessDays = ['21', '22', '23', '24', '25', '26', '27', '28'].map((d) => `2026-08-${d}`)
+    const proteinVals = [148, 86, 86, 108, 95, 91, 95, 129]
+    const readinessVals = [65, 91, 68, 58, 53, 74, 48, 80]
+    fake.state.entries = proteinDays.map((day, i) => proteinEntry(day, proteinVals[i]))
+    fake.state.ouraHistory = readinessDays.map((day, i) => ({ day, value: readinessVals[i] }))
+
+    const res = await get('/api/insights?window=30&tzOffsetMinutes=0')
+    const body = await res.json()
+    expect(body.correlations.available).toBe(false)
+    expect(body.correlations.n).toBe(8)
+    expect(Math.abs(body.correlations.r)).toBeLessThan(0.5)
+    expect(body.correlations.note).toMatch(/8 overlapping days.*no clear relationship/)
+  })
+
+  it('reports available:false with a distinct "not connected" note when there is no wearable data at all (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
+    // Plenty of logged protein, zero Oura history — this must read
+    // differently from the "not enough overlap yet" case above, because the
+    // fix here (connect a provider) is not the fix there (keep logging).
+    fake.state.entries = ['20', '21', '22', '23', '24', '25', '26', '27'].map((d, i) => proteinEntry(`2026-08-${d}`, 60 + i * 10))
+    fake.state.ouraHistory = []
+
+    const res = await get('/api/insights?window=30&tzOffsetMinutes=0')
+    const body = await res.json()
+    expect(body.correlations).toEqual({
+      available: false,
+      r: null,
+      n: null,
+      note: 'No wearable readiness data connected yet — connect a provider to unlock this observation.',
+    })
   })
 })

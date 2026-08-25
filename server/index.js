@@ -50,6 +50,7 @@ import {
 import { computeAdjustedTargets, computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
+import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
 
 const app = express()
@@ -1135,17 +1136,32 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const allWeightEntries = (await store.listWeightEntries?.(req.userId, '0001-01-01', windowEndYmd)) || []
   const weight = computeTrend(allWeightEntries).filter((e) => e.day >= windowStartYmd)
 
+  // Training load: real per-day minutes trained, aggregated from Apple
+  // Health workout sessions (store.listAppleWorkoutHistory — see server/db.js
+  // for why a day sums rather than keeps only the latest workout). Windowed
+  // the same way as ouraReadiness above, not the weight trend's full-history
+  // computation — there's no smoothed trend here, just the raw per-day totals.
+  const workoutHistory = (await store.listAppleWorkoutHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
+  const workoutLoad = workoutHistory.map((r) => ({ date: r.day, minutes: r.minutes, sessions: r.sessions }))
+
+  // { date, score } is the shape both the response's ouraReadiness field and
+  // the correlation join want — computed once and reused rather than mapped
+  // twice (and re-diverging the way the old hardcoded `correlations` block
+  // never had to agree with anything).
+  const ouraReadinessOut = ouraReadiness.map((r) => ({ date: r.day, score: Number(r.value) })).filter((r) => Number.isFinite(r.score))
+
   res.json({
     window,
     insufficientData: tracked < 3,
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
     days,
-    ouraReadiness: ouraReadiness.map((r) => ({ date: r.day, score: Number(r.value) })).filter((r) => Number.isFinite(r.score)),
+    ouraReadiness: ouraReadinessOut,
     weight,
-    correlations: {
-      available: false,
-      note: 'Recovery/training correlations need several days of retained wearable history — connect a provider and revisit after a few days.',
-    },
+    workoutLoad,
+    // See server/correlations.js for the join key (protein_g -> next-day
+    // readiness), the sample-size/effect-size thresholds, and why both must
+    // pass before this reports available:true.
+    correlations: computeNutritionRecoveryCorrelation(days, ouraReadinessOut),
   })
 }))
 

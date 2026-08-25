@@ -187,6 +187,19 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   const calPct = calTarget > 0 ? Math.min(1, calDone / calTarget) : 0
   const secondary = NUTRIENTS.filter((n) => n.key !== 'calories')
 
+  // Energy balance — calories logged (in) vs. wearable-reported expenditure
+  // (out) = net deficit/surplus, plus steps. README has described this card
+  // since the original Oura integration (123d951) but the "Fueling-
+  // intelligence" redesign (d2e0829) never carried it into the rebuilt
+  // Today — signals.expenditure/signals.steps kept flowing through
+  // /api/today (composeSignals, with the same demo/freshness/provenance
+  // every other card here already uses) with no surface rendering them.
+  const exp = signals.expenditure
+  const steps = signals.steps
+  const expMissing = !exp || exp.value == null
+  const stepsMissing = !steps || steps.value == null
+  const netBalance = expMissing ? null : calDone - num(exp.value)
+
   // Sync line — honest about what actually reported. Show the live providers if
   // any signal is a real (non-demo) reading; otherwise say plainly that these are
   // sample readings or that nothing is connected. Never imply a live sync.
@@ -418,6 +431,43 @@ export default function Today({ date, data, entries, loading, online, syncing, p
               </div>
             )
           })}
+        </div>
+      </section>
+
+      {/* Energy balance — in vs. out, plus steps. Missing/disabled reads as
+          an em-dash, same "no data, never a silent number" rule as the
+          context strip and log rows above. */}
+      <section>
+        <div className="flex items-baseline justify-between">
+          <span className="eyebrow">Energy balance</span>
+          {!stepsMissing && (
+            <span className="tnum text-[10.5px] font-medium uppercase tracking-[0.1em] text-muted">{fmt(steps.value, 0)} steps</span>
+          )}
+        </div>
+        <div className="mt-2.5 flex items-end gap-2.5">
+          <div className="flex-1">
+            <div className="numeral text-[20px] leading-none text-ink">{fmt(calDone, 0)}</div>
+            <div className="mt-1 eyebrow text-[9px]">In</div>
+          </div>
+          <span className="pb-3 text-muted">−</span>
+          <div className="flex-1">
+            <div className={`numeral text-[20px] leading-none ${expMissing ? 'text-faint' : 'text-ink'}`}>
+              {expMissing ? '—' : fmt(exp.value, 0)}
+            </div>
+            <div className="mt-1 eyebrow text-[9px]">Out</div>
+          </div>
+          <span className="pb-3 text-muted">=</span>
+          <div className="flex-1">
+            <div className={`numeral text-[20px] leading-none ${netBalance == null ? 'text-faint' : netBalance > 0 ? 'text-cobalt' : 'text-ink'}`}>
+              {netBalance == null ? '—' : fmt(Math.abs(netBalance), 0)}
+            </div>
+            <div className="mt-1 eyebrow text-[9px]">
+              {netBalance == null ? 'Balance' : netBalance === 0 ? 'Balanced' : netBalance > 0 ? 'Surplus' : 'Deficit'}
+            </div>
+          </div>
+        </div>
+        <div className="mt-2">
+          {expMissing ? <StatusTag status="unavailable" /> : <SourceLabel signal={exp} />}
         </div>
       </section>
 
