@@ -313,6 +313,10 @@ export default function Connections({ refreshKey, onChanged, user, onLogout }) {
   const [busy, setBusy] = useState(null)
   const [savingInf, setSavingInf] = useState(null)
   const [deleteNote, setDeleteNote] = useState(null)
+  // Second-tap confirm, mirroring ProviderRow's own account-disconnect
+  // pattern — the only other destructive one-tap action in this app.
+  const [confirmingHistory, setConfirmingHistory] = useState(false)
+  const [deletingHistory, setDeletingHistory] = useState(false)
 
   const load = useCallback(async () => {
     const [c, o, g] = await Promise.all([
@@ -344,6 +348,26 @@ export default function Connections({ refreshKey, onChanged, user, onLogout }) {
       onChanged?.()
     } finally {
       setSavingInf(null)
+    }
+  }
+
+  // Removes cached Oura/Garmin/Apple records (not the OAuth accounts — those
+  // have their own per-account Disconnect above). Refetches afterward since
+  // Garmin's today figure is served from the very rows this just cleared,
+  // and notifies the rest of the app (Today/Plan) that signals may have
+  // changed under them.
+  const deleteHistory = async () => {
+    setConfirmingHistory(false)
+    setDeletingHistory(true)
+    try {
+      const { removed } = await api.clearSyncedHistory()
+      setDeleteNote(removed > 0 ? `Removed ${removed} synced record${removed === 1 ? '' : 's'}.` : 'Nothing to remove — no synced data yet.')
+      await load()
+      onChanged?.()
+    } catch (err) {
+      setDeleteNote(err.message || 'Could not delete synced history.')
+    } finally {
+      setDeletingHistory(false)
     }
   }
 
@@ -431,21 +455,20 @@ export default function Connections({ refreshKey, onChanged, user, onLogout }) {
       {/* Footer — history controls + privacy line */}
       <footer className="mt-6 flex items-start justify-between gap-4 border-t border-line pt-3">
         <p className="max-w-[220px] text-[11px] leading-relaxed text-muted">
-          Not wired up yet — the button below does nothing. Once built, it will remove the Oura, Garmin, and Apple
-          Health records synced to this app. Your data inside those apps is untouched, and OAuth tokens never leave
-          your server.
+          Removes the Oura, Garmin, and Apple Health records synced to this app. Your data inside those apps is
+          untouched, and OAuth tokens never leave your server.
         </p>
         <div className="text-right">
-          {/* Destructive → Berry, per the design's failure/destructive color. */}
+          {/* Destructive → Berry, per the design's failure/destructive color.
+              Second tap to confirm, same friction as ProviderRow's Disconnect
+              above — never a live control that fires on the first tap AND
+              never one that only pretends to. */}
           <button
-            onClick={() =>
-              setDeleteNote(
-                deleteNote ? null : 'History deletion is not wired to an endpoint yet — nothing was removed.',
-              )
-            }
-            className="inline-flex min-h-11 items-center text-right text-[10px] font-semibold uppercase leading-[1.5] tracking-[0.1em] text-alert hover:opacity-80"
+            onClick={() => (confirmingHistory ? deleteHistory() : setConfirmingHistory(true))}
+            disabled={deletingHistory}
+            className="inline-flex min-h-11 items-center text-right text-[10px] font-semibold uppercase leading-[1.5] tracking-[0.1em] text-alert hover:opacity-80 disabled:opacity-40"
           >
-            Delete synced<br />history
+            {deletingHistory ? 'Deleting…' : confirmingHistory ? <>Tap again to<br />delete</> : <>Delete synced<br />history</>}
           </button>
           {deleteNote && <p className="mt-1 max-w-[150px] text-[10px] leading-snug text-faint">{deleteNote}</p>}
         </div>

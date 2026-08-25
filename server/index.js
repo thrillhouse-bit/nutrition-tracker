@@ -796,6 +796,13 @@ requireAuthRouter.put('/connections/influence', asyncH(async (req, res) => {
   res.json({ influence })
 }))
 
+// Deletes cached wearable records (Oura/Apple/Garmin) without touching the
+// OAuth accounts — see store.clearSyncedHistory for exactly what's in scope.
+requireAuthRouter.delete('/connections/history', asyncH(async (req, res) => {
+  const removed = await store.clearSyncedHistory(req.userId)
+  res.json({ removed })
+}))
+
 requireAuthRouter.put('/connections/:provider', asyncH(async (req, res) => {
   const id = req.params.provider
   if (!['oura', 'garmin', 'apple'].includes(id)) return res.status(404).json({ error: 'Unknown provider.' })

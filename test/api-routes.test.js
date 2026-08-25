@@ -98,6 +98,17 @@ const fake = vi.hoisted(() => {
       delete state.manualWorkouts[day]
       return had
     },
+    // manualWorkouts is deliberately excluded — that's authored input, not a
+    // synced wearable record (see server/db.js's clearSyncedHistory).
+    clearSyncedHistory: async (userId) => {
+      const ouraCount = state.ouraHistory.length
+      state.ouraHistory = []
+      const appleCount = Object.values(state.appleSignals).reduce((n, rows) => n + rows.length, 0)
+      state.appleSignals = {}
+      const garminCount = Object.keys(state.garminDailies).length
+      state.garminDailies = {}
+      return ouraCount + appleCount + garminCount
+    },
 
     // --- NOT userId-scoped (matches the real store — see server/db.js) ---
     getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
@@ -424,6 +435,50 @@ describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
 
     const got = await get('/api/plan/workout')
     expect((await got.json()).workout).toBeNull()
+  })
+})
+
+describe('DELETE /api/connections/history (Connections "Delete synced history")', () => {
+  afterEach(() => {
+    fake.state.ouraHistory = []
+    fake.state.appleSignals = {}
+    fake.state.garminDailies = {}
+    fake.state.manualWorkouts = {}
+  })
+
+  it('actually removes cached Oura/Apple/Garmin records and reports how many — a live control, not a dead end', async () => {
+    fake.state.ouraHistory = [{ day: '2026-08-20', value: 70 }]
+    fake.state.appleSignals = { '2026-08-20': [{ metric: 'steps', value: 5000 }] }
+    fake.state.garminDailies = { '1:2026-08-20': { account_id: 1, day: '2026-08-20', steps: 4000 } }
+
+    const res = await fetch(`${base}/api/connections/history`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).removed).toBe(3)
+
+    expect(fake.state.ouraHistory).toHaveLength(0)
+    expect(fake.state.appleSignals).toEqual({})
+    expect(fake.state.garminDailies).toEqual({})
+  })
+
+  it('reports 0 removed rather than erroring when there is nothing synced (control)', async () => {
+    const res = await fetch(`${base}/api/connections/history`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).removed).toBe(0)
+  })
+
+  it('never removes a manually-typed workout — that is authored input, not synced wearable data (control)', async () => {
+    await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+    fake.state.ouraHistory = [{ day: '2026-08-20', value: 70 }]
+
+    await fetch(`${base}/api/connections/history`, { method: 'DELETE', headers: { Cookie: authCookie } })
+
+    const got = await get('/api/plan/workout')
+    expect((await got.json()).workout.kind).toBe('run')
+  })
+
+  it('requires auth (control)', async () => {
+    const res = await fetch(`${base}/api/connections/history`, { method: 'DELETE' })
+    expect(res.status).toBe(401)
   })
 })
 

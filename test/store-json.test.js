@@ -170,6 +170,51 @@ describe('JsonStore manual workout input', () => {
   })
 })
 
+describe('JsonStore clearSyncedHistory (Connections "Delete synced history")', () => {
+  it('removes Oura + Apple wearable_signals and Garmin dailies for the user, and reports how many', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory(USER, [{ day: '2026-08-20', score: 70 }])
+    await s.replaceAppleSignals(USER, '2026-08-20', [
+      { metric: 'steps', value: 5000, recorded_at: '2026-08-20T00:00:00.000Z', fetched_at: '2026-08-20T00:00:00.000Z' },
+    ])
+    const acct = await s.saveGarminAccount(USER, { access_token: 'a', refresh_token: 'b' })
+    await s.upsertGarminDaily({ account_id: acct.id, day: '2026-08-20', total_calories: 2000, active_calories: 300, steps: 4000 })
+
+    const removed = await s.clearSyncedHistory(USER)
+    expect(removed).toBe(3) // 1 oura + 1 apple + 1 garmin daily
+
+    expect(await s.listOuraHistory(USER, '2026-08-01', '2026-08-31')).toHaveLength(0)
+    expect(await s.listAppleSignals(USER, '2026-08-20')).toHaveLength(0)
+    expect(await s.getGarminDaily(acct.id, '2026-08-20')).toBeNull()
+  })
+
+  it('never removes a manually-typed workout — that is authored data, not synced from a wearable (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'run', startHour: 17.5 })
+    await s.saveOuraHistory(USER, [{ day: '2026-08-20', score: 70 }])
+    await s.clearSyncedHistory(USER)
+    expect((await s.getManualWorkout(USER, '2026-08-25')).kind).toBe('run')
+  })
+
+  it('never touches another user\'s synced records (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory(USER, [{ day: '2026-08-20', score: 70 }])
+    await s.saveOuraHistory(2, [{ day: '2026-08-20', score: 60 }])
+    const otherAcct = await s.saveGarminAccount(2, { access_token: 'x', refresh_token: 'y' })
+    await s.upsertGarminDaily({ account_id: otherAcct.id, day: '2026-08-20', total_calories: 1800, active_calories: 200, steps: 3000 })
+
+    await s.clearSyncedHistory(USER)
+
+    expect(await s.listOuraHistory(2, '2026-08-01', '2026-08-31')).toHaveLength(1)
+    expect(await s.getGarminDaily(otherAcct.id, '2026-08-20')).not.toBeNull()
+  })
+
+  it('returns 0 and does not throw when there is nothing to remove (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.clearSyncedHistory(USER)).toBe(0)
+  })
+})
+
 describe('JsonStore biometric profile (singleton)', () => {
   it('returns the all-null default when nothing has been saved yet (never throws/404s)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))

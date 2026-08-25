@@ -117,4 +117,8 @@ export const api = {
   connections: () => req('/connections'),
   setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
   setProvider: (id, patch) => req(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+
+  // Deletes cached Oura/Garmin/Apple records synced to this app (not the
+  // OAuth accounts themselves — see Connections.jsx's per-account Disconnect).
+  clearSyncedHistory: () => req('/connections/history', { method: 'DELETE' }),
 }

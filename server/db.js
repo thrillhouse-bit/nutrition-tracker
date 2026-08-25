@@ -474,6 +474,19 @@ class PgStore {
     return sql`select day, value, extra from wearable_signals where user_id = ${userId} and provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
   }
 
+  // --- Clear synced history (Connections page's "Delete synced history") ----
+  // See JsonStore's sibling method for why this excludes provider='manual'
+  // and leaves the OAuth accounts (oura_accounts/garmin_accounts) untouched.
+  async clearSyncedHistory(userId) {
+    const sql = await this.ready()
+    const signals = await sql`delete from wearable_signals where user_id = ${userId} and (provider = 'oura' or provider = 'apple') returning id`
+    const garmin = await sql`
+      delete from garmin_dailies using garmin_accounts
+      where garmin_dailies.account_id = garmin_accounts.id and garmin_accounts.user_id = ${userId}
+      returning garmin_dailies.id`
+    return signals.length + garmin.length
+  }
+
   // --- daily plans (per user snapshot of baseline/adjusted targets + rationale)
   async getPlan(userId, date) {
     const sql = await this.ready()
@@ -959,6 +972,32 @@ export class JsonStore {
     return (d.wearable_signals || [])
       .filter((s) => s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && s.day >= fromYmd && s.day <= toYmd)
       .sort((a, b) => (a.day < b.day ? -1 : 1))
+  }
+
+  // --- Clear synced history (Connections page's "Delete synced history") ----
+  // Removes cached wearable RECORDS (Oura/Apple wearable_signals rows, Garmin
+  // daily summaries) without touching the OAuth accounts themselves — that's
+  // the separate, existing disconnect action. Scoped to exactly what the
+  // button's own copy promises: "Oura, Garmin, and Apple Health records
+  // synced to this app" — provider='manual' (the user's own typed-in
+  // workout) is deliberately excluded, since that's authored data, not
+  // something synced from a wearable.
+  async clearSyncedHistory(userId) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const beforeSignals = (d.wearable_signals || []).length
+    d.wearable_signals = (d.wearable_signals || []).filter(
+      (s) => !(s.user_id === uid && (s.provider === 'oura' || s.provider === 'apple')),
+    )
+    const signalsRemoved = beforeSignals - d.wearable_signals.length
+
+    const garminAccountIds = new Set((d.garmin_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    const beforeGarmin = (d.garmin_dailies || []).length
+    d.garmin_dailies = (d.garmin_dailies || []).filter((g) => !garminAccountIds.has(g.account_id))
+    const garminRemoved = beforeGarmin - d.garmin_dailies.length
+
+    await this.persist()
+    return signalsRemoved + garminRemoved
   }
 
   async getPlan(userId, date) {
