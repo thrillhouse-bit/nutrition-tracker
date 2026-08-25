@@ -134,4 +134,23 @@ export const api = {
   // invalidating the previous one) the per-account token the iOS/watch
   // companion authenticates with, since it can't carry a session cookie.
   appleToken: () => req('/apple/token', { method: 'POST' }),
+
+  // --- Adaptive Fuel Plan ---
+  // A separate, additive feature — its own profile, its own planned-workout
+  // list, its own per-day computed plan. Never touches getProfile/setTargets/
+  // planToday above.
+  getAfpProfile: () => req('/afp/profile'),
+  setAfpProfile: (patch) => req('/afp/profile', { method: 'PUT', body: JSON.stringify(patch) }),
+
+  listAfpWorkouts: (from, to) => req(`/afp/workouts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  saveAfpWorkout: (workout) => req('/afp/workouts', { method: 'PUT', body: JSON.stringify(workout) }),
+  deleteAfpWorkout: (id) => req(`/afp/workouts/${id}`, { method: 'DELETE' }),
+
+  // The computed (or frozen historical) plan for one day, plus fresh
+  // progress against that day's actual logged intake.
+  afpPlan: (ymd) => req(`/afp/plan?date=${encodeURIComponent(ymd)}`),
+  recomputeAfpPlan: (ymd) => req(`/afp/plan/${encodeURIComponent(ymd)}/recompute`, { method: 'POST' }),
+  // Pass {} to clear a previously-set override.
+  setAfpPlanOverrides: (ymd, overrides) =>
+    req(`/afp/plan/${encodeURIComponent(ymd)}/overrides`, { method: 'PATCH', body: JSON.stringify(overrides) }),
 }

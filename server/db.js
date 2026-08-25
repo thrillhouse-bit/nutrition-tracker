@@ -47,6 +47,25 @@ export const DEFAULT_PROFILE = {
   updated_at: null,
 }
 
+// Adaptive Fuel Plan's own profile default — a separate, independently-
+// versioned shape from DEFAULT_PROFILE above (see schema.sql's afp_profile
+// comment for why this is a wholly separate table).
+export const DEFAULT_AFP_PROFILE = {
+  units_pref: 'imperial',
+  age_years: null,
+  height_cm: null,
+  weight_kg: null,
+  sex: null,
+  body_fat_pct: null,
+  activity_level: null,
+  goal: 'maintain',
+  weekly_change_kg: null,
+  calorie_adjustment: null,
+  is_pregnant_or_postpartum: false,
+  has_ed_risk_flag: false,
+  updated_at: null,
+}
+
 const FOOD_FIELDS = [
   'barcode', 'name', 'brand', 'serving_size', 'serving_unit',
   'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg',
@@ -702,6 +721,119 @@ export class PgStore {
     return rows[0]
   }
 
+  // --- Adaptive Fuel Plan: profile (one row per user) ------------------------
+  async getAfpProfile(userId) {
+    const sql = await this.ready()
+    const rows = await sql`select * from afp_profile where user_id = ${userId} limit 1`
+    return rows[0] || { ...DEFAULT_AFP_PROFILE }
+  }
+
+  // Merge-save, same contract as setProfile: a partial patch never clobbers
+  // fields the caller didn't send, and updated_at is always server-set.
+  async setAfpProfile(userId, patch) {
+    const sql = await this.ready()
+    const m = { ...(await this.getAfpProfile(userId)), ...patch }
+    const rows = await sql`
+      insert into afp_profile (
+        user_id, units_pref, age_years, height_cm, weight_kg, sex, body_fat_pct,
+        activity_level, goal, weekly_change_kg, calorie_adjustment,
+        is_pregnant_or_postpartum, has_ed_risk_flag, updated_at
+      )
+      values (
+        ${userId}, ${m.units_pref}, ${m.age_years}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.body_fat_pct},
+        ${m.activity_level}, ${m.goal}, ${m.weekly_change_kg}, ${m.calorie_adjustment},
+        ${!!m.is_pregnant_or_postpartum}, ${!!m.has_ed_risk_flag}, now()
+      )
+      on conflict (user_id) do update set
+        units_pref = excluded.units_pref, age_years = excluded.age_years, height_cm = excluded.height_cm,
+        weight_kg = excluded.weight_kg, sex = excluded.sex, body_fat_pct = excluded.body_fat_pct,
+        activity_level = excluded.activity_level, goal = excluded.goal,
+        weekly_change_kg = excluded.weekly_change_kg, calorie_adjustment = excluded.calorie_adjustment,
+        is_pregnant_or_postpartum = excluded.is_pregnant_or_postpartum, has_ed_risk_flag = excluded.has_ed_risk_flag,
+        updated_at = excluded.updated_at
+      returning *`
+    return rows[0]
+  }
+
+  // --- Adaptive Fuel Plan: planned workouts (many per user per day) ----------
+  async listPlannedWorkouts(userId, fromYmd, toYmd) {
+    const sql = await this.ready()
+    return sql`select * from planned_workouts where user_id = ${userId} and date between ${fromYmd} and ${toYmd} order by date asc, start_time asc nulls last, id asc`
+  }
+
+  async getPlannedWorkoutsForDay(userId, day) {
+    return this.listPlannedWorkouts(userId, day, day)
+  }
+
+  // Creates a new session (no `id` on the input) or updates an existing one
+  // the caller owns (an `id` for a row belonging to a DIFFERENT user updates
+  // nothing — `where id = ... and user_id = ...` — so guessing another
+  // user's id can never read or change their plan).
+  async savePlannedWorkout(userId, w) {
+    const sql = await this.ready()
+    if (w.id != null) {
+      const rows = await sql`
+        update planned_workouts set
+          date = ${w.date}, sport = ${w.sport}, start_time = ${w.start_time ?? null},
+          duration_min = ${w.duration_min}, intensity = ${w.intensity}, distance_km = ${w.distance_km ?? null},
+          is_key_session = ${!!w.is_key_session}, is_double_session = ${!!w.is_double_session},
+          is_race = ${!!w.is_race}, carb_loading_opt_in = ${!!w.carb_loading_opt_in}, notes = ${w.notes ?? null}
+        where id = ${w.id} and user_id = ${userId}
+        returning *`
+      return rows[0] || null
+    }
+    const rows = await sql`
+      insert into planned_workouts (
+        user_id, date, sport, start_time, duration_min, intensity, distance_km,
+        is_key_session, is_double_session, is_race, carb_loading_opt_in, notes
+      )
+      values (
+        ${userId}, ${w.date}, ${w.sport}, ${w.start_time ?? null}, ${w.duration_min}, ${w.intensity}, ${w.distance_km ?? null},
+        ${!!w.is_key_session}, ${!!w.is_double_session}, ${!!w.is_race}, ${!!w.carb_loading_opt_in}, ${w.notes ?? null}
+      )
+      returning *`
+    return rows[0]
+  }
+
+  async deletePlannedWorkout(userId, id) {
+    const sql = await this.ready()
+    const rows = await sql`delete from planned_workouts where id = ${id} and user_id = ${userId} returning id`
+    return rows.length > 0
+  }
+
+  // --- Adaptive Fuel Plan: daily plan snapshots -------------------------------
+  async getAfpDailyPlan(userId, date) {
+    const sql = await this.ready()
+    const rows = await sql`select * from afp_daily_plans where user_id = ${userId} and date = ${date} limit 1`
+    return rows[0] || null
+  }
+
+  async saveAfpDailyPlan(userId, date, { engineVersion, inputSnapshot, plan, overrides = null }) {
+    const sql = await this.ready()
+    const rows = await sql`
+      insert into afp_daily_plans (user_id, date, engine_version, input_snapshot, plan, overrides)
+      values (${userId}, ${date}, ${engineVersion}, ${JSON.stringify(inputSnapshot)}, ${JSON.stringify(plan)}, ${overrides ? JSON.stringify(overrides) : null})
+      on conflict (user_id, date) do update set
+        engine_version = excluded.engine_version, input_snapshot = excluded.input_snapshot,
+        plan = excluded.plan, overrides = excluded.overrides, generated_at = now()
+      returning *`
+    return rows[0]
+  }
+
+  // Updates ONLY the overrides column of an already-computed day — never
+  // touches engine_version/input_snapshot/plan, and never touches
+  // afp_profile's own defaults (see docs/adaptive-fuel-plan.md). Returns null
+  // if that day has no computed plan yet — the caller (server/index.js)
+  // computes one first, which is the only path that can create the row.
+  async setAfpDailyPlanOverrides(userId, date, overrides) {
+    const sql = await this.ready()
+    const rows = await sql`
+      update afp_daily_plans set overrides = ${overrides ? JSON.stringify(overrides) : null}
+      where user_id = ${userId} and date = ${date}
+      returning *`
+    return rows[0] || null
+  }
+
   // One-time boot migration: if pre-multi-user data exists (rows with no
   // user_id — the columns didn't exist before tonight) it would already have
   // failed the NOT NULL constraint on insert, so a fresh `create table` never
@@ -1350,6 +1482,106 @@ export class JsonStore {
     d.daily_plans[`${userId}:${date}`] = row
     await this.persist()
     return row
+  }
+
+  // --- Adaptive Fuel Plan: profile (JsonStore mirror of PgStore's afp_profile)
+  async getAfpProfile(userId) {
+    const d = await this.load()
+    d.afp_profiles = d.afp_profiles || {}
+    const p = d.afp_profiles[userId]
+    return p ? { ...p } : { ...DEFAULT_AFP_PROFILE }
+  }
+
+  async setAfpProfile(userId, patch) {
+    const d = await this.load()
+    d.afp_profiles = d.afp_profiles || {}
+    const cur = d.afp_profiles[userId] || { ...DEFAULT_AFP_PROFILE }
+    const m = { ...cur, ...patch, updated_at: new Date().toISOString() }
+    d.afp_profiles[userId] = m
+    await this.persist()
+    return { ...m }
+  }
+
+  // --- Adaptive Fuel Plan: planned workouts -----------------------------------
+  async listPlannedWorkouts(userId, fromYmd, toYmd) {
+    const d = await this.load()
+    const uid = Number(userId)
+    // '~' sorts after any real 'HH:MM' string under plain UTF-16 code-unit
+    // comparison (never localeCompare, whose punctuation collation is not
+    // guaranteed to order '~' after digits) — matching PgStore's `order by
+    // ... start_time asc nulls last`: a session with no fixed start time
+    // lists last, not first.
+    const timeKey = (w) => w.start_time || '~'
+    return (d.planned_workouts || [])
+      .filter((w) => w.user_id === uid && w.date >= fromYmd && w.date <= toYmd)
+      .sort((a, b) => (a.date === b.date ? (timeKey(a) < timeKey(b) ? -1 : timeKey(a) > timeKey(b) ? 1 : 0) : a.date < b.date ? -1 : 1))
+      .map((w) => ({ ...w }))
+  }
+
+  async getPlannedWorkoutsForDay(userId, day) {
+    return this.listPlannedWorkouts(userId, day, day)
+  }
+
+  async savePlannedWorkout(userId, w) {
+    const d = await this.load()
+    d.planned_workouts = d.planned_workouts || []
+    const uid = Number(userId)
+    const fields = {
+      date: w.date, sport: w.sport, start_time: w.start_time ?? null, duration_min: w.duration_min,
+      intensity: w.intensity, distance_km: w.distance_km ?? null, is_key_session: !!w.is_key_session,
+      is_double_session: !!w.is_double_session, is_race: !!w.is_race,
+      carb_loading_opt_in: !!w.carb_loading_opt_in, notes: w.notes ?? null,
+    }
+    if (w.id != null) {
+      const row = d.planned_workouts.find((x) => x.id === Number(w.id) && x.user_id === uid)
+      if (!row) return null // not found, or belongs to a different user
+      Object.assign(row, fields)
+      await this.persist()
+      return { ...row }
+    }
+    d.seq.planned_workout = (d.seq.planned_workout || 0) + 1
+    const row = { id: d.seq.planned_workout, user_id: uid, created_at: new Date().toISOString(), ...fields }
+    d.planned_workouts.push(row)
+    await this.persist()
+    return { ...row }
+  }
+
+  async deletePlannedWorkout(userId, id) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const before = (d.planned_workouts || []).length
+    d.planned_workouts = (d.planned_workouts || []).filter((w) => !(w.id === Number(id) && w.user_id === uid))
+    await this.persist()
+    return d.planned_workouts.length < before
+  }
+
+  // --- Adaptive Fuel Plan: daily plan snapshots --------------------------------
+  async getAfpDailyPlan(userId, date) {
+    const d = await this.load()
+    return (d.afp_daily_plans || {})[`${userId}:${date}`] || null
+  }
+
+  async saveAfpDailyPlan(userId, date, { engineVersion, inputSnapshot, plan, overrides = null }) {
+    const d = await this.load()
+    d.afp_daily_plans = d.afp_daily_plans || {}
+    const row = {
+      user_id: Number(userId), date, engine_version: engineVersion, input_snapshot: inputSnapshot,
+      plan, overrides, generated_at: new Date().toISOString(),
+    }
+    d.afp_daily_plans[`${userId}:${date}`] = row
+    await this.persist()
+    return row
+  }
+
+  async setAfpDailyPlanOverrides(userId, date, overrides) {
+    const d = await this.load()
+    d.afp_daily_plans = d.afp_daily_plans || {}
+    const key = `${userId}:${date}`
+    const row = d.afp_daily_plans[key]
+    if (!row) return null
+    row.overrides = overrides
+    await this.persist()
+    return { ...row }
   }
 
   // Symmetry with PgStore — a fresh JsonStore file never has legacy

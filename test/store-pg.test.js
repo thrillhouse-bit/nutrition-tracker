@@ -104,6 +104,58 @@ describe('PgStore.listAppleWorkoutHistory', () => {
   })
 })
 
+describe('PgStore Adaptive Fuel Plan profile', () => {
+  it('merge-saves by reading the current row before the upsert (getAfpProfile + setAfpProfile in one call)', async () => {
+    const store = new PgStore('postgres://unused')
+    let n = 0
+    store.sql = () => {
+      n++
+      if (n === 1) return [{ weight_kg: 70, height_cm: 175 }] // getAfpProfile's own select, inside setAfpProfile
+      return [{ weight_kg: 70, height_cm: 175, age_years: 30 }] // the upsert's `returning *`
+    }
+    const p = await store.setAfpProfile(1, { age_years: 30 })
+    expect(p.age_years).toBe(30)
+    expect(p.weight_kg).toBe(70) // carried over from the existing row, not clobbered
+  })
+})
+
+describe('PgStore Adaptive Fuel Plan planned workouts', () => {
+  it('an update with no matching (id, user_id) row returns null (control: isolation enforced in the WHERE clause)', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => [] // no row matched id+user_id
+    const result = await store.savePlannedWorkout(2, { id: 7, date: '2026-08-25', sport: 'run', duration_min: 30, intensity: 'easy' })
+    expect(result).toBeNull()
+  })
+
+  it('deletePlannedWorkout returns false when nothing matched (control)', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => []
+    expect(await store.deletePlannedWorkout(2, 7)).toBe(false)
+  })
+
+  it('deletePlannedWorkout returns true when a row was actually removed', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => [{ id: 7 }]
+    expect(await store.deletePlannedWorkout(1, 7)).toBe(true)
+  })
+})
+
+describe('PgStore Adaptive Fuel Plan daily plan snapshots', () => {
+  it('setAfpDailyPlanOverrides returns null when no plan row exists for that day (control)', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => []
+    expect(await store.setAfpDailyPlanOverrides(1, '2026-08-25', { calories: 2500 })).toBeNull()
+  })
+
+  it('setAfpDailyPlanOverrides returns the updated row when one exists', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => [{ user_id: 1, date: '2026-08-25', overrides: { calories: 2500 }, plan: { targets: { calories: 2000 } } }]
+    const r = await store.setAfpDailyPlanOverrides(1, '2026-08-25', { calories: 2500 })
+    expect(r.overrides).toEqual({ calories: 2500 })
+    expect(r.plan.targets.calories).toBe(2000)
+  })
+})
+
 // aggregateWorkoutRows is the shared helper both PgStore and JsonStore call —
 // unit-tested directly here since it carries the actual load-figure logic
 // (both stores above are really just proving they wire it up).

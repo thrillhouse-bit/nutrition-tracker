@@ -55,6 +55,56 @@ export const TargetsSchema = z.object({
   sodium_mg: nonNegNum().optional(),
 })
 
+// --- Adaptive Fuel Plan ------------------------------------------------
+// A patch, not a full-replace: every field is optional so a partial form
+// submission never has to resend the whole profile, matching the existing
+// PUT /api/profile convention. `null` clears a field back to "not set" where
+// that's meaningful (sex, body_fat_pct, weekly_change_kg, calorie_adjustment)
+// — everything else is either a bounded number or an enum.
+export const AfpProfilePatchSchema = z.object({
+  units_pref: z.enum(['imperial', 'metric']).optional(),
+  age_years: z.number().finite().positive().max(120).nullable().optional(),
+  height_cm: z.number().finite().positive().max(300).nullable().optional(),
+  weight_kg: z.number().finite().positive().max(400).nullable().optional(),
+  sex: z.enum(['male', 'female']).nullable().optional(),
+  body_fat_pct: z.number().finite().min(1).max(70).nullable().optional(),
+  activity_level: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']).nullable().optional(),
+  goal: z.enum(['maintain', 'gradual_loss', 'gradual_gain', 'custom']).optional(),
+  // Conservative bounds enforced here too (not just in the engine) so a bad
+  // value never reaches the store at all — see server/afp/engine.js's
+  // WEEKLY_CHANGE_LIMITS for why these numbers specifically.
+  weekly_change_kg: z.number().finite().min(0).max(1.5).nullable().optional(),
+  calorie_adjustment: z.number().finite().min(-1500).max(1500).nullable().optional(),
+  is_pregnant_or_postpartum: z.boolean().optional(),
+  has_ed_risk_flag: z.boolean().optional(),
+})
+
+const AFP_SPORTS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+
+export const PlannedWorkoutSchema = z.object({
+  id: z.number().int().positive().optional(), // present = update, absent = create
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD.'),
+  sport: z.enum(AFP_SPORTS),
+  start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'start_time must be HH:MM, 24h, local.').nullable().optional(),
+  duration_min: z.number().finite().positive().max(1440),
+  intensity: z.enum(['easy', 'moderate', 'hard']),
+  distance_km: z.number().finite().positive().max(500).nullable().optional(),
+  is_key_session: z.boolean().optional(),
+  is_double_session: z.boolean().optional(),
+  is_race: z.boolean().optional(),
+  carb_loading_opt_in: z.boolean().optional(),
+  notes: z.string().max(500).nullable().optional(),
+})
+
+// A day-specific correction layered on top of the computed plan — never a
+// full replacement, so any subset of the four targets can be overridden.
+export const AfpOverridesSchema = z.object({
+  calories: nonNegNum().optional(),
+  protein_g: nonNegNum().optional(),
+  carbs_g: nonNegNum().optional(),
+  fat_g: nonNegNum().optional(),
+})
+
 // Express middleware factory: validates req.body against `schema`, replaces
 // req.body with the parsed (coerced/defaulted) result, or responds 400 with
 // a readable message built from zod's own issue list.
