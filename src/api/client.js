@@ -105,6 +105,14 @@ export const api = {
     ),
   planToday: (ymd) => req(`/plan/today?date=${encodeURIComponent(ymd)}`),
   signals: () => req('/signals'),
+
+  // Manual workout input — states today's planned session directly, for
+  // anyone without a connected wearable (or whose device hasn't detected
+  // today's session yet). Overrides any wearable-sourced workout signal;
+  // see server/providers.js's composeSignals.
+  getWorkout: () => req('/plan/workout'),
+  setWorkout: (workout) => req('/plan/workout', { method: 'PUT', body: JSON.stringify(workout) }),
+  clearWorkout: () => req('/plan/workout', { method: 'DELETE' }),
   insights: (window = 7) => req(`/insights?window=${window}`),
   connections: () => req('/connections'),
   setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
