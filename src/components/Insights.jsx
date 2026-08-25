@@ -35,18 +35,34 @@ function ChartCaption({ left, mid, right }) {
   )
 }
 
-// ENERGY VS TARGET — a real editorial line chart of logged calories per day.
+// ENERGY — a real editorial line chart of logged calories per day.
 // preserveAspectRatio="none" stretches the 320×88 field to the card, exactly as
 // the artboard does. Purely descriptive: it plots what was logged and makes no
-// claim about cause. The dashed line is the observed AVERAGE (a real figure),
-// never a fabricated target — we omit it when it would fall outside the drawn
-// range so the line never lies about where the mean sits.
-function EnergyChart({ days, avg, showAvg }) {
+// claim about cause. The ink dashed line is the observed AVERAGE (a real
+// figure derived from the same days being plotted) — we omit it when it would
+// fall outside the drawn range so the line never lies about where the mean
+// sits.
+//
+// `target`, since 25 Aug 2026: a SECOND reference line for the user's real,
+// chosen calorie target (server/index.js's targets.calories, sent only when
+// targets.hasTargets is true — see Insights() below). This was never drawn
+// before because there was no real target to show, not because a target line
+// is a bad idea; now that GET /insights exposes one, showing it is the honest
+// fix, not a reversal of the earlier reasoning. It is drawn in COBALT — this
+// app's "confident data" accent (index.css: "the single accent for primary
+// action, the selected state, and confident data") — with a finer dotted
+// rhythm, so it reads as a distinct, deliberate line from the average's ink
+// dashes even in isolation, not just by column position. Unlike the average,
+// a target can legitimately sit outside the observed spread (that gap IS the
+// point of drawing it), so the plotted domain expands to include it rather
+// than clipping or hiding it the way the average's showAvg gate does.
+function EnergyChart({ days, avg, showAvg, target }) {
   const vals = days.map((d) => num(d.totals?.calories))
   const n = vals.length
   if (n < 2) return null
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
+  const domain = target > 0 ? [...vals, target] : vals
+  const min = Math.min(...domain)
+  const max = Math.max(...domain)
   const span = max - min || 1
   const TOP = 16
   const BOT = 72 // vertical plot band inside the 88-tall viewBox
@@ -54,11 +70,48 @@ function EnergyChart({ days, avg, showAvg }) {
   const pts = vals.map((v, i) => `${((i / (n - 1)) * 320).toFixed(1)},${y(v).toFixed(1)}`)
   const lastY = y(vals[n - 1]).toFixed(1)
   const avgY = y(avg).toFixed(1)
+  const targetY = target > 0 ? y(target).toFixed(1) : null
   return (
     <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+      {targetY != null && (
+        <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="#1F35C4" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
+      )}
       {showAvg && (
         <line x1="0" y1={avgY} x2="320" y2={avgY} stroke="#121210" strokeOpacity="0.28" strokeWidth="1" strokeDasharray="3 4" />
       )}
+      <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
+      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+    </svg>
+  )
+}
+
+// PROTEIN — daily protein intake against the user's REAL protein target
+// (server/index.js's targets.protein_g, store.getLatestTargets — an actual
+// chosen number). This is legitimately different from Energy's average-only
+// situation above: Energy has no real target to plot, so it never claims one;
+// Protein has one, so showing it is the honest move, not the same mistake in
+// a different shape. Only ever rendered by Insights() when hasTargets is
+// true and the target is a real positive number — see the "No protein
+// target set" placeholder below for the honest alternative. Same
+// domain-expansion-to-include-the-target reasoning as EnergyChart's new
+// target line.
+function ProteinChart({ days, target }) {
+  const vals = days.map((d) => num(d.totals?.protein_g))
+  const n = vals.length
+  if (n < 2) return null
+  const domain = [...vals, target]
+  const min = Math.min(...domain)
+  const max = Math.max(...domain)
+  const span = max - min || 1
+  const TOP = 16
+  const BOT = 72
+  const y = (v) => BOT - ((v - min) / span) * (BOT - TOP)
+  const pts = vals.map((v, i) => `${((i / (n - 1)) * 320).toFixed(1)},${y(v).toFixed(1)}`)
+  const lastY = y(vals[n - 1]).toFixed(1)
+  const targetY = y(target).toFixed(1)
+  return (
+    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+      <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="#1F35C4" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
       <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
       <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
     </svg>
@@ -230,6 +283,7 @@ export default function Insights({ refreshKey }) {
   const days = data?.days || []
   const correlations = data?.correlations
   const tracked = num(nutrition?.trackedDays)
+  const onTargetDetail = data?.onTargetDetail || []
 
   // Calorie range + observed average, used both to scale the chart and to decide
   // whether the average line can honestly be drawn inside it.
@@ -238,6 +292,22 @@ export default function Insights({ refreshKey }) {
   const cMax = cals.length ? Math.max(...cals) : 0
   const avgCal = num(nutrition?.avgCalories)
   const showAvgLine = days.length >= 2 && avgCal >= cMin && avgCal <= cMax
+
+  // Real targets — hasTargets (server/db.js) is the ONLY honest signal that
+  // these are numbers the user actually chose, not the silent DEFAULT_TARGETS
+  // fallback getLatestTargets returns otherwise (src/App.jsx gates onboarding
+  // on this exact field, for the exact same reason). calTarget/proteinTarget
+  // ride through even when hasTargets is false — onTargetDays above already
+  // depends on calTarget the same way and this must not silently disagree
+  // with that existing number — but the two NEW target reference lines below
+  // (Energy chart's target line, the whole Protein chart) only draw when
+  // hasTargets is true, so neither ever labels a fallback default "your
+  // target" out loud.
+  const hasRealTargets = !!data?.targets?.hasTargets
+  const calTarget = num(data?.targets?.calories)
+  const proteinTarget = num(data?.targets?.protein_g)
+  const showCalTargetLine = hasRealTargets && calTarget > 0
+  const showProteinTarget = hasRealTargets && proteinTarget > 0
 
   const readiness = data?.ouraReadiness || []
   const avgReadiness = readiness.length ? Math.round(readiness.reduce((a, r) => a + r.score, 0) / readiness.length) : null
@@ -352,9 +422,47 @@ export default function Insights({ refreshKey }) {
                 <Stat label="On-target days" value={num(nutrition?.onTargetDays)} />
               </Card>
 
+              {/* ON TARGET — the Card's "On-target days" count, visualized per
+                  day (server/index.js's onTargetDetail: the SAME ±10%-of-
+                  calorie-target computation the count above derives from,
+                  computed once server-side rather than re-derived here — see
+                  the isOnTarget comment in that route). Three real states per
+                  cell, same dot-bar shape as Sleep×Fiber's below but a third
+                  state added: cobalt = on target, mid-ink = logged but missed
+                  it, faint track = no log that day (identical to Sleep×Fiber's
+                  own "not logged" fill, not a new color). No color name is
+                  spelled out per-cell (this file's precedent — Sleep×Fiber's
+                  existing 2-state bar — already communicates its meaning only
+                  through the caption below it, not a legend on every dot). */}
+              {onTargetDetail.length > 0 && (
+                <section>
+                  <SectionHead
+                    label={`On target · last ${window} days`}
+                    right={<span className="tnum text-[13px] text-muted">{num(nutrition?.onTargetDays)}/{tracked} days</span>}
+                  />
+                  <div className="mt-3 flex gap-0.5">
+                    {onTargetDetail.map((d) => (
+                      <div
+                        key={d.date}
+                        aria-hidden
+                        className={`h-[5px] flex-1 ${d.onTarget === true ? 'bg-cobalt' : d.onTarget === false ? 'bg-ink/35' : 'bg-track'}`}
+                      />
+                    ))}
+                  </div>
+                  <ChartCaption
+                    left={shortDate(onTargetDetail[0].date)}
+                    mid="On-target · off-target · no log"
+                    right={shortDate(onTargetDetail[onTargetDetail.length - 1].date)}
+                  />
+                </section>
+              )}
+
               {/* ENERGY — real line of logged calories. Titled by what it plots:
-                  the only reference line is the observed average, so "vs target"
-                  promised a comparison the graphic never made. */}
+                  originally the only reference line was the observed average,
+                  so "vs target" promised a comparison the graphic never made.
+                  Since 25 Aug 2026 a real calorie target line can join it (see
+                  EnergyChart's own comment) — still titled by what's plotted,
+                  now honestly including a real second line when one exists. */}
               <section>
                 <SectionHead
                   label={`Energy · last ${window} days`}
@@ -363,15 +471,64 @@ export default function Insights({ refreshKey }) {
                 />
                 {days.length >= 2 ? (
                   <>
-                    <EnergyChart days={days} avg={avgCal} showAvg={showAvgLine} />
+                    <EnergyChart days={days} avg={avgCal} showAvg={showAvgLine} target={showCalTargetLine ? calTarget : null} />
                     <ChartCaption
                       left={shortDate(days[0].date)}
-                      mid={showAvgLine ? `AVG ${fmt(avgCal)} — DASHED` : null}
+                      mid={
+                        [
+                          showAvgLine ? `AVG ${fmt(avgCal)} — DASHED` : null,
+                          showCalTargetLine ? `TARGET ${fmt(calTarget)} — DOTTED` : null,
+                        ].filter(Boolean).join(' · ') || null
+                      }
                       right={shortDate(days[days.length - 1].date)}
                     />
                   </>
                 ) : (
                   <p className="mt-2.5 text-sm text-muted">A day or two more of logging draws the trend line.</p>
+                )}
+              </section>
+
+              {/* PROTEIN — daily protein against the user's REAL protein
+                  target (see ProteinChart's own comment for why this is
+                  legitimately different from Energy's average-only history).
+                  Gated on hasRealTargets, never on a bare truthy number: the
+                  DEFAULT_TARGETS fallback (server/db.js) always makes
+                  proteinTarget a positive number even for a user who has
+                  never set one, so proteinTarget > 0 alone can't tell "real"
+                  from "silent default" — hasTargets can, and is the same
+                  field src/App.jsx's onboarding gate itself relies on. */}
+              <section>
+                <SectionHead
+                  label={`Protein · last ${window} days`}
+                  strong
+                  right={
+                    showProteinTarget ? (
+                      <span className="tnum text-[13px] text-muted">target {fmt(proteinTarget)} g</span>
+                    ) : (
+                      <StatusMark status="unavailable" label="No target set" />
+                    )
+                  }
+                />
+                {showProteinTarget ? (
+                  days.length >= 2 ? (
+                    <>
+                      <ProteinChart days={days} target={proteinTarget} />
+                      <ChartCaption
+                        left={shortDate(days[0].date)}
+                        mid={`TARGET ${fmt(proteinTarget)} G — DOTTED`}
+                        right={shortDate(days[days.length - 1].date)}
+                      />
+                    </>
+                  ) : (
+                    <p className="mt-2.5 text-sm text-muted">A day or two more of logging draws the trend line.</p>
+                  )
+                ) : (
+                  // Honest missing-precondition state (Weight's tiered-message
+                  // pattern, not Readiness's colored band — mist/sand are
+                  // reserved for recovery/training CONTEXT swatches, never a
+                  // macro color, and protein is a macro): no chart, no
+                  // fabricated target, just the real fix.
+                  <p className="mt-2.5 text-sm text-muted">Set a protein target in Plan to compare your daily intake against it.</p>
                 )}
               </section>
             </>
