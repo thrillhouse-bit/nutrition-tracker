@@ -27,6 +27,17 @@ export default function Scanner({ onDetected }) {
   const [starting, setStarting] = useState(true)
   const [manual, setManual] = useState('')
 
+  // App.jsx passes an inline handler, so `onDetected` gets a new identity on
+  // every App re-render — including one that lands *after* the camera is
+  // already starting (openAdd() kicks off a recentFoods() fetch alongside
+  // opening the scan sheet; that fetch resolving mid-startup is one way this
+  // fires, but any App state change while the sheet is open does it). Read
+  // the callback through a ref instead of depending on it directly below, so
+  // the camera's start/stop effect only reruns on mount/unmount, never on a
+  // caller re-render.
+  const onDetectedRef = useRef(onDetected)
+  useEffect(() => { onDetectedRef.current = onDetected }, [onDetected])
+
   useEffect(() => {
     let cancelled = false
     const reader = makeReader()
@@ -41,7 +52,7 @@ export default function Scanner({ onDetected }) {
             if (result && !cancelled) {
               // Stop immediately so we don't fire twice for one scan.
               controlsRef.current?.stop()
-              onDetected(result.getText())
+              onDetectedRef.current(result.getText())
             }
           },
         )
@@ -67,7 +78,17 @@ export default function Scanner({ onDetected }) {
       cancelled = true
       controlsRef.current?.stop()
     }
-  }, [onDetected])
+    // Mount/unmount only — see onDetectedRef above for why `onDetected` is
+    // deliberately not a dependency here. A prior version restarted the
+    // camera (tearing down a live stream and racing a second
+    // getUserMedia/attach against the teardown) on every caller re-render;
+    // measured headless with a fake camera, that race left <video> with
+    // srcObject=null / readyState=0 / videoWidth=0 in 2 of 3 runs, even
+    // though both getUserMedia calls succeeded and permission was granted —
+    // the restart itself was 100% reproducible, only the corruption's exact
+    // timing was a race.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const submitManual = (e) => {
     e.preventDefault()
