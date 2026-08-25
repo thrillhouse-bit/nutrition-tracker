@@ -78,6 +78,30 @@ const fake = vi.hoisted(() => {
     savePlan: async (userId, date, plan) => ({ date, ...plan }),
     replaceAppleSignals: async (userId, day, rows) => { state.appleSignals[day] = rows; return rows.length },
     listAppleSignals: async (userId, day) => state.appleSignals[day] || [],
+    // Real training-load history: derived from the same appleSignals state
+    // replaceAppleSignals/listAppleSignals already use, ranged like
+    // listOuraHistory below. This whole module is vi.mock'd out for the
+    // route tests (see the vi.mock('../server/db.js', ...) below), so —
+    // same reasoning as saveOuraHistory's fake above, which reimplements the
+    // scoredDays fix rather than importing it — the aggregation is
+    // reimplemented here rather than imported from the real db.js; it's
+    // proven equivalent to server/db.js's aggregateWorkoutRows by
+    // store-json.test.js and store-pg.test.js instead.
+    listAppleWorkoutHistory: async (userId, from, to) => {
+      const byDay = new Map()
+      for (const [day, samples] of Object.entries(state.appleSignals)) {
+        if (day < from || day > to) continue
+        for (const s of samples) {
+          if (s.metric !== 'workout') continue
+          if (!byDay.has(day)) byDay.set(day, { day, minutes: 0, sessions: 0 })
+          const bucket = byDay.get(day)
+          const mins = Number(s.value?.duration_min)
+          if (Number.isFinite(mins) && mins > 0) bucket.minutes += mins
+          bucket.sessions += 1
+        }
+      }
+      return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1))
+    },
     listOuraAccounts: async (userId) => state.ouraAccounts,
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
@@ -726,6 +750,57 @@ describe('GET /api/insights ouraReadiness', () => {
     const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.ouraReadiness).toEqual([])
+  })
+})
+
+describe('GET /api/insights workoutLoad', () => {
+  // Real Apple Health workout samples, wire shape (`duration_min`/`est_kcal` —
+  // see ios/Shared/HealthModel.swift's WorkoutValue.CodingKeys), seeded the
+  // same way the ingest route persists them (server/index.js POST
+  // /api/apple/ingest -> store.replaceAppleSignals).
+  it('sums same-day Apple workout minutes and counts sessions, inside the requested window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {
+      '2026-08-20': [
+        { metric: 'workout', value: { kind: 'run', duration_min: 30, est_kcal: 300, status: 'completed' } },
+        { metric: 'workout', value: { kind: 'strength', duration_min: 20, est_kcal: 150, status: 'completed' } },
+      ],
+      '2026-08-24': [
+        { metric: 'workout', value: { kind: 'ride', duration_min: 45, est_kcal: 500, status: 'completed' } },
+      ],
+    }
+    const res = await get('/api/insights?window=7')
+    const body = await res.json()
+    expect(body.workoutLoad).toEqual([
+      { date: '2026-08-20', minutes: 50, sessions: 2 },
+      { date: '2026-08-24', minutes: 45, sessions: 1 },
+    ])
+  })
+
+  it('omits workoutLoad entries outside the window (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {
+      '2026-07-01': [{ metric: 'workout', value: { kind: 'run', duration_min: 30, status: 'completed' } }],
+    }
+    const res = await get('/api/insights?window=7')
+    expect((await res.json()).workoutLoad).toEqual([])
+  })
+
+  it('ignores non-workout Apple signals on the same day (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {
+      '2026-08-20': [{ metric: 'steps', value: 5000 }, { metric: 'expenditure', value: 2000 }],
+    }
+    const res = await get('/api/insights?window=7')
+    expect((await res.json()).workoutLoad).toEqual([])
+  })
+
+  it('returns an empty array, not an error, when nothing has synced (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.appleSignals = {}
+    const res = await get('/api/insights?window=7')
+    expect(res.status).toBe(200)
+    expect((await res.json()).workoutLoad).toEqual([])
   })
 })
 
