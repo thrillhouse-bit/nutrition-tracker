@@ -261,13 +261,18 @@ export default function Today({ date, data, entries, loading, online, syncing, p
         </Card>
       )}
 
-      {/* Intake so far — the calorie headline, budget bar, and macro grid */}
+      {/* Intake so far — the calorie headline, budget bar, and macro grid.
+          The numeral here used to render at 38px, larger than the
+          recommendation card's own 29px title above — the single largest,
+          boldest thing on the screen was the calorie count, not the "single
+          focal recommendation" README describes. Sized down to 27px so the
+          recommendation stays the visual anchor. */}
       <section>
         <div className="flex items-end justify-between">
           <div>
             <div className="eyebrow">Intake so far</div>
             <div className="mt-2.5 flex items-baseline gap-2">
-              <span className="numeral text-[38px] leading-[0.9] text-ink">{fmt(calDone, 0)}</span>
+              <span className="numeral text-[27px] leading-[0.9] text-ink">{fmt(calDone, 0)}</span>
               <span className="tnum text-[12.5px] text-muted">/ {fmt(calTarget, 0)} kcal</span>
             </div>
           </div>
