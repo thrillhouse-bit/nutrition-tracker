@@ -134,13 +134,17 @@ export default function LogView({
           </button>
         </div>
 
-        {/* ALTERNATIVES — equal-weight ink-outline cards */}
+        {/* ALTERNATIVES — equal-weight ink-outline cards. ALTS has an odd count
+            (3), so a plain 2-col grid leaves the last card beside a dead
+            cell; give it the full row instead of a third, cramped column. */}
         <div className="grid grid-cols-2 gap-2.5">
-          {ALTS.map((a) => (
+          {ALTS.map((a, i) => (
             <button
               key={a.key}
               onClick={() => openAdd(a.key)}
-              className="border-[1.5px] border-ink px-3.5 py-[15px] text-left transition hover:bg-fill"
+              className={`border-[1.5px] border-ink px-3.5 py-[15px] text-left transition hover:bg-fill ${
+                i === ALTS.length - 1 && ALTS.length % 2 === 1 ? 'col-span-2' : ''
+              }`}
             >
               <div className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Alternative</div>
               <div className="serif mt-2.5 text-[19px] leading-[1.15] text-ink">{a.title}</div>

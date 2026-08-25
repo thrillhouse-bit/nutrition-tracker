@@ -88,7 +88,10 @@ function LogRow({ entry, onEdit, onDelete }) {
           {food.name || 'Food'}
           {tag && <span className="ml-1.5 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-muted">· {tag}</span>}
           {pending && (
-            <span className="ml-1.5 rounded bg-warn/15 px-1 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-warn">pending</span>
+            // Sand, not amber warn — "in progress" reads with the app's own
+            // training-context tone (Plan.jsx's tag chips are the same
+            // bg-sand + text-ink combination) rather than a 7th hue.
+            <span className="ml-1.5 rounded bg-sand px-1 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-ink">pending</span>
           )}
         </span>
         <span className="shrink-0 numeral text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
@@ -165,12 +168,13 @@ export default function Today({ date, data, entries, loading, online, syncing, p
         </div>
       </div>
 
-      {/* Offline / pending-sync strip */}
+      {/* Offline / pending-sync strip — Sand, the same "pending, not yet
+          synced" tone as the log-row tag above, not the legacy amber warn. */}
       {(pendingCount > 0 || !online) && (
-        <div className="flex items-center justify-between gap-3 border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
+        <div className="flex items-center justify-between gap-3 border border-line-strong bg-sand/50 px-3 py-2 text-sm text-ink">
           <span>{!online && '◐ Offline. '}{pendingCount > 0 ? `${pendingCount} log${pendingCount === 1 ? '' : 's'} waiting to sync` : 'Logs save locally and sync later.'}</span>
           {pendingCount > 0 && online && (
-            <button onClick={onSync} disabled={syncing} className="shrink-0 border border-warn/40 px-2 py-1 text-xs font-semibold disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>
+            <button onClick={onSync} disabled={syncing} className="shrink-0 border border-ink/30 px-2 py-1 text-xs font-semibold disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>
           )}
         </div>
       )}
@@ -295,10 +299,20 @@ export default function Today({ date, data, entries, loading, online, syncing, p
       <div className="flex gap-2.5 pt-1">
         <Button onClick={() => openAdd('menu')} className="flex-1">Log food</Button>
         <Button variant="outline" onClick={() => openAdd('scan')} aria-label="Scan a barcode" className="w-[60px] shrink-0 px-0">
-          <span aria-hidden className="relative block h-[18px] w-[22px] border-y-2 border-ink">
-            <span className="absolute -bottom-0.5 -top-0.5 left-0 w-0.5 bg-ink" />
-            <span className="absolute -bottom-0.5 -top-0.5 right-0 w-0.5 bg-ink" />
-          </span>
+          {/* Barcode pictogram — bars of varying width, not a frame (the old
+              two-edge-bars glyph read as an empty square). currentColor
+              inherits the outline button's ink/hover fill. */}
+          <svg aria-hidden viewBox="0 0 22 18" width="22" height="18" fill="currentColor">
+            <rect x="0" width="1" height="18" />
+            <rect x="2" width="2" height="18" />
+            <rect x="5" width="1" height="18" />
+            <rect x="7" width="1" height="18" />
+            <rect x="9" width="3" height="18" />
+            <rect x="13" width="1" height="18" />
+            <rect x="15" width="2" height="18" />
+            <rect x="18" width="1" height="18" />
+            <rect x="20" width="2" height="18" />
+          </svg>
         </Button>
       </div>
     </div>
