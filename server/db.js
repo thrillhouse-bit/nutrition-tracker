@@ -502,7 +502,17 @@ export class JsonStore {
     try {
       const raw = await fs.readFile(this.file, 'utf8')
       this.data = JSON.parse(raw)
-    } catch {
+    } catch (err) {
+      // ENOENT (no file yet — a fresh install) is the only case that should
+      // silently start empty. Anything else (a corrupt/truncated JSON parse
+      // failure, a permissions error) is not a fresh install and must not be
+      // treated as one — that would silently wipe every user's data on the
+      // next persist(). Fail loudly instead so it gets noticed and the file
+      // can be recovered/inspected rather than quietly replaced.
+      if (err.code !== 'ENOENT') {
+        console.error(`[nutrition-tracker] Failed to read/parse ${this.file} — refusing to silently start from an empty store. Fix or remove the file to continue.`, err)
+        throw err
+      }
       this.data = { foods: [], entries: [], targets: [], users: [], seq: { food: 0, entry: 0, target: 0, user: 0 } }
     }
     // Older on-disk stores predate `users`/per-row user_id — nothing to
@@ -524,7 +534,14 @@ export class JsonStore {
     // re-rejects with the old error even once its cause is gone.
     const write = async () => {
       await fs.mkdir(path.dirname(this.file), { recursive: true })
-      await fs.writeFile(this.file, JSON.stringify(this.data, null, 2))
+      // Write to a temp file and rename over the real one, rather than
+      // writeFile-ing the live path directly — rename is a single atomic
+      // directory-entry swap on POSIX, so a crash/OOM-kill/container
+      // restart mid-write leaves either the old complete file or the new
+      // complete file, never a truncated one.
+      const tmp = `${this.file}.tmp`
+      await fs.writeFile(tmp, JSON.stringify(this.data, null, 2))
+      await fs.rename(tmp, this.file)
     }
     this.writing = this.writing.then(write, write)
     return this.writing
