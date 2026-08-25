@@ -101,13 +101,21 @@ body {
   .tnum {
     font-variant-numeric: tabular-nums lining-nums;
   }
-  /* The uppercase tracked micro-label used throughout the design. */
+  /* The uppercase tracked micro-label used throughout the design.
+     line-height: 1.3, not 1 — a wrapped multi-word eyebrow (e.g. Connections'
+     "State reference · shape + word, never color alone") measured its lines
+     -1px apart at line-height: 1 (glyph boxes overlapping, not just
+     touching); 1.3 opens a real ~2px gap. Checked every call site first:
+     every one is a natural-height flex/block label except FoodConfirm's
+     h-11-fixed serving-unit box, which just centers the (still single-line,
+     unbreakable "g"/"ml"/etc.) text within its fixed 44px — a taller line
+     box there has room to spare, so the global change is safe. */
   .eyebrow {
     font-family: var(--font-sans);
     text-transform: uppercase;
     letter-spacing: 0.15em;
     font-size: 0.625rem;
-    line-height: 1;
+    line-height: 1.3;
     font-weight: 600;
     color: var(--color-muted);
   }

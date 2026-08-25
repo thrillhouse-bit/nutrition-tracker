@@ -58,7 +58,15 @@ function ContextCell({ tone, label, signal, missing, children }) {
     <div className="min-w-0 px-3 py-3">
       <div className="flex items-center gap-1.5">
         <Swatch tone={tone} size={9} />
-        <span className="eyebrow">{label}</span>
+        {/* At 320px this row is ~71px wide; "Readiness" alone measured 77px
+            (10px eyebrow font + 0.15em tracking), overflowing ~14px past the
+            row's own content box and eating the column's right padding
+            almost entirely. text-[9px]/tighter tracking recovers that
+            width; break-words is a graceful fallback (not the primary
+            fix — a single all-caps word has no natural break point without
+            it) so a longer label degrades to two lines, at fix #2's now-
+            legible 1.3 line-height, instead of overflowing again. */}
+        <span className="eyebrow break-words text-[9px] tracking-[0.09em]">{label}</span>
       </div>
       <div className="mt-2.5">{children}</div>
       <div className="mt-2">
@@ -213,12 +221,30 @@ export default function Today({ date, data, entries, loading, online, syncing, p
         </ContextCell>
       </div>
 
-      {/* The white "next action" sheet — the focal moment */}
+      {/* The white "next action" sheet — the focal moment. An audit measured
+          three near-equal-weight serif moments above the fold (masthead
+          32px, context numerals 30px, this title 29px) with nothing making
+          the recommendation clearly win, so this card gets more weight than
+          the ordinary `Card white` treatment: a heavier border
+          (border-line-strong, 1.5px vs. the default 1px border-line) and a
+          real lifted shadow (vs. `Card white`'s 1px/0.06-alpha hairline,
+          barely visible against paper) plus a touch more top/bottom padding.
+          Hand-rolled rather than `<Card white>` + className overrides:
+          `Card`'s skin string and any override both land in Tailwind's
+          `utilities` layer, and same-layer precedence there is generation-
+          order-dependent, not source order in the className string — not
+          worth relying on for a deliberate design decision. The other two
+          "white moment" surfaces that need a specific weight (Plan.jsx,
+          SmartPlanForm.jsx) already hand-write this same bg-card/border/
+          shadow trio rather than going through `Card` for the same reason. */}
       {rec ? (
-        <Card white className="px-4 pb-1 pt-3.5">
+        <div className="border-[1.5px] border-line-strong bg-card px-4 pb-3.5 pt-4 shadow-[0_3px_10px_rgb(18_18_16/0.10)]">
           <div className="flex items-center justify-between">
             <span className="eyebrow text-cobalt">Recommendation</span>
-            {syncTime && <span className="tnum text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted">Updated {syncTime}</span>}
+            {/* Only the live branch gets a specific clock time — a fresh-
+                looking "Updated 10:25 PM" stamp beside "SAMPLE SIGNALS ·
+                NOT A LIVE SYNC" implied a real sync that never happened. */}
+            {syncLive && syncTime && <span className="tnum text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted">Updated {syncTime}</span>}
           </div>
           <h2 className="serif mt-2.5 text-[29px] leading-[1.05] tracking-[-0.01em] text-ink">{rec.title}</h2>
           {rec.detail && <p className="mt-2 max-w-[300px] text-[13.5px] leading-[1.45] text-ink/80">{rec.detail}</p>}
@@ -227,7 +253,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
               <Why items={rec.why} />
             </div>
           )}
-        </Card>
+        </div>
       ) : (
         <Card white className="px-4 py-4">
           <div className="eyebrow mb-2 text-cobalt">Recommendation</div>
