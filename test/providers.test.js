@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { freshnessOf, composeSignals, demoSignals, PROVIDERS } from '../server/providers.js'
 
 describe('freshnessOf', () => {
@@ -97,5 +97,73 @@ describe('composeSignals: manual workout input overrides any wearable source', (
     const store = { ...baseStore, getManualWorkout: async () => null }
     const sig = await composeSignals(store, new Date(), 1)
     expect(sig.workout.provider).toBe('garmin') // demo fallback, unaffected
+  })
+})
+
+// Regression: neverConnected() used to ask "does the SERVER have Oura/Garmin
+// OAuth app credentials configured" (an env-var check) instead of "does THIS
+// USER have an account linked" (store.listOuraAccounts/listGarminAccounts).
+// The moment any one user connected a real Oura account, the server counted
+// as "configured" for every OTHER user too, so their oura branch stopped
+// being demo-eligible — but they still had no token, so realSignals also
+// returned {}. Net effect: readiness/sleep silently went from "demo" to
+// "nothing at all" for every not-yet-connected user, while the Connections
+// tab (driven by providerStatus, which was already correctly per-user) kept
+// truthfully saying Oura was available to connect — the exact live/Connections
+// mismatch an outside audit flagged (25 Aug 2026).
+describe('composeSignals: demo fallback follows THIS USER\'s own connection, not server-wide OAuth config', () => {
+  const OURA_ENV = ['OURA_CLIENT_ID', 'OURA_CLIENT_SECRET', 'OURA_REDIRECT_URI']
+  const saved = {}
+
+  beforeEach(() => {
+    for (const k of OURA_ENV) saved[k] = process.env[k]
+    process.env.OURA_CLIENT_ID = 'test-client-id'
+    process.env.OURA_CLIENT_SECRET = 'test-client-secret'
+    process.env.OURA_REDIRECT_URI = 'https://example.com/oura/callback'
+  })
+
+  afterEach(() => {
+    for (const k of OURA_ENV) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+    vi.unstubAllGlobals()
+  })
+
+  const baseStore = {
+    getIntegration: async () => ({ enabled: true, demo: true, settings: {} }),
+    listGarminAccounts: async () => [],
+    getGarminDaily: async () => null,
+    listAppleSignals: async () => [],
+    updateOuraTokens: async () => {},
+  }
+
+  it('a user with NO Oura account still gets demo readiness/sleep once the server has real Oura OAuth configured', async () => {
+    const store = { ...baseStore, listOuraAccounts: async () => [] }
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.readiness.provider).toBe('oura')
+    expect(sig.readiness.demo).toBe(true)
+    expect(sig.readiness.value).toBe(82) // the seeded demo score
+    expect(sig.sleep.provider).toBe('oura')
+    expect(sig.sleep.demo).toBe(true)
+  })
+
+  it('control: a user WITH a real (but currently data-less) Oura account gets no demo fallback — a real connection never fakes its own gap', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('no network in test') }))
+    const store = {
+      ...baseStore,
+      // Apple counted as "really connected, just no data today" too, so
+      // sleep's own apple fallback (a separate, correct behavior) can't
+      // mask what this test is actually checking — oura's own gap.
+      // connected_at is top-level on the integration row (see server/db.js),
+      // not nested under settings — that's the provider-specific bag.
+      getIntegration: async (userId, id) => ({ enabled: true, demo: true, connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
+      listOuraAccounts: async () => [
+        { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
+      ],
+    }
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.readiness).toBeNull()
+    expect(sig.sleep).toBeNull()
   })
 })

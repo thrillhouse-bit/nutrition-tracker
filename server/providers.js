@@ -203,9 +203,27 @@ async function realSignals(store, userId, id, nowDate) {
 // back to demo whenever a provider merely had no data *today* fed the plan a
 // seeded evening run for a really-connected account whose watch hadn't synced
 // yet, while the Connections tab said stale, demo: false.
-function neverConnected(id, settings) {
-  if (id === 'oura') return !(ouraConfigured() || ouraOAuthConfigured())
-  if (id === 'garmin') return !garminConfigured()
+//
+// Must check THIS USER's own account, not just whether the server can do
+// OAuth at all — checking only ouraConfigured()/garminConfigured() (server-
+// wide: are the app's own client id/secret set) meant that the moment ANY
+// user connected a real Oura account, the server counted as "configured" for
+// EVERY user, so every other, never-connected user's oura branch stopped
+// counting as neverConnected — realSignals returned {} (no token) and demo
+// was skipped too, leaving them with nothing for readiness/sleep at all,
+// while the Connections tab correctly kept reporting Oura as available to
+// connect. providerStatus (above) already got this right per-user; this now
+// asks the same question the same way, so demo and status can't drift again.
+async function neverConnected(store, userId, id, settings) {
+  if (id === 'oura') {
+    if (!(ouraConfigured() || ouraOAuthConfigured())) return true
+    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : [{ id: 'legacy' }]
+    return accounts.length === 0
+  }
+  if (id === 'garmin') {
+    if (!garminConfigured()) return true
+    return (await store.listGarminAccounts(userId)).length === 0
+  }
   if (id === 'apple') return !settings?.connected_at
   return false
 }
@@ -222,7 +240,7 @@ export async function composeSignals(store, nowDate = new Date(), userId) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
     const real = await realSignals(store, userId, id, nowDate)
     if (Object.keys(real).length) perProvider[id] = real
-    else if (settings[id]?.demo !== false && neverConnected(id, settings[id])) perProvider[id] = demo[id] || {}
+    else if (settings[id]?.demo !== false && (await neverConnected(store, userId, id, settings[id]))) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}
   }
 
