@@ -103,6 +103,8 @@ const oura = vi.hoisted(() => ({
   legacy: false, // whether OURA_TOKEN-style config appears present
   dailySummary: async () => null,
   activityRange: async () => [],
+  dailyReadiness: async () => null,
+  readinessRange: async () => [],
 }))
 
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
@@ -114,6 +116,8 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     getToken: () => 'legacy-token',
     dailySummary: (...args) => oura.dailySummary(...args),
     activityRange: (...args) => oura.activityRange(...args),
+    dailyReadiness: (...args) => oura.dailyReadiness(...args),
+    readinessRange: (...args) => oura.readinessRange(...args),
   }
 })
 
@@ -395,11 +399,14 @@ describe('POST /api/oura/backfill', () => {
     oura.legacy = true
     fake.state.ouraHistory = []
     let asked
-    oura.activityRange = async (token, from, to) => {
+    // Must be readinessRange (daily_readiness), not activityRange
+    // (daily_activity) — this endpoint used to call the wrong one and store
+    // an activity score mislabeled as readiness (see integrations/oura.js).
+    oura.readinessRange = async (token, from, to) => {
       asked = { token, from, to }
       return [
-        { day: '2026-08-01', score: 70, total_calories: 2100, active_calories: 400, steps: 8000 },
-        { day: '2026-08-02', score: null, total_calories: 2000, active_calories: 300, steps: 6000 }, // no score that day
+        { day: '2026-08-01', score: 70 },
+        { day: '2026-08-02', score: null }, // no score that day
       ]
     }
     const res = await post('/api/oura/backfill?days=10', {})
