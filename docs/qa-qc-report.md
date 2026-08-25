@@ -45,6 +45,8 @@ doesn't repeat that ground.
 | — | Input validation | `zod` was unused for HTTP input; `PUT /targets`/`POST /foods`/`POST,PATCH /entries` had no validation | Merged (2026-08-25, PR #47) |
 | — | Insights.jsx | Nutrition-trend day-bucketing used the server's timezone instead of the client's | Merged (2026-08-25, PR #48) |
 | — | Today.jsx | Day-nav (‹ ›) was the only frequent control anchored at the top of a tall screen | Merged (2026-08-25, PR #49, added a swipe gesture) |
+| High | Apple integration | `POST /api/apple/token` existed server-side but had no UI path to generate/copy it — the integration wasn't usable end-to-end through the app | Merged (2026-08-25, PR #52, other session) — flagged in the architecture-review pass but missed in this table's earlier reconciliation; corrected in this check-in |
+| — | Oura readiness signal | Every "readiness" value in the app (Today, Plan, Insights) was actually sourced from Oura's activity-score endpoint, not the dedicated readiness endpoint — a bug this session never found, caught and fixed independently | Merged (2026-08-25, PR #51, other session) |
 | Medium | Search (OFF) | Search depends on Open Food Facts' legacy `cgi/search.pl` endpoint, which returned intermittent 503s during this pass (reproduced independently of the app) | Reported (2026-08-25) |
 | Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
 | Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Reported (2026-08-25) |
@@ -545,3 +547,66 @@ signup.
 last check-in — the added test count reflects the new zod-validation,
 Apple-ingest-disabled, TZ-bucketing, and `upsertFoodByBarcode`-race
 regression tests written alongside their fixes).
+
+## 2026-08-25 — Check-in pass (recurring, post-fix-all)
+
+Re-invoked via the recurring audit routine, ~1 hour after the fix-all pass
+above merged (PR #50). Pulled latest `main`: two new commits landed since
+then, both from the other session — PR #51 ("Fix Oura readiness signal:
+was querying activity, not readiness") and PR #52 ("Add Connections UI for
+the Apple Health pairing token"). `npm test`: 160/160 (2 new, from PR #51).
+
+**Reconciled both against this report:**
+
+- **PR #52 fixes a real gap in this table, not a new bug.** The
+  architecture-review pass had already found "Apple integration has no UI
+  path" (`POST /api/apple/token` existed server-side, nothing in
+  `Connections.jsx` called it) and written it up as a High finding — but it
+  never made it into the Open Items table during reconciliation, so it sat
+  invisible as neither fixed, deferred, nor reported. Corrected the table
+  above (now shows Merged, PR #52) and verified the fix live: booted a
+  clean local instance, signed up a fresh account, opened Connections →
+  Apple Health → "How to sync," clicked "Generate pairing token," and
+  confirmed a 48-hex-char token renders in a read-only copyable field with
+  a working Copy button — matches `POST /api/apple/token`'s
+  `crypto.randomBytes(24).toString('hex')` server-side. No UI regressions
+  found in Connections otherwise.
+- **PR #51 is a genuine bug this session never caught.** Every "readiness"
+  value in the app (Today's context strip, Plan's recommendation engine,
+  Insights' readiness chart) was being sourced from Oura's
+  `daily_activity` endpoint's score field instead of the dedicated
+  `daily_readiness` endpoint — two different Oura metrics that happen to
+  share a 0–100 scale, so it never threw, just silently mislabeled
+  activity score as readiness (or showed nothing, since activity score is
+  null far more often). The commit message documents it was found by
+  reproducing a live symptom — Oura reconnect on the deployed site not
+  backfilling 30-day history — then tracing it to the endpoint mismatch,
+  not a guess. Read the full diff: adds `dailyReadiness`/`readinessRange`
+  alongside (not replacing) the existing activity functions, which are
+  still correctly used for `/api/oura/summary` and `/api/energy/summary`.
+  Test coverage looks appropriately paranoid — the commit notes the old
+  backfill mock was stubbing the wrong function, which had started making
+  real un-mocked calls to Oura's API during test runs; the fix corrects
+  that too. This is exactly the kind of bug this session's own multi-day
+  simulated-usage pass should have caught and didn't (it exercised Oura
+  demo-data code paths, not the real endpoint selection) — noted here as a
+  gap in this session's own test coverage, not just a fix to praise.
+
+**Live site:** `https://omnifuelapp.tech` has redeployed since the last
+check-in — `GET /api/health` now reports `backend: "postgres"` (was
+`json-file`), and `Last-Modified`/`ETag` are fresh as of today. Both
+previously-open Info items (json-file backend in prod, site behind `main`)
+are now resolved by this deploy — no code change needed on this session's
+part, exactly as those items anticipated. `robots.txt` (`Disallow: /`) and
+the `<meta name="description">` tag both match what's in the repo.
+
+**Re-verified all remaining "Reported" items are still open and
+unaddressed** (OFF search 503s, Apple-token dual-role-as-bearer-credential,
+Postgres duplicate-signup error leak, provider-abstraction README claim,
+onboarding gap, forgot-password, both Garmin items) — confirmed via `git
+log` that no commit since PR #50 touches `garmin.js`, the signup route, or
+onboarding, so nothing changed there to re-check.
+
+Nothing new found beyond the two items above (both already fixed by the
+other session, not left for this pass to act on) — this check-in required
+no fixes of its own.
