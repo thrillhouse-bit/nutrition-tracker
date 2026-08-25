@@ -103,7 +103,9 @@ create table if not exists integrations (
 -- Normalized wearable signals with provenance + freshness. Used for Apple
 -- Health (ingested by a native companion / Health export) and any provider we
 -- persist rather than fetch live. value is jsonb (a number, or an object for
--- workouts).
+-- workouts). Also holds Oura's backfilled readiness history (provider='oura',
+-- metric='readiness') — the live "today" signal still comes from a direct
+-- Oura API call; this table is only the retained-history path.
 create table if not exists wearable_signals (
   id          bigint generated always as identity primary key,
   provider    text not null,

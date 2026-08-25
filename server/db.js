@@ -292,6 +292,30 @@ class PgStore {
     return rows.length
   }
 
+  // --- Oura readiness history (backfilled once after connect; wearable_signals
+  // was designed to hold "any provider we persist rather than fetch live", per
+  // its own schema comment — reused here rather than a parallel table.
+  async saveOuraHistory(rows) {
+    const sql = await this.ready()
+    const days = [...new Set(rows.map((r) => r.day).filter(Boolean))]
+    for (const day of days) {
+      await sql`delete from wearable_signals where provider = 'oura' and metric = 'readiness' and day = ${day}`
+    }
+    let n = 0
+    for (const r of rows) {
+      if (r.day == null || r.score == null) continue // nothing to show without a score
+      await sql`insert into wearable_signals (provider, metric, day, recorded_at, fetched_at, value, unit, extra)
+        values ('oura', 'readiness', ${r.day}, ${`${r.day}T12:00:00.000Z`}, ${new Date().toISOString()}, ${JSON.stringify(r.score)}, 'score', ${JSON.stringify({ total_calories: r.total_calories, active_calories: r.active_calories, steps: r.steps })})`
+      n++
+    }
+    return n
+  }
+
+  async listOuraHistory(fromYmd, toYmd) {
+    const sql = await this.ready()
+    return sql`select day, value from wearable_signals where provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
+  }
+
   // --- daily plans (snapshot of baseline/adjusted targets + rationale) -------
   async getPlan(date) {
     const sql = await this.ready()
@@ -611,6 +635,36 @@ export class JsonStore {
     }
     await this.persist()
     return rows.length
+  }
+
+  async saveOuraHistory(rows) {
+    const d = await this.load()
+    d.wearable_signals = d.wearable_signals || []
+    const days = [...new Set(rows.map((r) => r.day).filter(Boolean))]
+    d.wearable_signals = d.wearable_signals.filter(
+      (s) => !(s.provider === 'oura' && s.metric === 'readiness' && days.includes(s.day)),
+    )
+    let n = 0
+    const now = new Date().toISOString()
+    for (const r of rows) {
+      if (r.day == null || r.score == null) continue
+      d.wearable_signals.push({
+        provider: 'oura', metric: 'readiness', day: r.day,
+        recorded_at: `${r.day}T12:00:00.000Z`, fetched_at: now,
+        value: r.score, unit: 'score',
+        extra: { total_calories: r.total_calories, active_calories: r.active_calories, steps: r.steps },
+      })
+      n++
+    }
+    await this.persist()
+    return n
+  }
+
+  async listOuraHistory(fromYmd, toYmd) {
+    const d = await this.load()
+    return (d.wearable_signals || [])
+      .filter((s) => s.provider === 'oura' && s.metric === 'readiness' && s.day >= fromYmd && s.day <= toYmd)
+      .sort((a, b) => (a.day < b.day ? -1 : 1))
   }
 
   async getPlan(date) {

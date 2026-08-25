@@ -65,6 +65,26 @@ function EnergyChart({ days, avg, showAvg }) {
   )
 }
 
+// READINESS · OURA — the backfilled score history. Fixed 0-100 scale, unlike
+// EnergyChart's min/max stretch: a readiness score already has a meaningful
+// absolute range, and stretching a narrow real span (say 68-74) would make
+// ordinary day-to-day variation look dramatic.
+function ReadinessChart({ points }) {
+  const n = points.length
+  if (n < 2) return null
+  const TOP = 16
+  const BOT = 72
+  const y = (v) => BOT - (Math.max(0, Math.min(100, v)) / 100) * (BOT - TOP)
+  const pts = points.map((p, i) => `${((i / (n - 1)) * 320).toFixed(1)},${y(p.score).toFixed(1)}`)
+  const lastY = y(points[n - 1].score).toFixed(1)
+  return (
+    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+      <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
+      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+    </svg>
+  )
+}
+
 export default function Insights({ refreshKey }) {
   const [window, setWindow] = useState(7)
   const [data, setData] = useState(null)
@@ -92,6 +112,9 @@ export default function Insights({ refreshKey }) {
   const cMax = cals.length ? Math.max(...cals) : 0
   const avgCal = num(nutrition?.avgCalories)
   const showAvgLine = days.length >= 2 && avgCal >= cMin && avgCal <= cMax
+
+  const readiness = data?.ouraReadiness || []
+  const avgReadiness = readiness.length ? Math.round(readiness.reduce((a, r) => a + r.score, 0) / readiness.length) : null
 
   return (
     <div className="space-y-6">
@@ -156,20 +179,40 @@ export default function Insights({ refreshKey }) {
             )}
           </section>
 
-          {/* READINESS · OURA — no retained wearable history yet. Honest greyed
-              placeholder in the design's sage-band language; no invented numbers. */}
+          {/* READINESS · OURA — real backfilled score history once a connected
+              account has retained at least two days; the honest greyed
+              placeholder (no invented numbers) otherwise. */}
           <section>
             <SectionHead
               label="Readiness · Oura"
-              right={<StatusMark status="unavailable" label="Awaiting history" />}
+              right={
+                readiness.length >= 2 ? (
+                  <span className="tnum text-[13px] text-muted">avg {avgReadiness}</span>
+                ) : (
+                  <StatusMark status="unavailable" label="Awaiting history" />
+                )
+              }
             />
-            <div className="relative mt-2.5 h-[62px] border-t border-b border-dashed border-line-strong">
-              <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-mist/60" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
-              </div>
-            </div>
-            <ChartCaption left="Mist band · recovery" right="Oura" />
+            {readiness.length >= 2 ? (
+              <>
+                <ReadinessChart points={readiness} />
+                <ChartCaption
+                  left={shortDate(readiness[0].date)}
+                  mid={`AVG ${avgReadiness}`}
+                  right={shortDate(readiness[readiness.length - 1].date)}
+                />
+              </>
+            ) : (
+              <>
+                <div className="relative mt-2.5 h-[62px] border-t border-b border-dashed border-line-strong">
+                  <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-mist/60" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
+                  </div>
+                </div>
+                <ChartCaption left="Mist band · recovery" right="Oura" />
+              </>
+            )}
           </section>
 
           {/* TRAINING LOAD · GARMIN — same: an empty lavender-bar skeleton, no

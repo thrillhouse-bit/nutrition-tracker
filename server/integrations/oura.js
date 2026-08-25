@@ -82,6 +82,15 @@ export async function dailySummary(token, ymd) {
   return match ? normalizeActivity(match) : null
 }
 
+// One day's worth of history per call is wasteful for a backfill — Oura's
+// range query already returns every matched day in one response, so a
+// multi-week pull is one request, not one per day.
+export async function activityRange(token, fromYmd, toYmd) {
+  const body = await ouraGet('daily_activity', token, { start_date: fromYmd, end_date: toYmd })
+  const rows = Array.isArray(body?.data) ? body.data : []
+  return rows.map(normalizeActivity)
+}
+
 // --- OAuth 2.0 (authorization code grant) ----------------------------------
 // The proper path since PATs were deprecated, and what enables connecting more
 // than one account (each person authorizes their own Oura account).

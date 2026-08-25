@@ -90,3 +90,42 @@ describe('JsonStore logged_at timestamps match PgStore timestamptz semantics', (
     expect(next[0].logged_at).toBe('2026-08-25T03:59:00.000Z')
   })
 })
+
+describe('JsonStore Oura readiness history (backfill)', () => {
+  it('round-trips saved days through listOuraHistory, filtered by range', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory([
+      { day: '2026-08-01', score: 70, total_calories: 2100, active_calories: 400, steps: 8000 },
+      { day: '2026-08-02', score: 75, total_calories: 2200, active_calories: 500, steps: 9000 },
+      { day: '2026-08-03', score: 68, total_calories: 2000, active_calories: 350, steps: 7000 },
+    ])
+    const all = await s.listOuraHistory('2026-08-01', '2026-08-03')
+    expect(all.map((r) => r.day)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03'])
+    expect(all[0].value).toBe(70)
+
+    const narrowed = await s.listOuraHistory('2026-08-02', '2026-08-02')
+    expect(narrowed).toHaveLength(1)
+    expect(narrowed[0].day).toBe('2026-08-02')
+  })
+
+  it('re-saving a day replaces it rather than duplicating (control: other days untouched)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory([{ day: '2026-08-01', score: 70 }, { day: '2026-08-02', score: 75 }])
+    await s.saveOuraHistory([{ day: '2026-08-01', score: 91 }]) // re-backfill overlapping one day
+    const all = await s.listOuraHistory('2026-08-01', '2026-08-02')
+    expect(all).toHaveLength(2) // not 3 — the old 2026-08-01 row was replaced, not duplicated
+    expect(all.find((r) => r.day === '2026-08-01').value).toBe(91)
+    expect(all.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched
+  })
+
+  it('skips a day with no score rather than storing a null (control: valid days still saved)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const n = await s.saveOuraHistory([
+      { day: '2026-08-01', score: null, total_calories: 2000 }, // Oura had no score that day
+      { day: '2026-08-02', score: 80 },
+    ])
+    expect(n).toBe(1)
+    const all = await s.listOuraHistory('2026-08-01', '2026-08-02')
+    expect(all.map((r) => r.day)).toEqual(['2026-08-02'])
+  })
+})

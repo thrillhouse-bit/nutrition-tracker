@@ -13,6 +13,7 @@ const fake = vi.hoisted(() => {
     integrations: {},
     appleSignals: {},
     ouraAccounts: [],
+    ouraHistory: [], // { day, value }
     garminAccounts: [],
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
@@ -34,6 +35,18 @@ const fake = vi.hoisted(() => {
     getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
     upsertGarminDaily: async (row) => { state.garminDailies[`${row.account_id}:${row.day}`] = row; return row },
     updateOuraTokens: async () => {},
+    saveOuraHistory: async (rows) => {
+      const days = new Set(rows.map((r) => r.day))
+      state.ouraHistory = state.ouraHistory.filter((r) => !days.has(r.day))
+      let n = 0
+      for (const r of rows) {
+        if (r.score == null) continue
+        state.ouraHistory.push({ day: r.day, value: r.score })
+        n++
+      }
+      return n
+    },
+    listOuraHistory: async (from, to) => state.ouraHistory.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
   }
   return { state, store }
 })
@@ -41,6 +54,7 @@ const fake = vi.hoisted(() => {
 const oura = vi.hoisted(() => ({
   legacy: false, // whether OURA_TOKEN-style config appears present
   dailySummary: async () => null,
+  activityRange: async () => [],
 }))
 
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
@@ -51,6 +65,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     ouraConfigured: () => oura.legacy,
     getToken: () => 'legacy-token',
     dailySummary: (...args) => oura.dailySummary(...args),
+    activityRange: (...args) => oura.activityRange(...args),
   }
 })
 
@@ -209,6 +224,60 @@ describe('GET /api/energy/summary Oura failure fallback', () => {
     const res = await fetch(`${base}/api/energy/summary?date=${day}`)
     const body = await res.json()
     expect(body.source).toBe('garmin')
+  })
+})
+
+describe('POST /api/oura/backfill', () => {
+  it('refuses with 400 when no Oura account is resolvable (control)', async () => {
+    oura.legacy = false
+    fake.state.ouraAccounts = []
+    const res = await post('/api/oura/backfill', {})
+    expect(res.status).toBe(400)
+  })
+
+  it('pulls the range in one call and stores every scored day', async () => {
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    let asked
+    oura.activityRange = async (token, from, to) => {
+      asked = { token, from, to }
+      return [
+        { day: '2026-08-01', score: 70, total_calories: 2100, active_calories: 400, steps: 8000 },
+        { day: '2026-08-02', score: null, total_calories: 2000, active_calories: 300, steps: 6000 }, // no score that day
+      ]
+    }
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.daysSaved).toBe(1) // the null-score day is dropped, not stored as 0
+    expect(asked.token).toBe('legacy-token')
+    const stored = await fake.store.listOuraHistory('2026-08-01', '2026-08-02')
+    expect(stored.map((r) => r.day)).toEqual(['2026-08-01'])
+  })
+})
+
+describe('GET /api/insights ouraReadiness', () => {
+  it('includes backfilled Oura readiness scores inside the requested window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.ouraHistory = [
+      { day: '2026-08-20', value: 72 },
+      { day: '2026-08-24', value: 81 },
+    ]
+    const res = await fetch(`${base}/api/insights?window=7`)
+    const body = await res.json()
+    expect(body.ouraReadiness).toEqual([
+      { date: '2026-08-20', score: 72 },
+      { date: '2026-08-24', score: 81 },
+    ])
+  })
+
+  it('omits ouraReadiness entries outside the window (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.ouraHistory = [{ day: '2026-07-01', value: 60 }] // long before a 7-day window
+    const res = await fetch(`${base}/api/insights?window=7`)
+    const body = await res.json()
+    expect(body.ouraReadiness).toEqual([])
   })
 })
 
