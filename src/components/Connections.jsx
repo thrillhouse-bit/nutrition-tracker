@@ -54,6 +54,14 @@ const APPLE_CATEGORY_LABEL = {
 }
 const APPLE_READS = ['workouts', 'activeEnergy', 'exercise', 'sleep', 'hrv', 'restingHR', 'steps']
 
+// Display-only label override for the row heading — client-side, render time
+// only. `provider.name` itself is untouched, so every other use (API calls,
+// oauth branches, the aria-labels on the per-provider toggles below) still
+// reads the real name; only the heading below looks this id up first.
+const DISPLAY_NAME = {
+  apple: 'Apple Health · Apple Watch',
+}
+
 function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   const { id, name, connect, categories = [], status, demo, enabled, last_synced_at, permissions, partial } = provider
   const oauth = connect === 'oauth'
@@ -122,7 +130,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
     <div className="border-b border-line px-1 py-2.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="serif text-[21px] leading-none text-ink">{name}</div>
+          <div className="serif text-[21px] leading-none text-ink">{DISPLAY_NAME[id] || name}</div>
 
           <StatusMark status={status} label={isDemo ? 'Demo data' : undefined} className="mt-2.5" />
 
