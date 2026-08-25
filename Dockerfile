@@ -15,6 +15,12 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Baked in at build time (docker build --build-arg GIT_SHA=$(git rev-parse HEAD),
+# or GIT_SHA=$(git rev-parse HEAD) docker compose ... up -d --build) so GET
+# /api/version can report exactly what's running — there was previously no way
+# to confirm a deploy short of comparing built asset bytes by hand.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist

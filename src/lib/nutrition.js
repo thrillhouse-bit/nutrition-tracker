@@ -55,6 +55,21 @@ export function entryIncomplete(entry) {
   return entryNutrient(entry, 'calories') === null
 }
 
+// Rebuilds an addEntry-shaped payload from a previously-fetched entry (the
+// "undo delete" restore path in App.jsx). food_id and servings_consumed came
+// back from the entries API, so — Postgres bigint/numeric columns round-trip
+// over JSON as strings, not numbers (confirmed live, production-verification
+// audit 25 Aug 2026) — both need the same Number() coercion FoodConfirm's
+// own food_id shortcut needed, or the server's strict z.number() schema 400s.
+export function restoreEntryPayload(entry) {
+  return {
+    food_id: Number(entry.food_id),
+    servings_consumed: Number(entry.servings_consumed),
+    meal: entry.meal,
+    logged_at: entry.logged_at,
+  }
+}
+
 // Sums only the nutrients each entry actually has a known value for — a food
 // with no recorded value for a nutrient contributes nothing to that
 // nutrient's total, so the day's numbers reflect only what's actually known

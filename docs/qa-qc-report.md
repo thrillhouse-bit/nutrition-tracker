@@ -49,7 +49,7 @@ doesn't repeat that ground.
 | — | Oura readiness signal | Every "readiness" value in the app (Today, Plan, Insights) was actually sourced from Oura's activity-score endpoint, not the dedicated readiness endpoint — a bug this session never found, caught and fixed independently | Merged (2026-08-25, PR #51, other session) |
 | Medium | Search (OFF) | Search depends on Open Food Facts' legacy `cgi/search.pl` endpoint, which returned intermittent 503s during this pass (reproduced independently of the app) | Reported (2026-08-25) |
 | Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
-| Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Reported (2026-08-25) |
+| Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Merged (2026-08-25, PR #55, audit residual-gap cleanup) |
 | Medium | Provider abstraction | README's "adding a provider means adding an adapter" claim doesn't fully hold: `providers.js` has three separate provider-name branches, and Apple has no dedicated `server/integrations/apple.js` (the Insights-specific symptom of this is fixed, PR #41; the general architecture point stands) | Reported (2026-08-25) |
 | — | Onboarding | A fresh signup dropped straight into an empty Today with no baseline-setup prompt | Merged (2026-08-25, PR #54, other session) |
 | Low | Onboarding | The new first-run gate (PR #54) still doesn't mention that Connections' demo-data toggles exist to preview what recommendations look like with a wearable connected | Reported (2026-08-25) |
@@ -677,3 +677,43 @@ No fixes made directly by this pass — the one relevant open item
 session's own deliberate scope decision on `Onboarding.jsx` to change
 unilaterally in the same file within an hour of it landing, so it's
 reported rather than edited.
+
+## 2026-08-25 — Audit residual-gap cleanup
+
+Follow-up to `docs/PRODUCTION-VERIFICATION-AUDIT.md` (same day): closed four
+of its named residual gaps, none requiring VPS/production access.
+
+- **Postgres-only raw-constraint-message leak on concurrent duplicate
+  signups** (reported above, "Also newly reported this pass") — **fixed.**
+  `PgStore.createUser` now catches the unique-violation (SQLSTATE `23505`)
+  and re-throws a clean `409` ("An account with that email already exists.")
+  instead of letting Postgres's raw driver error — its `detail` field embeds
+  the offending email — fall through to the generic 500 handler, which both
+  logged it in full server-side and returned an unhelpful 500 to the client.
+  `JsonStore.createUser` already did this defensively; `PgStore` now matches.
+  `PgStore` is exported for the first time specifically so this could be
+  tested (`test/store-pg.test.js`, stubbed `.sql`, no real Postgres needed —
+  this environment has never had `DATABASE_URL`).
+- **Finding 9 (no version endpoint)** — added `GET /api/version`, `GIT_SHA`
+  baked in via a new Dockerfile `ARG`/`docker-compose*.yml` `build.args`
+  (defaults to `'unknown'` when unset, never fabricated).
+- **Finding 8 (dangling `migrate.sql` comment)** — corrected; the function
+  it sat on (`migrateLegacyDataToUser`) IS the migration, no separate file.
+- **Undo-restore path (Finding 1's sibling, no independent regression test)**
+  — extracted the `Number()` coercion into `restoreEntryPayload`
+  (`lib/nutrition.js`), unit-tested directly rather than rendering all of
+  `App.jsx` (which still has no component-test harness — this avoids needing
+  one for a one-line fix, same conclusion the audit reached, different path
+  to a passing test).
+
+Full suite: 233/233. Build: clean. Landed on `claude/audit-residual-cleanup`
+(off `claude/nutrition-tracking-pwa-g8kyfi` @ `ae121a7`) — the parent branch
+is locked to further direct writes per the owner's instruction, so this is a
+separate PR, not a push onto it.
+
+**Not attempted, unchanged from the audit**: Finding 2's 27/30-days figure
+(needs production DB/API access to the actual affected account), PgStore's
+Oura-backfill fix still has no *independent* integration-test proof (only
+code symmetry with JsonStore — same environment constraint as above, no
+`DATABASE_URL`), `SESSION_SECRET`'s production state, and the Neon rotation
+plan (deliberately not executed — deploy first, per the audit's own gate).
