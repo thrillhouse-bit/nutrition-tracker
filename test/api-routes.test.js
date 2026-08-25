@@ -271,6 +271,33 @@ const patch = (path, body, headers = {}) =>
     body: JSON.stringify(body),
   })
 
+describe('GET /api/version', () => {
+  const ORIGINAL = process.env.GIT_SHA
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.GIT_SHA
+    else process.env.GIT_SHA = ORIGINAL
+  })
+
+  it('reports GIT_SHA when the build set it', async () => {
+    process.env.GIT_SHA = 'abc1234'
+    const res = await get('/api/version')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ sha: 'abc1234' })
+  })
+
+  it('reports "unknown" rather than a stale/fabricated value when GIT_SHA was never set (control)', async () => {
+    delete process.env.GIT_SHA
+    const res = await get('/api/version')
+    expect(await res.json()).toEqual({ sha: 'unknown' })
+  })
+
+  it('requires no auth, same as /api/health (control)', async () => {
+    const res = await fetch(`${base}/api/version`)
+    expect(res.status).toBe(200)
+  })
+})
+
 describe('POST /api/apple/ingest token gate', () => {
   const sample = { date: '2026-08-20', samples: [{ metric: 'sleep', value: 7.2, unit: 'h' }] }
 

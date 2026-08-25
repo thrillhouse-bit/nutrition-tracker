@@ -15,12 +15,10 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-# Baked in at build time (docker-compose.app-only.yml passes GIT_SHA as a
-# build arg; deploy.sh / a manual `docker compose build` should set it to
-# `git rev-parse HEAD`). Re-declared as ENV so it survives into the running
-# container — an ARG alone is build-stage-only. Defaults to "unknown" rather
-# than a fabricated value when nobody passes one, so /api/version reports the
-# truth about what it doesn't know instead of a fake SHA.
+# Baked in at build time (docker build --build-arg GIT_SHA=$(git rev-parse HEAD),
+# or GIT_SHA=$(git rev-parse HEAD) docker compose ... up -d --build) so GET
+# /api/version can report exactly what's running — there was previously no way
+# to confirm a deploy short of comparing built asset bytes by hand.
 ARG GIT_SHA=unknown
 ENV GIT_SHA=$GIT_SHA
 COPY package*.json ./

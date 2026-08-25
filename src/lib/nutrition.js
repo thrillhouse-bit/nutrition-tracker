@@ -55,14 +55,12 @@ export function entryIncomplete(entry) {
   return entryNutrient(entry, 'calories') === null
 }
 
-// Builds the api.addEntry() payload for "undo delete" — re-logging a just-
-// deleted entry's food/servings/meal/time rather than restoring the exact
-// deleted row (App.jsx's deleteEntry, "Snapshot before deleting"). Pulled out
-// as its own function (production-verification audit, 25 Aug 2026) so the one
-// thing that actually broke it — food_id and servings_consumed round-trip
-// over JSON as strings (Postgres bigint/numeric columns), but the server's
-// entry schema is strict z.number() — has its own regression test instead of
-// only living inline in an onClick handler nothing else exercises.
+// Rebuilds an addEntry-shaped payload from a previously-fetched entry (the
+// "undo delete" restore path in App.jsx). food_id and servings_consumed came
+// back from the entries API, so — Postgres bigint/numeric columns round-trip
+// over JSON as strings, not numbers (confirmed live, production-verification
+// audit 25 Aug 2026) — both need the same Number() coercion FoodConfirm's
+// own food_id shortcut needed, or the server's strict z.number() schema 400s.
 export function restoreEntryPayload(entry) {
   return {
     food_id: Number(entry.food_id),

@@ -308,6 +308,9 @@ export default function App() {
       kind: 'success',
       text: `Deleted ${restore.food?.name || 'entry'}`,
       onUndo: async () => {
+        // restoreEntryPayload (lib/nutrition.js) handles the food_id/
+        // servings_consumed string-vs-number coercion — same fix
+        // FoodConfirm's own food_id shortcut needed, unit-tested there.
         await api.addEntry(restoreEntryPayload(restore))
         setRefreshKey((k) => k + 1)
         setToast(null)
