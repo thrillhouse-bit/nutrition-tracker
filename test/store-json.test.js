@@ -162,3 +162,35 @@ describe('JsonStore biometric profile (singleton)', () => {
     expect(await reopened.getProfile(USER)).toMatchObject({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
   })
 })
+
+describe('JsonStore upsertFoodByBarcode', () => {
+  it('creates a new row on the first lookup, reuses it on the second (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const first = await s.upsertFoodByBarcode({ barcode: '111', name: 'Oats' })
+    const second = await s.upsertFoodByBarcode({ barcode: '111', name: 'Oats (different name, ignored)' })
+    expect(second.id).toBe(first.id)
+    expect(second.name).toBe('Oats') // the stored row wins, not the second caller's data
+  })
+
+  // Two concurrent scans of a barcode that's never been cached before — a
+  // double-tap on the confirm screen, or the offline outbox replaying a
+  // queued log at the same moment as a live re-scan. Before this fix, both
+  // calls independently awaited getFoodByBarcode (saw "not found"), then
+  // both awaited createFood, producing two rows sharing one barcode.
+  it('does not create two rows when two upserts for the same new barcode race', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    // Pre-load so both calls skip disk I/O and race on pure microtask
+    // scheduling instead — with a cold store, the first call's real
+    // fs.readFile happens to serialize the two enough to mask the bug this
+    // targets. Loaded first, it reproduces every run (verified against the
+    // pre-fix code: 2 rows, mismatched ids).
+    await s.load()
+    const [a, b] = await Promise.all([
+      s.upsertFoodByBarcode({ barcode: '222', name: 'Racer A' }),
+      s.upsertFoodByBarcode({ barcode: '222', name: 'Racer B' }),
+    ])
+    expect(a.id).toBe(b.id)
+    const data = await s.load()
+    expect(data.foods.filter((f) => f.barcode === '222')).toHaveLength(1)
+  })
+})

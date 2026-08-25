@@ -154,12 +154,31 @@ class PgStore {
   }
 
   // Cache a looked-up product so repeat scans skip the API. Barcode is unique;
-  // on conflict we return the row already stored.
+  // on conflict we return the row already stored. Uses a single atomic
+  // INSERT ... ON CONFLICT DO NOTHING rather than a separate check-then-
+  // insert — two concurrent lookups for a brand-new barcode (a double-tap
+  // logging the same scan, or the offline outbox replaying a queued entry
+  // at the same moment as a live re-scan) would otherwise both see "not
+  // found" and both try to insert, and the loser would crash on the
+  // schema's unique constraint instead of just getting the winner's row.
   async upsertFoodByBarcode(food) {
     if (!food.barcode) return this.createFood(food)
-    const existing = await this.getFoodByBarcode(food.barcode)
-    if (existing) return existing
-    return this.createFood(food)
+    const sql = await this.ready()
+    const f = pickFood(food)
+    const rows = await sql`
+      insert into foods
+        (barcode, name, brand, serving_size, serving_unit, calories, protein_g,
+         carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, source, raw_api_response)
+      values
+        (${f.barcode}, ${f.name}, ${f.brand}, ${f.serving_size}, ${f.serving_unit},
+         ${f.calories}, ${f.protein_g}, ${f.carbs_g}, ${f.fat_g}, ${f.fiber_g},
+         ${f.sugar_g}, ${f.sodium_mg}, ${f.source},
+         ${f.raw_api_response ? JSON.stringify(f.raw_api_response) : null})
+      on conflict (barcode) do nothing
+      returning *`
+    if (rows[0]) return rows[0]
+    // Lost the race — a concurrent insert already claimed this barcode.
+    return this.getFoodByBarcode(food.barcode)
   }
 
   // --- log entries (user-owned) -----------------------------------------------
@@ -611,11 +630,25 @@ export class JsonStore {
     return f
   }
 
+  // Same race this method's PgStore twin guards against, different
+  // mechanism: `load()` and `persist()` are each an `await` boundary, so a
+  // check-then-create split across two separately-awaited calls
+  // (getFoodByBarcode, then createFood) lets two concurrent callers both
+  // observe "not found" and both push a row for the same barcode — nothing
+  // enforces uniqueness in this backend. Doing the find-then-push here in
+  // one synchronous stretch, after a single `await load()`, closes that
+  // window: nothing else can run between the check and the push.
   async upsertFoodByBarcode(food) {
     if (!food.barcode) return this.createFood(food)
-    const existing = await this.getFoodByBarcode(food.barcode)
+    const d = await this.load()
+    const existing = d.foods.find((f) => f.barcode && f.barcode === food.barcode)
     if (existing) return existing
-    return this.createFood(food)
+    const f = pickFood(food)
+    f.id = ++d.seq.food
+    f.created_at = new Date().toISOString()
+    d.foods.push(f)
+    await this.persist()
+    return f
   }
 
   #withFood(entry) {
