@@ -252,6 +252,14 @@ class PgStore {
     return rows[0]
   }
 
+  // See JsonStore's sibling method for why this exists separately from
+  // getLatestTargets, which always returns a non-null default.
+  async hasTargets(userId) {
+    const sql = await this.ready()
+    const rows = await sql`select 1 from daily_targets where user_id = ${userId} limit 1`
+    return rows.length > 0
+  }
+
   // --- biometric profile (one row per user, user_id IS the primary key) ------
   async getProfile(userId) {
     const sql = await this.ready()
@@ -730,6 +738,16 @@ export class JsonStore {
     const mine = d.targets.filter((t) => t.user_id === Number(userId))
     if (!mine.length) return { ...DEFAULT_TARGETS }
     return mine[mine.length - 1]
+  }
+
+  // getLatestTargets always returns SOMETHING (DEFAULT_TARGETS when nothing
+  // was ever saved) so Today/Plan always have numbers to render — but that
+  // fallback erases the difference between "chose 2000 kcal" and "never set
+  // anything, got the hardcoded default silently." This is that distinction,
+  // for the one place it matters: whether onboarding still needs to run.
+  async hasTargets(userId) {
+    const d = await this.load()
+    return d.targets.some((t) => t.user_id === Number(userId))
   }
 
   async setTargets(userId, t) {

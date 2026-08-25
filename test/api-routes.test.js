@@ -25,6 +25,7 @@ const fake = vi.hoisted(() => {
     garminAccounts: [],
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
+    targetsEverSet: false, // real stores start false; getLatestTargets's default look identical either way
     profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null },
     setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
   }
@@ -60,8 +61,10 @@ const fake = vi.hoisted(() => {
     setTargets: async (userId, t) => {
       state.setTargetsCalls.push(t)
       state.targets = { ...t }
+      state.targetsEverSet = true
       return state.targets
     },
+    hasTargets: async (userId) => state.targetsEverSet,
     getIntegration: async (userId, p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
     setIntegration: async (userId, p, patch) => {
       const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, provider: p }
@@ -185,6 +188,7 @@ afterEach(() => {
   fake.state.appleSignals = {}
   fake.state.integrations = {}
   fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
+  fake.state.targetsEverSet = false
   fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null }
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
@@ -634,6 +638,29 @@ describe('PUT /api/profile merge + calculated baseline', () => {
     const body = await res.json()
     const targetsRes = await get('/api/targets')
     expect((await targetsRes.json()).targets).toEqual(body.computedBaseline)
+  })
+})
+
+describe('GET /api/targets hasTargets (onboarding gate)', () => {
+  it('is false before any profile/target save, even though targets already carries the default numbers', async () => {
+    const res = await get('/api/targets')
+    const body = await res.json()
+    expect(body.hasTargets).toBe(false)
+    expect(body.targets.calories).toBe(2000) // the default is still served — just not flagged as real
+  })
+
+  it('flips to true once a complete profile computes and saves a baseline', async () => {
+    await put('/api/profile', {
+      height_cm: 180, weight_kg: 80, sex: 'male', age_years: 40, activity_level: 'sedentary', goal: 'maintain',
+    })
+    const res = await get('/api/targets')
+    expect((await res.json()).hasTargets).toBe(true)
+  })
+
+  it('flips to true via the direct manual-entry path too, not only the calculator (control)', async () => {
+    await put('/api/targets', { calories: 1800, protein_g: 140, carbs_g: 180, fat_g: 60, fiber_g: 25, sugar_g: null, sodium_mg: 2000 })
+    const res = await get('/api/targets')
+    expect((await res.json()).hasTargets).toBe(true)
   })
 })
 

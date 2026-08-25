@@ -144,7 +144,9 @@ function TimelineNode({ node, last }) {
 
 // Editable baseline targets. Baseline is the user's own plan; the engine never
 // writes to it — adjustments are layered on top and always shown with reasons.
-function EditTargets({ baseline, onSaved, onCancel }) {
+// Exported: Onboarding.jsx reuses this verbatim for the "enter manually" path
+// rather than keeping a second copy of the same form.
+export function EditTargets({ baseline, onSaved, onCancel }) {
   const [draft, setDraft] = useState(() =>
     Object.fromEntries(NUTRIENTS.map((n) => [n.key, baseline?.[n.key] ?? ''])),
   )

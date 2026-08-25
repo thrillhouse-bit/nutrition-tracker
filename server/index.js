@@ -271,8 +271,12 @@ requireAuthRouter.delete('/entries/:id', asyncH(async (req, res) => {
 }))
 
 // --- daily targets --------------------------------------------------------
+// hasTargets tells the client whether these are real, chosen numbers or the
+// silent DEFAULT_TARGETS fallback — the signal the onboarding gate uses to
+// decide whether a signed-in user still needs to be walked through it.
 requireAuthRouter.get('/targets', asyncH(async (req, res) => {
-  res.json({ targets: await store.getLatestTargets(req.userId) })
+  const [targets, hasTargets] = await Promise.all([store.getLatestTargets(req.userId), store.hasTargets(req.userId)])
+  res.json({ targets, hasTargets })
 }))
 
 requireAuthRouter.put('/targets', asyncH(async (req, res) => {

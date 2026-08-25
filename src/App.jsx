@@ -15,6 +15,7 @@ import Plan from './components/Plan.jsx'
 import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
 import Auth from './components/Auth.jsx'
+import Onboarding from './components/Onboarding.jsx'
 
 const RECENTS_KEY = 'nt_recents_v1'
 
@@ -82,6 +83,10 @@ export default function App() {
   // rely on the cookie, not on `user`, so they don't need to be re-wired.
   const [authState, setAuthState] = useState('loading')
   const [user, setUser] = useState(null)
+  // null = not yet checked, true = has real targets, false = first-run gate.
+  // Separate from authState because it needs its own fetch (api.getTargets's
+  // hasTargets field, server/db.js) and its own reset on logout.
+  const [hasTargets, setHasTargets] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -91,10 +96,24 @@ export default function App() {
     return () => { alive = false }
   }, [])
 
+  // Fires on every transition into 'in' — both the initial /auth/me resolving
+  // to a signed-in user, and onAuthed's signup/login below.
+  useEffect(() => {
+    if (authState !== 'in') return
+    let alive = true
+    api.getTargets()
+      .then((r) => { if (alive) setHasTargets(r?.hasTargets ?? true) })
+      // Fail OPEN: a broken check must never trap a real user behind a gate
+      // they can't get past.
+      .catch(() => { if (alive) setHasTargets(true) })
+    return () => { alive = false }
+  }, [authState])
+
   const logout = async () => {
     await api.logout().catch(() => {})
     setUser(null)
     setAuthState('out')
+    setHasTargets(null)
   }
 
   const [tab, setTab] = useState('today')
@@ -334,6 +353,21 @@ export default function App() {
   }
   if (authState === 'out') {
     return <Auth onAuthed={(u) => { setUser(u); setAuthState('in'); bump() }} />
+  }
+
+  // Signed in, but hasTargets hasn't resolved yet — hold here rather than
+  // flash the tab shell (which would render Today's fabricated-default
+  // baseline for a split second) before the gate below can apply.
+  if (hasTargets === null) {
+    return (
+      <div className="flex min-h-full items-center justify-center">
+        <Spinner label="Loading…" />
+      </div>
+    )
+  }
+
+  if (hasTargets === false) {
+    return <Onboarding onDone={() => { setHasTargets(true); bump() }} />
   }
 
   return (

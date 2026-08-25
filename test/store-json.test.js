@@ -215,6 +215,22 @@ describe('JsonStore clearSyncedHistory (Connections "Delete synced history")', (
   })
 })
 
+describe('JsonStore hasTargets (onboarding gate)', () => {
+  it('is false before anything is ever saved, even though getLatestTargets already returns a non-null default', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.hasTargets(USER)).toBe(false)
+    // The exact fallback this test exists to distinguish from a real save.
+    expect((await s.getLatestTargets(USER)).calories).toBe(2000)
+  })
+
+  it('flips to true the moment setTargets is called, and stays scoped to the one user (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setTargets(USER, { calories: 1800 })
+    expect(await s.hasTargets(USER)).toBe(true)
+    expect(await s.hasTargets(2)).toBe(false) // a different user's onboarding is untouched
+  })
+})
+
 describe('JsonStore biometric profile (singleton)', () => {
   it('returns the all-null default when nothing has been saved yet (never throws/404s)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
