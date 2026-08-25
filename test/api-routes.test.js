@@ -1070,6 +1070,83 @@ describe('GET /api/insights day-bucketing timezone', () => {
   })
 })
 
+describe('GET /api/insights targets + onTargetDetail', () => {
+  // Real per-day calorie totals: only `calories` matters for the ±10%
+  // on-target check, so every other nutrient is zeroed.
+  const calEntry = (day, calories) => ({
+    id: Math.random(),
+    food_id: 1,
+    logged_at: `${day}T12:00:00.000Z`,
+    servings_consumed: 1,
+    meal: null,
+    food: { id: 1, name: 'food', calories, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0 },
+  })
+
+  it('exposes the real calorie/protein targets with hasTargets:true once the user has actually chosen them', async () => {
+    fake.state.targets = { calories: 2200, protein_g: 160, carbs_g: 220, fat_g: 70, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
+    fake.state.targetsEverSet = true
+    const res = await get('/api/insights?window=7')
+    const body = await res.json()
+    expect(body.targets).toEqual({ calories: 2200, protein_g: 160, hasTargets: true })
+  })
+
+  it('CONTROL: reports hasTargets:false alongside the silent DEFAULT_TARGETS numbers when nothing was ever chosen', async () => {
+    // fake.state.targets/targetsEverSet are already at their post-afterEach
+    // defaults (DEFAULT_TARGETS, never set) — the same shape a real user who
+    // skipped/never reached onboarding would see from getLatestTargets.
+    const res = await get('/api/insights?window=7')
+    const body = await res.json()
+    expect(body.targets).toEqual({ calories: 2000, protein_g: 150, hasTargets: false })
+  })
+
+  it('computes onTargetDetail for every calendar day in the window, agreeing exactly with the onTargetDays count', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) }) // "today" = 2026-08-31 at tzOffsetMinutes=0
+    fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
+    fake.state.targetsEverSet = true
+    fake.state.entries = [
+      calEntry('2026-08-27', 2000), // on target (diff 0, tolerance ±200)
+      calEntry('2026-08-28', 2600), // off target (diff 600)
+      calEntry('2026-08-30', 1900), // on target (diff 100)
+    ]
+    const res = await get('/api/insights?window=7&tzOffsetMinutes=0')
+    const body = await res.json()
+
+    expect(body.onTargetDetail.map((d) => d.date)).toEqual([
+      '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29', '2026-08-30', '2026-08-31',
+    ])
+    expect(body.onTargetDetail).toEqual([
+      { date: '2026-08-25', tracked: false, onTarget: null },
+      { date: '2026-08-26', tracked: false, onTarget: null },
+      { date: '2026-08-27', tracked: true, onTarget: true },
+      { date: '2026-08-28', tracked: true, onTarget: false },
+      { date: '2026-08-29', tracked: false, onTarget: null },
+      { date: '2026-08-30', tracked: true, onTarget: true },
+      { date: '2026-08-31', tracked: false, onTarget: null },
+    ])
+    // Same source computation, not two implementations that could disagree:
+    // the count of true entries in onTargetDetail must equal onTargetDays.
+    const trueCount = body.onTargetDetail.filter((d) => d.onTarget === true).length
+    expect(trueCount).toBe(body.nutrition.onTargetDays)
+    expect(body.nutrition.onTargetDays).toBe(2)
+  })
+
+  it('CONTROL: marks every day null (never false) when there is no positive calorie target, so a missing target never renders as a missed one', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
+    // An explicit real target of 0 (allowed by TargetsSchema's nonNegNum) —
+    // the one shape where calTarget is falsy despite hasTargets being true.
+    fake.state.targets = { calories: 0, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
+    fake.state.targetsEverSet = true
+    fake.state.entries = [calEntry('2026-08-30', 2000)]
+    const res = await get('/api/insights?window=7&tzOffsetMinutes=0')
+    const body = await res.json()
+
+    const trackedDay = body.onTargetDetail.find((d) => d.date === '2026-08-30')
+    expect(trackedDay).toEqual({ date: '2026-08-30', tracked: true, onTarget: null }) // NOT false
+    expect(body.onTargetDetail.every((d) => d.onTarget === null)).toBe(true)
+    expect(body.nutrition.onTargetDays).toBe(0)
+  })
+})
+
 describe('GET /api/today day bounds', () => {
   const entry = {
     id: 1,

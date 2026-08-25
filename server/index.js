@@ -1110,7 +1110,17 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const start = localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1))
   const end = localMidnightAtOffset(now, tzOffsetMinutes, 1)
   const entries = await store.listEntries(req.userId, { from: start.toISOString(), to: end.toISOString() })
-  const targets = await store.getLatestTargets(req.userId)
+  // hasTargets distinguishes real, chosen numbers from the silent
+  // DEFAULT_TARGETS fallback getLatestTargets always returns otherwise (see
+  // server/db.js and the GET /targets route above, which exists for exactly
+  // this reason) — the signal the two NEW "real target" displays below
+  // (protein-consistency chart, Energy chart's target line) need so neither
+  // one draws a reference line against a number the user never actually set.
+  // onTargetDays below intentionally does NOT gate on this — it's an
+  // existing computation this change must not alter — but a caller that
+  // reads `targets.hasTargets` can still tell whether that count means
+  // anything.
+  const [targets, hasTargets] = await Promise.all([store.getLatestTargets(req.userId), store.hasTargets(req.userId)])
 
   const byDay = new Map()
   for (const e of entries) {
@@ -1124,10 +1134,35 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const tracked = days.length
   const avg = (k) => (tracked ? Math.round(days.reduce((a, d) => a + d.totals[k], 0) / tracked) : null)
   const calTarget = Number(targets?.calories) || 0
-  const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
+  const proteinTarget = Number(targets?.protein_g) || 0
+
+  // Within ±10% of the calorie target — the ONE place this tolerance check
+  // exists. onTargetDays (the existing summary count) and onTargetDetail (the
+  // new per-day detail the Insights dot-row renders) both derive from calling
+  // this, rather than each re-deriving the ±10% arithmetic and risking the
+  // two-implementations-drift this codebase's history keeps warning about.
+  const isOnTarget = (totals) => calTarget > 0 && Math.abs(totals.calories - calTarget) <= calTarget * 0.1
+  const onTargetDays = days.filter((d) => isOnTarget(d.totals)).length
 
   const windowStartYmd = ymdAtOffset(start, tzOffsetMinutes)
   const windowEndYmd = ymdAtOffset(new Date(end - 1), tzOffsetMinutes)
+  // Every calendar day in the window, not just the ones with a log entry
+  // (`days` above is sparse) — the dot-row needs a real no-log/on-target/
+  // off-target verdict for EVERY day it draws a cell for, not only the days
+  // that happen to already be in `days`. Same offset-aware day math as
+  // start/end/windowStartYmd above, just walked one day at a time.
+  const windowDays = Array.from({ length: window }, (_, i) =>
+    ymdAtOffset(localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1) + i), tzOffsetMinutes))
+  const onTargetDetail = windowDays.map((date) => {
+    const totals = byDay.get(date)
+    // null (not false) whenever there's nothing to judge: no log that day,
+    // OR no positive calorie target to be within ±10% of. `false` is
+    // reserved for an actual logged-and-missed day — never used as a stand-in
+    // for "no target exists," which would misreport a day as "off-target"
+    // that was never compared against anything.
+    const onTarget = totals && calTarget > 0 ? isOnTarget(totals) : null
+    return { date, tracked: !!totals, onTarget }
+  })
   const ouraReadiness = (await store.listOuraHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
 
   // The trend must be computed over ALL history up to the window's end, not
@@ -1158,7 +1193,22 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     window,
     insufficientData: tracked < 3,
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
+    // Real target values, plus whether they're real: getLatestTargets always
+    // returns SOMETHING (DEFAULT_TARGETS when nothing was ever chosen), so
+    // the numbers alone can't tell a caller a target was actually set —
+    // hasTargets is what onboarding itself gates on (src/App.jsx) and is the
+    // only honest signal for that. calories/protein_g ride here unconditionally
+    // (same numbers onTargetDays above already uses) so a caller can still
+    // show what the app WOULD compare against; hasTargets is what decides
+    // whether it's honest to label that comparison "your target" out loud.
+    targets: { calories: calTarget, protein_g: proteinTarget, hasTargets },
     days,
+    // Per-day on-target detail for the FULL window (see isOnTarget above) —
+    // the Insights dot-row's source of truth. `onTarget` is null for a day
+    // with no log entry at all (nothing to judge) and also null for every
+    // day when calTarget is 0 (no calorie target to be within ±10% of) —
+    // both are "nothing to show," never rendered as a false "missed it."
+    onTargetDetail,
     ouraReadiness: ouraReadinessOut,
     weight,
     workoutLoad,
