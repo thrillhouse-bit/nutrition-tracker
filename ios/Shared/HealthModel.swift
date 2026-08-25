@@ -124,6 +124,15 @@ struct IngestResponse: Codable, Equatable {
 
 // A JSON encoder/decoder pair configured to match the backend's ISO-8601
 // timestamps. Shared so every network path serializes dates identically.
+//
+// The decoder is NOT the plain `.iso8601` strategy: every timestamp this
+// backend emits comes from JS `Date.toISOString()`, which always includes
+// milliseconds ("…T12:00:00.000Z"), but Foundation's default
+// ISO8601DateFormatter (`.withInternetDateTime`, no fractional seconds) fails
+// to parse that and throws — silently breaking the whole decode for any
+// response containing one (TodayComposite.generatedAt, LoggedEntry.loggedAt).
+// Try fractional-seconds first, fall back to the plain form for anything
+// that genuinely lacks them.
 enum FuelJSON {
     static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -131,8 +140,19 @@ enum FuelJSON {
         return e
     }()
     static let decoder: JSONDecoder = {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .custom { decoder in
+            let c = try decoder.singleValueContainer()
+            let s = try c.decode(String.self)
+            if let date = withFraction.date(from: s) { return date }
+            if let date = plain.date(from: s) { return date }
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid ISO-8601 date: \(s)")
+        }
         return d
     }()
 }

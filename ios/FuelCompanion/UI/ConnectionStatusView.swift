@@ -51,6 +51,7 @@ struct ConnectionStatusView: View {
                 statusSection
                 categoriesSection
                 actionsSection
+                writeBackSection
                 serverSection
                 aboutSection
             }
@@ -153,6 +154,48 @@ struct ConnectionStatusView: View {
         }
     }
 
+    // MARK: - Nutrition write-back (opt-in, separate from the read-only bridge above)
+
+    private var writeBackSection: some View {
+        Section {
+            Toggle("Sync nutrition to Health", isOn: writeBackBinding)
+                .disabled(status == .unavailable)
+
+            if config.writeBackEnabled {
+                if let err = coordinator.writeBackError {
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                } else if !coordinator.isNutritionWriteBackAuthorized && coordinator.isNutritionWriteBackDetermined {
+                    Text("Health denied write access. Turn it on in Settings → Health → FuelCompanion.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if let at = coordinator.lastWriteBackAt {
+                    Text("Last written \(RelativeDateTimeFormatter().localizedString(for: at, relativeTo: Date())).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Nutrition write-back")
+        } footer: {
+            Text("Off by default. When on, calories and macros you log are added to Apple Health's Nutrition data as their own entries — separate from the read-only data above, and never the other direction.")
+        }
+    }
+
+    /// Turning this ON requests the SEPARATE write authorization (and runs one
+    /// pass immediately); turning it OFF just stops future write-back — it
+    /// does not delete what was already written to Health.
+    private var writeBackBinding: Binding<Bool> {
+        Binding(
+            get: { config.writeBackEnabled },
+            set: { newValue in
+                config.writeBackEnabled = newValue
+                if newValue { Task { await coordinator.enableNutritionWriteBack() } }
+            }
+        )
+    }
+
     // MARK: - Server configuration
 
     private var serverSection: some View {
@@ -195,7 +238,7 @@ struct ConnectionStatusView: View {
 
     private var aboutSection: some View {
         Section {
-            Text("This app reads your workouts, active energy, exercise, sleep, and optional heart-rate context on-device and sends them to your fueling dashboard alongside Oura and Garmin. It reads only — it never writes to Health, records workouts, or reads medical data.")
+            Text("This app reads your workouts, active energy, exercise, sleep, and optional heart-rate context on-device and sends them to your fueling dashboard alongside Oura and Garmin. That data is read only. Separately, and only if you turn it on above, your logged nutrition can be written to Health's own Nutrition data. Either way, this app never records workouts and never reads medical data.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

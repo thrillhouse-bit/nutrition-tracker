@@ -5,10 +5,13 @@
   (authored via a separate XcodeGen spec), so they are intentionally NOT
   duplicated here to avoid two sources of truth.
 
-  Deliberately ABSENT: NSHealthUpdateUsageDescription. This app requests READ
-  access only (toShare: []), so no write/share usage string is needed. No
-  clinical Health keys (NSHealthClinicalHealthRecordsShareUsageDescription) are
-  present, by design — no medical data is read.
+  NSHealthUpdateUsageDescription is now present (Health/NutritionWriteBack.swift):
+  a SEPARATE, opt-in write path for logged nutrition only — dietary
+  energy/protein/carbs/fat/fiber/sugar/sodium — never the fueling-signal
+  categories above (HealthKitManager still requests `toShare: []` for those;
+  see its own header). No clinical Health keys
+  (NSHealthClinicalHealthRecordsShareUsageDescription) are present, by
+  design — no medical data is read or written.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -17,6 +20,11 @@
          the data as fueling context, never medical. -->
     <key>NSHealthShareUsageDescription</key>
     <string>FuelCompanion reads your workouts, active energy, exercise minutes, sleep, and (optionally) heart-rate variability and resting heart rate to explain and time your fueling. This data is read only, sent to your own fueling dashboard, and never used for medical purposes.</string>
+
+    <!-- Shown only if the user turns on "Sync nutrition to Health" in Settings
+         — a separate opt-in, never requested at first launch. -->
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>FuelCompanion can optionally add the calories and macros you log to Apple Health's Nutrition data, so your food log shows up alongside your other Health data. Off by default — turn it on in the Apple Health tab.</string>
 
     <!-- Background execution: `fetch` for BGAppRefreshTask, `processing` for the
          longer BGProcessingTask. HealthKit background delivery itself is granted

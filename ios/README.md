@@ -21,21 +21,38 @@ and syncs them to your own backend*; it does not reimplement the nutrition UI.
         ▼  POST {base}/api/apple/ingest   (x-ingest-token)
  Backend  ─► wearable_signals ─► providers.js (provider-neutral) ─► /api/today, /api/plan/today
         │                                                              │
-        │  GET /api/today                                              ▼
+        │  GET /api/today  (x-ingest-token)                            ▼
         └────────────────────────────► PlanSummary ──WatchConnectivity──► Apple Watch (glance)
                                                     ◄── "Log later on iPhone" (handoff, no scanning on watch)
+
+ ── separate, opt-in write-back direction (off by default) ──────────────────
+ Backend log_entries  ◄──GET /api/entries (x-ingest-token)──  EntriesClient
+                                                                    │
+                                                                    ▼
+                                          HealthKitNutritionWriter ──► Health "Nutrition" data
+                                          (dietary energy/protein/carbs/fat/fiber/sugar/sodium only —
+                                           never the read-only categories above, never the other direction)
 ```
 
+The backend now sits behind multi-user auth (a signed session cookie the web
+PWA carries, but this companion has no interactive login for). Every request
+above — ingest, `/api/today`, and `/api/entries` — authenticates instead with
+the SAME per-user token, generated from the signed-in web app's Connections
+tab (`POST /api/apple/token`) and pasted into the Health tab below. It is no
+longer optional the way `APPLE_INGEST_TOKEN` alone once was: without it, none
+of these requests can identify which user's data to read or write.
+
 The contract both native targets share lives in [`Shared/`](Shared/):
-`HealthModel.swift` (the exact `/api/apple/ingest` body) and `PlanSummary.swift`
-(the glance the watch shows, derived from `/api/today` so the watch never
-re-derives fueling logic differently from the app).
+`HealthModel.swift` (the exact `/api/apple/ingest` body, plus the shared
+`FuelJSON` encoder/decoder), `PlanSummary.swift` (the glance the watch shows,
+derived from `/api/today`), and `NutritionEntry.swift` (the `/api/entries`
+shape the write-back direction reads).
 
 ## Targets & files
 
 | Target | What it is | Key files |
 |---|---|---|
-| **FuelCompanion** (iOS app) | Hosts the PWA in a `WKWebView` + the HealthKit bridge + a native Health-status screen | `FuelCompanionApp`, `App/RootView`, `Web/WebAppView`, `Health/HealthKitManager`, `Health/HealthSyncCoordinator`, `Net/IngestClient`, `Net/TodayClient`, `Watch/PhoneSessionManager`, `UI/ConnectionStatusView`, `Settings/AppConfig`+`Keychain`, `Background/BackgroundSync` |
+| **FuelCompanion** (iOS app) | Hosts the PWA in a `WKWebView` + the HealthKit read bridge + the opt-in nutrition write-back + a native Health-status screen | `FuelCompanionApp`, `App/RootView`, `Web/WebAppView`, `Health/HealthKitManager`, `Health/HealthSyncCoordinator`, `Health/NutritionWriteBack`, `Net/IngestClient`, `Net/TodayClient`, `Net/EntriesClient`, `Watch/PhoneSessionManager`, `UI/ConnectionStatusView`, `Settings/AppConfig`+`Keychain`, `Background/BackgroundSync` |
 | **FuelWatch** (watchOS app) | Glanceable receiver of `PlanSummary` + "Log later" handoff | `FuelWatchApp`, `Views/GlanceView`+`WhyView`, `Store/SummaryStore`+`SummaryPersistence`, `Connectivity/WatchSessionManager` |
 | **FuelWatchComplication** (WidgetKit extension) | Summary-only complication (next action / kcal / protein) | `Complication/FuelComplication` |
 | **Shared** | Provider-neutral contract, compiled into every target | `Shared/HealthModel.swift`, `Shared/PlanSummary.swift` |
@@ -62,8 +79,13 @@ Then, before it will build & run, fill in every `// TODO:` / `# TODO:`:
    (`BGTaskSchedulerPermittedIdentifiers`) must match `Background/BackgroundSync.swift`.
 4. **Server URL** — set at runtime in the app's **Health** tab, or the default
    in `Settings/AppConfig.swift`.
-5. **Ingest token** — if the server sets `APPLE_INGEST_TOKEN`, enter the same
-   value in the Health tab (stored in the Keychain, sent as `x-ingest-token`).
+5. **Ingest token** — generate one from the signed-in web app's Connections tab
+   (`POST /api/apple/token`) and enter it in the Health tab (stored in the
+   Keychain, sent as `x-ingest-token`). Required now, not optional: it is how
+   every request — ingest, `/api/today`, `/api/entries` — is attributed to a
+   user under multi-user auth. A legacy `APPLE_INGEST_TOKEN` env var still
+   works as a single-user fallback (server/index.js), but only while the box
+   has exactly one account.
 6. **Signing** — a real device is required for HealthKit (the simulator has no
    Health data); pair an Apple Watch for the watch flow.
 
@@ -78,7 +100,7 @@ Then, before it will build & run, fill in every `// TODO:` / `# TODO:`:
 - `com.apple.security.application-groups` = `[group.<your-id>]` (shared with the complication). **No HealthKit** — see "v1 scope".
 
 **Info.plist keys**
-- iOS: `NSHealthShareUsageDescription` (plain-language, non-medical), `UIBackgroundModes` = `fetch, processing`, `BGTaskSchedulerPermittedIdentifiers`. Deliberately **no** `NSHealthUpdateUsageDescription` (the app is read-only) and **no** clinical-health keys.
+- iOS: `NSHealthShareUsageDescription` (plain-language, non-medical), `UIBackgroundModes` = `fetch, processing`, `BGTaskSchedulerPermittedIdentifiers`, and `NSHealthUpdateUsageDescription` — shown only if the user turns on nutrition write-back (off by default). **No** clinical-health keys, either way.
 - watch: `WKApplication` = `YES`, `WKCompanionAppBundleIdentifier`.
 
 ## HealthKit permissions requested (READ-ONLY)
@@ -102,6 +124,28 @@ HR are context-only (the backend rules engine never reads them, proven by
 hides read-denials, so we only ever report *available* vs *requested*); **no
 workout recording** (approved workouts are read, never started); tokens live in
 the Keychain and only in the `x-ingest-token` header.
+
+## Nutrition write-back (opt-in, off by default)
+
+The other direction: `Health/NutritionWriteBack.swift` can write logged
+nutrition — calories, protein, carbs, fat, fiber, sugar, sodium — to Health's
+own Nutrition data, as one `HKCorrelation` (type `.food`) per logged entry.
+This is a **separate, explicitly opt-in authorization** (`NSHealthUpdateUsageDescription`,
+requested only when the user turns on "Sync nutrition to Health" in the Health
+tab) — `HealthKitManager` above still requests `toShare: []` and is otherwise
+unchanged; the two authorizations, and the type sets they cover, never overlap.
+
+- Each entry is written once, tagged with its server entry id (a custom
+  metadata key, plus `HKMetadataKeySyncIdentifier`/`Version` for interop with
+  other HealthKit-aware apps). **Known v1 limitation**: editing an
+  already-synced entry's servings/meal does not update its HealthKit record —
+  only a delete propagates (the entry drops out of the reconciled window and
+  its correlation is removed).
+- Reconciliation is bounded to a trailing 14-day window
+  (`HealthSyncCoordinator.writeBackWindowDays`) fetched via `GET /api/entries`
+  — an edit or deletion older than that is not corrected in Health.
+- Values are per-serving in the API response; the writer multiplies by
+  `servings_consumed` before writing a quantity.
 
 ## What is verified vs. what needs a Mac + paired devices
 
