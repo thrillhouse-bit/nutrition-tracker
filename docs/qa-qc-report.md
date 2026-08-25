@@ -30,6 +30,32 @@ doesn't repeat that ground.
 | — | Legal pages | Garmin described as "(planned)" / "later" though the integration is actually built | Merged (2026-08-25, PR #21) |
 | — | Terminology | Today's third context cell said "Training" (elsewhere "Workouts"); Insights caption said "recovery" next to a "Readiness" header | Merged (2026-08-25, PR #22) |
 | — | README copy | README quoted the disclosure label as "Why?"; actual component text is "Why this?" | Merged (2026-08-25, PR #23) |
+| High | Deploy config | Non-Docker deploy path (`npm start`, README's own documented option) never sets `NODE_ENV=production` — session cookie ships without `Secure` and CORS reflects any origin | Reported (2026-08-25) |
+| High | JSON-file store | `persist()` writes the whole file in place, no temp-file+rename; a crash mid-write corrupts it, and `load()`'s catch treats corruption the same as "fresh install" — silent total data loss, no log line | Reported (2026-08-25) |
+| High | Garmin webhook | `POST /api/garmin/webhook` has no signature/shared-secret verification — spoofable wearable-data injection if a `garmin_user_id` ever leaks | Reported (2026-08-25) |
+| High | Apple ingest token | Legacy `APPLE_INGEST_TOKEN` compared with plain `===`, not `crypto.timingSafeEqual` — same bug class already fixed for login, missed here | Reported (2026-08-25) |
+| High | Today.jsx | The "Intake so far" calorie numeral (38px) renders larger than the focal recommendation's own title (29px) — contradicts README's "single focal recommendation" design intent | Reported (2026-08-25) |
+| Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
+| Medium | Input validation | `zod` is a dependency but is only used to validate OCR *output*, never HTTP input — `PUT /api/targets` has zero server-side validation; several other mutating routes are similarly unchecked | Reported (2026-08-25) |
+| Medium | `upsertFoodByBarcode` | TOCTOU race between the existence check and the insert; Postgres surfaces a raw unique-violation error, the JSON store has no uniqueness backstop at all and can silently create duplicate barcode rows | Reported (2026-08-25) |
+| Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Reported (2026-08-25) |
+| Medium | Garmin OAuth | `refreshAccessToken`/`validAccessToken` are fully implemented but never called anywhere — dead code, so there's no automated recovery if a Garmin token needs refreshing to keep the webhook subscription alive | Reported (2026-08-25) |
+| Medium | Apple integration | Toggling "Apple Health" off in Connections doesn't stop `/api/apple/ingest` from accepting writes — the enabled flag isn't checked on the write path | Reported (2026-08-25) |
+| Medium | Error handling | The generic `asyncH` catch-all returns raw `err.message` to the client on every 500, including raw DB driver errors (compounds the two findings above) | Reported (2026-08-25) |
+| Medium | Provider abstraction | README's "adding a provider means adding an adapter" claim doesn't fully hold: `providers.js` has three separate provider-name branches (registry, preference map, `providerStatus`/`realSignals`/`neverConnected`) that each need a new case, and Apple has no dedicated `server/integrations/apple.js` — its logic lives inline in `index.js` | Reported (2026-08-25) |
+| Medium | Insights.jsx | Nutrition-trend day-bucketing (`/api/insights`) computes calendar days using the **server's** local timezone, not the client's — unlike `/api/today` and `/api/entries`, which correctly use client-supplied bounds (see `src/lib/nutrition.js`'s own comment: "no server-side timezone config is needed"). Verified live: two entries logged 3 hours apart, meant to represent one evening, were split into two separate tracked days by `/api/insights` when the server runs in UTC (the deployed default) and the entries straddle UTC midnight | Reported (2026-08-25) |
+| Medium | Onboarding | A fresh signup drops straight into an empty Today with no baseline-setup prompt and no mention that a demo scenario exists to explore — `Auth.jsx`'s own comment says "there is no tour or guest mode" | Reported (2026-08-25) |
+| Medium | Auth | No "forgot password" / account-recovery path exists anywhere in `Auth.jsx` — a self-service-signup user who forgets their password has no in-app recourse | Reported (2026-08-25) |
+| Low | schema.sql | No `CHECK` constraints on numeric ranges (`servings_consumed`, `calories`, etc.) — combined with the validation gap above, nothing stops negative or absurd values from being persisted | Reported (2026-08-25) |
+| Low | schema.sql | No composite `(user_id, logged_at)` index for the dominant query pattern used by `/entries`, `/today`, `/insights` — two single-column indexes instead | Reported (2026-08-25) |
+| Low | Today.jsx | Day-navigation (‹ ›) is the only frequent control anchored at the very top of a tall screen, a one-handed-reach soft spot distinct from the touch-target-size issues already tracked in the responsive report | Reported (2026-08-25) |
+| Info | `src/api/client.js` | `api.history()` calls `/api/history`, a route that doesn't exist anywhere in `server/index.js` — dead client method, would 404 if ever invoked | Reported (2026-08-25) |
+| — | Error/empty-state copy | `LabelScan`/`SearchFood` errors told the user to set a server env var instead of suggesting an in-app fallback | Merged (2026-08-25, PR #26) |
+| — | Sheet component | The food-confirm step had no visible close button (tied to a `title` prop it doesn't pass) | Merged (2026-08-25, PR #27) |
+| — | Cancel buttons | Three different visual styles for the same "back out" action across FoodConfirm/SmartPlanForm/Plan | Merged (2026-08-25, PR #28) |
+| — | Connections toggles | Per-provider toggles gave no "saving…" feedback, unlike identical toggles elsewhere on the same page | Merged (2026-08-25, PR #29) |
+| — | Connections | Disconnecting a wearable account fired on one tap with no confirmation | Merged (2026-08-25, PR #30) |
+| — | Delete entry | Deleting a logged entry fired on one tap with no confirmation and no undo | Merged (2026-08-25, PR #31) |
 
 ## 2026-08-25 — First pass
 
@@ -211,3 +237,113 @@ None newly identified this pass beyond what's already tracked in
 sub-44px secondary text links left at AA instead of AAA sizing, and a
 200%-zoom reflow follow-up for the Plan table). No new aesthetic-only
 findings from this pass.
+
+## 2026-08-25 — Expanded-scope pass
+
+A scope-expansion request (fired via this process's own scheduled trigger)
+asked for four additional dimensions on top of the first pass: UI/UX
+heuristic review, architecture review, backend/API design + security
+review, and multi-week simulated usage testing. Parallelized the first
+three across background agents; built a direct-API seeding harness for the
+fourth. Pulled latest before starting (no drift from the first pass).
+
+### UI/UX heuristic review
+
+Full findings and file:line evidence are in the Open Items table above and
+the six merged PRs. Two items worth calling out specifically:
+
+- **False positive caught and discarded.** The review flagged Today.jsx as
+  rendering a bare, broken-looking "0 / 0 kcal" for a fresh signup with "no
+  baseline set," reasoning from the client code alone. Verified directly
+  against a brand-new signup's `GET /api/today` response: the server always
+  returns `DEFAULT_TARGETS` (2000 kcal / 150g protein / etc.) when no
+  explicit targets row exists, so `calTarget` is never actually 0 in
+  practice. No fix made — the finding didn't reproduce. Recorded here so a
+  future pass doesn't waste time re-verifying the same claim.
+- **Deferred, not fixed:** the Today calorie-numeral-vs-recommendation
+  hierarchy issue (High, needs a type-scale decision, not a copy fix), no
+  onboarding orientation after signup (Medium, a real gap but a product
+  decision about what to show), no forgot-password flow (Medium, needs a
+  real auth change), and day-nav one-handed reach (Low, no easy fix without
+  a new control or a gesture). All four are in the Open Items table.
+
+### Architecture review
+
+Verified two of README's specific claims hold: the frontend never talks to
+Open Food Facts/USDA/Anthropic directly (only relative `/api/*` calls), and
+no API key/secret is ever referenced client-side (grepped for
+`import.meta.env`, `VITE_`, and key/token patterns — zero hits outside
+`server/`). The provider-adapter abstraction claim does **not** fully hold
+(see Open Items) — `server/plan.js` and the UI components genuinely never
+special-case a provider name (this is where the claim is meant to matter
+most, and it's true there), but `server/providers.js` itself has three
+provider-name branches, and Apple has no dedicated adapter file. Full
+findings (dual-persistence divergence, concurrent-write races, error-
+handling consistency) are in the Open Items table.
+
+### Backend/API design + security review
+
+Re-verified the prior security pass's two fixes (CORS, login timing oracle)
+are both still holding correctly. Found the same timing-oracle bug class
+was not extended to the Apple ingest token's legacy-token comparison, plus
+a genuinely unauthenticated Garmin webhook, several unvalidated mutating
+routes despite `zod` being available, and a handful of concurrency/schema
+gaps. Full findings in the Open Items table — all reported only, none
+touched (auth/OAuth/schema.sql are explicitly out of scope for direct edits
+in this project's QA process).
+
+### Multi-week simulated usage testing
+
+Built a seeding harness (`sim_harness.mjs`, direct `POST /api/entries` calls
+with backdated `logged_at` timestamps against the local dev server — not
+committed to the repo, a throwaway QA tool) and ran several synthetic
+personas:
+
+- **Consistent logger** (10 days, 3 meals/day): `avgCalories` and
+  `trackedDays` at the 7/14/30-day windows all computed correctly
+  (1700 kcal/day average, exactly matching the seeded data; `trackedDays`
+  correctly capped at how many days actually had entries within each
+  window).
+- **Boundary test** (the `insufficientData: tracked < 3` threshold): exactly
+  2 tracked days → `insufficientData: true`; exactly 3 → `false`. Matches
+  the UI copy ("Trends appear once at least 3 days are logged") precisely
+  — no off-by-one.
+- **UTC-midnight-straddling entries** — this is what surfaced the
+  Insights timezone bug listed as a Medium item in Open Items above. Two
+  entries 3 hours apart, meant to represent a single evening for any user
+  west of UTC, were bucketed into two separate calendar days
+  (`2026-08-24`: 600 kcal, `2026-08-25`: 200 kcal) purely because they
+  straddled the *server's* UTC midnight, not the user's. Confirmed the
+  user-visible symptom too: Insights showed "You've logged 2 of the last 7
+  days" for what was, for the intended persona, one day of eating.
+- **Demo-integrity check**: logged real food while a provider's demo flag
+  stayed on — confirmed the demo flag doesn't flip and Today's signals
+  still correctly report `demo: true`. No corruption of demo-vs-real
+  labeling as real data accumulates.
+- **Streak/recency logic**: not applicable — grepped the codebase and
+  confirmed there is no streak feature anywhere to test.
+- **Stale-wearable-data detection timing**: not re-tested live (would need
+  real OAuth credentials to simulate a genuinely stale connected account
+  realistically). Read `server/providers.js`'s `freshnessOf` instead
+  (fresh ≤18h, stale ≤48h, else unavailable, with a documented rationale
+  for the 48h cutoff) — logic is sound and already covered by
+  `test/providers.test.js`; no new finding.
+
+### Untestable in this environment (additional)
+
+- **Garmin/Oura live OAuth connect flows, Apple companion pairing** — not
+  exercised end-to-end; needs real provider credentials.
+- **Disconnect-confirm fix (PR #30)** — verified by code review and a
+  clean-render check on the Connections page, not a full live click-through
+  of the confirm/disconnect sequence itself, since that only renders once
+  an OAuth account is actually connected (same credential limitation as
+  above).
+
+### Design — deferred (this pass)
+
+No new pure-taste findings. The Today calorie-numeral hierarchy item is
+listed under Open Items as a "High, larger fix" usability bug rather than
+here, since the UI/UX review's brief was explicit that a hierarchy problem
+which actively misleads about what's important is a usability bug, not a
+taste preference — it's deferred from *fixing* (needs a type-scale
+decision) but not from the main findings.
