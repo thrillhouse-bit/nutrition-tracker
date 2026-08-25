@@ -17,7 +17,7 @@
 // When a provider has no real data, it runs in DEMO mode (clearly labelled),
 // using a seeded evening-run scenario so the whole experience works with no
 // accounts. Demo data must never be presented as a live connection.
-import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailySummary as ouraDailySummary, validAccessToken as ouraValidToken } from './integrations/oura.js'
+import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailyReadiness as ouraDailyReadiness, validAccessToken as ouraValidToken } from './integrations/oura.js'
 import { garminConfigured } from './integrations/garmin.js'
 
 export const PROVIDERS = {
@@ -143,11 +143,14 @@ async function realSignals(store, userId, id, nowDate) {
         if (a) token = await ouraValidToken(a, (t) => store.updateOuraTokens(userId, a.id, t))
       }
       if (!token) return {}
-      const a = await ouraDailySummary(token, day) // network
-      if (!a) return {}
+      // daily_readiness, not daily_activity — a different Oura endpoint and a
+      // different score. See backfillOuraHistory's comment in index.js: this
+      // was previously sourced from the activity endpoint, which silently
+      // produced either the wrong number or nothing at all.
+      const a = await ouraDailyReadiness(token, day) // network
+      if (!a || a.score == null) return {}
       const rec = `${day}T07:00:00`
-      const out = {}
-      if (a.readiness != null || a.score != null) out.readiness = sig(a.score ?? a.readiness, { unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: nowDate.toISOString(), demo: false })
+      const out = { readiness: sig(a.score, { unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: nowDate.toISOString(), demo: false }) }
       return out
     }
     if (id === 'garmin') {

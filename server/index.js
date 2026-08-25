@@ -26,6 +26,7 @@ import {
   getToken as ouraToken,
   dailySummary as ouraDailySummary,
   activityRange as ouraActivityRange,
+  readinessRange as ouraReadinessRange,
   oauthConfigured as ouraOAuthConfigured,
   signState as ouraSignState,
   verifyState as ouraVerifyState,
@@ -387,11 +388,21 @@ async function resolveOuraToken(userId) {
 // slot has real history the moment an account connects, not just from today
 // forward. Callers decide how to handle a failure — this never touches
 // the connect flow's own success/failure.
+//
+// Must call readinessRange (daily_readiness), never activityRange
+// (daily_activity) — they're different Oura endpoints with different scores.
+// This function used to call activityRange and store its score as
+// "readiness," which silently produced either wrong numbers (activity score
+// mislabeled as readiness) or nothing at all (rows with a null activity
+// score get filtered out downstream) depending on the account's data —
+// exactly the failure this app's own README warns about with wearable
+// signals: two different measurements on the same 0-100 scale are not
+// interchangeable just because they look alike.
 async function backfillOuraHistory(userId, token, days = 30) {
   const end = new Date()
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - (days - 1))
-  const rows = await ouraActivityRange(token, localYmd(start), localYmd(end))
+  const rows = await ouraReadinessRange(token, localYmd(start), localYmd(end))
   return store.saveOuraHistory(userId, rows)
 }
 
@@ -447,9 +458,13 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
   })
   try {
     await backfillOuraHistory(userId, tokens.access_token)
-  } catch {
+  } catch (err) {
     // A successful connect must still read as connected even if the
-    // historical pull hiccups — POST /api/oura/backfill can retry it.
+    // historical pull hiccups — POST /api/oura/backfill can retry it. But
+    // silence here must not mean invisible: this exact catch block once
+    // swallowed a wrong-endpoint bug (activityRange instead of
+    // readinessRange) for hours with zero signal that anything was wrong.
+    console.error(`[oura-connect-backfill] user ${userId} failed: ${err.message}`)
   }
   res.redirect('/?oura=connected')
 }))

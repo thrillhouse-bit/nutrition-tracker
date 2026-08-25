@@ -91,6 +91,35 @@ export async function activityRange(token, fromYmd, toYmd) {
   return rows.map(normalizeActivity)
 }
 
+// Readiness is its OWN Oura endpoint (daily_readiness), not a field on
+// daily_activity — a distinct score (HRV balance, resting heart rate, sleep
+// balance, recovery index, etc.), not the movement/calories activity score.
+// Every "readiness" signal in this app must come from here, never from
+// daily_activity's score — activity and readiness are different numbers that
+// happen to share a 0-100 scale, which is exactly what let this app query the
+// wrong endpoint for both the live signal and the history backfill without
+// ever throwing: daily_activity often returns a populated `score` too, so
+// nothing failed, it just wasn't the number this app claims to be showing.
+export function normalizeReadiness(record = {}) {
+  return { day: record.day || null, score: n(record.score) }
+}
+
+export async function dailyReadiness(token, ymd) {
+  const end = new Date(`${ymd}T00:00:00Z`)
+  end.setUTCDate(end.getUTCDate() + 1)
+  const endYmd = end.toISOString().slice(0, 10)
+  const body = await ouraGet('daily_readiness', token, { start_date: ymd, end_date: endYmd })
+  const rows = Array.isArray(body?.data) ? body.data : []
+  const match = rows.find((r) => r.day === ymd) || null
+  return match ? normalizeReadiness(match) : null
+}
+
+export async function readinessRange(token, fromYmd, toYmd) {
+  const body = await ouraGet('daily_readiness', token, { start_date: fromYmd, end_date: toYmd })
+  const rows = Array.isArray(body?.data) ? body.data : []
+  return rows.map(normalizeReadiness)
+}
+
 // --- OAuth 2.0 (authorization code grant) ----------------------------------
 // The proper path since PATs were deprecated, and what enables connecting more
 // than one account (each person authorizes their own Oura account).
