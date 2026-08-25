@@ -27,6 +27,8 @@ import {
   dailySummary as ouraDailySummary,
   activityRange as ouraActivityRange,
   readinessRange as ouraReadinessRange,
+  sleepScoreRange as ouraSleepScoreRange,
+  workoutsRange as ouraWorkoutsRange,
   oauthConfigured as ouraOAuthConfigured,
   signState as ouraSignState,
   verifyState as ouraVerifyState,
@@ -397,6 +399,20 @@ async function resolveOuraToken(userId) {
   return ouraValidAccessToken(primary, (t) => store.updateOuraTokens(userId, primary.id, t))
 }
 
+// The connected OAuth account id backing resolveOuraToken's token, when one
+// exists — workouts are stored per oura_accounts row (same shape as
+// garmin_dailies), so ingestion needs this alongside the token. Returns null
+// for the legacy single-token OURA_TOKEN path (no account row exists to
+// attach a workout to); backfillOuraHistory treats that as "skip workout
+// storage," not an error — readiness/sleep/activity have always worked
+// without an account row, and continue to.
+async function resolveOuraAccountId(userId) {
+  if (ouraConfigured()) return null
+  if (!ouraOAuthConfigured()) return null
+  const accounts = await store.listOuraAccounts(userId)
+  return accounts[0]?.id ?? null
+}
+
 // One-call historical pull (Oura's range query returns every matched day at
 // once — no need to loop a day at a time) so Insights' "Readiness · Oura"
 // slot has real history the moment an account connects, not just from today
@@ -420,21 +436,35 @@ async function resolveOuraToken(userId) {
 // scores that happen to share a 0-100 scale, which is exactly what let this
 // function store the wrong one as "readiness" for a long time without ever
 // throwing.
-async function backfillOuraHistory(userId, token, days = 30) {
+async function backfillOuraHistory(userId, token, days = 30, accountId = null) {
   const end = new Date()
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - (days - 1))
   const fromYmd = localYmd(start), toYmd = localYmd(end)
-  const [activity, readiness] = await Promise.all([
+  const [activity, readiness, sleepScores] = await Promise.all([
     ouraActivityRange(token, fromYmd, toYmd),
     ouraReadinessRange(token, fromYmd, toYmd),
+    ouraSleepScoreRange(token, fromYmd, toYmd).catch((err) => {
+      // daily_sleep uses the same `daily` scope as the other two calls in
+      // this Promise.all, so a failure here is a transient/API error, not a
+      // missing-scope case — but one endpoint hiccupping must not blank out
+      // readiness/activity, same principle realSignals already follows for
+      // the live path.
+      console.warn(`[oura-backfill] user ${userId}: sleep score range fetch failed: ${err.message}`)
+      return []
+    }),
   ])
   const activityByDay = new Map(activity.map((r) => [r.day, r]))
+  const sleepScoreByDay = new Map(sleepScores.filter((s) => s.day && s.score != null).map((s) => [s.day, s.score]))
   const rows = readiness.map((r) => {
     const a = activityByDay.get(r.day)
     return {
       day: r.day,
       score: r.score,
+      contributors: r.contributors,
+      temperature_deviation: r.temperature_deviation,
+      temperature_trend_deviation: r.temperature_trend_deviation,
+      sleep_score: sleepScoreByDay.get(r.day) ?? null,
       total_calories: a?.total_calories ?? null,
       active_calories: a?.active_calories ?? null,
       steps: a?.steps ?? null,
@@ -447,7 +477,28 @@ async function backfillOuraHistory(userId, token, days = 30) {
     // with the request window" — a bare count reads the same either way.
     console.warn(`[oura-backfill] user ${userId}: no readiness score from Oura for ${missingDays.length}/${rows.length} day(s): ${missingDays.join(', ')}`)
   }
-  return store.saveOuraHistory(userId, rows)
+  const daysSaved = await store.saveOuraHistory(userId, rows)
+
+  // Workouts are stored per Oura account (oura_workouts, same shape as
+  // garmin_dailies) — the legacy single-token path has no account row to
+  // attach them to, so it's skipped rather than errored (readiness/sleep/
+  // activity have always worked without one; workouts are new and this is
+  // the one part of them that genuinely needs it).
+  let workoutsSaved = 0
+  if (accountId != null) {
+    try {
+      const workouts = await ouraWorkoutsRange(token, fromYmd, toYmd)
+      workoutsSaved = await store.saveOuraWorkouts(accountId, workouts)
+    } catch (err) {
+      // A 403 here (missing scope, once Oura requires one workouts doesn't
+      // already grant under `daily`) or any other fetch failure must not
+      // fail the whole backfill — readiness/sleep/activity already saved
+      // above are still good.
+      console.warn(`[oura-backfill] account ${accountId} (user ${userId}): workout fetch failed: ${err.message}`)
+    }
+  }
+
+  return { daysSaved, workoutsSaved }
 }
 
 requireAuthRouter.get('/oura/summary', asyncH(async (req, res) => {
@@ -494,14 +545,14 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
   if (userId == null) return res.redirect('/?oura=error') // no session AND no pinned initiator — can't attribute this connection to anyone
   const tokens = await ouraExchangeCode(String(code))
   const info = await ouraPersonalInfo(tokens.access_token)
-  await store.saveOuraAccount(userId, {
+  const account = await store.saveOuraAccount(userId, {
     label: info?.email || info?.id || 'Oura account',
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: ouraExpiryFrom(tokens.expires_in),
   })
   try {
-    await backfillOuraHistory(userId, tokens.access_token)
+    await backfillOuraHistory(userId, tokens.access_token, 30, account.id)
   } catch (err) {
     // A successful connect must still read as connected even if the
     // historical pull hiccups — POST /api/oura/backfill can retry it. But
@@ -519,8 +570,9 @@ requireAuthRouter.post('/oura/backfill', asyncH(async (req, res) => {
   const token = await resolveOuraToken(req.userId)
   if (!token) return res.status(400).json({ error: 'No Oura account connected.' })
   const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
-  const saved = await backfillOuraHistory(req.userId, token, days)
-  res.json({ ok: true, days, daysSaved: saved })
+  const accountId = await resolveOuraAccountId(req.userId)
+  const saved = await backfillOuraHistory(req.userId, token, days, accountId)
+  res.json({ ok: true, days, daysSaved: saved.daysSaved, workoutsSaved: saved.workoutsSaved })
 }))
 
 // Connected accounts (tokens stripped) + config state, for the settings UI.
@@ -583,6 +635,21 @@ app.get('/api/garmin/callback', asyncH(async (req, res) => {
 // all, is skipped rather than guessed at — attributing pushed data to the
 // wrong user would be a real cross-user data leak, not just a display bug.
 // Body shape (VERIFY): { dailies: [ { userId, calendarDate, activeKilocalories, bmrKilocalories, steps, ... } ] }
+//
+// Garmin's Health API push model delivers each summary type as its own
+// top-level array, keyed by type — documented as (VERIFY against the
+// partner docs once access is granted; this app has never received real
+// Garmin traffic to confirm exact key spelling): epochs, sleeps, bodyComps,
+// stressDetails, userMetrics, pulseOx, respiration, healthSnapshot,
+// activities, activityDetails, manuallyUpdatedActivities, moveIQActivities,
+// bloodPressures, skinTemp. `dailies` is the only one this app ingests
+// today; see docs/garmin-capability-matrix.md for what each of the others
+// would need.
+const GARMIN_KNOWN_PUSH_TYPES = [
+  'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseOx',
+  'respiration', 'healthSnapshot', 'activities', 'activityDetails',
+  'manuallyUpdatedActivities', 'moveIQActivities', 'bloodPressures', 'skinTemp',
+]
 app.post('/api/garmin/webhook', asyncH(async (req, res) => {
   const dailies = Array.isArray(req.body?.dailies) ? req.body.dailies : []
   const accountCache = new Map() // garmin_user_id -> account | null, avoid a lookup per daily in one batch
@@ -599,7 +666,29 @@ app.post('/api/garmin/webhook', asyncH(async (req, res) => {
     const norm = garminNormalizeDaily(d)
     if (norm.day) await store.upsertGarminDaily({ account_id: account.id, ...norm, raw: d })
   }
-  res.status(200).json({ received: dailies.length }) // 200 fast so Garmin doesn't retry
+
+  // Garmin's push webhook delivers other summary types the same shape as
+  // `dailies` — a top-level array keyed by type (sleeps, activities,
+  // bodyComps, ...; see docs/garmin-capability-matrix.md for the full list
+  // and what each would need to actually ingest). None of those are stored
+  // today. Silently accepting them with a 200 and no record read as success
+  // while discarding real data — the exact "reports success while doing
+  // nothing" shape this app's own audit history keeps re-finding — so every
+  // one is logged and counted instead, distinguishing a Garmin push type
+  // this app simply hasn't built ingestion for yet (known, tracked in the
+  // capability matrix) from a key this app has never even heard of (which
+  // could be a Garmin API change worth investigating).
+  const unsupported = {}
+  for (const key of Object.keys(req.body || {})) {
+    if (key === 'dailies') continue
+    const arr = req.body[key]
+    if (!Array.isArray(arr) || arr.length === 0) continue
+    unsupported[key] = arr.length
+    const known = GARMIN_KNOWN_PUSH_TYPES.includes(key)
+    console.warn(`[garmin-webhook] received ${arr.length} '${key}' item(s) — ${known ? 'a documented Garmin push type this app does not yet ingest (see docs/garmin-capability-matrix.md)' : 'an UNRECOGNIZED key, not in this app\'s known Garmin push types'}`)
+  }
+
+  res.status(200).json({ received: dailies.length, ...(Object.keys(unsupported).length ? { unsupported } : {}) }) // 200 fast so Garmin doesn't retry
 }))
 
 requireAuthRouter.get('/garmin/accounts', asyncH(async (req, res) => {
@@ -894,13 +983,15 @@ requireAuthRouter.put('/connections/:provider', asyncH(async (req, res) => {
 
 // The HealthKit categories the companion may read (minimum fueling context).
 // HRV / resting HR are context-only and never drive a target change.
-const APPLE_CATEGORIES = ['workouts', 'activeEnergy', 'exercise', 'sleep', 'hrv', 'restingHR', 'steps']
+// bodyMass feeds the trend-weight feature (merged with manual entries at
+// read time — see store.listWeightEntries), never a plan target either.
+const APPLE_CATEGORIES = ['workouts', 'activeEnergy', 'exercise', 'sleep', 'hrv', 'restingHR', 'steps', 'bodyMass']
 // Map ingested metric keys back to their HealthKit category, so "available"
 // permissions can be inferred from which metrics actually arrived.
 const APPLE_METRIC_CATEGORY = {
   workout: 'workouts', expenditure: 'activeEnergy', active_energy: 'activeEnergy',
   exercise: 'exercise', exercise_minutes: 'exercise', sleep: 'sleep',
-  hrv: 'hrv', resting_hr: 'restingHR', steps: 'steps',
+  hrv: 'hrv', resting_hr: 'restingHR', steps: 'steps', weight: 'bodyMass',
 }
 
 // Record which HealthKit categories the companion could read. HealthKit hides
@@ -1077,7 +1168,7 @@ async function resyncAllOuraAccounts() {
   for (const account of accounts) {
     try {
       const token = await ouraValidAccessToken(account, (t) => store.updateOuraTokens(account.user_id, account.id, t))
-      await backfillOuraHistory(account.user_id, token, OURA_RESYNC_WINDOW_DAYS)
+      await backfillOuraHistory(account.user_id, token, OURA_RESYNC_WINDOW_DAYS, account.id)
     } catch (err) {
       // One account's failure (an expired/revoked refresh token, a transient
       // Oura outage) must not stop the rest of the batch from syncing.

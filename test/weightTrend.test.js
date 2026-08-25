@@ -67,4 +67,19 @@ describe('computeTrend', () => {
       expect(trends[i]).toBeGreaterThan(out[i].kg)
     }
   })
+
+  it('carries a `source` field through unchanged when entries have one (store.listWeightEntries\' apple/manual merge)', () => {
+    const out = computeTrend([
+      { day: '2026-08-01', kg: 90, source: 'apple' },
+      { day: '2026-08-02', kg: 89, source: 'manual' },
+    ])
+    expect(out[0].source).toBe('apple')
+    expect(out[1].source).toBe('manual')
+  })
+
+  it('never invents a `source` key when entries don\'t carry one (control — the original {day, kg} shape survives untouched)', () => {
+    const out = computeTrend([{ day: '2026-08-01', kg: 90 }])
+    expect(out[0]).toEqual({ day: '2026-08-01', kg: 90, trend: 90 })
+    expect('source' in out[0]).toBe(false)
+  })
 })

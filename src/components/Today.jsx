@@ -307,9 +307,20 @@ export default function Today({ date, data, entries, loading, online, syncing, p
           {slMissing ? (
             <div className="numeral text-[30px] leading-none text-faint">—</div>
           ) : (
-            <div className="numeral text-[30px] leading-none text-ink">
-              {hm.h}<span className="font-sans text-[15px] font-normal">h</span> {hm.m}<span className="font-sans text-[15px] font-normal">m</span>
-            </div>
+            <>
+              <div className="numeral text-[30px] leading-none text-ink">
+                {hm.h}<span className="font-sans text-[15px] font-normal">h</span> {hm.m}<span className="font-sans text-[15px] font-normal">m</span>
+              </div>
+              {/* daily_sleep's own 0-100 quality score — a different Oura
+                  endpoint from the duration above, so it's genuinely absent
+                  (not just unfetched) whenever a provider only ever supplies
+                  duration. The demo scenario already anticipated this field
+                  (sig(7.4, {score: 78, ...})) since before any real fetch
+                  populated it. */}
+              {sl.score != null && (
+                <div className="mt-0.5 text-[10.5px] font-medium text-muted">Score {Math.round(num(sl.score))}</div>
+              )}
+            </>
           )}
         </ContextCell>
 

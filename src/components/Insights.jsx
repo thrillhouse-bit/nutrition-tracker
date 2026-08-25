@@ -206,7 +206,8 @@ export default function Insights({ refreshKey }) {
   const avgReadiness = readiness.length ? Math.round(readiness.reduce((a, r) => a + r.score, 0) / readiness.length) : null
 
   const weightPoints = data?.weight || []
-  const latestTrend = weightPoints.length ? weightPoints[weightPoints.length - 1].trend : null
+  const latestWeightPoint = weightPoints.length ? weightPoints[weightPoints.length - 1] : null
+  const latestTrend = latestWeightPoint ? latestWeightPoint.trend : null
 
   return (
     <div className="space-y-6">
@@ -267,6 +268,14 @@ export default function Insights({ refreshKey }) {
               mid="Trend line · logged dots"
               right={shortDate(weightPoints[weightPoints.length - 1].day)}
             />
+            {/* The most recent reading's own provenance — manual vs. synced
+                from Apple Health (store.listWeightEntries merges the two,
+                manual winning a same-day conflict). Not a per-dot legend
+                (the chart draws every day the same way); just says where
+                today's number actually came from. */}
+            {latestWeightPoint?.source === 'apple' && (
+              <p className="mt-1.5 text-[11px] text-muted">Latest reading synced from Apple Health.</p>
+            )}
           </>
         ) : weightPoints.length === 1 ? (
           <p className="mt-2.5 text-sm text-muted">One more day of logging draws the trend line.</p>

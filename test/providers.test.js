@@ -237,4 +237,51 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     expect(sig.readiness).toBeNull() // never Activity's score (55), and no demo fabricated in its place
     expect(sig.sleep).toBeNull()
   })
+
+  // Real Oura workouts are read from storage (oura_workouts, kept current by
+  // the daily backfill/resync), not fetched live — so this stubs `fetch` to
+  // fail outright, proving the workout signal doesn't depend on it at all.
+  it('a real Oura workout, once backfilled into storage, composes as the day\'s workout signal — not fetched live', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('no network in test — workouts must come from storage') }))
+    const now = new Date()
+    const day = ymd(now)
+    const calls = []
+    const store = {
+      ...baseStore,
+      getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
+      listOuraAccounts: async () => [
+        { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
+      ],
+      listOuraWorkouts: async (accountId, d) => {
+        calls.push([accountId, d]) // asserted after composeSignals returns — an assertion thrown from inside this mock would otherwise be silently caught by the code under test's own .catch(() => [])
+        return [
+          { oura_id: 'w1', day: d, activity: 'running', intensity: 'moderate', calories: 420, start_datetime: `${d}T06:00:00+00:00`, end_datetime: `${d}T06:45:00+00:00` },
+          { oura_id: 'w2', day: d, activity: 'cycling', start_datetime: `${d}T17:00:00+00:00` }, // later — must not win over w1
+        ]
+      },
+    }
+    const sig = await composeSignals(store, now, 1)
+    expect(calls).toEqual([[1, day]])
+    expect(sig.workout).toEqual(expect.objectContaining({
+      provider: 'oura', demo: false,
+      value: expect.objectContaining({ kind: 'run', shortLabel: 'run', estKcal: 420, durationMin: 45, status: 'completed' }),
+    }))
+  })
+
+  it('reports no workout signal (not a throw) when the account has none for today (control)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })))
+    const store = {
+      ...baseStore,
+      // garmin's demo must be off here too — it's preferred ahead of oura
+      // for `workout` (see PREFERENCE) and would otherwise silently win this
+      // slot regardless of oura having genuinely nothing today.
+      getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', settings: {} }),
+      listOuraAccounts: async () => [
+        { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
+      ],
+      listOuraWorkouts: async () => [],
+    }
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.workout).toBeNull()
+  })
 })

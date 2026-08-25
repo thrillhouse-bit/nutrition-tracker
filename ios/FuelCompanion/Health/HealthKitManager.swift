@@ -46,12 +46,13 @@ final class HealthKitManager: ObservableObject {
     private var hrvType: HKQuantityType? { HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) }
     private var restingHRType: HKQuantityType? { HKQuantityType.quantityType(forIdentifier: .restingHeartRate) }
     private var sleepType: HKCategoryType? { HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) }
+    private var bodyMassType: HKQuantityType? { HKQuantityType.quantityType(forIdentifier: .bodyMass) }
 
     /// Sample types we observe for background delivery (activity summary is not a
     /// sample type, so it is excluded here but still read on demand).
     private var observableSampleTypes: [HKSampleType] {
         var t: [HKSampleType] = [HKObjectType.workoutType()]
-        for case let type? in [activeEnergyType, exerciseTimeType, stepType, hrvType, restingHRType] {
+        for case let type? in [activeEnergyType, exerciseTimeType, stepType, hrvType, restingHRType, bodyMassType] {
             t.append(type)
         }
         if let sleepType { t.append(sleepType) }
@@ -62,7 +63,7 @@ final class HealthKitManager: ObservableObject {
     /// fallback) even though it is not a sample type.
     private var readTypes: Set<HKObjectType> {
         var s: Set<HKObjectType> = [HKObjectType.workoutType(), HKObjectType.activitySummaryType()]
-        for case let type? in [activeEnergyType, exerciseTimeType, stepType, hrvType, restingHRType] {
+        for case let type? in [activeEnergyType, exerciseTimeType, stepType, hrvType, restingHRType, bodyMassType] {
             s.insert(type)
         }
         if let sleepType { s.insert(sleepType) }
@@ -138,6 +139,23 @@ final class HealthKitManager: ObservableObject {
         if let bpm = await discreteAverage(restingHRType, unit: bpmUnit, dayStart, now) {
             available.insert(.restingHR)
             samples.append(makeSample(.restingHR, .number(bpm), unit: "bpm", recorded: now, fetched: now))
+        }
+
+        // Body mass → the backend's trend-weight feature (server/weightTrend.js),
+        // provider='apple' alongside any manually-typed reading for the same
+        // day (the backend merges the two at read time, manual taking
+        // precedence — see listWeightEntries). Requested in kilograms
+        // directly, matching the backend's canonical storage unit, so there
+        // is no display-unit conversion to get wrong here regardless of the
+        // Health app's own locale/unit setting. discreteAverage — the same
+        // helper HRV/resting-HR already use — is deliberate: someone who
+        // weighs in more than once in a day gets those readings averaged
+        // into one value, rather than only the single most-recent reading
+        // silently winning.
+        let kgUnit = HKUnit.gramUnit(with: .kilo)
+        if let kg = await discreteAverage(bodyMassType, unit: kgUnit, dayStart, now) {
+            available.insert(.bodyMass)
+            samples.append(makeSample(.weight, .number(kg), unit: "kg", recorded: now, fetched: now))
         }
 
         // Workouts — APPROVED, completed workouts only. One sample per workout;
