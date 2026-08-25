@@ -110,4 +110,9 @@ export const api = {
   connections: () => req('/connections'),
   setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
   setProvider: (id, patch) => req(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+
+  // Apple Health has no OAuth "Connect" — this generates (or regenerates,
+  // invalidating the previous one) the per-account token the iOS/watch
+  // companion authenticates with, since it can't carry a session cookie.
+  appleToken: () => req('/apple/token', { method: 'POST' }),
 }
