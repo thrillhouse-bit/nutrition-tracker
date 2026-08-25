@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
+import { computeTrend } from '../server/weightTrend.js'
 
 // Route-level tests: the real Express app, an in-memory store (so no test ever
 // touches server/.data/store.json), and a stubbed Oura module (no network).
@@ -21,6 +22,7 @@ const fake = vi.hoisted(() => {
     appleSignals: {},
     ouraAccounts: [],
     ouraHistory: [], // { day, value }
+    weightEntries: [], // { day, kg }
     manualWorkouts: {}, // day -> workout
     garminAccounts: [],
     garminDailies: {}, // `${accountId}:${day}` -> row
@@ -80,8 +82,13 @@ const fake = vi.hoisted(() => {
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
     saveOuraHistory: async (userId, rows) => {
-      const days = new Set(rows.map((r) => r.day))
-      state.ouraHistory = state.ouraHistory.filter((r) => !days.has(r.day))
+      // Mirrors PgStore/JsonStore's scoredDays fix: only a day with an actual
+      // score this run gets deleted-then-reinserted. A day present in `rows`
+      // with a transient null (Oura rate-limited, a partial outage) must
+      // leave whatever was already stored for that day standing, not erase
+      // it — the exact production bug this fix was for.
+      const scoredDays = new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))
+      state.ouraHistory = state.ouraHistory.filter((r) => !scoredDays.has(r.day))
       let n = 0
       for (const r of rows) {
         if (r.score == null) continue
@@ -102,6 +109,17 @@ const fake = vi.hoisted(() => {
       return n
     },
     listOuraHistory: async (userId, from, to) => state.ouraHistory.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+    saveWeightEntry: async (userId, day, kg) => {
+      state.weightEntries = state.weightEntries.filter((r) => r.day !== day)
+      state.weightEntries.push({ day, kg })
+      return { day, kg }
+    },
+    listWeightEntries: async (userId, from, to) => state.weightEntries.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+    deleteWeightEntry: async (userId, day) => {
+      const before = state.weightEntries.length
+      state.weightEntries = state.weightEntries.filter((r) => r.day !== day)
+      return state.weightEntries.length < before
+    },
     getManualWorkout: async (userId, day) => state.manualWorkouts[day] || null,
     setManualWorkout: async (userId, day, workout) => {
       state.manualWorkouts[day] = { ...workout, recorded_at: '2026-08-25T00:00:00.000Z' }
@@ -207,6 +225,7 @@ afterEach(() => {
   fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null }
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
+  fake.state.weightEntries = []
   // Note: fake.state.users is intentionally NOT reset — the one signed-up
   // test user (and authCookie/authUserId) must survive across every test in
   // this file.
@@ -543,6 +562,26 @@ describe('POST /api/oura/backfill', () => {
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-01')
     expect(stored).toHaveLength(0) // nothing persisted from the failed attempt
   })
+
+  it('a transient null on re-sync for a day that scored before leaves the old score standing, not erased', async () => {
+    // End-to-end regression for the production-verification audit fix (see
+    // PgStore/JsonStore's saveOuraHistory): a re-run backfill can get a
+    // transient null for a day that scored fine before (Oura rate-limited, a
+    // partial-outage response — the readiness endpoint still returns an
+    // entry for every day in range, just with score: null). That must never
+    // erase the previously-correct value.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }, { day: '2026-08-02', score: 75 }]
+    await post('/api/oura/backfill?days=10', {})
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }, { day: '2026-08-02', score: null }] // 08-02 hiccups
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    expect((await res.json()).daysSaved).toBe(1) // only 08-01 had a score to (re)save this run
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
+    expect(stored.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched, not wiped
+  })
 })
 
 describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
@@ -660,6 +699,94 @@ describe('GET /api/insights ouraReadiness', () => {
     const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.ouraReadiness).toEqual([])
+  })
+})
+
+describe('GET /api/insights weight trend', () => {
+  it('returns an empty array when nothing has been logged (control)', async () => {
+    fake.state.weightEntries = []
+    const res = await get('/api/insights?window=7')
+    expect((await res.json()).weight).toEqual([])
+  })
+
+  // Server-local "today" under this fixed clock, in the suite's pinned
+  // Pacific/Apia (UTC+13) timezone, is 2026-08-26 — so a 7-day window starts
+  // 2026-08-20 and a 14-day window starts 2026-08-13; 2026-07-01 sits outside
+  // both, same as the ouraReadiness tests above rely on.
+  it('computes the trend over ALL history, not just the requested window, so the same day reads identically across window sizes', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.weightEntries = [
+      { day: '2026-07-01', kg: 90 }, // outside every window tested — seeds the trend only
+      { day: '2026-08-20', kg: 80 },
+      { day: '2026-08-24', kg: 80 },
+    ]
+    const res7 = await get('/api/insights?window=7')
+    const body7 = await res7.json()
+    // Only the two in-window entries come back...
+    expect(body7.weight.map((w) => w.day)).toEqual(['2026-08-20', '2026-08-24'])
+    // ...but their trend values reflect the FULL history including the
+    // excluded 2026-07-01 seed — computeTrend run over everything and then
+    // sliced to the window, never re-seeded fresh at the window's own first
+    // entry (which would make 2026-08-20's trend exactly 80, not pulled down
+    // from 90).
+    const expected = computeTrend(fake.state.weightEntries).filter((e) => e.day >= '2026-08-20')
+    expect(body7.weight).toEqual(expected)
+    expect(body7.weight[0].trend).not.toBe(80)
+
+    // The regression this test exists to catch: a day inside BOTH windows
+    // must read identically regardless of which window is requested.
+    const res14 = await get('/api/insights?window=14')
+    const body14 = await res14.json()
+    const day20in14 = body14.weight.find((w) => w.day === '2026-08-20')
+    expect(day20in14.trend).toBe(body7.weight[0].trend)
+  })
+})
+
+describe('PUT/DELETE /api/weight (body weight log)', () => {
+  afterEach(() => { fake.state.weightEntries = [] })
+
+  it('rejects a non-numeric or non-positive kg (control)', async () => {
+    for (const bad of [0, -5, 'x', null, undefined]) {
+      const res = await put('/api/weight', { kg: bad })
+      expect(res.status).toBe(400)
+    }
+    expect(fake.state.weightEntries).toEqual([])
+  })
+
+  it('logs today (server-local) when no day is given', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) }) // -> 2026-08-26 Apia
+    const res = await put('/api/weight', { kg: 81.5 })
+    expect(res.status).toBe(200)
+    expect((await res.json()).entry).toEqual({ day: '2026-08-26', kg: 81.5 })
+    expect(fake.state.weightEntries).toEqual([{ day: '2026-08-26', kg: 81.5 }])
+  })
+
+  it('accepts an explicit day (control)', async () => {
+    const res = await put('/api/weight', { kg: 80, day: '2026-08-01' })
+    expect(res.status).toBe(200)
+    expect(fake.state.weightEntries).toEqual([{ day: '2026-08-01', kg: 80 }])
+  })
+
+  it('logging twice for the same day replaces rather than duplicates', async () => {
+    await put('/api/weight', { kg: 80, day: '2026-08-01' })
+    const res = await put('/api/weight', { kg: 79.2, day: '2026-08-01' })
+    expect(res.status).toBe(200)
+    expect(fake.state.weightEntries).toEqual([{ day: '2026-08-01', kg: 79.2 }]) // not two rows
+  })
+
+  it('deletes a logged day (204) and reports 404 for a day with nothing to delete', async () => {
+    await put('/api/weight', { kg: 80, day: '2026-08-01' })
+    const res = await fetch(`${base}/api/weight/2026-08-01`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(204)
+    expect(fake.state.weightEntries).toEqual([])
+
+    const again = await fetch(`${base}/api/weight/2026-08-01`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(again.status).toBe(404)
+  })
+
+  it('requires auth, same as every other route in this file (control)', async () => {
+    const res = await fetch(`${base}/api/weight`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kg: 80 }) })
+    expect(res.status).toBe(401)
   })
 })
 

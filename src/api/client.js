@@ -110,6 +110,13 @@ export const api = {
   getWorkout: () => req('/plan/workout'),
   setWorkout: (workout) => req('/plan/workout', { method: 'PUT', body: JSON.stringify(workout) }),
   clearWorkout: () => req('/plan/workout', { method: 'DELETE' }),
+
+  // Body weight log — kg is the only unit the API speaks; the caller
+  // converts (see lib/nutrition.js's lbToKg) before calling this. `day`
+  // defaults server-side to today when omitted.
+  logWeight: (kg, day) => req('/weight', { method: 'PUT', body: JSON.stringify(day ? { kg, day } : { kg }) }),
+  deleteWeight: (day) => req(`/weight/${encodeURIComponent(day)}`, { method: 'DELETE' }),
+
   // tzOffsetMinutes (Date#getTimezoneOffset() convention) lets the server
   // bucket trend days by the browser's own calendar day instead of the
   // server's — the same reasoning dayBounds()/ymd() in lib/nutrition.js

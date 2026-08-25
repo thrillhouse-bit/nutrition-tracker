@@ -513,6 +513,32 @@ class PgStore {
     return sql`select day, value, extra from wearable_signals where user_id = ${userId} and provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
   }
 
+  // --- Body weight log (per user per day) — same "no new table" reasoning
+  // as manual workout above: provider='manual', metric='weight', one row per
+  // user per day, delete-then-insert (the same idempotency shape
+  // saveOuraHistory established for this table, so re-logging the same day
+  // replaces rather than duplicates).
+  async saveWeightEntry(userId, day, kg) {
+    const sql = await this.ready()
+    const nowIso = new Date().toISOString()
+    await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day = ${day}`
+    await sql`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value, unit)
+      values (${userId}, 'manual', 'weight', ${day}, ${nowIso}, ${nowIso}, ${JSON.stringify(kg)}, 'kg')`
+    return { day, kg }
+  }
+
+  async listWeightEntries(userId, fromYmd, toYmd) {
+    const sql = await this.ready()
+    const rows = await sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day between ${fromYmd} and ${toYmd} order by day`
+    return rows.map((r) => ({ day: r.day, kg: Number(r.value) }))
+  }
+
+  async deleteWeightEntry(userId, day) {
+    const sql = await this.ready()
+    const rows = await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day = ${day} returning day`
+    return rows.length > 0
+  }
+
   // --- Clear synced history (Connections page's "Delete synced history") ----
   // See JsonStore's sibling method for why this excludes provider='manual'
   // and leaves the OAuth accounts (oura_accounts/garmin_accounts) untouched.
@@ -1055,6 +1081,37 @@ export class JsonStore {
     return (d.wearable_signals || [])
       .filter((s) => s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && s.day >= fromYmd && s.day <= toYmd)
       .sort((a, b) => (a.day < b.day ? -1 : 1))
+  }
+
+  // --- Body weight log (per user per day) — see PgStore's sibling methods
+  // for why this reuses wearable_signals rather than a new table.
+  async saveWeightEntry(userId, day, kg) {
+    const d = await this.load()
+    d.wearable_signals = d.wearable_signals || []
+    const uid = Number(userId)
+    d.wearable_signals = d.wearable_signals.filter((s) => !(s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day === day))
+    const nowIso = new Date().toISOString()
+    d.wearable_signals.push({ user_id: uid, provider: 'manual', metric: 'weight', day, recorded_at: nowIso, fetched_at: nowIso, value: kg, unit: 'kg', extra: null })
+    await this.persist()
+    return { day, kg }
+  }
+
+  async listWeightEntries(userId, fromYmd, toYmd) {
+    const d = await this.load()
+    const uid = Number(userId)
+    return (d.wearable_signals || [])
+      .filter((s) => s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day >= fromYmd && s.day <= toYmd)
+      .sort((a, b) => (a.day < b.day ? -1 : 1))
+      .map((s) => ({ day: s.day, kg: Number(s.value) }))
+  }
+
+  async deleteWeightEntry(userId, day) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const before = (d.wearable_signals || []).length
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day === day))
+    await this.persist()
+    return d.wearable_signals.length < before
   }
 
   // --- Clear synced history (Connections page's "Delete synced history") ----

@@ -47,6 +47,7 @@ import {
 } from './integrations/garmin.js'
 import { computeAdjustedTargets, computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
+import { computeTrend } from './weightTrend.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
 
 const app = express()
@@ -817,6 +818,24 @@ requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
   res.status(ok ? 204 : 404).end()
 }))
 
+// Body weight log — one entry per day. `day` defaults to today (same
+// pattern as /oura/summary's date param); logging twice for the same day
+// overwrites rather than adding a second reading (store.saveWeightEntry is
+// delete-then-insert, same idempotency shape as the Oura history backfill).
+requireAuthRouter.put('/weight', asyncH(async (req, res) => {
+  const { kg, day } = req.body || {}
+  const n = Number(kg)
+  if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'kg must be a positive number.' })
+  const useDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day)) ? day : localYmd()
+  const entry = await store.saveWeightEntry(req.userId, useDay, n)
+  res.json({ entry })
+}))
+
+requireAuthRouter.delete('/weight/:day', asyncH(async (req, res) => {
+  const ok = await store.deleteWeightEntry(req.userId, req.params.day)
+  res.status(ok ? 204 : 404).end()
+}))
+
 // Composed wearable signals (one per metric) with provenance + freshness.
 requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   const now = new Date()
@@ -1002,7 +1021,19 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const calTarget = Number(targets?.calories) || 0
   const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
 
-  const ouraReadiness = (await store.listOuraHistory?.(req.userId, ymdAtOffset(start, tzOffsetMinutes), ymdAtOffset(new Date(end - 1), tzOffsetMinutes))) || []
+  const windowStartYmd = ymdAtOffset(start, tzOffsetMinutes)
+  const windowEndYmd = ymdAtOffset(new Date(end - 1), tzOffsetMinutes)
+  const ouraReadiness = (await store.listOuraHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
+
+  // The trend must be computed over ALL history up to the window's end, not
+  // just the entries inside the window — an EMA re-seeded fresh at the
+  // window's start would show a different trend value for the same day
+  // depending on which window (7/14/30) happens to be selected, which is
+  // exactly the kind of silently-inconsistent number this app's own history
+  // (see CLAUDE-notes-style incidents elsewhere) keeps warning about.
+  // Sliced back down to the window only after computing over the full history.
+  const allWeightEntries = (await store.listWeightEntries?.(req.userId, '0001-01-01', windowEndYmd)) || []
+  const weight = computeTrend(allWeightEntries).filter((e) => e.day >= windowStartYmd)
 
   res.json({
     window,
@@ -1010,6 +1041,7 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
     days,
     ouraReadiness: ouraReadiness.map((r) => ({ date: r.day, score: Number(r.value) })).filter((r) => Number.isFinite(r.score)),
+    weight,
     correlations: {
       available: false,
       note: 'Recovery/training correlations need several days of retained wearable history — connect a provider and revisit after a few days.',
