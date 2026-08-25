@@ -117,6 +117,43 @@ function WeightChart({ points, toDisplay }) {
   )
 }
 
+// TRAINING LOAD — real per-day minutes trained (server/db.js's
+// aggregateWorkoutRows: summed Apple Health workout durations, not a
+// fabricated intensity score — HealthKit gives us duration, not strain).
+// A bar per day rather than a line: unlike Readiness's fixed 0-100 scale or
+// Energy/Weight's stretch-to-observed-range, minutes trained has a real zero
+// floor (a rest day), so bars are scaled from 0 up to the window's own peak
+// rather than stretched between min and max, which would make an ordinary
+// rest day look identical to a hard one. The latest day is marked in cobalt,
+// the same "current value" cue every other chart in this file uses.
+function TrainingLoadChart({ points }) {
+  const n = points.length
+  if (n < 2) return null
+  const vals = points.map((p) => num(p.minutes))
+  const max = Math.max(...vals, 1)
+  const TOP = 16
+  const BOT = 72
+  const slot = 320 / n
+  const barW = slot * 0.6
+  return (
+    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+      {vals.map((v, i) => {
+        const h = (v / max) * (BOT - TOP)
+        return (
+          <rect
+            key={i}
+            x={(i * slot + (slot - barW) / 2).toFixed(1)}
+            y={(BOT - h).toFixed(1)}
+            width={barW.toFixed(1)}
+            height={h.toFixed(1)}
+            fill={i === n - 1 ? '#1F35C4' : '#EACD91'}
+          />
+        )
+      })}
+    </svg>
+  )
+}
+
 // Same provider-name map Plan.jsx uses to turn a `signals.<metric>.provider`
 // code into display copy — kept in sync here rather than hardcoding a single
 // brand in the section header regardless of who actually connected.
@@ -207,6 +244,9 @@ export default function Insights({ refreshKey }) {
 
   const weightPoints = data?.weight || []
   const latestTrend = weightPoints.length ? weightPoints[weightPoints.length - 1].trend : null
+
+  const workoutLoad = data?.workoutLoad || []
+  const avgMinutes = workoutLoad.length ? Math.round(workoutLoad.reduce((a, r) => a + num(r.minutes), 0) / workoutLoad.length) : null
 
   return (
     <div className="space-y-6">
@@ -366,20 +406,42 @@ export default function Insights({ refreshKey }) {
             )}
           </section>
 
-          {/* TRAINING LOAD — same: an empty lavender-bar skeleton, no
-              fabricated session data. Labeled by whichever provider is
-              actually supplying workouts today, not a fixed brand. */}
+          {/* TRAINING LOAD — real per-day minutes trained once at least two
+              days of retained Apple Health workout history exist, the honest
+              dashed placeholder (no invented bars) otherwise — same pattern
+              as Readiness above. Labeled by whichever provider is actually
+              supplying today's workout signal, not a fixed brand. */}
           <section>
             <SectionHead
               label={workoutProviderLabel ? `Training load · ${workoutProviderLabel}` : 'Training load'}
-              right={<StatusMark status="unavailable" label="Awaiting history" />}
+              right={
+                workoutLoad.length >= 2 ? (
+                  <span className="tnum text-[13px] text-muted">avg {avgMinutes} min</span>
+                ) : (
+                  <StatusMark status="unavailable" label="Awaiting history" />
+                )
+              }
             />
-            <div className="mt-3 flex h-[46px] items-end gap-1 border-b border-line-strong">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} aria-hidden className="h-3 flex-1 border border-line-strong border-b-0 bg-sand/55" />
-              ))}
-            </div>
-            <ChartCaption left="Sand bars · training" right={workoutProviderLabel || 'No source connected'} />
+            {workoutLoad.length >= 2 ? (
+              <>
+                <TrainingLoadChart points={workoutLoad} />
+                <ChartCaption
+                  left={shortDate(workoutLoad[0].date)}
+                  mid={`AVG ${avgMinutes} MIN`}
+                  right={shortDate(workoutLoad[workoutLoad.length - 1].date)}
+                />
+              </>
+            ) : (
+              <>
+                <div className="relative mt-2.5 h-[62px] border-t border-b border-dashed border-line-strong">
+                  <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-sand/60" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
+                  </div>
+                </div>
+                <ChartCaption left="Sand band · training" right={workoutProviderLabel || 'No source connected'} />
+              </>
+            )}
           </section>
 
           {/* WHAT WE NOTICE — an observation only when correlations are available;

@@ -158,6 +158,62 @@ describe('JsonStore Oura readiness history (backfill)', () => {
   })
 })
 
+describe('JsonStore Apple workout history (real training-load rows)', () => {
+  // `duration_min`/`est_kcal` are the wire field names the iOS companion
+  // actually sends (ios/Shared/HealthModel.swift's WorkoutValue.CodingKeys) —
+  // these fixtures use the real shape, not a made-up one.
+  it('sums same-day workout minutes and counts sessions, filtered by range', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.replaceAppleSignals(USER, '2026-08-20', [
+      { metric: 'workout', value: { kind: 'run', duration_min: 30, est_kcal: 300, status: 'completed' } },
+      { metric: 'workout', value: { kind: 'strength', duration_min: 20, est_kcal: 150, status: 'completed' } },
+    ])
+    await s.replaceAppleSignals(USER, '2026-08-24', [
+      { metric: 'workout', value: { kind: 'ride', duration_min: 45, est_kcal: 500, status: 'completed' } },
+    ])
+
+    const all = await s.listAppleWorkoutHistory(USER, '2026-08-01', '2026-08-31')
+    expect(all).toEqual([
+      { day: '2026-08-20', minutes: 50, sessions: 2 },
+      { day: '2026-08-24', minutes: 45, sessions: 1 },
+    ])
+
+    const narrowed = await s.listAppleWorkoutHistory(USER, '2026-08-21', '2026-08-31')
+    expect(narrowed).toEqual([{ day: '2026-08-24', minutes: 45, sessions: 1 }])
+  })
+
+  it('counts a workout with no duration_min as a session without adding fabricated minutes (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.replaceAppleSignals(USER, '2026-08-20', [
+      { metric: 'workout', value: { kind: 'walk', status: 'completed' } }, // no duration_min on this sample
+    ])
+    const all = await s.listAppleWorkoutHistory(USER, '2026-08-01', '2026-08-31')
+    expect(all).toEqual([{ day: '2026-08-20', minutes: 0, sessions: 1 }])
+  })
+
+  it('ignores non-workout Apple signals on the same day (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.replaceAppleSignals(USER, '2026-08-20', [
+      { metric: 'steps', value: 5000 },
+      { metric: 'expenditure', value: 2000, extra: { active: 400 } },
+    ])
+    expect(await s.listAppleWorkoutHistory(USER, '2026-08-01', '2026-08-31')).toEqual([])
+  })
+
+  it('never mixes another user\'s workouts into the aggregate (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.replaceAppleSignals(USER, '2026-08-20', [{ metric: 'workout', value: { kind: 'run', duration_min: 30 } }])
+    await s.replaceAppleSignals(2, '2026-08-20', [{ metric: 'workout', value: { kind: 'ride', duration_min: 90 } }])
+    expect(await s.listAppleWorkoutHistory(USER, '2026-08-01', '2026-08-31')).toEqual([{ day: '2026-08-20', minutes: 30, sessions: 1 }])
+    expect(await s.listAppleWorkoutHistory(2, '2026-08-01', '2026-08-31')).toEqual([{ day: '2026-08-20', minutes: 90, sessions: 1 }])
+  })
+
+  it('returns an empty array when nothing has synced (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.listAppleWorkoutHistory(USER, '2026-08-01', '2026-08-31')).toEqual([])
+  })
+})
+
 describe('JsonStore manual workout input', () => {
   it('returns null when nothing has been set for that day (never throws)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))

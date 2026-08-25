@@ -1044,6 +1044,14 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const allWeightEntries = (await store.listWeightEntries?.(req.userId, '0001-01-01', windowEndYmd)) || []
   const weight = computeTrend(allWeightEntries).filter((e) => e.day >= windowStartYmd)
 
+  // Training load: real per-day minutes trained, aggregated from Apple
+  // Health workout sessions (store.listAppleWorkoutHistory — see server/db.js
+  // for why a day sums rather than keeps only the latest workout). Windowed
+  // the same way as ouraReadiness above, not the weight trend's full-history
+  // computation — there's no smoothed trend here, just the raw per-day totals.
+  const workoutHistory = (await store.listAppleWorkoutHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
+  const workoutLoad = workoutHistory.map((r) => ({ date: r.day, minutes: r.minutes, sessions: r.sessions }))
+
   res.json({
     window,
     insufficientData: tracked < 3,
@@ -1051,6 +1059,7 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     days,
     ouraReadiness: ouraReadiness.map((r) => ({ date: r.day, score: Number(r.value) })).filter((r) => Number.isFinite(r.score)),
     weight,
+    workoutLoad,
     correlations: {
       available: false,
       note: 'Recovery/training correlations need several days of retained wearable history — connect a provider and revisit after a few days.',
