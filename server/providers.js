@@ -87,21 +87,21 @@ export function demoSignals(nowDate = new Date()) {
 
 // --- provider status (Connections tab) ------------------------------------
 // status ∈ connected | stale | disconnected | error | demo
-export async function providerStatus(store, id, nowDate = new Date()) {
+export async function providerStatus(store, userId, id, nowDate = new Date()) {
   const meta = PROVIDERS[id]
-  const settings = await store.getIntegration(id)
+  const settings = await store.getIntegration(userId, id)
   const demoAllowed = settings?.demo !== false
 
   if (id === 'oura') {
     const configured = ouraConfigured() || ouraOAuthConfigured()
     if (!configured) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
-    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts() : (ouraConfigured() ? [{ id: 'legacy' }] : [])
+    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : (ouraConfigured() ? [{ id: 'legacy' }] : [])
     if (!accounts.length) return { ...meta, status: 'disconnected', demo: false, last_synced_at: null }
     return { ...meta, status: 'connected', demo: false, last_synced_at: settings?.last_synced_at || null }
   }
   if (id === 'garmin') {
     if (!garminConfigured()) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
-    const accounts = await store.listGarminAccounts()
+    const accounts = await store.listGarminAccounts(userId)
     if (!accounts.length) return { ...meta, status: 'disconnected', demo: false, last_synced_at: null }
     const daily = await store.getGarminDaily(accounts[0].id, ymd(nowDate)).catch(() => null)
     const status = daily ? 'connected' : 'stale'
@@ -113,7 +113,7 @@ export async function providerStatus(store, id, nowDate = new Date()) {
     // categories returned no data — never presented as "denied").
     const perms = settings?.settings?.permissions || null
     const partial = !!(perms?.requested?.length && (perms.available?.length || 0) < perms.requested.length)
-    const has = (await store.listAppleSignals?.(ymd(nowDate)))?.length
+    const has = (await store.listAppleSignals?.(userId, ymd(nowDate)))?.length
     const lastSync = settings?.last_synced_at || null
     if (has) return { ...meta, status: 'connected', demo: false, last_synced_at: lastSync, permissions: perms, partial }
     // Synced before but nothing today: stale if the last sync was recent, else
@@ -127,20 +127,20 @@ export async function providerStatus(store, id, nowDate = new Date()) {
   return { ...meta, status: 'disconnected', demo: false }
 }
 
-export async function allProviderStatuses(store, nowDate = new Date()) {
-  return Promise.all(Object.keys(PROVIDERS).map((id) => providerStatus(store, id, nowDate)))
+export async function allProviderStatuses(store, userId, nowDate = new Date()) {
+  return Promise.all(Object.keys(PROVIDERS).map((id) => providerStatus(store, userId, id, nowDate)))
 }
 
 // --- real per-provider signals (best-effort) ------------------------------
-async function realSignals(store, id, nowDate) {
+async function realSignals(store, userId, id, nowDate) {
   const day = ymd(nowDate)
   try {
     if (id === 'oura') {
       let token = null
       if (ouraConfigured()) token = ouraToken()
       else if (ouraOAuthConfigured()) {
-        const a = (await store.listOuraAccounts())[0]
-        if (a) token = await ouraValidToken(a, (t) => store.updateOuraTokens(a.id, t))
+        const a = (await store.listOuraAccounts(userId))[0]
+        if (a) token = await ouraValidToken(a, (t) => store.updateOuraTokens(userId, a.id, t))
       }
       if (!token) return {}
       const a = await ouraDailySummary(token, day) // network
@@ -151,7 +151,7 @@ async function realSignals(store, id, nowDate) {
       return out
     }
     if (id === 'garmin') {
-      const acct = (await store.listGarminAccounts())[0]
+      const acct = (await store.listGarminAccounts(userId))[0]
       if (!acct) return {}
       const row = await store.getGarminDaily(acct.id, day)
       if (!row) return {}
@@ -162,7 +162,7 @@ async function realSignals(store, id, nowDate) {
       return out
     }
     if (id === 'apple') {
-      const rows = (await store.listAppleSignals?.(day)) || []
+      const rows = (await store.listAppleSignals?.(userId, day)) || []
       const out = {}
       for (const r of rows) out[r.metric] = sig(r.value, { unit: r.unit, provider: 'apple', recorded_at: r.recorded_at, fetched_at: r.fetched_at, demo: false, ...r.extra })
       return out
@@ -186,16 +186,16 @@ function neverConnected(id, settings) {
 }
 
 // --- compose one signal per metric, respecting provenance + toggles -------
-export async function composeSignals(store, nowDate = new Date()) {
+export async function composeSignals(store, nowDate = new Date(), userId) {
   const settings = {}
-  for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(id)
+  for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(userId, id)
   const demo = demoSignals(nowDate)
 
   // Gather per-provider signals: real first, else demo (if allowed & enabled).
   const perProvider = {}
   for (const id of Object.keys(PROVIDERS)) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
-    const real = await realSignals(store, id, nowDate)
+    const real = await realSignals(store, userId, id, nowDate)
     if (Object.keys(real).length) perProvider[id] = real
     else if (settings[id]?.demo !== false && neverConnected(id, settings[id])) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}

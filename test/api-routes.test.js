@@ -7,10 +7,17 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 // date-defaulting bugs here need to be observable.
 process.env.TZ = 'Pacific/Apia'
 
+// Multi-user: almost every route below is gated by requireAuth (session
+// cookie, see server/auth.js) and every store method now takes userId as its
+// first argument. The fake store here stays single-user in spirit — every
+// test in this file drives ONE signed-up user throughout — but its method
+// signatures must match the real store's shape or the routes calling them
+// (with a real userId in the first slot) would silently misbehave.
 const fake = vi.hoisted(() => {
   const state = {
+    users: [], // { id, email, password_hash, created_at }
     entries: [], // { id, food_id, logged_at, servings_consumed, meal, food }
-    integrations: {},
+    integrations: {}, // keyed by provider only — one user drives this whole file
     appleSignals: {},
     ouraAccounts: [],
     ouraHistory: [], // { day, value }
@@ -20,34 +27,55 @@ const fake = vi.hoisted(() => {
     profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null },
     setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
   }
+  let userSeq = 0
   const store = {
-    getProfile: async () => state.profile,
-    setProfile: async (patch) => {
+    // --- auth / users ----------------------------------------------------
+    createUser: async ({ email, password_hash }) => {
+      const row = { id: ++userSeq, email, password_hash, created_at: new Date().toISOString() }
+      state.users.push(row)
+      return { id: row.id, email: row.email, created_at: row.created_at }
+    },
+    getUserByEmail: async (email) => state.users.find((u) => u.email === email) || null,
+    getUserById: async (id) => {
+      const u = state.users.find((u) => u.id === Number(id))
+      return u ? { id: u.id, email: u.email, created_at: u.created_at } : null
+    },
+    countUsers: async () => state.users.length,
+    getSoleUserId: async () => (state.users.length === 1 ? state.users[0].id : null),
+    findUserIdByAppleIngestToken: async (token) => {
+      for (const row of Object.values(state.integrations)) {
+        if (row.provider === 'apple' && row.settings?.ingest_token === token) return row.user_id ?? null
+      }
+      return null
+    },
+    migrateLegacyDataToUser: async () => {},
+
+    // --- personal-data methods — userId is always the first argument -----
+    getProfile: async (userId) => state.profile,
+    setProfile: async (userId, patch) => {
       state.profile = { ...state.profile, ...patch, updated_at: '2026-08-25T00:00:00.000Z' }
       return state.profile
     },
-    setTargets: async (t) => {
+    setTargets: async (userId, t) => {
       state.setTargetsCalls.push(t)
       state.targets = { ...t }
       return state.targets
     },
-    getIntegration: async (p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
-    setIntegration: async (p, patch) => {
+    getIntegration: async (userId, p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
+    setIntegration: async (userId, p, patch) => {
       const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, provider: p }
       state.integrations[p] = m
       return m
     },
-    listEntries: async ({ from, to }) => state.entries.filter((e) => e.logged_at >= from && e.logged_at < to),
-    getLatestTargets: async () => state.targets,
-    savePlan: async (date, plan) => ({ date, ...plan }),
-    replaceAppleSignals: async (day, rows) => { state.appleSignals[day] = rows; return rows.length },
-    listAppleSignals: async (day) => state.appleSignals[day] || [],
-    listOuraAccounts: async () => state.ouraAccounts,
-    listGarminAccounts: async () => state.garminAccounts,
-    getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
-    upsertGarminDaily: async (row) => { state.garminDailies[`${row.account_id}:${row.day}`] = row; return row },
-    updateOuraTokens: async () => {},
-    saveOuraHistory: async (rows) => {
+    listEntries: async (userId, { from, to }) => state.entries.filter((e) => e.logged_at >= from && e.logged_at < to),
+    getLatestTargets: async (userId) => state.targets,
+    savePlan: async (userId, date, plan) => ({ date, ...plan }),
+    replaceAppleSignals: async (userId, day, rows) => { state.appleSignals[day] = rows; return rows.length },
+    listAppleSignals: async (userId, day) => state.appleSignals[day] || [],
+    listOuraAccounts: async (userId) => state.ouraAccounts,
+    listGarminAccounts: async (userId) => state.garminAccounts,
+    updateOuraTokens: async (userId, id, tokens) => {},
+    saveOuraHistory: async (userId, rows) => {
       const days = new Set(rows.map((r) => r.day))
       state.ouraHistory = state.ouraHistory.filter((r) => !days.has(r.day))
       let n = 0
@@ -58,7 +86,15 @@ const fake = vi.hoisted(() => {
       }
       return n
     },
-    listOuraHistory: async (from, to) => state.ouraHistory.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+    listOuraHistory: async (userId, from, to) => state.ouraHistory.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+
+    // --- NOT userId-scoped (matches the real store — see server/db.js) ---
+    getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
+    upsertGarminDaily: async (row) => { state.garminDailies[`${row.account_id}:${row.day}`] = row; return row },
+    // Keyed by Garmin's own opaque user id (garmin_user_id on the account) —
+    // this is how the webhook (no session of its own) routes a pushed daily
+    // to the right local account.
+    findGarminAccountByGarminUserId: async (garminUserId) => state.garminAccounts.find((a) => a.garmin_user_id === garminUserId) || null,
   }
   return { state, store }
 })
@@ -83,6 +119,8 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
 
 let server
 let base
+let authCookie = '' // Cookie header for the one signed-up test user, set in beforeAll
+let authUserId = null
 
 beforeAll(async () => {
   process.env.PORT = '0' // never collide with a dev server
@@ -90,6 +128,22 @@ beforeAll(async () => {
   server = app.listen(0)
   await new Promise((resolve) => server.once('listening', resolve))
   base = `http://127.0.0.1:${server.address().port}`
+
+  // Every route under test (other than the Apple ingest / Garmin webhook
+  // routes, which have their own non-session auth) is gated by requireAuth,
+  // so every describe block below needs a real signed-in session. One signup
+  // for the whole file is enough — no test here is about multiple users.
+  const signupRes = await fetch(`${base}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'route-tests@example.com', password: 'testpassword123' }),
+  })
+  if (signupRes.status !== 201) {
+    throw new Error(`test setup: signup failed (${signupRes.status}): ${await signupRes.text()}`)
+  }
+  const setCookie = signupRes.headers.get('set-cookie') || ''
+  authCookie = setCookie.split(';')[0] // "nt_session=<token>"
+  authUserId = (await signupRes.json()).user.id
 })
 
 afterAll(() => {
@@ -110,21 +164,28 @@ afterEach(() => {
   fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null }
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
+  // Note: fake.state.users is intentionally NOT reset — the one signed-up
+  // test user (and authCookie/authUserId) must survive across every test in
+  // this file.
 })
 
 const post = (path, body, headers = {}) =>
   fetch(`${base}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json', Cookie: authCookie, ...headers },
     body: JSON.stringify(body),
   })
 
 const put = (path, body, headers = {}) =>
   fetch(`${base}${path}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json', Cookie: authCookie, ...headers },
     body: JSON.stringify(body),
   })
+
+// GET helper carrying the same session cookie as post/put — every protected
+// route in this file is read through this rather than a bare fetch().
+const get = (path, headers = {}) => fetch(`${base}${path}`, { headers: { Cookie: authCookie, ...headers } })
 
 describe('POST /api/apple/ingest token gate', () => {
   const sample = { date: '2026-08-20', samples: [{ metric: 'sleep', value: 7.2, unit: 'h' }] }
@@ -148,27 +209,36 @@ describe('POST /api/apple/ingest token gate', () => {
     expect(fake.state.appleSignals['2026-08-20']).toHaveLength(1)
   })
 
-  it('is open when no token is configured (documented dev mode)', async () => {
+  // Multi-user rewrite: unlike the old single-tenant "dev mode" (no token
+  // configured -> wide open), there is no implicit "the sole user" to
+  // attribute an unauthenticated ingest POST to unless a credential is
+  // actually presented (see server/index.js's resolveAppleIngestUser) — a
+  // missing token is refused even when APPLE_INGEST_TOKEN itself is unset.
+  it('refuses when no token is presented at all, even with APPLE_INGEST_TOKEN unset (no implicit sole-user attribution under multi-user)', async () => {
     const res = await post('/api/apple/ingest', sample)
-    expect(res.status).toBe(200)
-    expect((await res.json()).ingested).toBe(1)
+    expect(res.status).toBe(401)
+    expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
   })
 
   it('drops malformed samples without failing the request', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
     const res = await post('/api/apple/ingest', {
       date: '2026-08-20',
       samples: [{ metric: 'steps', value: 900 }, { value: 1 }, 'junk', null, { metric: 42 }],
-    })
+    }, { 'x-ingest-token': 'sekret' })
     expect(res.status).toBe(200)
     expect((await res.json()).ingested).toBe(1)
   })
 })
 
 describe('POST /api/garmin/webhook malformed dailies', () => {
-  const valid = { calendarDate: '2026-08-25', activeKilocalories: 500, bmrKilocalories: 1500, steps: 1000 }
+  // Garmin's own opaque user id — the webhook has no session of its own, so
+  // it routes a pushed daily to a local account by matching this against
+  // garmin_accounts.garmin_user_id (see server/index.js's webhook handler).
+  const valid = { userId: 'garmin-user-abc', calendarDate: '2026-08-25', activeKilocalories: 500, bmrKilocalories: 1500, steps: 1000 }
 
   it('survives a malformed element and still stores the valid rows around it', async () => {
-    fake.state.garminAccounts = [{ id: 7 }]
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
     // Garmin retries on any non-200: one junk element must not 500 the batch
     // and lose the valid summary that came with it.
     const res = await post('/api/garmin/webhook', { dailies: [null, 'junk', valid] })
@@ -177,7 +247,7 @@ describe('POST /api/garmin/webhook malformed dailies', () => {
   })
 
   it('stores a well-formed batch (control)', async () => {
-    fake.state.garminAccounts = [{ id: 7 }]
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
     const res = await post('/api/garmin/webhook', { dailies: [valid] })
     expect(res.status).toBe(200)
     expect((await res.json()).received).toBe(1)
@@ -185,6 +255,8 @@ describe('POST /api/garmin/webhook malformed dailies', () => {
   })
 
   it('answers 200 with no linked account (control)', async () => {
+    // No garminAccounts set — findGarminAccountByGarminUserId finds nothing
+    // to route this daily to, so it's skipped rather than guessed at.
     const res = await post('/api/garmin/webhook', { dailies: [valid] })
     expect(res.status).toBe(200)
   })
@@ -197,7 +269,7 @@ describe('GET /api/oura/summary default day', () => {
     oura.legacy = true
     let asked
     oura.dailySummary = async (token, day) => { asked = day; return null }
-    const res = await fetch(`${base}/api/oura/summary`)
+    const res = await get('/api/oura/summary')
     expect(res.status).toBe(200)
     expect(asked).toBe('2026-08-25')
   })
@@ -206,7 +278,7 @@ describe('GET /api/oura/summary default day', () => {
     oura.legacy = true
     let asked
     oura.dailySummary = async (token, day) => { asked = day; return { day, total_calories: 1900 } }
-    const res = await fetch(`${base}/api/oura/summary?date=2026-08-10`)
+    const res = await get('/api/oura/summary?date=2026-08-10')
     expect(res.status).toBe(200)
     expect(asked).toBe('2026-08-10')
   })
@@ -221,7 +293,7 @@ describe('GET /api/energy/summary Oura failure fallback', () => {
     oura.dailySummary = async () => { throw new Error('Oura API error (503).') }
     fake.state.garminAccounts = [{ id: 7 }]
     fake.state.garminDailies[`7:${day}`] = garminRow
-    const res = await fetch(`${base}/api/energy/summary?date=${day}`)
+    const res = await get(`/api/energy/summary?date=${day}`)
     expect(res.status).toBe(200) // not a 500 — the endpoint's whole point is the fallback
     const body = await res.json()
     expect(body.source).toBe('garmin')
@@ -233,7 +305,7 @@ describe('GET /api/energy/summary Oura failure fallback', () => {
     oura.dailySummary = async () => ({ day, total_calories: 2400, active_calories: 450, steps: 7000 })
     fake.state.garminAccounts = [{ id: 7 }]
     fake.state.garminDailies[`7:${day}`] = garminRow
-    const res = await fetch(`${base}/api/energy/summary?date=${day}`)
+    const res = await get(`/api/energy/summary?date=${day}`)
     const body = await res.json()
     expect(body.source).toBe('oura')
     expect(body.out).toBe(2400)
@@ -244,7 +316,7 @@ describe('GET /api/energy/summary Oura failure fallback', () => {
     oura.dailySummary = async () => null
     fake.state.garminAccounts = [{ id: 7 }]
     fake.state.garminDailies[`7:${day}`] = garminRow
-    const res = await fetch(`${base}/api/energy/summary?date=${day}`)
+    const res = await get(`/api/energy/summary?date=${day}`)
     const body = await res.json()
     expect(body.source).toBe('garmin')
   })
@@ -275,7 +347,7 @@ describe('POST /api/oura/backfill', () => {
     expect(body.ok).toBe(true)
     expect(body.daysSaved).toBe(1) // the null-score day is dropped, not stored as 0
     expect(asked.token).toBe('legacy-token')
-    const stored = await fake.store.listOuraHistory('2026-08-01', '2026-08-02')
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
     expect(stored.map((r) => r.day)).toEqual(['2026-08-01'])
   })
 })
@@ -287,7 +359,7 @@ describe('GET /api/insights ouraReadiness', () => {
       { day: '2026-08-20', value: 72 },
       { day: '2026-08-24', value: 81 },
     ]
-    const res = await fetch(`${base}/api/insights?window=7`)
+    const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.ouraReadiness).toEqual([
       { date: '2026-08-20', score: 72 },
@@ -298,7 +370,7 @@ describe('GET /api/insights ouraReadiness', () => {
   it('omits ouraReadiness entries outside the window (control)', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
     fake.state.ouraHistory = [{ day: '2026-07-01', value: 60 }] // long before a 7-day window
-    const res = await fetch(`${base}/api/insights?window=7`)
+    const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.ouraReadiness).toEqual([])
   })
@@ -320,7 +392,7 @@ describe('GET /api/today day bounds', () => {
     // reading of that date is [2026-08-23T11:00Z, 2026-08-24T11:00Z) — which
     // excludes this 12:00Z entry the client's Today list plainly contains.
     const qs = 'date=2026-08-24&from=2026-08-24T00:00:00.000Z&to=2026-08-25T00:00:00.000Z'
-    const res = await fetch(`${base}/api/today?${qs}`)
+    const res = await get(`/api/today?${qs}`)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.intake.calories).toBe(500)
@@ -331,16 +403,16 @@ describe('GET /api/today day bounds', () => {
     fake.state.entries = [entry]
     // Apia-local 2026-08-25 is [2026-08-24T11:00Z, 2026-08-25T11:00Z) — the
     // 12:00Z entry belongs to it.
-    const res = await fetch(`${base}/api/today?date=2026-08-25`)
+    const res = await get('/api/today?date=2026-08-25')
     const body = await res.json()
     expect(body.intake.calories).toBe(500)
-    const miss = await fetch(`${base}/api/today?date=2026-08-23`)
+    const miss = await get('/api/today?date=2026-08-23')
     expect((await miss.json()).intake.calories).toBe(0)
   })
 
   it('ignores unparseable bounds and falls back to the server-local day (control)', async () => {
     fake.state.entries = [entry]
-    const res = await fetch(`${base}/api/today?date=2026-08-25&from=garbage&to=alsogarbage`)
+    const res = await get('/api/today?date=2026-08-25&from=garbage&to=alsogarbage')
     expect(res.status).toBe(200)
     expect((await res.json()).intake.calories).toBe(500)
   })
@@ -348,7 +420,7 @@ describe('GET /api/today day bounds', () => {
 
 describe('GET /api/profile', () => {
   it('returns an all-null-fields object when nothing has been saved yet (never 404s)', async () => {
-    const res = await fetch(`${base}/api/profile`)
+    const res = await get('/api/profile')
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.profile).toMatchObject({ height_cm: null, weight_kg: null, sex: null, age_years: null, activity_level: null, goal: null })
@@ -408,7 +480,7 @@ describe('PUT /api/profile merge + calculated baseline', () => {
   it('merges across separate calls — filling the form field by field keeps earlier fields (control)', async () => {
     await put('/api/profile', { height_cm: 180 })
     await put('/api/profile', { weight_kg: 80 })
-    const res = await fetch(`${base}/api/profile`)
+    const res = await get('/api/profile')
     const body = await res.json()
     expect(body.profile).toMatchObject({ height_cm: 180, weight_kg: 80 })
   })
@@ -430,7 +502,7 @@ describe('PUT /api/profile merge + calculated baseline', () => {
       height_cm: 180, weight_kg: 80, sex: 'male', age_years: 40, activity_level: 'sedentary', goal: 'maintain',
     })
     const body = await res.json()
-    const targetsRes = await fetch(`${base}/api/targets`)
+    const targetsRes = await get('/api/targets')
     expect((await targetsRes.json()).targets).toEqual(body.computedBaseline)
   })
 })
@@ -438,7 +510,7 @@ describe('PUT /api/profile merge + calculated baseline', () => {
 describe('GET /api/profile/activity-suggestion', () => {
   it('returns nulls when there is no Oura history to base a suggestion on', async () => {
     fake.state.ouraHistory = []
-    const res = await fetch(`${base}/api/profile/activity-suggestion`)
+    const res = await get('/api/profile/activity-suggestion')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ suggested: null, basis: null })
   })
@@ -455,7 +527,7 @@ describe('GET /api/profile/activity-suggestion', () => {
       { day: '2026-08-18', value: 70, extra: { steps: 8000 } },
       { day: '2026-08-19', value: 70, extra: { steps: 8800 } },
     ]
-    const res = await fetch(`${base}/api/profile/activity-suggestion`)
+    const res = await get('/api/profile/activity-suggestion')
     const body = await res.json()
     expect(body.suggested).toBe('moderate')
     expect(body.basis).toBe('10-day avg steps: 8400')
@@ -472,14 +544,14 @@ describe('GET /api/profile/activity-suggestion', () => {
   ])('classifies an average of %i steps as %s', async (steps, level) => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
     fake.state.ouraHistory = [{ day: '2026-08-20', value: 70, extra: { steps } }]
-    const res = await fetch(`${base}/api/profile/activity-suggestion`)
+    const res = await get('/api/profile/activity-suggestion')
     expect((await res.json()).suggested).toBe(level)
   })
 
   it('never writes to the profile — it is a suggestion only (control)', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
     fake.state.ouraHistory = [{ day: '2026-08-20', value: 70, extra: { steps: 15000 } }] // would suggest very_active
-    await fetch(`${base}/api/profile/activity-suggestion`)
+    await get('/api/profile/activity-suggestion')
     expect(fake.state.profile.activity_level).toBeNull() // untouched
   })
 })

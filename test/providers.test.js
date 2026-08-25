@@ -47,15 +47,16 @@ describe('demoSignals (evening-run scenario)', () => {
 
 describe('composeSignals with no credentials → demo, per-metric provenance', () => {
   const store = {
-    getIntegration: async () => ({ enabled: true, demo: true, settings: {} }),
-    listOuraAccounts: async () => [],
-    listGarminAccounts: async () => [],
+    getIntegration: async (userId, id) => ({ enabled: true, demo: true, settings: {} }),
+    listOuraAccounts: async (userId) => [],
+    listGarminAccounts: async (userId) => [],
     getGarminDaily: async () => null,
-    listAppleSignals: async () => [],
+    listAppleSignals: async (userId, day) => [],
     updateOuraTokens: async () => {},
   }
   it('picks one source per metric by preference, marked demo', async () => {
-    const sig = await composeSignals(store, new Date())
+    // composeSignals(store, nowDate, userId) — nowDate is 2nd, userId 3rd.
+    const sig = await composeSignals(store, new Date(), 1)
     expect(sig.readiness.provider).toBe('oura')
     expect(sig.readiness.demo).toBe(true)
     expect(sig.workout.provider).toBe('garmin')

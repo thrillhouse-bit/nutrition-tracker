@@ -4,8 +4,13 @@
 // WatchConnectivity manager so the watch shows the SAME numbers as the app —
 // one source of truth, no re-derived fueling logic on the watch.
 //
-// Read-only and token-free: `/api/today` is a plain GET (only the ingest POST
-// is token-gated), so this client never touches the secret.
+// Read-only, but NOT token-free: `/api/today` now sits behind the server's
+// multi-user auth (server/auth.js's requireAuth), and this companion has no
+// interactive login to carry a session cookie. It authenticates the same way
+// IngestClient does — the per-user ingest token on `x-ingest-token` — which
+// the server accepts for reads too (server/index.js's device-token fallback
+// right after `attachUser`), since that token already attributes all of this
+// user's synced HealthKit data.
 
 import Foundation
 
@@ -40,8 +45,8 @@ struct TodayClient {
     /// Fetch today's composite, build a `PlanSummary`, and push it to the watch.
     /// Returns the summary so callers can also surface it locally if useful.
     @discardableResult
-    func refresh(date: String? = nil, baseURL: URL?) async throws -> PlanSummary {
-        let composite = try await fetch(date: date, baseURL: baseURL)
+    func refresh(date: String? = nil, baseURL: URL?, token: String?) async throws -> PlanSummary {
+        let composite = try await fetch(date: date, baseURL: baseURL, token: token)
         // `signals.workout.demo` is the backend's honest demo flag for the one
         // signal the summary uses; if the workout is demo, label the summary demo
         // so the watch never implies a live sync. TODO: extend if the composite
@@ -52,7 +57,7 @@ struct TodayClient {
         return summary
     }
 
-    func fetch(date: String? = nil, baseURL: URL?) async throws -> TodayComposite {
+    func fetch(date: String? = nil, baseURL: URL?, token: String?) async throws -> TodayComposite {
         guard let baseURL else { throw TodayError.notConfigured }
         var comps = URLComponents(url: baseURL.appendingPathComponent("api/today"),
                                   resolvingAgainstBaseURL: false)
@@ -62,6 +67,9 @@ struct TodayClient {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token, !token.isEmpty {
+            req.setValue(token, forHTTPHeaderField: "x-ingest-token")
+        }
 
         let data: Data
         let response: URLResponse

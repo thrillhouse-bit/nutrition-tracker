@@ -28,6 +28,8 @@ final class AppServices: ObservableObject {
     let health = HealthKitManager()
     let session = PhoneSessionManager()
     let ingest = IngestClient()
+    let entries = EntriesClient()
+    let nutritionWriter = HealthKitNutritionWriter()
     let today: TodayClient
     let coordinator: HealthSyncCoordinator
 
@@ -35,7 +37,8 @@ final class AppServices: ObservableObject {
 
     private init() {
         today = TodayClient(watch: session)
-        coordinator = HealthSyncCoordinator(health: health, config: config, ingest: ingest, today: today)
+        coordinator = HealthSyncCoordinator(health: health, config: config, ingest: ingest, today: today,
+                                            entries: entries, nutritionWriter: nutritionWriter)
     }
 
     /// One-time wiring: activate WatchConnectivity, install the "log later"

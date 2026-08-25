@@ -14,6 +14,7 @@ import LogView from './components/LogView.jsx'
 import Plan from './components/Plan.jsx'
 import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
+import Auth from './components/Auth.jsx'
 
 const RECENTS_KEY = 'nt_recents_v1'
 
@@ -75,6 +76,27 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
 }
 
 export default function App() {
+  // Auth gate: 'loading' avoids a flash of the login screen while /auth/me
+  // resolves, 'out' shows Auth, 'in' shows the app. Everything below this
+  // point already assumes a session exists — the rest of the app's fetches
+  // rely on the cookie, not on `user`, so they don't need to be re-wired.
+  const [authState, setAuthState] = useState('loading')
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    api.me()
+      .then(({ user }) => { if (alive) { setUser(user); setAuthState(user ? 'in' : 'out') } })
+      .catch(() => { if (alive) setAuthState('out') })
+    return () => { alive = false }
+  }, [])
+
+  const logout = async () => {
+    await api.logout().catch(() => {})
+    setUser(null)
+    setAuthState('out')
+  }
+
   const [tab, setTab] = useState('today')
   const [date, setDate] = useState(() => new Date())
   const [entries, setEntries] = useState([])
@@ -277,6 +299,22 @@ export default function App() {
 
   const shared = { date, refreshKey, openAdd, onEditEntry: setEditingEntry, onDeleteEntry: deleteEntry }
 
+  // Below this point every fetch relies on the session cookie. While signed
+  // out, the effects above already fired once at mount and 401'd (entries,
+  // today, recents all sit at their empty-state values) — that's fine while
+  // Auth is on screen, but a fresh sign-in needs those effects to refire
+  // rather than leave the just-unlocked app showing yesterday's empty fetch.
+  if (authState === 'loading') {
+    return (
+      <div className="flex min-h-full items-center justify-center">
+        <Spinner label="Loading…" />
+      </div>
+    )
+  }
+  if (authState === 'out') {
+    return <Auth onAuthed={(u) => { setUser(u); setAuthState('in'); bump() }} />
+  }
+
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col">
       {/* Offline strip — the only global chrome; each screen owns its own title. */}
@@ -313,10 +351,18 @@ export default function App() {
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}
         {tab === 'plan' && <Plan {...shared} onChanged={bump} />}
         {tab === 'insights' && <Insights refreshKey={refreshKey} />}
-        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} />}
+        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} />}
       </main>
 
-      {/* Bottom nav — rail bar, active tab drawn with a cobalt top rule */}
+      {/* Bottom nav — rail bar, active tab drawn with a cobalt top rule.
+          5 equal flex-1 columns at 320px = 64px each with zero gap between
+          them (a deliberate seamless rail, not a bug); at the old
+          tracking-[0.09em] the longest labels measured only ~1.6-2px of
+          margin each side ("Insights" 60.8/64px, "Connect" 59.9/64px) — a
+          hair from touching the next column's text. tracking-[0.05em]
+          recovers a few px per label at every width; not worth a narrow-
+          breakpoint variant (the app has no precedent for one) for a change
+          this small and this uniformly harmless at wider widths too. */}
       <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-xl border-t border-line-strong bg-rail pb-[env(safe-area-inset-bottom)]">
         {TABS.map((t) => {
           const active = tab === t.key
@@ -325,7 +371,7 @@ export default function App() {
               key={t.key}
               onClick={() => setTab(t.key)}
               aria-current={active ? 'page' : undefined}
-              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.09em] ${active ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
+              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] ${active ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
             >
               {active && <span aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-cobalt" />}
               {TAB_SHORT[t.key] || t.label}

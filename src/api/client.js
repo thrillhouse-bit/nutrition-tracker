@@ -26,6 +26,13 @@ async function req(path, options = {}) {
 export const api = {
   health: () => req('/health'),
 
+  // Auth — a signed session cookie, not a bearer token: nothing to store or
+  // attach client-side beyond the fetch itself.
+  me: () => req('/auth/me'),
+  signup: (email, password) => req('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (email, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  logout: () => req('/auth/logout', { method: 'POST' }),
+
   // Barcode lookup: cache → Open Food Facts → USDA. Returns a normalized food.
   lookupBarcode: (barcode) => req(`/lookup/${encodeURIComponent(barcode)}`),
 

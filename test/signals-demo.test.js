@@ -28,6 +28,10 @@ const setGarminEnv = (on) => {
   }
 }
 
+// USER is a fixed test user id — single-user tests, not about cross-user
+// isolation.
+const USER = 1
+
 // Store fixture: demo left at its default (allowed) everywhere; Oura demo is
 // switched off so Garmin/Apple behavior is isolated from Oura's seeded data.
 function makeStore({ garminAccounts = [], garminDaily = null, appleIntegration = {}, appleRows = [] } = {}) {
@@ -36,11 +40,15 @@ function makeStore({ garminAccounts = [], garminDaily = null, appleIntegration =
     apple: { enabled: true, demo: true, settings: {}, ...appleIntegration },
   }
   return {
-    getIntegration: async (id) => integrations[id] || { enabled: true, demo: true, settings: {} },
-    listOuraAccounts: async () => [],
-    listGarminAccounts: async () => garminAccounts,
+    // Real signature is getIntegration(userId, provider) — a fixture that
+    // only reads the first positional arg as `id` would key off the userId
+    // instead and always miss, silently falling back to the default (demo)
+    // settings for every provider.
+    getIntegration: async (userId, id) => integrations[id] || { enabled: true, demo: true, settings: {} },
+    listOuraAccounts: async (userId) => [],
+    listGarminAccounts: async (userId) => garminAccounts,
     getGarminDaily: async () => garminDaily,
-    listAppleSignals: async () => appleRows,
+    listAppleSignals: async (userId) => appleRows,
     updateOuraTokens: async () => {},
   }
 }
@@ -50,11 +58,11 @@ describe('composeSignals demo fallback vs providerStatus', () => {
     setGarminEnv(true)
     const store = makeStore({ garminAccounts: [{ id: 1 }], garminDaily: null, appleIntegration: { demo: false } })
     // The status matrix calls this account stale and NOT demo…
-    const st = await providerStatus(store, 'garmin', new Date())
+    const st = await providerStatus(store, USER, 'garmin', new Date())
     expect(st.status).toBe('stale')
     expect(st.demo).toBe(false)
     // …so the composed signals must not carry seeded Garmin data either.
-    const sig = await composeSignals(store, new Date())
+    const sig = await composeSignals(store, new Date(), USER)
     expect(sig.workout).toBeNull()
     expect(sig.expenditure).toBeNull()
     expect(sig.steps).toBeNull()
@@ -66,7 +74,7 @@ describe('composeSignals demo fallback vs providerStatus', () => {
       appleIntegration: { connected_at: new Date().toISOString(), last_synced_at: new Date().toISOString() },
       appleRows: [],
     })
-    const sig = await composeSignals(store, new Date())
+    const sig = await composeSignals(store, new Date(), USER)
     // hrv can only come from Apple here (Oura demo is off) — it must be absent,
     // not the seeded 62 ms.
     expect(sig.hrv).toBeNull()
@@ -79,7 +87,7 @@ describe('composeSignals demo fallback vs providerStatus', () => {
       garminDaily: { day: '2026-08-24', total_calories: 2500, active_calories: 480, steps: 9000 },
       appleIntegration: { demo: false },
     })
-    const sig = await composeSignals(store, new Date())
+    const sig = await composeSignals(store, new Date(), USER)
     expect(sig.expenditure.value).toBe(2500)
     expect(sig.expenditure.provider).toBe('garmin')
     expect(sig.expenditure.demo).toBe(false)
@@ -88,7 +96,7 @@ describe('composeSignals demo fallback vs providerStatus', () => {
   it('still falls back to demo for a provider that was never configured or connected (control)', async () => {
     setGarminEnv(false)
     const store = makeStore() // no creds, no accounts, no connected_at
-    const sig = await composeSignals(store, new Date())
+    const sig = await composeSignals(store, new Date(), USER)
     expect(sig.workout.provider).toBe('garmin')
     expect(sig.workout.demo).toBe(true)
     expect(sig.hrv.provider).toBe('apple')
@@ -98,7 +106,7 @@ describe('composeSignals demo fallback vs providerStatus', () => {
   it('honors demo: false even for a never-connected provider (control)', async () => {
     setGarminEnv(false)
     const store = makeStore({ appleIntegration: { demo: false } })
-    const sig = await composeSignals(store, new Date())
+    const sig = await composeSignals(store, new Date(), USER)
     expect(sig.hrv).toBeNull()
   })
 })

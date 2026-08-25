@@ -21,10 +21,19 @@ final class AppConfig: ObservableObject {
     /// state. The token value itself is fetched on demand via `ingestToken`.
     @Published private(set) var hasToken: Bool = false
 
+    /// Whether the user has opted into writing logged nutrition to Apple
+    /// Health (see Health/NutritionWriteBack.swift). Off by default — this is
+    /// a plain preference, not a secret, so it lives in UserDefaults like
+    /// `baseURL` rather than the keychain.
+    @Published var writeBackEnabled: Bool {
+        didSet { defaults.set(writeBackEnabled, forKey: Self.writeBackKey) }
+    }
+
     private let defaults: UserDefaults
     private let keychain: Keychain
     private static let baseURLKey = "fuel.baseURL"
     private static let tokenAccount = "ingestToken"
+    private static let writeBackKey = "fuel.writeBackEnabled"
 
     /// A clearly-marked placeholder so the field is never empty in the UI.
     /// TODO: replace with your deployed origin (e.g. https://fuel.yourdomain.com)
@@ -34,6 +43,7 @@ final class AppConfig: ObservableObject {
     init(defaults: UserDefaults = .standard, keychain: Keychain = Keychain()) {
         self.defaults = defaults
         self.keychain = keychain
+        self.writeBackEnabled = defaults.bool(forKey: Self.writeBackKey)
         if let s = defaults.string(forKey: Self.baseURLKey), let u = URL(string: s) {
             self.baseURL = u
         } else {
