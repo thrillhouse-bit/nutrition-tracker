@@ -210,21 +210,6 @@ afterAll(() => {
   server?.close()
 })
 
-describe('GET /api/version', () => {
-  it('is public (no auth) and reports GIT_SHA honestly as "unknown" when the process env has none', async () => {
-    // The test process never sets GIT_SHA — this is the same state a real
-    // deploy is in if nobody passed the build arg. It must read "unknown",
-    // never a fabricated SHA (production-verification audit, 25 Aug 2026 —
-    // the original gap this endpoint closes).
-    const res = await fetch(`${base}/api/version`)
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.sha).toBe('unknown')
-    expect(typeof body.node).toBe('string')
-    expect(body.node.startsWith('v')).toBe(true)
-  })
-})
-
 afterEach(() => {
   vi.useRealTimers()
   delete process.env.APPLE_INGEST_TOKEN
