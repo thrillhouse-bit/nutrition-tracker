@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { NUTRIENTS, sumEntries, entryNutrient, fmt, num, ymd } from '../lib/nutrition.js'
 import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState } from './ui.jsx'
 
@@ -115,7 +115,42 @@ function LogRow({ entry, onEdit, onDelete }) {
   )
 }
 
+// Day-nav (‹ ›) sits at the top of a screen with everything else reachable
+// lower down — a real one-handed-reach gap on a tall phone. A swipe adds a
+// second, thumb-friendly way to change days without moving or duplicating
+// the existing buttons. Deliberately NOT an edge swipe (iOS Safari reserves
+// screen-edge horizontal swipes for browser back/forward) — it only
+// triggers from a touch that starts and stays within ordinary content, and
+// backs off the moment a gesture reads as more vertical than horizontal so
+// it never fights the page's own scroll.
+const SWIPE_MIN_PX = 60
+const SWIPE_MAX_VERTICAL_PX = 50
+
+function useDaySwipe(onPrevDay, onNextDay, canGoNext) {
+  const start = useRef(null)
+  return {
+    onTouchStart: (e) => {
+      const t = e.touches[0]
+      start.current = { x: t.clientX, y: t.clientY }
+    },
+    onTouchEnd: (e) => {
+      if (!start.current) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - start.current.x
+      const dy = t.clientY - start.current.y
+      start.current = null
+      if (Math.abs(dy) > SWIPE_MAX_VERTICAL_PX || Math.abs(dx) < SWIPE_MIN_PX) return
+      // Mirrors the › button's own disabled={isToday(date)} guard — shiftDay
+      // itself has no floor/ceiling, so without this a swipe could reach
+      // into the future where the button can't.
+      if (dx < 0) { if (canGoNext) onNextDay() }
+      else onPrevDay()
+    },
+  }
+}
+
 export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog }) {
+  const swipeHandlers = useDaySwipe(onPrevDay, onNextDay, !isToday(date))
   const totals = useMemo(() => sumEntries(entries), [entries])
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
@@ -154,7 +189,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   const hm = slMissing ? null : hoursToHm(sl.value)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" {...swipeHandlers}>
       {/* Masthead: day nav + Bodoni title + date badge, then the sync line */}
       <div>
         <div className="flex items-end justify-between">
