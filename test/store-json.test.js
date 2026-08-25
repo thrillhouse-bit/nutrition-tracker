@@ -134,6 +134,42 @@ describe('JsonStore Oura readiness history (backfill)', () => {
   })
 })
 
+describe('JsonStore manual workout input', () => {
+  it('returns null when nothing has been set for that day (never throws)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.getManualWorkout(USER, '2026-08-25')).toBeNull()
+  })
+
+  it('round-trips a saved workout, and carries its recorded_at back out', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const workout = { label: 'Evening Run', shortLabel: 'run', kind: 'run', time: '5:30 PM', startHour: 17.5, endHour: null, durationMin: null, estKcal: null, status: 'planned' }
+    await s.setManualWorkout(USER, '2026-08-25', workout)
+    const got = await s.getManualWorkout(USER, '2026-08-25')
+    expect(got.kind).toBe('run')
+    expect(got.startHour).toBe(17.5)
+    expect(typeof got.recorded_at).toBe('string') // stamped at save time
+  })
+
+  it('re-setting the same day replaces it rather than duplicating (control: other days/users untouched)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'run', startHour: 17.5 })
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'ride', startHour: 8 })
+    await s.setManualWorkout(USER, '2026-08-26', { kind: 'swim', startHour: 7 })
+    await s.setManualWorkout(2, '2026-08-25', { kind: 'hike', startHour: 9 }) // a different user, same day
+    expect((await s.getManualWorkout(USER, '2026-08-25')).kind).toBe('ride') // replaced, not both present
+    expect((await s.getManualWorkout(USER, '2026-08-26')).kind).toBe('swim') // untouched
+    expect((await s.getManualWorkout(2, '2026-08-25')).kind).toBe('hike') // untouched, other user's own row
+  })
+
+  it('clearManualWorkout removes it and reports whether anything was actually cleared', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.clearManualWorkout(USER, '2026-08-25')).toBe(false) // nothing to clear (control)
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'run', startHour: 17.5 })
+    expect(await s.clearManualWorkout(USER, '2026-08-25')).toBe(true)
+    expect(await s.getManualWorkout(USER, '2026-08-25')).toBeNull()
+  })
+})
+
 describe('JsonStore biometric profile (singleton)', () => {
   it('returns the all-null default when nothing has been saved yet (never throws/404s)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))

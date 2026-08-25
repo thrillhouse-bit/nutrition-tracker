@@ -707,6 +707,65 @@ requireAuthRouter.get('/plan/today', asyncH(async (req, res) => {
   res.json(plan)
 }))
 
+// --- manual workout input ---------------------------------------------------
+// The "smart" plan adjustments (server/plan.js) only ever ran off a
+// connected wearable's auto-detected workout — someone without Garmin/Apple
+// connected, or whose device hasn't detected today's session yet, could
+// never get a real (non-demo) workout-driven adjustment at all. This lets
+// the user state their own plan directly; providers.js's composeSignals
+// treats it as an unconditional override for the `workout` metric.
+const WORKOUT_KINDS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+
+// Matches the iOS companion's own time-of-day label convention
+// (HealthKitManager.label(startHour:kind:)) so a workout reads the same —
+// "Evening Run" — whether it came from Apple Health or was typed in here.
+function partOfDay(hour) {
+  if (hour < 5) return 'Night'
+  if (hour < 12) return 'Morning'
+  if (hour < 17) return 'Afternoon'
+  if (hour < 21) return 'Evening'
+  return 'Night'
+}
+function formatHour12(hourFloat) {
+  const h = Math.floor(hourFloat)
+  const m = Math.round((hourFloat - h) * 60)
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+requireAuthRouter.put('/plan/workout', asyncH(async (req, res) => {
+  const { kind, time, duration_min } = req.body || {}
+  if (!WORKOUT_KINDS.includes(kind)) return res.status(400).json({ error: `kind must be one of: ${WORKOUT_KINDS.join(', ')}` })
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time))) return res.status(400).json({ error: 'time must be HH:MM, 24h, local.' })
+  const [hh, mm] = String(time).split(':').map(Number)
+  const startHour = hh + mm / 60
+  const duration = Number(duration_min)
+  const hasDuration = Number.isFinite(duration) && duration > 0
+  const kindLabel = kind[0].toUpperCase() + kind.slice(1)
+  const workout = {
+    label: `${partOfDay(startHour)} ${kindLabel}`,
+    shortLabel: kind,
+    kind,
+    time: formatHour12(startHour),
+    startHour,
+    endHour: hasDuration ? startHour + duration / 60 : null,
+    durationMin: hasDuration ? duration : null,
+    estKcal: null,
+    status: 'planned',
+  }
+  const saved = await store.setManualWorkout(req.userId, localYmd(), workout)
+  res.json({ workout: saved })
+}))
+
+requireAuthRouter.get('/plan/workout', asyncH(async (req, res) => {
+  res.json({ workout: await store.getManualWorkout(req.userId, localYmd()) })
+}))
+
+requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
+  const ok = await store.clearManualWorkout(req.userId, localYmd())
+  res.status(ok ? 204 : 404).end()
+}))
+
 // Composed wearable signals (one per metric) with provenance + freshness.
 requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   const now = new Date()

@@ -234,6 +234,21 @@ export async function composeSignals(store, nowDate = new Date(), userId) {
     }
     if (!out[metric]) out[metric] = null
   }
+
+  // A manually-entered workout (server/db.js's getManualWorkout — no
+  // connected-wearable concept, so it isn't one of PROVIDERS/PREFERENCE's
+  // candidates above) always wins the `workout` slot when present. This is
+  // deliberately unconditional, not just a fallback for "no wearable data":
+  // it's how someone with no Garmin/Apple connection gets a real (non-demo)
+  // workout signal at all, and even for a connected wearable, the user
+  // telling Plan directly "I'm running at 5:30" is more current than
+  // whatever the device auto-detected or hasn't detected yet.
+  const manual = await store.getManualWorkout?.(userId, ymd(nowDate))
+  if (manual) {
+    const { recorded_at, ...workoutValue } = manual
+    out.workout = sig(workoutValue, { unit: null, provider: 'manual', recorded_at, fetched_at: recorded_at, demo: false })
+  }
+
   return out
 }
 

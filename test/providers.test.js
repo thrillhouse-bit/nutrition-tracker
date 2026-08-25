@@ -63,4 +63,39 @@ describe('composeSignals with no credentials → demo, per-metric provenance', (
     expect(sig.expenditure.provider).toBe('garmin') // garmin preferred over apple
     expect(sig.sleep.provider).toBe('oura')
   })
+
+  it('has no manual-workout override effect when the store does not implement getManualWorkout (control — old fakes without it keep working)', async () => {
+    expect(store.getManualWorkout).toBeUndefined()
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.workout.provider).toBe('garmin') // unchanged from the demo fallback above
+  })
+})
+
+describe('composeSignals: manual workout input overrides any wearable source', () => {
+  const baseStore = {
+    getIntegration: async () => ({ enabled: true, demo: true, settings: {} }),
+    listOuraAccounts: async () => [],
+    listGarminAccounts: async () => [],
+    getGarminDaily: async () => null,
+    listAppleSignals: async () => [],
+    updateOuraTokens: async () => {},
+  }
+
+  it('wins the workout slot even over the demo Garmin fallback', async () => {
+    const manual = { label: 'Evening Run', shortLabel: 'run', kind: 'run', time: '5:30 PM', startHour: 17.5, endHour: null, durationMin: null, estKcal: null, status: 'planned', recorded_at: new Date().toISOString() }
+    const store = { ...baseStore, getManualWorkout: async () => manual }
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.workout.provider).toBe('manual')
+    expect(sig.workout.demo).toBe(false)
+    expect(sig.workout.value.kind).toBe('run')
+    expect(sig.workout.value.startHour).toBe(17.5)
+    // recorded_at isn't duplicated inside the value object itself
+    expect(sig.workout.value.recorded_at).toBeUndefined()
+  })
+
+  it('falls back to the normal preference order when no manual workout is set for today (control)', async () => {
+    const store = { ...baseStore, getManualWorkout: async () => null }
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.workout.provider).toBe('garmin') // demo fallback, unaffected
+  })
 })

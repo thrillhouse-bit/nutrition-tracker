@@ -21,6 +21,7 @@ const fake = vi.hoisted(() => {
     appleSignals: {},
     ouraAccounts: [],
     ouraHistory: [], // { day, value }
+    manualWorkouts: {}, // day -> workout
     garminAccounts: [],
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
@@ -87,6 +88,16 @@ const fake = vi.hoisted(() => {
       return n
     },
     listOuraHistory: async (userId, from, to) => state.ouraHistory.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+    getManualWorkout: async (userId, day) => state.manualWorkouts[day] || null,
+    setManualWorkout: async (userId, day, workout) => {
+      state.manualWorkouts[day] = { ...workout, recorded_at: '2026-08-25T00:00:00.000Z' }
+      return state.manualWorkouts[day]
+    },
+    clearManualWorkout: async (userId, day) => {
+      const had = day in state.manualWorkouts
+      delete state.manualWorkouts[day]
+      return had
+    },
 
     // --- NOT userId-scoped (matches the real store — see server/db.js) ---
     getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
@@ -363,6 +374,56 @@ describe('POST /api/oura/backfill', () => {
     expect(askedReadiness.token).toBe('legacy-token')
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
     expect(stored).toEqual([{ day: '2026-08-01', value: 70 }]) // Readiness's score (70), never Activity's (55)
+  })
+})
+
+describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
+  afterEach(() => { fake.state.manualWorkouts = {} })
+
+  it('rejects an unknown kind (control)', async () => {
+    const res = await put('/api/plan/workout', { kind: 'skateboarding', time: '17:30' })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects a malformed time (control)', async () => {
+    const res = await put('/api/plan/workout', { kind: 'run', time: '5:30pm' })
+    expect(res.status).toBe(400)
+  })
+
+  it('saves a valid workout and computes label/time/startHour server-side', async () => {
+    const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 45 })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.workout.kind).toBe('run')
+    expect(body.workout.label).toBe('Evening Run')
+    expect(body.workout.time).toBe('5:30 PM')
+    expect(body.workout.startHour).toBe(17.5)
+    expect(body.workout.endHour).toBeCloseTo(18.25, 5) // +45 min
+    expect(body.workout.status).toBe('planned')
+
+    const got = await get('/api/plan/workout')
+    expect((await got.json()).workout.kind).toBe('run')
+  })
+
+  it('a saved manual workout overrides the demo/wearable workout signal in GET /api/signals', async () => {
+    await put('/api/plan/workout', { kind: 'ride', time: '08:00' })
+    const res = await get('/api/signals')
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('manual')
+    expect(body.signals.workout.demo).toBe(false)
+    expect(body.signals.workout.value.kind).toBe('ride')
+  })
+
+  it('DELETE clears it — 204 when something was cleared, 404 when nothing was there (control)', async () => {
+    const emptyDelete = await fetch(`${base}/api/plan/workout`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(emptyDelete.status).toBe(404)
+
+    await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+    const realDelete = await fetch(`${base}/api/plan/workout`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(realDelete.status).toBe(204)
+
+    const got = await get('/api/plan/workout')
+    expect((await got.json()).workout).toBeNull()
   })
 })
 

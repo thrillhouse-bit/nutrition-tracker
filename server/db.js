@@ -415,6 +415,33 @@ class PgStore {
     return rows.length
   }
 
+  // --- Manual workout input (per user per day) --------------------------------
+  // No new table: wearable_signals already models "one signal, one provider,
+  // one day" — provider='manual' fits exactly, no schema change needed. This
+  // is how a user without a connected wearable still gets a real (non-demo)
+  // workout signal into the SAME composeSignals pipeline every other
+  // provider feeds — see providers.js.
+  async getManualWorkout(userId, day) {
+    const sql = await this.ready()
+    const rows = await sql`select value, recorded_at from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'workout' and day = ${day} limit 1`
+    return rows[0] ? { ...rows[0].value, recorded_at: rows[0].recorded_at } : null
+  }
+
+  async setManualWorkout(userId, day, workout) {
+    const sql = await this.ready()
+    const nowIso = new Date().toISOString()
+    await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'workout' and day = ${day}`
+    await sql`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value)
+      values (${userId}, 'manual', 'workout', ${day}, ${nowIso}, ${nowIso}, ${JSON.stringify(workout)})`
+    return workout
+  }
+
+  async clearManualWorkout(userId, day) {
+    const sql = await this.ready()
+    const rows = await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'workout' and day = ${day} returning day`
+    return rows.length > 0
+  }
+
   // --- Oura readiness history (backfilled once after connect, per user;
   // wearable_signals was designed to hold "any provider we persist rather
   // than fetch live", per its own schema comment — reused here rather than a
@@ -875,6 +902,31 @@ export class JsonStore {
     }
     await this.persist()
     return rows.length
+  }
+
+  // --- Manual workout input (per user per day) — see PgStore's sibling
+  // methods for why this reuses wearable_signals rather than a new table.
+  async getManualWorkout(userId, day) {
+    const d = await this.load()
+    const row = (d.wearable_signals || []).find((s) => s.user_id === Number(userId) && s.provider === 'manual' && s.metric === 'workout' && s.day === day)
+    return row ? { ...row.value, recorded_at: row.recorded_at } : null
+  }
+
+  async setManualWorkout(userId, day, workout) {
+    const d = await this.load()
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === Number(userId) && s.provider === 'manual' && s.metric === 'workout' && s.day === day))
+    const nowIso = new Date().toISOString()
+    d.wearable_signals.push({ user_id: Number(userId), provider: 'manual', metric: 'workout', day, recorded_at: nowIso, fetched_at: nowIso, value: workout, unit: null, extra: null })
+    await this.persist()
+    return workout
+  }
+
+  async clearManualWorkout(userId, day) {
+    const d = await this.load()
+    const before = (d.wearable_signals || []).length
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === Number(userId) && s.provider === 'manual' && s.metric === 'workout' && s.day === day))
+    await this.persist()
+    return d.wearable_signals.length < before
   }
 
   async saveOuraHistory(userId, rows) {
