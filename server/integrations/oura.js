@@ -130,6 +130,11 @@ export async function activityRange(token, fromYmd, toYmd) {
 
 // The actual Readiness score for a day (daily_readiness) — see
 // normalizeReadiness for why this is a separate call from dailySummary.
+// Readiness and Activity are different Oura endpoints that happen to share a
+// 0-100 scale, which is exactly what let this app query the wrong one for
+// both the live signal and the history backfill without ever throwing:
+// daily_activity often returns a populated `score` too, so nothing failed,
+// it just wasn't the number this app claimed to be showing.
 export async function dailyReadiness(token, ymd) {
   const [match] = await fetchDailyRows('daily_readiness', token, ymd)
   return match ? normalizeReadiness(match) : null

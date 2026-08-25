@@ -39,7 +39,7 @@ describe('oura normalizeActivity', () => {
 // review; keeping the two tested separately is the guard against it
 // happening again.
 describe('oura normalizeReadiness', () => {
-  it('maps only day + score — no activity fields to carry over', () => {
+  it('maps the daily_readiness score, independent of any activity fields', () => {
     const r = normalizeReadiness({ day: '2026-08-24', score: 91, temperature_deviation: -0.2, contributors: { hrv_balance: 88 } })
     expect(r).toEqual({ day: '2026-08-24', score: 91 })
   })

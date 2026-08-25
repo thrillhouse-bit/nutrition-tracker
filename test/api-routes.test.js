@@ -85,7 +85,18 @@ const fake = vi.hoisted(() => {
       let n = 0
       for (const r of rows) {
         if (r.score == null) continue
-        state.ouraHistory.push({ day: r.day, value: r.score })
+        // Mirrors PgStore/JsonStore: the score is never the whole story — the
+        // day's total_calories/active_calories/steps ride alongside it in
+        // `extra` (see server/db.js's two saveOuraHistory implementations),
+        // and GET /api/profile/activity-suggestion reads extra.steps back out.
+        // A fake that dropped this would let a backfill test "pass" while
+        // proving nothing about whether that context actually survives
+        // persistence — the house failure mode this codebase keeps producing.
+        state.ouraHistory.push({
+          day: r.day,
+          value: r.score,
+          extra: { total_calories: r.total_calories ?? null, active_calories: r.active_calories ?? null, steps: r.steps ?? null },
+        })
         n++
       }
       return n
@@ -416,6 +427,15 @@ describe('GET /api/energy/summary Oura failure fallback', () => {
 })
 
 describe('POST /api/oura/backfill', () => {
+  // activityRange/readinessRange are NOT reset by the file-level afterEach
+  // (only dailySummary is) — several tests below set one or both to
+  // rejecting/scored fakes, and without this, whichever was set last would
+  // leak into a later describe block that assumes the harmless [] default.
+  afterEach(() => {
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => []
+  })
+
   it('refuses with 400 when no Oura account is resolvable (control)', async () => {
     oura.legacy = false
     fake.state.ouraAccounts = []
@@ -431,11 +451,12 @@ describe('POST /api/oura/backfill', () => {
     // (daily_activity) alone, for the score — this endpoint used to call
     // only the activity endpoint and store its score as "readiness" (see
     // integrations/oura.js). Activity's score (55/60) is deliberately
-    // different from Readiness's (70/null) below — regression coverage for
-    // that exact bug — while activity's total_calories/active_calories/steps
-    // still flow through as context (GET /api/profile/activity-suggestion
-    // reads them back out), so replacing activityRange outright would have
-    // silently starved that endpoint instead of fixing the mislabeling.
+    // different from Readiness's (70/null) below so a regression would be
+    // caught rather than coincidentally match, while activity's
+    // total_calories/active_calories/steps still flow through as context
+    // (GET /api/profile/activity-suggestion reads them back out), so
+    // replacing activityRange outright would have silently starved that
+    // endpoint instead of fixing the mislabeling.
     oura.activityRange = async (token, from, to) => {
       askedActivity = { token, from, to }
       return [
@@ -458,7 +479,69 @@ describe('POST /api/oura/backfill', () => {
     expect(askedActivity.token).toBe('legacy-token')
     expect(askedReadiness.token).toBe('legacy-token')
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
-    expect(stored).toEqual([{ day: '2026-08-01', value: 70 }]) // Readiness's score (70), never Activity's (55)
+    expect(stored).toEqual([
+      // Readiness's score (70), never Activity's (55) — but Activity's own
+      // calories/steps context still rides alongside it (see backfillOuraHistory's
+      // day-merge in server/index.js), so it isn't lost by preferring Readiness's score.
+      { day: '2026-08-01', value: 70, extra: { total_calories: 2100, active_calories: 400, steps: 8000 } },
+    ])
+  })
+
+  it('is idempotent: re-running backfill over the same days replaces rather than duplicates', async () => {
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => [
+      { day: '2026-08-01', score: 55, total_calories: 2100, active_calories: 400, steps: 8000 },
+    ]
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    await post('/api/oura/backfill?days=10', {})
+    // A second run — same days, a changed reading (as a re-sync after a
+    // correction, or simply the same call retried, would produce) — must
+    // replace the day's row, never append a second one alongside it.
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }]
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    expect((await res.json()).daysSaved).toBe(1)
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-01')
+    expect(stored).toHaveLength(1) // not 2 — the first run's row was replaced, not duplicated
+    expect(stored[0].value).toBe(82)
+  })
+
+  it('a day dropped from Readiness on re-sync still leaves exactly one row from the first run (control)', async () => {
+    // Companion to the idempotency test above: proves the replace-not-append
+    // behavior isn't merely "the new row happens to overwrite the old one at
+    // the same array index." Two distinct days, then a re-run that only
+    // resupplies one of them — the other must survive untouched, not vanish
+    // and not duplicate.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => [
+      { day: '2026-08-01', score: 70 },
+      { day: '2026-08-02', score: 75 },
+    ]
+    await post('/api/oura/backfill?days=10', {})
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 71 }]
+    await post('/api/oura/backfill?days=10', {})
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
+    expect(stored).toHaveLength(2)
+    expect(stored.find((r) => r.day === '2026-08-01').value).toBe(71) // updated
+    expect(stored.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched by the narrower re-run
+  })
+
+  it('a rejected Activity fetch fails the whole backfill rather than silently dropping steps/calories context', async () => {
+    // backfillOuraHistory's Promise.all over [activityRange, readinessRange]
+    // means a failed Activity fetch must surface as a failure, never as a
+    // "successful" backfill quietly missing every day's calories/steps — the
+    // silent-partial-write shape this codebase keeps having to re-learn.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => { throw new Error('oura activity fetch failed') }
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(500) // not 200 — a partial write must not report success
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-01')
+    expect(stored).toHaveLength(0) // nothing persisted from the failed attempt
   })
 })
 

@@ -393,19 +393,23 @@ async function resolveOuraToken(userId) {
 // forward. Callers decide how to handle a failure — this never touches
 // the connect flow's own success/failure.
 //
-// Must call readinessRange (daily_readiness), never activityRange
-// (daily_activity) alone — they're different Oura endpoints with different
-// scores. This function used to call activityRange and store its score as
-// "readiness," which silently produced either wrong numbers (activity score
-// mislabeled as readiness) or nothing at all (rows with a null activity
-// score get filtered out downstream) depending on the account's data.
-// Two Oura endpoints are still merged by day, though: readiness supplies the
-// score this history exists to track, and activity supplies the
-// total_calories/active_calories/steps context that store.saveOuraHistory
-// has always stored alongside the score (and that
-// GET /api/profile/activity-suggestion reads back out of `extra.steps`) —
-// dropping activityRange entirely (as a from-scratch fix would) would have
-// silently starved that endpoint instead.
+// Two Oura endpoints, merged by day: readiness supplies the score this
+// history exists to track (previously this used activityRange's score,
+// which is the ACTIVITY score, not Readiness — the same mislabeling
+// providers.js's realSignals had for the live "today" value, and which
+// silently produced either a wrong number or nothing at all — rows with a
+// null activity score get filtered out downstream — depending on the
+// account's data); activity supplies the total_calories/active_calories/
+// steps context that store.saveOuraHistory has always stored alongside the
+// score (and that GET /api/profile/activity-suggestion reads back out of
+// `extra.steps`) — still worth keeping even though it's no longer the
+// headline number, so dropping activityRange entirely (as a from-scratch fix
+// would) would have silently starved that endpoint instead. Must call
+// readinessRange (daily_readiness), never activityRange (daily_activity)
+// alone for the score — they're different Oura endpoints with different
+// scores that happen to share a 0-100 scale, which is exactly what let this
+// function store the wrong one as "readiness" for a long time without ever
+// throwing.
 async function backfillOuraHistory(userId, token, days = 30) {
   const end = new Date()
   const start = new Date(end)

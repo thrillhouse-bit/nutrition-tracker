@@ -122,6 +122,7 @@ export const api = {
   // Deletes cached Oura/Garmin/Apple records synced to this app (not the
   // OAuth accounts themselves — see Connections.jsx's per-account Disconnect).
   clearSyncedHistory: () => req('/connections/history', { method: 'DELETE' }),
+
   // Apple Health has no OAuth "Connect" — this generates (or regenerates,
   // invalidating the previous one) the per-account token the iOS/watch
   // companion authenticates with, since it can't carry a session cookie.
