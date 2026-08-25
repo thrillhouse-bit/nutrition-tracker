@@ -82,8 +82,13 @@ const fake = vi.hoisted(() => {
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
     saveOuraHistory: async (userId, rows) => {
-      const days = new Set(rows.map((r) => r.day))
-      state.ouraHistory = state.ouraHistory.filter((r) => !days.has(r.day))
+      // Mirrors PgStore/JsonStore's scoredDays fix: only a day with an actual
+      // score this run gets deleted-then-reinserted. A day present in `rows`
+      // with a transient null (Oura rate-limited, a partial outage) must
+      // leave whatever was already stored for that day standing, not erase
+      // it — the exact production bug this fix was for.
+      const scoredDays = new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))
+      state.ouraHistory = state.ouraHistory.filter((r) => !scoredDays.has(r.day))
       let n = 0
       for (const r of rows) {
         if (r.score == null) continue
@@ -556,6 +561,26 @@ describe('POST /api/oura/backfill', () => {
     expect(res.status).toBe(500) // not 200 — a partial write must not report success
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-01')
     expect(stored).toHaveLength(0) // nothing persisted from the failed attempt
+  })
+
+  it('a transient null on re-sync for a day that scored before leaves the old score standing, not erased', async () => {
+    // End-to-end regression for the production-verification audit fix (see
+    // PgStore/JsonStore's saveOuraHistory): a re-run backfill can get a
+    // transient null for a day that scored fine before (Oura rate-limited, a
+    // partial-outage response — the readiness endpoint still returns an
+    // entry for every day in range, just with score: null). That must never
+    // erase the previously-correct value.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }, { day: '2026-08-02', score: 75 }]
+    await post('/api/oura/backfill?days=10', {})
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }, { day: '2026-08-02', score: null }] // 08-02 hiccups
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    expect((await res.json()).daysSaved).toBe(1) // only 08-01 had a score to (re)save this run
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
+    expect(stored.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched, not wiped
   })
 })
 
