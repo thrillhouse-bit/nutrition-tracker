@@ -65,7 +65,7 @@ export default function SearchFood({ onPick }) {
         <ErrorNote>{error}</ErrorNote>
         {!busy && q.trim().length >= 2 && results.length === 0 && (
           <EmptyState title="No matches">
-            Try manual entry, or add a USDA key for better whole-food coverage.
+            Try manual entry instead — or, on the server, add a USDA key for better whole-food coverage.
           </EmptyState>
         )}
         <div className="space-y-2">

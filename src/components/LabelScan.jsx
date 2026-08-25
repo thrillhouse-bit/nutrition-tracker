@@ -35,7 +35,7 @@ export default function LabelScan({ onParsed }) {
     } catch (err) {
       setError(
         err.status === 501
-          ? 'Label OCR needs the Claude API key set on the server (ANTHROPIC_API_KEY).'
+          ? "Label reading isn't set up on this server yet — try manual entry instead."
           : err.message || 'Could not read that label.',
       )
     } finally {
