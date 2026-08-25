@@ -41,14 +41,18 @@ create table if not exists log_entries (
   user_id           bigint not null references users (id) on delete cascade,
   food_id           bigint not null references foods (id) on delete cascade,
   logged_at         timestamptz not null default now(),
-  servings_consumed numeric not null default 1,
+  servings_consumed numeric not null default 1 check (servings_consumed > 0),
   meal              text check (meal in ('breakfast', 'lunch', 'dinner', 'snack')),
   created_at        timestamptz not null default now()
 );
 
-create index if not exists log_entries_logged_at_idx on log_entries (logged_at);
 create index if not exists log_entries_food_id_idx on log_entries (food_id);
-create index if not exists log_entries_user_id_idx on log_entries (user_id);
+-- Composite index for the dominant query pattern (listEntries in server/db.js,
+-- backing /api/entries, /api/today, /api/insights): user_id = X AND logged_at
+-- BETWEEN from AND to. Supersedes the two single-column indexes this used to
+-- be split across — every other log_entries lookup filters by primary key
+-- (id + user_id), so it doesn't need a user_id-only index of its own.
+create index if not exists log_entries_user_id_logged_at_idx on log_entries (user_id, logged_at);
 
 -- Versioned targets: per user, the row with the latest effective_from wins.
 -- Adjust your targets over time without losing the history of what they used
@@ -56,13 +60,13 @@ create index if not exists log_entries_user_id_idx on log_entries (user_id);
 create table if not exists daily_targets (
   id             bigint generated always as identity primary key,
   user_id        bigint not null references users (id) on delete cascade,
-  calories       numeric not null default 2000,
-  protein_g      numeric not null default 150,
-  carbs_g        numeric not null default 200,
-  fat_g          numeric not null default 65,
-  fiber_g        numeric,
-  sugar_g        numeric,
-  sodium_mg      numeric,
+  calories       numeric not null default 2000 check (calories >= 0),
+  protein_g      numeric not null default 150 check (protein_g >= 0),
+  carbs_g        numeric not null default 200 check (carbs_g >= 0),
+  fat_g          numeric not null default 65 check (fat_g >= 0),
+  fiber_g        numeric check (fiber_g >= 0),
+  sugar_g        numeric check (sugar_g >= 0),
+  sodium_mg      numeric check (sodium_mg >= 0),
   effective_from timestamptz not null default now()
 );
 create index if not exists daily_targets_user_id_idx on daily_targets (user_id, effective_from desc);
