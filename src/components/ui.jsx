@@ -126,14 +126,15 @@ export function Sheet({ open, onClose, title, children, size = 'md', grabber = t
         onClick={(e) => e.stopPropagation()}
       >
         {grabber && <div className="mx-auto mb-4 h-1 w-11 bg-line-strong" />}
-        {title && (
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="serif text-xl text-ink">{title}</h2>
-            {/* 44px hit area around the small glyph, the Toggle's pattern —
-                measured 29x32 before, the primary dismissal on every sheet */}
-            <button onClick={onClose} className="-mr-2 flex h-11 w-11 items-center justify-center text-muted hover:text-ink" aria-label="Close">✕</button>
-          </div>
-        )}
+        {/* The close button always renders, even with no title — a step
+            that owns its own header (e.g. FoodConfirm) still needs a
+            visible way out beyond "tap the dim backdrop". */}
+        <div className={`mb-4 flex items-center ${title ? 'justify-between' : 'justify-end'}`}>
+          {title && <h2 className="serif text-xl text-ink">{title}</h2>}
+          {/* 44px hit area around the small glyph, the Toggle's pattern —
+              measured 29x32 before, the primary dismissal on every sheet */}
+          <button onClick={onClose} className="-mr-2 flex h-11 w-11 items-center justify-center text-muted hover:text-ink" aria-label="Close">✕</button>
+        </div>
         {children}
       </div>
     </div>
