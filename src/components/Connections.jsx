@@ -410,8 +410,9 @@ export default function Connections({ refreshKey, onChanged, user, onLogout }) {
       {/* Footer — history controls + privacy line */}
       <footer className="mt-6 flex items-start justify-between gap-4 border-t border-line pt-3">
         <p className="max-w-[220px] text-[11px] leading-relaxed text-muted">
-          Removes the Oura, Garmin, and Apple Health records synced to this app. Your data inside those apps is
-          untouched, and OAuth tokens never leave your server.
+          Not wired up yet — the button below does nothing. Once built, it will remove the Oura, Garmin, and Apple
+          Health records synced to this app. Your data inside those apps is untouched, and OAuth tokens never leave
+          your server.
         </p>
         <div className="text-right">
           {/* Destructive → Berry, per the design's failure/destructive color. */}
