@@ -281,42 +281,52 @@ export default function Insights({ refreshKey }) {
         <EmptyState title="Insights unavailable">
           We couldn’t load your history just now. Refresh, or try again in a moment.
         </EmptyState>
-      ) : data.insufficientData ? (
-        <EmptyState title="Not enough data yet">
-          {`You’ve logged ${tracked} of the last ${window} days. Trends appear once at least 3 days are logged — keep going.`}
-        </EmptyState>
       ) : (
         <>
-          {/* Real nutrition averages — the data we actually have. */}
-          <Card className="grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
-            <Stat label="Avg calories" value={avgCal} unit="kcal" />
-            <Stat label="Avg protein" value={num(nutrition?.avgProtein)} unit="g" />
-            <Stat label="Days tracked" value={`${tracked}/${window}`} />
-            <Stat label="On-target days" value={num(nutrition?.onTargetDays)} />
-          </Card>
+          {/* NUTRITION (stats + Energy) is the only part that actually depends
+              on the food-logging streak `insufficientData` measures — it must
+              not also hide Readiness/Training load/What-we-notice/Sleep×Fiber
+              below, each of which has its own independent data source and its
+              own honest per-section empty state that never got a chance to
+              render while this was one coarse top-level gate. */}
+          {data.insufficientData ? (
+            <EmptyState title="Not enough data yet">
+              {`You’ve logged ${tracked} of the last ${window} days. Trends appear once at least 3 days are logged — keep going.`}
+            </EmptyState>
+          ) : (
+            <>
+              {/* Real nutrition averages — the data we actually have. */}
+              <Card className="grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
+                <Stat label="Avg calories" value={avgCal} unit="kcal" />
+                <Stat label="Avg protein" value={num(nutrition?.avgProtein)} unit="g" />
+                <Stat label="Days tracked" value={`${tracked}/${window}`} />
+                <Stat label="On-target days" value={num(nutrition?.onTargetDays)} />
+              </Card>
 
-          {/* ENERGY — real line of logged calories. Titled by what it plots:
-              the only reference line is the observed average, so "vs target"
-              promised a comparison the graphic never made. */}
-          <section>
-            <SectionHead
-              label={`Energy · last ${window} days`}
-              strong
-              right={<span className="tnum text-[13px] text-muted">avg {fmt(avgCal)}</span>}
-            />
-            {days.length >= 2 ? (
-              <>
-                <EnergyChart days={days} avg={avgCal} showAvg={showAvgLine} />
-                <ChartCaption
-                  left={shortDate(days[0].date)}
-                  mid={showAvgLine ? `AVG ${fmt(avgCal)} — DASHED` : null}
-                  right={shortDate(days[days.length - 1].date)}
+              {/* ENERGY — real line of logged calories. Titled by what it plots:
+                  the only reference line is the observed average, so "vs target"
+                  promised a comparison the graphic never made. */}
+              <section>
+                <SectionHead
+                  label={`Energy · last ${window} days`}
+                  strong
+                  right={<span className="tnum text-[13px] text-muted">avg {fmt(avgCal)}</span>}
                 />
-              </>
-            ) : (
-              <p className="mt-2.5 text-sm text-muted">A day or two more of logging draws the trend line.</p>
-            )}
-          </section>
+                {days.length >= 2 ? (
+                  <>
+                    <EnergyChart days={days} avg={avgCal} showAvg={showAvgLine} />
+                    <ChartCaption
+                      left={shortDate(days[0].date)}
+                      mid={showAvgLine ? `AVG ${fmt(avgCal)} — DASHED` : null}
+                      right={shortDate(days[days.length - 1].date)}
+                    />
+                  </>
+                ) : (
+                  <p className="mt-2.5 text-sm text-muted">A day or two more of logging draws the trend line.</p>
+                )}
+              </section>
+            </>
+          )}
 
           {/* READINESS — real backfilled score history once a connected
               account has retained at least two days; the honest greyed
