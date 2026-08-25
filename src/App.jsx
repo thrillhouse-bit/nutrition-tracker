@@ -357,7 +357,19 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 px-4 pb-24 pt-4">
+      {/* pb-24 (a flat 96px) was measured against the nav's own height, which is
+          NOT flat: the nav grows by whatever env(safe-area-inset-bottom) the
+          device reports (0 on most Android/older iPhones, ~34px on a notched
+          iPhone's home-indicator area — see the nav's own
+          pb-[env(safe-area-inset-bottom)] below). At inset 0 the clearance
+          between the Log-food button and the nav's top edge measured a
+          comfortable 43.7-43.8px (320-430px widths, real Chromium via CDP
+          Emulation.setSafeAreaInsetsOverride); forcing a real device's 34px
+          inset the SAME fixed 96px shrank that to 9.7-9.8px — not negative,
+          but one flat guess away from being so on a deeper inset. Scaling the
+          padding by the same env() the nav already uses keeps the clearance
+          pinned at ~44px regardless of device (verified below). */}
+      <main className="flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4">
         {tab === 'today' && (
           <Today
             {...shared}
