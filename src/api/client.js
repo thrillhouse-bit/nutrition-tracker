@@ -102,6 +102,21 @@ export const api = {
     ),
   planToday: (ymd) => req(`/plan/today?date=${encodeURIComponent(ymd)}`),
   signals: () => req('/signals'),
+
+  // Manual workout input — states today's planned session directly, for
+  // anyone without a connected wearable (or whose device hasn't detected
+  // today's session yet). Overrides any wearable-sourced workout signal;
+  // see server/providers.js's composeSignals.
+  getWorkout: () => req('/plan/workout'),
+  setWorkout: (workout) => req('/plan/workout', { method: 'PUT', body: JSON.stringify(workout) }),
+  clearWorkout: () => req('/plan/workout', { method: 'DELETE' }),
+
+  // Body weight log — kg is the only unit the API speaks; the caller
+  // converts (see lib/nutrition.js's lbToKg) before calling this. `day`
+  // defaults server-side to today when omitted.
+  logWeight: (kg, day) => req('/weight', { method: 'PUT', body: JSON.stringify(day ? { kg, day } : { kg }) }),
+  deleteWeight: (day) => req(`/weight/${encodeURIComponent(day)}`, { method: 'DELETE' }),
+
   // tzOffsetMinutes (Date#getTimezoneOffset() convention) lets the server
   // bucket trend days by the browser's own calendar day instead of the
   // server's — the same reasoning dayBounds()/ymd() in lib/nutrition.js
@@ -110,6 +125,10 @@ export const api = {
   connections: () => req('/connections'),
   setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
   setProvider: (id, patch) => req(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+
+  // Deletes cached Oura/Garmin/Apple records synced to this app (not the
+  // OAuth accounts themselves — see Connections.jsx's per-account Disconnect).
+  clearSyncedHistory: () => req('/connections/history', { method: 'DELETE' }),
 
   // Apple Health has no OAuth "Connect" — this generates (or regenerates,
   // invalidating the previous one) the per-account token the iOS/watch

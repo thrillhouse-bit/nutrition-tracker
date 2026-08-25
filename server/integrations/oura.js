@@ -56,7 +56,10 @@ const n = (v) => {
   return Number.isFinite(x) ? x : null
 }
 
-// Reduce one Oura daily_activity record to the fields the app uses.
+// Reduce one Oura daily_activity record to the fields the app uses. This is
+// the ACTIVITY score (movement) — do not confuse with Readiness below; they
+// are different Oura endpoints and, verified live, read differently on the
+// same day. (This app previously did confuse them — see normalizeReadiness.)
 export function normalizeActivity(record = {}) {
   return {
     day: record.day || null,
@@ -67,18 +70,53 @@ export function normalizeActivity(record = {}) {
   }
 }
 
-// Activity summary for a single local calendar day (YYYY-MM-DD). Returns null if
-// Oura has no record for that day yet (e.g. today, mid-morning).
-export async function dailySummary(token, ymd) {
-  // Query an inclusive window that definitely contains `ymd`, then pick it out;
-  // Oura's end_date handling varies, so widen by a day and filter.
+// Reduce one Oura daily_readiness record — a genuinely different score from
+// Activity's, combining sleep balance, HRV, resting heart rate, body
+// temperature, and recovery. VERIFY: the `score` field name matches Oura API
+// v2 docs, but unlike daily_activity (proven against this app's own live
+// traffic), this endpoint hasn't been exercised against a captured response.
+export function normalizeReadiness(record = {}) {
+  return {
+    day: record.day || null,
+    score: n(record.score),
+  }
+}
+
+// Oura's `sleep` endpoint returns one row per SESSION (naps included), not
+// one per day — reduce a day's sessions to a single total. total_sleep_duration
+// is in seconds; every other sleep signal in this app (Apple Health's) is in
+// hours, so convert here rather than pushing a seconds->hours conversion onto
+// every caller. Returns null (not 0) when there are no sessions, matching
+// this file's null-means-no-reading convention elsewhere.
+export function normalizeSleepSessions(rows = []) {
+  const totalSeconds = rows.reduce((sum, r) => sum + (n(r.total_sleep_duration) || 0), 0)
+  return totalSeconds > 0 ? totalSeconds / 3600 : null
+}
+
+// Shared day-window fetch: query an inclusive window that definitely
+// contains `ymd`, then pick out only that day's rows client-side — Oura's
+// end_date handling varies, so widening by a day and filtering here is more
+// reliable than trusting the API to return exactly `ymd`. Returns an ARRAY
+// (not a single record) because some endpoints (sleep) can have more than
+// one row per day; callers that expect at most one just take rows[0].
+async function fetchDailyRows(endpoint, token, ymd) {
   const end = new Date(`${ymd}T00:00:00Z`)
   end.setUTCDate(end.getUTCDate() + 1)
   const endYmd = end.toISOString().slice(0, 10)
-
-  const body = await ouraGet('daily_activity', token, { start_date: ymd, end_date: endYmd })
+  const body = await ouraGet(endpoint, token, { start_date: ymd, end_date: endYmd })
   const rows = Array.isArray(body?.data) ? body.data : []
-  const match = rows.find((r) => r.day === ymd) || null
+  return rows.filter((r) => r.day === ymd)
+}
+
+async function fetchRangeRows(endpoint, token, fromYmd, toYmd) {
+  const body = await ouraGet(endpoint, token, { start_date: fromYmd, end_date: toYmd })
+  return Array.isArray(body?.data) ? body.data : []
+}
+
+// Activity summary for a single local calendar day (YYYY-MM-DD). Returns null if
+// Oura has no record for that day yet (e.g. today, mid-morning).
+export async function dailySummary(token, ymd) {
+  const [match] = await fetchDailyRows('daily_activity', token, ymd)
   return match ? normalizeActivity(match) : null
 }
 
@@ -86,38 +124,34 @@ export async function dailySummary(token, ymd) {
 // range query already returns every matched day in one response, so a
 // multi-week pull is one request, not one per day.
 export async function activityRange(token, fromYmd, toYmd) {
-  const body = await ouraGet('daily_activity', token, { start_date: fromYmd, end_date: toYmd })
-  const rows = Array.isArray(body?.data) ? body.data : []
+  const rows = await fetchRangeRows('daily_activity', token, fromYmd, toYmd)
   return rows.map(normalizeActivity)
 }
 
-// Readiness is its OWN Oura endpoint (daily_readiness), not a field on
-// daily_activity — a distinct score (HRV balance, resting heart rate, sleep
-// balance, recovery index, etc.), not the movement/calories activity score.
-// Every "readiness" signal in this app must come from here, never from
-// daily_activity's score — activity and readiness are different numbers that
-// happen to share a 0-100 scale, which is exactly what let this app query the
-// wrong endpoint for both the live signal and the history backfill without
-// ever throwing: daily_activity often returns a populated `score` too, so
-// nothing failed, it just wasn't the number this app claims to be showing.
-export function normalizeReadiness(record = {}) {
-  return { day: record.day || null, score: n(record.score) }
-}
-
+// The actual Readiness score for a day (daily_readiness) — see
+// normalizeReadiness for why this is a separate call from dailySummary.
+// Readiness and Activity are different Oura endpoints that happen to share a
+// 0-100 scale, which is exactly what let this app query the wrong one for
+// both the live signal and the history backfill without ever throwing:
+// daily_activity often returns a populated `score` too, so nothing failed,
+// it just wasn't the number this app claimed to be showing.
 export async function dailyReadiness(token, ymd) {
-  const end = new Date(`${ymd}T00:00:00Z`)
-  end.setUTCDate(end.getUTCDate() + 1)
-  const endYmd = end.toISOString().slice(0, 10)
-  const body = await ouraGet('daily_readiness', token, { start_date: ymd, end_date: endYmd })
-  const rows = Array.isArray(body?.data) ? body.data : []
-  const match = rows.find((r) => r.day === ymd) || null
+  const [match] = await fetchDailyRows('daily_readiness', token, ymd)
   return match ? normalizeReadiness(match) : null
 }
 
 export async function readinessRange(token, fromYmd, toYmd) {
-  const body = await ouraGet('daily_readiness', token, { start_date: fromYmd, end_date: toYmd })
-  const rows = Array.isArray(body?.data) ? body.data : []
+  const rows = await fetchRangeRows('daily_readiness', token, fromYmd, toYmd)
   return rows.map(normalizeReadiness)
+}
+
+// Real sleep DURATION in hours for a day, from the session-level `sleep`
+// endpoint (summed across sessions — naps count, same as a wearable's own
+// daily total would). This is distinct from daily_sleep's 0-100 quality
+// score, which this app doesn't currently surface.
+export async function dailySleepHours(token, ymd) {
+  const rows = await fetchDailyRows('sleep', token, ymd)
+  return normalizeSleepSessions(rows)
 }
 
 // --- OAuth 2.0 (authorization code grant) ----------------------------------

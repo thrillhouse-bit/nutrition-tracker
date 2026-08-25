@@ -47,6 +47,7 @@ import {
 } from './integrations/garmin.js'
 import { computeAdjustedTargets, computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
+import { computeTrend } from './weightTrend.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
 
 const app = express()
@@ -277,8 +278,12 @@ requireAuthRouter.delete('/entries/:id', asyncH(async (req, res) => {
 }))
 
 // --- daily targets --------------------------------------------------------
+// hasTargets tells the client whether these are real, chosen numbers or the
+// silent DEFAULT_TARGETS fallback — the signal the onboarding gate uses to
+// decide whether a signed-in user still needs to be walked through it.
 requireAuthRouter.get('/targets', asyncH(async (req, res) => {
-  res.json({ targets: await store.getLatestTargets(req.userId) })
+  const [targets, hasTargets] = await Promise.all([store.getLatestTargets(req.userId), store.hasTargets(req.userId)])
+  res.json({ targets, hasTargets })
 }))
 
 requireAuthRouter.put('/targets', validateBody(TargetsSchema), asyncH(async (req, res) => {
@@ -389,20 +394,50 @@ async function resolveOuraToken(userId) {
 // forward. Callers decide how to handle a failure — this never touches
 // the connect flow's own success/failure.
 //
-// Must call readinessRange (daily_readiness), never activityRange
-// (daily_activity) — they're different Oura endpoints with different scores.
-// This function used to call activityRange and store its score as
-// "readiness," which silently produced either wrong numbers (activity score
-// mislabeled as readiness) or nothing at all (rows with a null activity
-// score get filtered out downstream) depending on the account's data —
-// exactly the failure this app's own README warns about with wearable
-// signals: two different measurements on the same 0-100 scale are not
-// interchangeable just because they look alike.
+// Two Oura endpoints, merged by day: readiness supplies the score this
+// history exists to track (previously this used activityRange's score,
+// which is the ACTIVITY score, not Readiness — the same mislabeling
+// providers.js's realSignals had for the live "today" value, and which
+// silently produced either a wrong number or nothing at all — rows with a
+// null activity score get filtered out downstream — depending on the
+// account's data); activity supplies the total_calories/active_calories/
+// steps context that store.saveOuraHistory has always stored alongside the
+// score (and that GET /api/profile/activity-suggestion reads back out of
+// `extra.steps`) — still worth keeping even though it's no longer the
+// headline number, so dropping activityRange entirely (as a from-scratch fix
+// would) would have silently starved that endpoint instead. Must call
+// readinessRange (daily_readiness), never activityRange (daily_activity)
+// alone for the score — they're different Oura endpoints with different
+// scores that happen to share a 0-100 scale, which is exactly what let this
+// function store the wrong one as "readiness" for a long time without ever
+// throwing.
 async function backfillOuraHistory(userId, token, days = 30) {
   const end = new Date()
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - (days - 1))
-  const rows = await ouraReadinessRange(token, localYmd(start), localYmd(end))
+  const fromYmd = localYmd(start), toYmd = localYmd(end)
+  const [activity, readiness] = await Promise.all([
+    ouraActivityRange(token, fromYmd, toYmd),
+    ouraReadinessRange(token, fromYmd, toYmd),
+  ])
+  const activityByDay = new Map(activity.map((r) => [r.day, r]))
+  const rows = readiness.map((r) => {
+    const a = activityByDay.get(r.day)
+    return {
+      day: r.day,
+      score: r.score,
+      total_calories: a?.total_calories ?? null,
+      active_calories: a?.active_calories ?? null,
+      steps: a?.steps ?? null,
+    }
+  })
+  const missingDays = rows.filter((r) => r.score == null).map((r) => r.day)
+  if (missingDays.length) {
+    // Named, not just counted: which days is what an operator needs to tell
+    // "Oura genuinely has nothing for these dates" from "something's wrong
+    // with the request window" — a bare count reads the same either way.
+    console.warn(`[oura-backfill] user ${userId}: no readiness score from Oura for ${missingDays.length}/${rows.length} day(s): ${missingDays.join(', ')}`)
+  }
   return store.saveOuraHistory(userId, rows)
 }
 
@@ -724,6 +759,83 @@ requireAuthRouter.get('/plan/today', asyncH(async (req, res) => {
   res.json(plan)
 }))
 
+// --- manual workout input ---------------------------------------------------
+// The "smart" plan adjustments (server/plan.js) only ever ran off a
+// connected wearable's auto-detected workout — someone without Garmin/Apple
+// connected, or whose device hasn't detected today's session yet, could
+// never get a real (non-demo) workout-driven adjustment at all. This lets
+// the user state their own plan directly; providers.js's composeSignals
+// treats it as an unconditional override for the `workout` metric.
+const WORKOUT_KINDS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+
+// Matches the iOS companion's own time-of-day label convention
+// (HealthKitManager.label(startHour:kind:)) so a workout reads the same —
+// "Evening Run" — whether it came from Apple Health or was typed in here.
+function partOfDay(hour) {
+  if (hour < 5) return 'Night'
+  if (hour < 12) return 'Morning'
+  if (hour < 17) return 'Afternoon'
+  if (hour < 21) return 'Evening'
+  return 'Night'
+}
+function formatHour12(hourFloat) {
+  const h = Math.floor(hourFloat)
+  const m = Math.round((hourFloat - h) * 60)
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+requireAuthRouter.put('/plan/workout', asyncH(async (req, res) => {
+  const { kind, time, duration_min } = req.body || {}
+  if (!WORKOUT_KINDS.includes(kind)) return res.status(400).json({ error: `kind must be one of: ${WORKOUT_KINDS.join(', ')}` })
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time))) return res.status(400).json({ error: 'time must be HH:MM, 24h, local.' })
+  const [hh, mm] = String(time).split(':').map(Number)
+  const startHour = hh + mm / 60
+  const duration = Number(duration_min)
+  const hasDuration = Number.isFinite(duration) && duration > 0
+  const kindLabel = kind[0].toUpperCase() + kind.slice(1)
+  const workout = {
+    label: `${partOfDay(startHour)} ${kindLabel}`,
+    shortLabel: kind,
+    kind,
+    time: formatHour12(startHour),
+    startHour,
+    endHour: hasDuration ? startHour + duration / 60 : null,
+    durationMin: hasDuration ? duration : null,
+    estKcal: null,
+    status: 'planned',
+  }
+  const saved = await store.setManualWorkout(req.userId, localYmd(), workout)
+  res.json({ workout: saved })
+}))
+
+requireAuthRouter.get('/plan/workout', asyncH(async (req, res) => {
+  res.json({ workout: await store.getManualWorkout(req.userId, localYmd()) })
+}))
+
+requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
+  const ok = await store.clearManualWorkout(req.userId, localYmd())
+  res.status(ok ? 204 : 404).end()
+}))
+
+// Body weight log — one entry per day. `day` defaults to today (same
+// pattern as /oura/summary's date param); logging twice for the same day
+// overwrites rather than adding a second reading (store.saveWeightEntry is
+// delete-then-insert, same idempotency shape as the Oura history backfill).
+requireAuthRouter.put('/weight', asyncH(async (req, res) => {
+  const { kg, day } = req.body || {}
+  const n = Number(kg)
+  if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'kg must be a positive number.' })
+  const useDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day)) ? day : localYmd()
+  const entry = await store.saveWeightEntry(req.userId, useDay, n)
+  res.json({ entry })
+}))
+
+requireAuthRouter.delete('/weight/:day', asyncH(async (req, res) => {
+  const ok = await store.deleteWeightEntry(req.userId, req.params.day)
+  res.status(ok ? 204 : 404).end()
+}))
+
 // Composed wearable signals (one per metric) with provenance + freshness.
 requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   const now = new Date()
@@ -752,6 +864,13 @@ requireAuthRouter.put('/connections/influence', asyncH(async (req, res) => {
   const row = await store.getIntegration(req.userId, 'plan')
   await store.setIntegration(req.userId, 'plan', { settings: { ...(row.settings || {}), influence } })
   res.json({ influence })
+}))
+
+// Deletes cached wearable records (Oura/Apple/Garmin) without touching the
+// OAuth accounts — see store.clearSyncedHistory for exactly what's in scope.
+requireAuthRouter.delete('/connections/history', asyncH(async (req, res) => {
+  const removed = await store.clearSyncedHistory(req.userId)
+  res.json({ removed })
 }))
 
 requireAuthRouter.put('/connections/:provider', asyncH(async (req, res) => {
@@ -902,7 +1021,19 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const calTarget = Number(targets?.calories) || 0
   const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
 
-  const ouraReadiness = (await store.listOuraHistory?.(req.userId, ymdAtOffset(start, tzOffsetMinutes), ymdAtOffset(new Date(end - 1), tzOffsetMinutes))) || []
+  const windowStartYmd = ymdAtOffset(start, tzOffsetMinutes)
+  const windowEndYmd = ymdAtOffset(new Date(end - 1), tzOffsetMinutes)
+  const ouraReadiness = (await store.listOuraHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
+
+  // The trend must be computed over ALL history up to the window's end, not
+  // just the entries inside the window — an EMA re-seeded fresh at the
+  // window's start would show a different trend value for the same day
+  // depending on which window (7/14/30) happens to be selected, which is
+  // exactly the kind of silently-inconsistent number this app's own history
+  // (see CLAUDE-notes-style incidents elsewhere) keeps warning about.
+  // Sliced back down to the window only after computing over the full history.
+  const allWeightEntries = (await store.listWeightEntries?.(req.userId, '0001-01-01', windowEndYmd)) || []
+  const weight = computeTrend(allWeightEntries).filter((e) => e.day >= windowStartYmd)
 
   res.json({
     window,
@@ -910,6 +1041,7 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
     days,
     ouraReadiness: ouraReadiness.map((r) => ({ date: r.day, score: Number(r.value) })).filter((r) => Number.isFinite(r.score)),
+    weight,
     correlations: {
       available: false,
       note: 'Recovery/training correlations need several days of retained wearable history — connect a provider and revisit after a few days.',

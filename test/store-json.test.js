@@ -132,6 +132,173 @@ describe('JsonStore Oura readiness history (backfill)', () => {
     const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-02')
     expect(all.map((r) => r.day)).toEqual(['2026-08-02'])
   })
+
+  it('a re-run with a transient null for a day that scored before leaves the old score standing, not erased', async () => {
+    // Regression for the production-verification audit (25 Aug 2026): the
+    // first version of this method deleted EVERY requested day before
+    // re-inserting, so a re-run that got a transient null for a day (Oura
+    // rate-limited, a partial-outage response — the readiness endpoint still
+    // returns an entry for every day in range, just with score: null) wiped
+    // that day's previously-correct score and never put anything back.
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory(USER, [
+      { day: '2026-08-01', score: 82 },
+      { day: '2026-08-02', score: 75 }, // this is the day that will hiccup next run
+      { day: '2026-08-03', score: 90 },
+    ])
+    const rerun = await s.saveOuraHistory(USER, [
+      { day: '2026-08-01', score: 82 },
+      { day: '2026-08-02', score: null }, // transient — NOT evidence the real value was wrong
+      { day: '2026-08-03', score: 90 },
+    ])
+    expect(rerun).toBe(2) // only the two still-scored days were touched this run
+    const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-03')
+    expect(all.map((r) => r.day)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03']) // 08-02 still present
+    expect(all.find((r) => r.day === '2026-08-02').value).toBe(75) // and still its real score, not erased
+  })
+})
+
+describe('JsonStore manual workout input', () => {
+  it('returns null when nothing has been set for that day (never throws)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.getManualWorkout(USER, '2026-08-25')).toBeNull()
+  })
+
+  it('round-trips a saved workout, and carries its recorded_at back out', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const workout = { label: 'Evening Run', shortLabel: 'run', kind: 'run', time: '5:30 PM', startHour: 17.5, endHour: null, durationMin: null, estKcal: null, status: 'planned' }
+    await s.setManualWorkout(USER, '2026-08-25', workout)
+    const got = await s.getManualWorkout(USER, '2026-08-25')
+    expect(got.kind).toBe('run')
+    expect(got.startHour).toBe(17.5)
+    expect(typeof got.recorded_at).toBe('string') // stamped at save time
+  })
+
+  it('re-setting the same day replaces it rather than duplicating (control: other days/users untouched)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'run', startHour: 17.5 })
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'ride', startHour: 8 })
+    await s.setManualWorkout(USER, '2026-08-26', { kind: 'swim', startHour: 7 })
+    await s.setManualWorkout(2, '2026-08-25', { kind: 'hike', startHour: 9 }) // a different user, same day
+    expect((await s.getManualWorkout(USER, '2026-08-25')).kind).toBe('ride') // replaced, not both present
+    expect((await s.getManualWorkout(USER, '2026-08-26')).kind).toBe('swim') // untouched
+    expect((await s.getManualWorkout(2, '2026-08-25')).kind).toBe('hike') // untouched, other user's own row
+  })
+
+  it('clearManualWorkout removes it and reports whether anything was actually cleared', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.clearManualWorkout(USER, '2026-08-25')).toBe(false) // nothing to clear (control)
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'run', startHour: 17.5 })
+    expect(await s.clearManualWorkout(USER, '2026-08-25')).toBe(true)
+    expect(await s.getManualWorkout(USER, '2026-08-25')).toBeNull()
+  })
+})
+
+describe('JsonStore body weight log', () => {
+  it('round-trips saved days through listWeightEntries, filtered by range', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveWeightEntry(USER, '2026-08-01', 80.2)
+    await s.saveWeightEntry(USER, '2026-08-02', 79.8)
+    await s.saveWeightEntry(USER, '2026-08-03', 80.5)
+    const all = await s.listWeightEntries(USER, '2026-08-01', '2026-08-03')
+    expect(all).toEqual([
+      { day: '2026-08-01', kg: 80.2 },
+      { day: '2026-08-02', kg: 79.8 },
+      { day: '2026-08-03', kg: 80.5 },
+    ])
+    const narrowed = await s.listWeightEntries(USER, '2026-08-02', '2026-08-02')
+    expect(narrowed).toEqual([{ day: '2026-08-02', kg: 79.8 }])
+  })
+
+  it('re-logging the same day replaces it rather than duplicating (control: other days untouched)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveWeightEntry(USER, '2026-08-01', 80)
+    await s.saveWeightEntry(USER, '2026-08-02', 79)
+    await s.saveWeightEntry(USER, '2026-08-01', 81.4) // corrected the same day's reading
+    const all = await s.listWeightEntries(USER, '2026-08-01', '2026-08-02')
+    expect(all).toHaveLength(2) // not 3
+    expect(all.find((r) => r.day === '2026-08-01').kg).toBe(81.4)
+    expect(all.find((r) => r.day === '2026-08-02').kg).toBe(79) // untouched
+  })
+
+  it('deleteWeightEntry removes it and reports whether anything was actually deleted', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.deleteWeightEntry(USER, '2026-08-01')).toBe(false) // nothing to delete (control)
+    await s.saveWeightEntry(USER, '2026-08-01', 80)
+    expect(await s.deleteWeightEntry(USER, '2026-08-01')).toBe(true)
+    expect(await s.listWeightEntries(USER, '2026-08-01', '2026-08-01')).toEqual([])
+  })
+
+  it('never mixes another user\'s entries into a range query (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveWeightEntry(USER, '2026-08-01', 80)
+    await s.saveWeightEntry(2, '2026-08-01', 65)
+    expect(await s.listWeightEntries(USER, '2026-08-01', '2026-08-01')).toEqual([{ day: '2026-08-01', kg: 80 }])
+    expect(await s.listWeightEntries(2, '2026-08-01', '2026-08-01')).toEqual([{ day: '2026-08-01', kg: 65 }])
+  })
+})
+
+describe('JsonStore clearSyncedHistory (Connections "Delete synced history")', () => {
+  it('removes Oura + Apple wearable_signals and Garmin dailies for the user, and reports how many', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory(USER, [{ day: '2026-08-20', score: 70 }])
+    await s.replaceAppleSignals(USER, '2026-08-20', [
+      { metric: 'steps', value: 5000, recorded_at: '2026-08-20T00:00:00.000Z', fetched_at: '2026-08-20T00:00:00.000Z' },
+    ])
+    const acct = await s.saveGarminAccount(USER, { access_token: 'a', refresh_token: 'b' })
+    await s.upsertGarminDaily({ account_id: acct.id, day: '2026-08-20', total_calories: 2000, active_calories: 300, steps: 4000 })
+
+    const removed = await s.clearSyncedHistory(USER)
+    expect(removed).toBe(3) // 1 oura + 1 apple + 1 garmin daily
+
+    expect(await s.listOuraHistory(USER, '2026-08-01', '2026-08-31')).toHaveLength(0)
+    expect(await s.listAppleSignals(USER, '2026-08-20')).toHaveLength(0)
+    expect(await s.getGarminDaily(acct.id, '2026-08-20')).toBeNull()
+  })
+
+  it('never removes a manually-typed workout or logged weight — that is authored data, not synced from a wearable (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setManualWorkout(USER, '2026-08-25', { kind: 'run', startHour: 17.5 })
+    await s.saveWeightEntry(USER, '2026-08-25', 80)
+    await s.saveOuraHistory(USER, [{ day: '2026-08-20', score: 70 }])
+    await s.clearSyncedHistory(USER)
+    expect((await s.getManualWorkout(USER, '2026-08-25')).kind).toBe('run')
+    expect(await s.listWeightEntries(USER, '2026-08-25', '2026-08-25')).toEqual([{ day: '2026-08-25', kg: 80 }])
+  })
+
+  it('never touches another user\'s synced records (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory(USER, [{ day: '2026-08-20', score: 70 }])
+    await s.saveOuraHistory(2, [{ day: '2026-08-20', score: 60 }])
+    const otherAcct = await s.saveGarminAccount(2, { access_token: 'x', refresh_token: 'y' })
+    await s.upsertGarminDaily({ account_id: otherAcct.id, day: '2026-08-20', total_calories: 1800, active_calories: 200, steps: 3000 })
+
+    await s.clearSyncedHistory(USER)
+
+    expect(await s.listOuraHistory(2, '2026-08-01', '2026-08-31')).toHaveLength(1)
+    expect(await s.getGarminDaily(otherAcct.id, '2026-08-20')).not.toBeNull()
+  })
+
+  it('returns 0 and does not throw when there is nothing to remove (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.clearSyncedHistory(USER)).toBe(0)
+  })
+})
+
+describe('JsonStore hasTargets (onboarding gate)', () => {
+  it('is false before anything is ever saved, even though getLatestTargets already returns a non-null default', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    expect(await s.hasTargets(USER)).toBe(false)
+    // The exact fallback this test exists to distinguish from a real save.
+    expect((await s.getLatestTargets(USER)).calories).toBe(2000)
+  })
+
+  it('flips to true the moment setTargets is called, and stays scoped to the one user (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.setTargets(USER, { calories: 1800 })
+    expect(await s.hasTargets(USER)).toBe(true)
+    expect(await s.hasTargets(2)).toBe(false) // a different user's onboarding is untouched
+  })
 })
 
 describe('JsonStore biometric profile (singleton)', () => {

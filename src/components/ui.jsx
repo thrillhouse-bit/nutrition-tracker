@@ -4,6 +4,7 @@
 // circles), hairline rules in ink, cobalt as the single accent, status shown by
 // SHAPE + WORD (never color alone), Bodoni numerals, Archivo labels. White is a
 // moment that matters. Every control has a visible focus ring and a real label.
+import { useEffect, useRef, useState } from 'react'
 import { fmt, num } from '../lib/nutrition.js'
 
 /* --- buttons ------------------------------------------------------------- */
@@ -114,26 +115,85 @@ export function SectionTitle({ children, right, className = '' }) {
   )
 }
 
+// Focusable-selector for the trap below — the same list every modal-focus
+// implementation reaches for; deliberately excludes [tabindex="-1"] JS-only
+// focus targets so Tab cycling never lands somewhere invisible.
+const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 // Bottom sheet — a white moment that slides up. Sharp top edge, grabber bar,
 // warm dim behind. Reserved for confirm / save / a recommendation detail.
+//
+// Keyboard/focus contract (audited — none of this existed before): opening
+// moves focus onto the sheet's own close button (always rendered, so always a
+// safe first stop, per the comment below); Tab/Shift+Tab is trapped inside
+// the sheet while it's open (a background page has no business receiving
+// keystrokes while a modal covers it); Escape closes it; closing — by
+// Escape, the ✕, or the backdrop — returns focus to whatever had it before
+// the sheet opened (the trigger button), so a keyboard user doesn't lose
+// their place in the page underneath. Every open Sheet in the app (Why's
+// disclosure, the add-food flow, FoodConfirm, the entry editor) inherits this
+// from here rather than each carrying its own copy.
 export function Sheet({ open, onClose, title, children, size = 'md', grabber = true }) {
+  const panelRef = useRef(null)
+  const closeBtnRef = useRef(null)
+  const returnFocusRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    returnFocusRef.current = document.activeElement
+    closeBtnRef.current?.focus()
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose?.()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const panel = panelRef.current
+      if (!panel) return
+      const focusables = panel.querySelectorAll(FOCUSABLE)
+      if (!focusables.length) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      returnFocusRef.current?.focus?.()
+    }
+  }, [open, onClose])
+
   if (!open) return null
   const width = size === 'lg' ? 'sm:max-w-xl' : 'sm:max-w-md'
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/25 sm:items-center" onClick={onClose}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || undefined}
         className={`w-full ${width} max-h-[92vh] overflow-y-auto border border-line bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-3px_14px_rgb(18_18_16/0.12)]`}
         onClick={(e) => e.stopPropagation()}
       >
         {grabber && <div className="mx-auto mb-4 h-1 w-11 bg-line-strong" />}
         {/* The close button always renders, even with no title — a step
             that owns its own header (e.g. FoodConfirm) still needs a
-            visible way out beyond "tap the dim backdrop". */}
+            visible way out beyond "tap the dim backdrop". It's also always
+            the first element in DOM order, which is what makes it a safe,
+            simple initial-focus target above regardless of a step's content. */}
         <div className={`mb-4 flex items-center ${title ? 'justify-between' : 'justify-end'}`}>
           {title && <h2 className="serif text-xl text-ink">{title}</h2>}
           {/* 44px hit area around the small glyph, the Toggle's pattern —
               measured 29x32 before, the primary dismissal on every sheet */}
-          <button onClick={onClose} className="-mr-2 flex h-11 w-11 items-center justify-center text-muted hover:text-ink" aria-label="Close">✕</button>
+          <button ref={closeBtnRef} onClick={onClose} className="-mr-2 flex h-11 w-11 items-center justify-center text-muted hover:text-ink" aria-label="Close">✕</button>
         </div>
         {children}
       </div>
@@ -229,17 +289,62 @@ export function StatusMark({ status, label, className = '' }) {
 }
 export const StatusTag = StatusMark // compat alias
 
+// Short forms of the STATE REFERENCE words, for the <360px single-line chip
+// below only — StatusMark's own defaults (WORDS above) stay the full words
+// everywhere else in the app.
+const SHORT_WORDS = { demo: 'Demo', unavailable: 'No data' }
+
 // Provenance for any wearable-derived value: source + freshness (or demo).
-export function SourceLabel({ signal, className = '' }) {
+//
+// `compact`: the masthead's global sync line already discloses "SAMPLE
+// SIGNALS · NOT A LIVE SYNC" once per screen when every present signal is
+// demo (Today.jsx) — an audit found each ContextCell repeating "Demo data"
+// underneath it, saying the same thing a 4th time on one all-demo screen.
+// Callers pass this only from that exact state, and it only drops anything
+// when THIS signal is itself demo — a live/stale/unavailable cell is never
+// what the global line said, so it always keeps its own mark. A genuinely
+// mixed live/demo screen never sets this (the global line names a live
+// provider instead), so a demo cell there still carries full disclosure —
+// the one screen state where the global line is silent about it.
+export function SourceLabel({ signal, compact = false, className = '' }) {
   if (!signal) return null
   const provider = signal.provider ? signal.provider[0].toUpperCase() + signal.provider.slice(1) : 'Signal'
   const status = signal.demo ? 'demo' : signal.freshness || 'fresh'
-  // flex-wrap + no dot separator so this degrades to two clean lines
-  // ("OURA" / "▣ DEMO DATA") in a narrow column instead of overflowing it.
+
+  if (compact && status === 'demo') {
+    return (
+      <span className={`inline-flex items-center text-[11px] font-semibold uppercase tracking-[0.1em] text-muted ${className}`}>
+        {provider}
+      </span>
+    )
+  }
+
+  // A 3-column context strip leaves ~71px of inner width per cell at 320px
+  // (measured) for the whole provider+status line — "Oura" beside a full
+  // "Demo data"/"Stale" mark never fits there, so flex-wrap (below) put them
+  // on two rows at EVERY width tested, 320 through 430 (measured: "Oura" at
+  // y172, "Demo data" at y193, same left edge, unchanged from 320 to 430).
+  // That two-line form is fine once the column has room to spare, but below
+  // 360px it was landing right under "Readiness"/"Sleep"/"Workouts" and
+  // breaking the three-column rhythm the audit flagged. Two sibling spans,
+  // toggled by the same 360px line the audit named (max-[359px] / min-[360]
+  // are exact complements, so exactly one ever renders) — a single-line,
+  // shorter-worded chip under it, the original wrap-permitted form at and
+  // above it. Still shape + word either way, per this file's own rule.
   return (
-    <span className={`inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted ${className}`}>
-      <span className="font-semibold uppercase tracking-[0.1em]">{provider}</span>
-      <StatusMark status={status} className="[&_.eyebrow]:text-muted" />
+    <span className={`text-[11px] text-muted ${className}`}>
+      <span className="hidden flex-wrap items-center gap-x-1.5 gap-y-1 min-[360px]:flex">
+        <span className="font-semibold uppercase tracking-[0.1em]">{provider}</span>
+        <StatusMark status={status} className="[&_.eyebrow]:text-muted" />
+      </span>
+      <span className="flex items-center gap-1 whitespace-nowrap max-[359px]:flex min-[360px]:hidden">
+        <span className="shrink-0 font-semibold uppercase tracking-[0.03em]">{provider}</span>
+        <StatusMark
+          status={status}
+          label={SHORT_WORDS[status] || WORDS[status]}
+          className="shrink-0 [&_.eyebrow]:text-muted [&_.eyebrow]:text-[8.5px] [&_.eyebrow]:tracking-[0.02em]"
+        />
+      </span>
     </span>
   )
 }
@@ -303,23 +408,39 @@ export function EmptyState({ title, children, className = '' }) {
   )
 }
 
-// A "Why?" disclosure — a circled ? that opens a transparent rationale list.
+// A "Why?" disclosure — a circled ? that opens the rationale as a bottom
+// Sheet. Used to be a native <details>/<summary>: real, keyboard-reachable,
+// but not a button (no role, Enter/Space activation only by accident of the
+// element, no aria-expanded) and its content was locked to plain strings
+// inline in the page flow. A real <button> plus the app's own Sheet gets
+// the semantics for free and gives call sites room to pass richer content —
+// `items` can be plain strings (Plan.jsx's "why did my target change") or
+// any React node (Today.jsx mixes in StatusMark/SourceLabel for signal
+// freshness) — a <li> renders either the same way.
 export function Why({ items = [], label = 'Why this?' }) {
+  const [open, setOpen] = useState(false)
   if (!items.length) return null
   return (
-    <details className="group">
-      <summary className="flex cursor-pointer list-none items-center justify-between py-3">
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center justify-between py-3 text-left"
+      >
         <span className="flex items-center gap-2.5">
           <span aria-hidden className="flex h-[19px] w-[19px] items-center justify-center rounded-full border-[1.5px] border-cobalt text-[11px] font-bold text-cobalt">?</span>
           <span className="text-sm font-semibold tracking-[0.02em] text-cobalt">{label}</span>
         </span>
-        <span aria-hidden className="text-cobalt transition group-open:rotate-90">›</span>
-      </summary>
-      <ul className="mb-1 space-y-1.5 border-l-2 border-line pl-3 text-sm text-muted">
-        {items.map((it, i) => (
-          <li key={i}>{it}</li>
-        ))}
-      </ul>
-    </details>
+        <span aria-hidden className="text-cobalt">›</span>
+      </button>
+      <Sheet open={open} onClose={() => setOpen(false)} title={label}>
+        <ul className="space-y-2.5 border-l-2 border-line pl-3 text-sm text-muted">
+          {items.map((it, i) => (
+            <li key={i}>{it}</li>
+          ))}
+        </ul>
+      </Sheet>
+    </>
   )
 }

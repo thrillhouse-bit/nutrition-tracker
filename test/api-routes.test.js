@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
+import { computeTrend } from '../server/weightTrend.js'
 
 // Route-level tests: the real Express app, an in-memory store (so no test ever
 // touches server/.data/store.json), and a stubbed Oura module (no network).
@@ -21,9 +22,12 @@ const fake = vi.hoisted(() => {
     appleSignals: {},
     ouraAccounts: [],
     ouraHistory: [], // { day, value }
+    weightEntries: [], // { day, kg }
+    manualWorkouts: {}, // day -> workout
     garminAccounts: [],
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
+    targetsEverSet: false, // real stores start false; getLatestTargets's default look identical either way
     profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null },
     setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
   }
@@ -59,8 +63,10 @@ const fake = vi.hoisted(() => {
     setTargets: async (userId, t) => {
       state.setTargetsCalls.push(t)
       state.targets = { ...t }
+      state.targetsEverSet = true
       return state.targets
     },
+    hasTargets: async (userId) => state.targetsEverSet,
     getIntegration: async (userId, p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
     setIntegration: async (userId, p, patch) => {
       const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, provider: p }
@@ -76,17 +82,65 @@ const fake = vi.hoisted(() => {
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
     saveOuraHistory: async (userId, rows) => {
-      const days = new Set(rows.map((r) => r.day))
-      state.ouraHistory = state.ouraHistory.filter((r) => !days.has(r.day))
+      // Mirrors PgStore/JsonStore's scoredDays fix: only a day with an actual
+      // score this run gets deleted-then-reinserted. A day present in `rows`
+      // with a transient null (Oura rate-limited, a partial outage) must
+      // leave whatever was already stored for that day standing, not erase
+      // it — the exact production bug this fix was for.
+      const scoredDays = new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))
+      state.ouraHistory = state.ouraHistory.filter((r) => !scoredDays.has(r.day))
       let n = 0
       for (const r of rows) {
         if (r.score == null) continue
-        state.ouraHistory.push({ day: r.day, value: r.score })
+        // Mirrors PgStore/JsonStore: the score is never the whole story — the
+        // day's total_calories/active_calories/steps ride alongside it in
+        // `extra` (see server/db.js's two saveOuraHistory implementations),
+        // and GET /api/profile/activity-suggestion reads extra.steps back out.
+        // A fake that dropped this would let a backfill test "pass" while
+        // proving nothing about whether that context actually survives
+        // persistence — the house failure mode this codebase keeps producing.
+        state.ouraHistory.push({
+          day: r.day,
+          value: r.score,
+          extra: { total_calories: r.total_calories ?? null, active_calories: r.active_calories ?? null, steps: r.steps ?? null },
+        })
         n++
       }
       return n
     },
     listOuraHistory: async (userId, from, to) => state.ouraHistory.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+    saveWeightEntry: async (userId, day, kg) => {
+      state.weightEntries = state.weightEntries.filter((r) => r.day !== day)
+      state.weightEntries.push({ day, kg })
+      return { day, kg }
+    },
+    listWeightEntries: async (userId, from, to) => state.weightEntries.filter((r) => r.day >= from && r.day <= to).sort((a, b) => (a.day < b.day ? -1 : 1)),
+    deleteWeightEntry: async (userId, day) => {
+      const before = state.weightEntries.length
+      state.weightEntries = state.weightEntries.filter((r) => r.day !== day)
+      return state.weightEntries.length < before
+    },
+    getManualWorkout: async (userId, day) => state.manualWorkouts[day] || null,
+    setManualWorkout: async (userId, day, workout) => {
+      state.manualWorkouts[day] = { ...workout, recorded_at: '2026-08-25T00:00:00.000Z' }
+      return state.manualWorkouts[day]
+    },
+    clearManualWorkout: async (userId, day) => {
+      const had = day in state.manualWorkouts
+      delete state.manualWorkouts[day]
+      return had
+    },
+    // manualWorkouts is deliberately excluded — that's authored input, not a
+    // synced wearable record (see server/db.js's clearSyncedHistory).
+    clearSyncedHistory: async (userId) => {
+      const ouraCount = state.ouraHistory.length
+      state.ouraHistory = []
+      const appleCount = Object.values(state.appleSignals).reduce((n, rows) => n + rows.length, 0)
+      state.appleSignals = {}
+      const garminCount = Object.keys(state.garminDailies).length
+      state.garminDailies = {}
+      return ouraCount + appleCount + garminCount
+    },
 
     // --- NOT userId-scoped (matches the real store — see server/db.js) ---
     getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
@@ -105,6 +159,7 @@ const oura = vi.hoisted(() => ({
   activityRange: async () => [],
   dailyReadiness: async () => null,
   readinessRange: async () => [],
+  dailySleepHours: async () => null,
 }))
 
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
@@ -118,6 +173,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     activityRange: (...args) => oura.activityRange(...args),
     dailyReadiness: (...args) => oura.dailyReadiness(...args),
     readinessRange: (...args) => oura.readinessRange(...args),
+    dailySleepHours: (...args) => oura.dailySleepHours(...args),
   }
 })
 
@@ -165,9 +221,11 @@ afterEach(() => {
   fake.state.appleSignals = {}
   fake.state.integrations = {}
   fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
+  fake.state.targetsEverSet = false
   fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null }
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
+  fake.state.weightEntries = []
   // Note: fake.state.users is intentionally NOT reset — the one signed-up
   // test user (and authCookie/authUserId) must survive across every test in
   // this file.
@@ -388,6 +446,15 @@ describe('GET /api/energy/summary Oura failure fallback', () => {
 })
 
 describe('POST /api/oura/backfill', () => {
+  // activityRange/readinessRange are NOT reset by the file-level afterEach
+  // (only dailySummary is) — several tests below set one or both to
+  // rejecting/scored fakes, and without this, whichever was set last would
+  // leak into a later describe block that assumes the harmless [] default.
+  afterEach(() => {
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => []
+  })
+
   it('refuses with 400 when no Oura account is resolvable (control)', async () => {
     oura.legacy = false
     fake.state.ouraAccounts = []
@@ -395,28 +462,219 @@ describe('POST /api/oura/backfill', () => {
     expect(res.status).toBe(400)
   })
 
-  it('pulls the range in one call and stores every scored day', async () => {
+  it('stores the READINESS score, not the Activity score, using activity only for steps/calories context', async () => {
     oura.legacy = true
     fake.state.ouraHistory = []
-    let asked
-    // Must be readinessRange (daily_readiness), not activityRange
-    // (daily_activity) — this endpoint used to call the wrong one and store
-    // an activity score mislabeled as readiness (see integrations/oura.js).
+    let askedActivity, askedReadiness
+    // Must read readinessRange (daily_readiness), not activityRange
+    // (daily_activity) alone, for the score — this endpoint used to call
+    // only the activity endpoint and store its score as "readiness" (see
+    // integrations/oura.js). Activity's score (55/60) is deliberately
+    // different from Readiness's (70/null) below so a regression would be
+    // caught rather than coincidentally match, while activity's
+    // total_calories/active_calories/steps still flow through as context
+    // (GET /api/profile/activity-suggestion reads them back out), so
+    // replacing activityRange outright would have silently starved that
+    // endpoint instead of fixing the mislabeling.
+    oura.activityRange = async (token, from, to) => {
+      askedActivity = { token, from, to }
+      return [
+        { day: '2026-08-01', score: 55, total_calories: 2100, active_calories: 400, steps: 8000 },
+        { day: '2026-08-02', score: 60, total_calories: 2000, active_calories: 300, steps: 6000 },
+      ]
+    }
     oura.readinessRange = async (token, from, to) => {
-      asked = { token, from, to }
+      askedReadiness = { token, from, to }
       return [
         { day: '2026-08-01', score: 70 },
-        { day: '2026-08-02', score: null }, // no score that day
+        { day: '2026-08-02', score: null }, // no readiness recorded that day
       ]
     }
     const res = await post('/api/oura/backfill?days=10', {})
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.daysSaved).toBe(1) // the null-score day is dropped, not stored as 0
-    expect(asked.token).toBe('legacy-token')
+    expect(body.daysSaved).toBe(1) // the null-READINESS day is dropped, even though Activity had a score that day
+    expect(askedActivity.token).toBe('legacy-token')
+    expect(askedReadiness.token).toBe('legacy-token')
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
-    expect(stored.map((r) => r.day)).toEqual(['2026-08-01'])
+    expect(stored).toEqual([
+      // Readiness's score (70), never Activity's (55) — but Activity's own
+      // calories/steps context still rides alongside it (see backfillOuraHistory's
+      // day-merge in server/index.js), so it isn't lost by preferring Readiness's score.
+      { day: '2026-08-01', value: 70, extra: { total_calories: 2100, active_calories: 400, steps: 8000 } },
+    ])
+  })
+
+  it('is idempotent: re-running backfill over the same days replaces rather than duplicates', async () => {
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => [
+      { day: '2026-08-01', score: 55, total_calories: 2100, active_calories: 400, steps: 8000 },
+    ]
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    await post('/api/oura/backfill?days=10', {})
+    // A second run — same days, a changed reading (as a re-sync after a
+    // correction, or simply the same call retried, would produce) — must
+    // replace the day's row, never append a second one alongside it.
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }]
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    expect((await res.json()).daysSaved).toBe(1)
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-01')
+    expect(stored).toHaveLength(1) // not 2 — the first run's row was replaced, not duplicated
+    expect(stored[0].value).toBe(82)
+  })
+
+  it('a day dropped from Readiness on re-sync still leaves exactly one row from the first run (control)', async () => {
+    // Companion to the idempotency test above: proves the replace-not-append
+    // behavior isn't merely "the new row happens to overwrite the old one at
+    // the same array index." Two distinct days, then a re-run that only
+    // resupplies one of them — the other must survive untouched, not vanish
+    // and not duplicate.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => [
+      { day: '2026-08-01', score: 70 },
+      { day: '2026-08-02', score: 75 },
+    ]
+    await post('/api/oura/backfill?days=10', {})
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 71 }]
+    await post('/api/oura/backfill?days=10', {})
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
+    expect(stored).toHaveLength(2)
+    expect(stored.find((r) => r.day === '2026-08-01').value).toBe(71) // updated
+    expect(stored.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched by the narrower re-run
+  })
+
+  it('a rejected Activity fetch fails the whole backfill rather than silently dropping steps/calories context', async () => {
+    // backfillOuraHistory's Promise.all over [activityRange, readinessRange]
+    // means a failed Activity fetch must surface as a failure, never as a
+    // "successful" backfill quietly missing every day's calories/steps — the
+    // silent-partial-write shape this codebase keeps having to re-learn.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => { throw new Error('oura activity fetch failed') }
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(500) // not 200 — a partial write must not report success
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-01')
+    expect(stored).toHaveLength(0) // nothing persisted from the failed attempt
+  })
+
+  it('a transient null on re-sync for a day that scored before leaves the old score standing, not erased', async () => {
+    // End-to-end regression for the production-verification audit fix (see
+    // PgStore/JsonStore's saveOuraHistory): a re-run backfill can get a
+    // transient null for a day that scored fine before (Oura rate-limited, a
+    // partial-outage response — the readiness endpoint still returns an
+    // entry for every day in range, just with score: null). That must never
+    // erase the previously-correct value.
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }, { day: '2026-08-02', score: 75 }]
+    await post('/api/oura/backfill?days=10', {})
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 82 }, { day: '2026-08-02', score: null }] // 08-02 hiccups
+    const res = await post('/api/oura/backfill?days=10', {})
+    expect(res.status).toBe(200)
+    expect((await res.json()).daysSaved).toBe(1) // only 08-01 had a score to (re)save this run
+    const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
+    expect(stored.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched, not wiped
+  })
+})
+
+describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
+  afterEach(() => { fake.state.manualWorkouts = {} })
+
+  it('rejects an unknown kind (control)', async () => {
+    const res = await put('/api/plan/workout', { kind: 'skateboarding', time: '17:30' })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects a malformed time (control)', async () => {
+    const res = await put('/api/plan/workout', { kind: 'run', time: '5:30pm' })
+    expect(res.status).toBe(400)
+  })
+
+  it('saves a valid workout and computes label/time/startHour server-side', async () => {
+    const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 45 })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.workout.kind).toBe('run')
+    expect(body.workout.label).toBe('Evening Run')
+    expect(body.workout.time).toBe('5:30 PM')
+    expect(body.workout.startHour).toBe(17.5)
+    expect(body.workout.endHour).toBeCloseTo(18.25, 5) // +45 min
+    expect(body.workout.status).toBe('planned')
+
+    const got = await get('/api/plan/workout')
+    expect((await got.json()).workout.kind).toBe('run')
+  })
+
+  it('a saved manual workout overrides the demo/wearable workout signal in GET /api/signals', async () => {
+    await put('/api/plan/workout', { kind: 'ride', time: '08:00' })
+    const res = await get('/api/signals')
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('manual')
+    expect(body.signals.workout.demo).toBe(false)
+    expect(body.signals.workout.value.kind).toBe('ride')
+  })
+
+  it('DELETE clears it — 204 when something was cleared, 404 when nothing was there (control)', async () => {
+    const emptyDelete = await fetch(`${base}/api/plan/workout`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(emptyDelete.status).toBe(404)
+
+    await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+    const realDelete = await fetch(`${base}/api/plan/workout`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(realDelete.status).toBe(204)
+
+    const got = await get('/api/plan/workout')
+    expect((await got.json()).workout).toBeNull()
+  })
+})
+
+describe('DELETE /api/connections/history (Connections "Delete synced history")', () => {
+  afterEach(() => {
+    fake.state.ouraHistory = []
+    fake.state.appleSignals = {}
+    fake.state.garminDailies = {}
+    fake.state.manualWorkouts = {}
+  })
+
+  it('actually removes cached Oura/Apple/Garmin records and reports how many — a live control, not a dead end', async () => {
+    fake.state.ouraHistory = [{ day: '2026-08-20', value: 70 }]
+    fake.state.appleSignals = { '2026-08-20': [{ metric: 'steps', value: 5000 }] }
+    fake.state.garminDailies = { '1:2026-08-20': { account_id: 1, day: '2026-08-20', steps: 4000 } }
+
+    const res = await fetch(`${base}/api/connections/history`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).removed).toBe(3)
+
+    expect(fake.state.ouraHistory).toHaveLength(0)
+    expect(fake.state.appleSignals).toEqual({})
+    expect(fake.state.garminDailies).toEqual({})
+  })
+
+  it('reports 0 removed rather than erroring when there is nothing synced (control)', async () => {
+    const res = await fetch(`${base}/api/connections/history`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).removed).toBe(0)
+  })
+
+  it('never removes a manually-typed workout — that is authored input, not synced wearable data (control)', async () => {
+    await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+    fake.state.ouraHistory = [{ day: '2026-08-20', value: 70 }]
+
+    await fetch(`${base}/api/connections/history`, { method: 'DELETE', headers: { Cookie: authCookie } })
+
+    const got = await get('/api/plan/workout')
+    expect((await got.json()).workout.kind).toBe('run')
+  })
+
+  it('requires auth (control)', async () => {
+    const res = await fetch(`${base}/api/connections/history`, { method: 'DELETE' })
+    expect(res.status).toBe(401)
   })
 })
 
@@ -441,6 +699,94 @@ describe('GET /api/insights ouraReadiness', () => {
     const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.ouraReadiness).toEqual([])
+  })
+})
+
+describe('GET /api/insights weight trend', () => {
+  it('returns an empty array when nothing has been logged (control)', async () => {
+    fake.state.weightEntries = []
+    const res = await get('/api/insights?window=7')
+    expect((await res.json()).weight).toEqual([])
+  })
+
+  // Server-local "today" under this fixed clock, in the suite's pinned
+  // Pacific/Apia (UTC+13) timezone, is 2026-08-26 — so a 7-day window starts
+  // 2026-08-20 and a 14-day window starts 2026-08-13; 2026-07-01 sits outside
+  // both, same as the ouraReadiness tests above rely on.
+  it('computes the trend over ALL history, not just the requested window, so the same day reads identically across window sizes', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.weightEntries = [
+      { day: '2026-07-01', kg: 90 }, // outside every window tested — seeds the trend only
+      { day: '2026-08-20', kg: 80 },
+      { day: '2026-08-24', kg: 80 },
+    ]
+    const res7 = await get('/api/insights?window=7')
+    const body7 = await res7.json()
+    // Only the two in-window entries come back...
+    expect(body7.weight.map((w) => w.day)).toEqual(['2026-08-20', '2026-08-24'])
+    // ...but their trend values reflect the FULL history including the
+    // excluded 2026-07-01 seed — computeTrend run over everything and then
+    // sliced to the window, never re-seeded fresh at the window's own first
+    // entry (which would make 2026-08-20's trend exactly 80, not pulled down
+    // from 90).
+    const expected = computeTrend(fake.state.weightEntries).filter((e) => e.day >= '2026-08-20')
+    expect(body7.weight).toEqual(expected)
+    expect(body7.weight[0].trend).not.toBe(80)
+
+    // The regression this test exists to catch: a day inside BOTH windows
+    // must read identically regardless of which window is requested.
+    const res14 = await get('/api/insights?window=14')
+    const body14 = await res14.json()
+    const day20in14 = body14.weight.find((w) => w.day === '2026-08-20')
+    expect(day20in14.trend).toBe(body7.weight[0].trend)
+  })
+})
+
+describe('PUT/DELETE /api/weight (body weight log)', () => {
+  afterEach(() => { fake.state.weightEntries = [] })
+
+  it('rejects a non-numeric or non-positive kg (control)', async () => {
+    for (const bad of [0, -5, 'x', null, undefined]) {
+      const res = await put('/api/weight', { kg: bad })
+      expect(res.status).toBe(400)
+    }
+    expect(fake.state.weightEntries).toEqual([])
+  })
+
+  it('logs today (server-local) when no day is given', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) }) // -> 2026-08-26 Apia
+    const res = await put('/api/weight', { kg: 81.5 })
+    expect(res.status).toBe(200)
+    expect((await res.json()).entry).toEqual({ day: '2026-08-26', kg: 81.5 })
+    expect(fake.state.weightEntries).toEqual([{ day: '2026-08-26', kg: 81.5 }])
+  })
+
+  it('accepts an explicit day (control)', async () => {
+    const res = await put('/api/weight', { kg: 80, day: '2026-08-01' })
+    expect(res.status).toBe(200)
+    expect(fake.state.weightEntries).toEqual([{ day: '2026-08-01', kg: 80 }])
+  })
+
+  it('logging twice for the same day replaces rather than duplicates', async () => {
+    await put('/api/weight', { kg: 80, day: '2026-08-01' })
+    const res = await put('/api/weight', { kg: 79.2, day: '2026-08-01' })
+    expect(res.status).toBe(200)
+    expect(fake.state.weightEntries).toEqual([{ day: '2026-08-01', kg: 79.2 }]) // not two rows
+  })
+
+  it('deletes a logged day (204) and reports 404 for a day with nothing to delete', async () => {
+    await put('/api/weight', { kg: 80, day: '2026-08-01' })
+    const res = await fetch(`${base}/api/weight/2026-08-01`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(204)
+    expect(fake.state.weightEntries).toEqual([])
+
+    const again = await fetch(`${base}/api/weight/2026-08-01`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(again.status).toBe(404)
+  })
+
+  it('requires auth, same as every other route in this file (control)', async () => {
+    const res = await fetch(`${base}/api/weight`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kg: 80 }) })
+    expect(res.status).toBe(401)
   })
 })
 
@@ -611,6 +957,29 @@ describe('PUT /api/profile merge + calculated baseline', () => {
     const body = await res.json()
     const targetsRes = await get('/api/targets')
     expect((await targetsRes.json()).targets).toEqual(body.computedBaseline)
+  })
+})
+
+describe('GET /api/targets hasTargets (onboarding gate)', () => {
+  it('is false before any profile/target save, even though targets already carries the default numbers', async () => {
+    const res = await get('/api/targets')
+    const body = await res.json()
+    expect(body.hasTargets).toBe(false)
+    expect(body.targets.calories).toBe(2000) // the default is still served — just not flagged as real
+  })
+
+  it('flips to true once a complete profile computes and saves a baseline', async () => {
+    await put('/api/profile', {
+      height_cm: 180, weight_kg: 80, sex: 'male', age_years: 40, activity_level: 'sedentary', goal: 'maintain',
+    })
+    const res = await get('/api/targets')
+    expect((await res.json()).hasTargets).toBe(true)
+  })
+
+  it('flips to true via the direct manual-entry path too, not only the calculator (control)', async () => {
+    await put('/api/targets', { calories: 1800, protein_g: 140, carbs_g: 180, fat_g: 60, fiber_g: 25, sugar_g: null, sodium_mg: 2000 })
+    const res = await get('/api/targets')
+    expect((await res.json()).hasTargets).toBe(true)
   })
 })
 

@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import { NUTRIENTS, sumEntries, entryNutrient, fmt, num, ymd } from '../lib/nutrition.js'
+import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
 import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState } from './ui.jsx'
 
 const isToday = (d) => ymd(d) === ymd(new Date())
@@ -53,7 +53,7 @@ function sourceTag(food) {
 // One column of the recovery/training context strip: a semantic swatch + label,
 // the reading itself, and its source/freshness provenance beneath. A missing
 // reading shows an em-dash and an explicit "No data" mark, never a zero.
-function ContextCell({ tone, label, signal, missing, children }) {
+function ContextCell({ tone, label, signal, missing, compact, children }) {
   return (
     <div className="min-w-0 px-3 py-3">
       <div className="flex items-center gap-1.5">
@@ -70,7 +70,7 @@ function ContextCell({ tone, label, signal, missing, children }) {
       </div>
       <div className="mt-2.5">{children}</div>
       <div className="mt-2">
-        {missing ? <StatusTag status="unavailable" /> : <SourceLabel signal={signal} />}
+        {missing ? <StatusTag status="unavailable" /> : <SourceLabel signal={signal} compact={compact} />}
       </div>
     </div>
   )
@@ -82,6 +82,12 @@ function LogRow({ entry, onEdit, onDelete }) {
   const food = entry.food || {}
   const pending = entry._pending
   const tag = sourceTag(food)
+  // A manually-entered food whose nutrition fields were never filled in (as
+  // opposed to a food genuinely logged at 0, e.g. black coffee) would
+  // otherwise render as an indistinguishable "0 kcal" and count as a
+  // verified zero in the day's totals — entryIncomplete/sumEntries
+  // (nutrition.js) are what keep the two apart.
+  const incomplete = entryIncomplete(entry)
   return (
     <div className="flex min-h-11 items-center gap-2 border-t border-line first:border-t-0">
       <button
@@ -102,7 +108,16 @@ function LogRow({ entry, onEdit, onDelete }) {
             <span className="ml-1.5 rounded bg-sand px-1 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-ink">pending</span>
           )}
         </span>
-        <span className="shrink-0 numeral text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
+        {/* Shape + word, same "missing data" language as ContextCell's
+            em-dash + "No data" mark for a missing reading — never a silent
+            zero standing in for an unknown value. self-center: the row is
+            items-baseline for the text columns either side of it, which
+            would otherwise sit this glyph+word mark off the text baseline. */}
+        {incomplete ? (
+          <StatusTag status="unavailable" label="Needs details" className="shrink-0 self-center" />
+        ) : (
+          <span className="shrink-0 numeral text-[17px] text-ink">{fmt(entryNutrient(entry, 'calories'), 0)}</span>
+        )}
       </button>
       <button
         onClick={() => onDelete(entry.id)}
@@ -113,6 +128,16 @@ function LogRow({ entry, onEdit, onDelete }) {
       </button>
     </div>
   )
+}
+
+// Which signal drove computeRecommendation's fired rule (server/plan.js) —
+// `rec.kind` is exactly one of these four; used by the enriched Why content
+// below to name the driver rather than leave it implicit in the prose.
+const DRIVER_LABEL = {
+  pre_workout: 'Workout timing',
+  protein_pacing: 'Protein pacing vs. time of day',
+  over: "Today's calorie target",
+  on_track: "Today's calorie target",
 }
 
 // Day-nav (‹ ›) sits at the top of a screen with everything else reachable
@@ -188,6 +213,52 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   const woTime = wo?.value?.time
   const hm = slMissing ? null : hoursToHm(sl.value)
 
+  // Enriched "Why this?" content for the recommendation card. An audit found
+  // the disclosure was just rec.why (server/plan.js) — the reasoning text for
+  // whichever rule fired, but never naming which signal drove it, today's
+  // actual intake-vs-target, or each signal's own freshness. Built only from
+  // what Today already holds: rec.kind names the rule (computeRecommendation
+  // returns exactly these four), calDone/calTarget are the same totals the
+  // "Intake so far" section renders below, and signals carries each reading's
+  // own {provider, freshness, demo} — SourceLabel is the same component the
+  // context strip above uses for that, so freshness reads identically in
+  // both places rather than a new copy of the wording.
+  const whyItems = useMemo(() => {
+    if (!rec) return []
+    const items = [...(rec.why || [])]
+    if (DRIVER_LABEL[rec.kind]) {
+      items.push(
+        <div key="driver" className="flex items-baseline justify-between gap-3">
+          <span>Driven by</span>
+          <span className="font-semibold text-ink">{DRIVER_LABEL[rec.kind]}</span>
+        </div>,
+      )
+    }
+    if (calTarget > 0) {
+      items.push(
+        <div key="intake" className="flex items-baseline justify-between gap-3">
+          <span>Current intake vs. target</span>
+          <span className="tnum font-semibold text-ink">{fmt(calDone, 0)} / {fmt(calTarget, 0)} kcal</span>
+        </div>,
+      )
+    }
+    const sigRows = [['readiness', 'Readiness', rd], ['sleep', 'Sleep', sl], ['workout', 'Workouts', wo]].filter(([, , s]) => s)
+    if (sigRows.length > 0) {
+      items.push(
+        <div key="freshness" className="space-y-1.5">
+          <div>Signal freshness</div>
+          {sigRows.map(([k, label, s]) => (
+            <div key={k} className="flex items-center justify-between gap-3">
+              <span className="text-xs">{label}</span>
+              <SourceLabel signal={s} />
+            </div>
+          ))}
+        </div>,
+      )
+    }
+    return items
+  }, [rec, rd, sl, wo, calDone, calTarget])
+
   return (
     <div className="space-y-5" {...swipeHandlers}>
       {/* Masthead: day nav + Bodoni title + date badge, then the sync line */}
@@ -224,7 +295,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
 
       {/* Context strip — recovery / training, three columns split by hairlines */}
       <div className="grid grid-cols-3 divide-x divide-line border-y border-line-strong">
-        <ContextCell tone="sage" label="Readiness" signal={rd} missing={rdMissing}>
+        <ContextCell tone="sage" label="Readiness" signal={rd} missing={rdMissing} compact={!syncLive}>
           {rdMissing ? (
             <div className="numeral text-[30px] leading-none text-faint">—</div>
           ) : (
@@ -232,7 +303,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
           )}
         </ContextCell>
 
-        <ContextCell tone="sage" label="Sleep" signal={sl} missing={slMissing}>
+        <ContextCell tone="sage" label="Sleep" signal={sl} missing={slMissing} compact={!syncLive}>
           {slMissing ? (
             <div className="numeral text-[30px] leading-none text-faint">—</div>
           ) : (
@@ -242,7 +313,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
           )}
         </ContextCell>
 
-        <ContextCell tone="lavender" label="Workouts" signal={wo} missing={!wo}>
+        <ContextCell tone="lavender" label="Workouts" signal={wo} missing={!wo} compact={!syncLive}>
           {!wo ? (
             <div className="numeral text-[17px] leading-[1.15] text-faint">—</div>
           ) : woLabel ? (
@@ -283,9 +354,9 @@ export default function Today({ date, data, entries, loading, online, syncing, p
           </div>
           <h2 className="serif mt-2.5 text-[29px] leading-[1.05] tracking-[-0.01em] text-ink">{rec.title}</h2>
           {rec.detail && <p className="mt-2 max-w-[300px] text-[13.5px] leading-[1.45] text-ink/80">{rec.detail}</p>}
-          {rec.why?.length > 0 && (
+          {whyItems.length > 0 && (
             <div className="mt-2.5 border-t border-line">
-              <Why items={rec.why} />
+              <Why items={whyItems} />
             </div>
           )}
         </div>

@@ -31,14 +31,41 @@ export function fmt(value, decimals = 0) {
 }
 
 // A log entry's contribution = the food's per-serving value × servings consumed.
+// Returns `null` when the food has no recorded value for this nutrient at
+// all (a manually-entered field that was left blank, or a looked-up product
+// that never reported it) — distinct from a recorded value of 0 (e.g. black
+// coffee's real calorie count). `num()` deliberately coerces both to 0 for
+// display math elsewhere; this is the one place that must NOT do that, or a
+// "never filled in" entry becomes indistinguishable from a verified zero
+// (Number('') === 0 is the exact coercion that used to erase the distinction —
+// ManualEntry.jsx already writes a blank field as `null`, not `''`, so the
+// null check here is what has to preserve that all the way to the log).
 export function entryNutrient(entry, key) {
-  return num(entry.food?.[key]) * num(entry.servings_consumed)
+  const v = entry.food?.[key]
+  if (v === null || v === undefined) return null
+  return num(v) * num(entry.servings_consumed)
 }
 
+// True when an entry's food has no recorded calorie value — i.e. it would
+// render/sum as a verified zero without actually being one. Calories is the
+// figure every log row and the day's headline total are built from, so it's
+// the one field this checks; a food missing only a secondary macro still
+// contributes what it does know (see sumEntries below).
+export function entryIncomplete(entry) {
+  return entryNutrient(entry, 'calories') === null
+}
+
+// Sums only the nutrients each entry actually has a known value for — a food
+// with no recorded value for a nutrient contributes nothing to that
+// nutrient's total, so the day's numbers reflect only what's actually known
+// rather than silently padding in a zero for an unknown quantity.
 export function sumEntries(entries) {
   const totals = Object.fromEntries(NUTRIENTS.map((n) => [n.key, 0]))
   for (const e of entries) {
-    for (const n of NUTRIENTS) totals[n.key] += entryNutrient(e, n.key)
+    for (const n of NUTRIENTS) {
+      const v = entryNutrient(e, n.key)
+      if (v !== null) totals[n.key] += v
+    }
   }
   return totals
 }
@@ -61,3 +88,11 @@ export function ymd(date = new Date()) {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+// kg is the canonical stored unit everywhere (profile, weight log); these
+// convert only for imperial display/input. Shared here rather than in one
+// component since both the profile form and any weight display need the
+// same conversion and must never drift apart.
+export const KG_PER_LB = 0.453592
+export const lbToKg = (lb) => num(lb) * KG_PER_LB
+export const kgToLb = (kg) => num(kg) / KG_PER_LB

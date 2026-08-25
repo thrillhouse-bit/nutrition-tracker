@@ -1,11 +1,75 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NUTRIENTS, fmt, num, ymd } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
+import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
 import SmartPlanForm from './SmartPlanForm.jsx'
 
 const meta = Object.fromEntries(NUTRIENTS.map((n) => [n.key, n]))
-const provLabel = (p) => (p ? p[0].toUpperCase() + p.slice(1) : 'Signal')
+const provLabel = (p) => (p === 'manual' ? 'you' : p ? p[0].toUpperCase() + p.slice(1) : 'Signal')
+
+// Matches server/index.js's WORKOUT_KINDS whitelist exactly — the server is
+// the source of truth for what's valid, this is just its picker.
+const WORKOUT_KINDS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+
+// Today's planned-workout input — the "smart planning without a wearable"
+// path: kind + a local start time + an optional duration, sent straight to
+// PUT /api/plan/workout. No client-side label/time-string building — the
+// server computes those (see index.js's partOfDay/formatHour12) so a
+// manually-entered workout reads identically to a device-detected one.
+function WorkoutForm({ initial, onCancel, onSaved }) {
+  const [kind, setKind] = useState(initial?.kind || 'run')
+  const [time, setTime] = useState(initial?.startHour != null ? hourToInputTime(initial.startHour) : '')
+  const [durationMin, setDurationMin] = useState(initial?.durationMin ? String(initial.durationMin) : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const save = async (e) => {
+    e.preventDefault()
+    if (!time) return setError('Set a time for the session.')
+    setSaving(true)
+    setError('')
+    try {
+      await api.setWorkout({ kind, time, duration_min: durationMin ? num(durationMin) : undefined })
+      onSaved()
+    } catch (err) {
+      setError(err.message || 'Could not save the workout.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <ErrorNote>{error}</ErrorNote>
+      <Field label="Type">
+        <select value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
+          {WORKOUT_KINDS.map((k) => (
+            <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Start time">
+        <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} />
+      </Field>
+      <Field label="Duration" hint="Optional — minutes.">
+        <input type="number" min="1" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={inputCls} placeholder="45" />
+      </Field>
+      <div className="flex gap-2 pt-1">
+        <Button type="button" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
+        <Button type="submit" disabled={saving} className="flex-1">{saving ? 'Saving…' : 'Save'}</Button>
+      </div>
+    </form>
+  )
+}
+
+// startHour (17.5) -> "17:30" for the <input type="time"> value — the
+// inverse of what the server's own PUT /api/plan/workout does with a
+// submitted "17:30".
+function hourToInputTime(hour) {
+  const h = Math.floor(hour)
+  const m = Math.round((hour - h) * 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
 
 // Local mirrors of the server's engine helpers (server/plan.js). The timeline's
 // pre-workout target reuses the exact formula the recommendation engine uses, so
@@ -80,7 +144,9 @@ function TimelineNode({ node, last }) {
 
 // Editable baseline targets. Baseline is the user's own plan; the engine never
 // writes to it — adjustments are layered on top and always shown with reasons.
-function EditTargets({ baseline, onSaved, onCancel }) {
+// Exported: Onboarding.jsx reuses this verbatim for the "enter manually" path
+// rather than keeping a second copy of the same form.
+export function EditTargets({ baseline, onSaved, onCancel }) {
   const [draft, setDraft] = useState(() =>
     Object.fromEntries(NUTRIENTS.map((n) => [n.key, baseline?.[n.key] ?? ''])),
   )
@@ -139,6 +205,8 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const [editing, setEditing] = useState(false)
   const [calculating, setCalculating] = useState(false)
   const [savingInf, setSavingInf] = useState(false)
+  const [workoutFormOpen, setWorkoutFormOpen] = useState(false)
+  const [clearingWorkout, setClearingWorkout] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -164,6 +232,17 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const endurance = workoutOK && isEndurance(wv.kind)
   const PROVIDER_NAMES = { oura: 'Oura', garmin: 'Garmin', apple: 'Apple Health' }
   const workoutProviderLabel = PROVIDER_NAMES[wSig?.provider] || 'your wearable'
+  const isManualWorkout = wSig?.provider === 'manual'
+
+  const clearWorkout = async () => {
+    setClearingWorkout(true)
+    try {
+      await api.clearWorkout()
+      onChanged?.()
+    } finally {
+      setClearingWorkout(false)
+    }
+  }
 
   // Demo must never look like a live connection. Today marks every context
   // cell; Plan is the other adjusted-targets surface and inherited nothing —
@@ -354,7 +433,12 @@ export default function Plan({ date, refreshKey, onChanged }) {
 
           {/* Meal timing */}
           <section className="mt-7">
-            <h3 className="eyebrow mb-3.5">Meal timing</h3>
+            <div className="mb-3.5 flex items-center justify-between gap-3">
+              <h3 className="eyebrow">Meal timing</h3>
+              <TextButton onClick={() => setWorkoutFormOpen(true)} chevron>
+                {isManualWorkout ? 'Edit workout' : 'Set workout'}
+              </TextButton>
+            </div>
             {!workoutOK && (
               <p className="mb-3 text-sm text-muted">No planned session today — showing your baseline meal targets.</p>
             )}
@@ -364,21 +448,42 @@ export default function Plan({ date, refreshKey, onChanged }) {
                 <TimelineNode key={i} node={node} last={i === timeline.length - 1} />
               ))}
             </div>
+            {/* Only a manually-typed workout can be cleared — a wearable-detected
+                one has nothing here to revert; the device is still the source. */}
+            {isManualWorkout && (
+              <div className="mt-2 text-right">
+                <TextButton onClick={clearWorkout} disabled={clearingWorkout}>
+                  {clearingWorkout ? 'Clearing…' : 'Clear'}
+                </TextButton>
+              </div>
+            )}
           </section>
+
+          <Sheet open={workoutFormOpen} onClose={() => setWorkoutFormOpen(false)} title="Today's workout">
+            <WorkoutForm
+              initial={isManualWorkout ? wv : null}
+              onCancel={() => setWorkoutFormOpen(false)}
+              onSaved={() => { setWorkoutFormOpen(false); onChanged?.() }}
+            />
+          </Sheet>
 
           {/* Let Plan adapt — the workouts influence toggle. The provider name
               must follow whichever wearable actually supplied the workout
               signal (Oura/Garmin/Apple) — hardcoding "Garmin" here read as
-              wrong for every other source. */}
+              wrong for every other source. A manually-typed session isn't from
+              a wearable at all, so it gets its own sentence rather than
+              reading as "Let Plan adapt to your wearable & workouts". */}
           <div className="mt-7 flex items-center justify-between gap-4 border-t border-line pt-3.5">
             <div className="min-w-0">
-              <div className="text-[13px] font-medium text-ink">Let Plan adapt to {workoutProviderLabel} &amp; workouts</div>
+              <div className="text-[13px] font-medium text-ink">
+                {isManualWorkout ? 'Let Plan adapt to your planned workouts' : <>Let Plan adapt to {workoutProviderLabel} &amp; workouts</>}
+              </div>
               <div className="mt-1 text-[11px] leading-snug text-muted">Off keeps baseline targets every day.</div>
             </div>
             <Toggle
               checked={influence?.workouts !== false}
               onChange={setWorkoutsInfluence}
-              label={`Let Plan adapt to ${workoutProviderLabel} and workouts`}
+              label={isManualWorkout ? 'Let Plan adapt to your planned workouts' : `Let Plan adapt to ${workoutProviderLabel} and workouts`}
               id="inf-workouts"
             />
           </div>

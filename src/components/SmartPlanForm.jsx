@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { num } from '../lib/nutrition.js'
+import { num, lbToKg, kgToLb } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
 import { Button, EmptyState, ErrorNote, Field, Stat, inputCls } from './ui.jsx'
 
 // The server only ever stores/receives metric — conversions happen here so
 // the API contract stays single-unit while the form speaks whichever unit
-// the user picked.
+// the user picked. (lbToKg/kgToLb live in lib/nutrition.js, shared with
+// Insights' weight trend — height has no other consumer yet, so it stays local.)
 const CM_PER_IN = 2.54
-const KG_PER_LB = 0.453592
 const round1 = (n) => Math.round(n * 10) / 10
 const ftInToCm = (ft, inch) => (num(ft) * 12 + num(inch)) * CM_PER_IN
 const cmToFtIn = (cm) => {
@@ -17,8 +17,6 @@ const cmToFtIn = (cm) => {
   if (inch === 12) { ft += 1; inch = 0 } // rounding can push inches to a full foot
   return { ft, inch }
 }
-const lbToKg = (lb) => num(lb) * KG_PER_LB
-const kgToLb = (kg) => num(kg) / KG_PER_LB
 
 const ACTIVITY_LEVELS = [
   { key: 'sedentary', label: 'Sedentary', desc: 'Desk job, little to no exercise' },

@@ -15,6 +15,7 @@ import Plan from './components/Plan.jsx'
 import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
 import Auth from './components/Auth.jsx'
+import Onboarding from './components/Onboarding.jsx'
 
 const RECENTS_KEY = 'nt_recents_v1'
 
@@ -82,6 +83,10 @@ export default function App() {
   // rely on the cookie, not on `user`, so they don't need to be re-wired.
   const [authState, setAuthState] = useState('loading')
   const [user, setUser] = useState(null)
+  // null = not yet checked, true = has real targets, false = first-run gate.
+  // Separate from authState because it needs its own fetch (api.getTargets's
+  // hasTargets field, server/db.js) and its own reset on logout.
+  const [hasTargets, setHasTargets] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -91,10 +96,24 @@ export default function App() {
     return () => { alive = false }
   }, [])
 
+  // Fires on every transition into 'in' — both the initial /auth/me resolving
+  // to a signed-in user, and onAuthed's signup/login below.
+  useEffect(() => {
+    if (authState !== 'in') return
+    let alive = true
+    api.getTargets()
+      .then((r) => { if (alive) setHasTargets(r?.hasTargets ?? true) })
+      // Fail OPEN: a broken check must never trap a real user behind a gate
+      // they can't get past.
+      .catch(() => { if (alive) setHasTargets(true) })
+    return () => { alive = false }
+  }, [authState])
+
   const logout = async () => {
     await api.logout().catch(() => {})
     setUser(null)
     setAuthState('out')
+    setHasTargets(null)
   }
 
   const [tab, setTab] = useState('today')
@@ -336,6 +355,21 @@ export default function App() {
     return <Auth onAuthed={(u) => { setUser(u); setAuthState('in'); bump() }} />
   }
 
+  // Signed in, but hasTargets hasn't resolved yet — hold here rather than
+  // flash the tab shell (which would render Today's fabricated-default
+  // baseline for a split second) before the gate below can apply.
+  if (hasTargets === null) {
+    return (
+      <div className="flex min-h-full items-center justify-center">
+        <Spinner label="Loading…" />
+      </div>
+    )
+  }
+
+  if (hasTargets === false) {
+    return <Onboarding onDone={() => { setHasTargets(true); bump() }} />
+  }
+
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col">
       {/* Offline strip — the only global chrome; each screen owns its own title. */}
@@ -357,7 +391,19 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 px-4 pb-24 pt-4">
+      {/* pb-24 (a flat 96px) was measured against the nav's own height, which is
+          NOT flat: the nav grows by whatever env(safe-area-inset-bottom) the
+          device reports (0 on most Android/older iPhones, ~34px on a notched
+          iPhone's home-indicator area — see the nav's own
+          pb-[env(safe-area-inset-bottom)] below). At inset 0 the clearance
+          between the Log-food button and the nav's top edge measured a
+          comfortable 43.7-43.8px (320-430px widths, real Chromium via CDP
+          Emulation.setSafeAreaInsetsOverride); forcing a real device's 34px
+          inset the SAME fixed 96px shrank that to 9.7-9.8px — not negative,
+          but one flat guess away from being so on a deeper inset. Scaling the
+          padding by the same env() the nav already uses keeps the clearance
+          pinned at ~44px regardless of device (verified below). */}
+      <main className="flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4">
         {tab === 'today' && (
           <Today
             {...shared}

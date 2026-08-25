@@ -17,11 +17,11 @@
 // When a provider has no real data, it runs in DEMO mode (clearly labelled),
 // using a seeded evening-run scenario so the whole experience works with no
 // accounts. Demo data must never be presented as a live connection.
-import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailyReadiness as ouraDailyReadiness, validAccessToken as ouraValidToken } from './integrations/oura.js'
+import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailySummary as ouraDailySummary, dailyReadiness as ouraDailyReadiness, dailySleepHours as ouraDailySleepHours, validAccessToken as ouraValidToken } from './integrations/oura.js'
 import { garminConfigured } from './integrations/garmin.js'
 
 export const PROVIDERS = {
-  oura: { id: 'oura', name: 'Oura', connect: 'oauth', categories: ['sleep', 'readiness'] },
+  oura: { id: 'oura', name: 'Oura', connect: 'oauth', categories: ['readiness', 'sleep', 'expenditure', 'steps'] },
   garmin: { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['workouts', 'training load', 'expenditure', 'steps'] },
   apple: { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'active energy', 'exercise', 'sleep', 'heart rate'] },
 }
@@ -34,7 +34,7 @@ const PREFERENCE = {
   sleep: ['oura', 'apple', 'garmin'],
   workout: ['garmin', 'apple', 'oura'],
   expenditure: ['garmin', 'apple', 'oura'],
-  steps: ['garmin', 'apple'],
+  steps: ['garmin', 'apple', 'oura'],
   hrv: ['apple', 'oura'],
 }
 
@@ -143,14 +143,36 @@ async function realSignals(store, userId, id, nowDate) {
         if (a) token = await ouraValidToken(a, (t) => store.updateOuraTokens(userId, a.id, t))
       }
       if (!token) return {}
-      // daily_readiness, not daily_activity — a different Oura endpoint and a
-      // different score. See backfillOuraHistory's comment in index.js: this
-      // was previously sourced from the activity endpoint, which silently
-      // produced either the wrong number or nothing at all.
-      const a = await ouraDailyReadiness(token, day) // network
-      if (!a || a.score == null) return {}
       const rec = `${day}T07:00:00`
-      const out = { readiness: sig(a.score, { unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: nowDate.toISOString(), demo: false }) }
+      const fetchedAt = nowDate.toISOString()
+      const out = {}
+      // Three separate Oura endpoints, fetched in parallel: daily_activity
+      // (expenditure/steps — previously fetched and then DISCARDED here,
+      // even though Garmin/Apple's equivalent fallback slots for these
+      // metrics list 'oura' as a candidate), daily_readiness (the actual
+      // Readiness score — this used to be daily_activity's score relabeled,
+      // a real bug: verified live, a person's Activity and Readiness scores
+      // read differently on the same day), and sleep (real duration in
+      // hours, matching every other provider's sleep shape). One endpoint
+      // having no data yet today (e.g. readiness not scored until first
+      // movement) must not blank out the others.
+      const [activity, readiness, sleepHours] = await Promise.all([
+        ouraDailySummary(token, day).catch(() => null),
+        ouraDailyReadiness(token, day).catch(() => null),
+        ouraDailySleepHours(token, day).catch(() => null),
+      ])
+      if (readiness?.score != null) {
+        out.readiness = sig(readiness.score, { unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false })
+      }
+      if (sleepHours != null) {
+        out.sleep = sig(sleepHours, { unit: 'h', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false })
+      }
+      if (activity?.total_calories != null) {
+        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: fetchedAt, fetched_at: fetchedAt, demo: false })
+      }
+      if (activity?.steps != null) {
+        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: fetchedAt, fetched_at: fetchedAt, demo: false })
+      }
       return out
     }
     if (id === 'garmin') {
@@ -181,9 +203,27 @@ async function realSignals(store, userId, id, nowDate) {
 // back to demo whenever a provider merely had no data *today* fed the plan a
 // seeded evening run for a really-connected account whose watch hadn't synced
 // yet, while the Connections tab said stale, demo: false.
-function neverConnected(id, settings) {
-  if (id === 'oura') return !(ouraConfigured() || ouraOAuthConfigured())
-  if (id === 'garmin') return !garminConfigured()
+//
+// Must check THIS USER's own account, not just whether the server can do
+// OAuth at all — checking only ouraConfigured()/garminConfigured() (server-
+// wide: are the app's own client id/secret set) meant that the moment ANY
+// user connected a real Oura account, the server counted as "configured" for
+// EVERY user, so every other, never-connected user's oura branch stopped
+// counting as neverConnected — realSignals returned {} (no token) and demo
+// was skipped too, leaving them with nothing for readiness/sleep at all,
+// while the Connections tab correctly kept reporting Oura as available to
+// connect. providerStatus (above) already got this right per-user; this now
+// asks the same question the same way, so demo and status can't drift again.
+async function neverConnected(store, userId, id, settings) {
+  if (id === 'oura') {
+    if (!(ouraConfigured() || ouraOAuthConfigured())) return true
+    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : [{ id: 'legacy' }]
+    return accounts.length === 0
+  }
+  if (id === 'garmin') {
+    if (!garminConfigured()) return true
+    return (await store.listGarminAccounts(userId)).length === 0
+  }
   if (id === 'apple') return !settings?.connected_at
   return false
 }
@@ -200,7 +240,7 @@ export async function composeSignals(store, nowDate = new Date(), userId) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
     const real = await realSignals(store, userId, id, nowDate)
     if (Object.keys(real).length) perProvider[id] = real
-    else if (settings[id]?.demo !== false && neverConnected(id, settings[id])) perProvider[id] = demo[id] || {}
+    else if (settings[id]?.demo !== false && (await neverConnected(store, userId, id, settings[id]))) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}
   }
 
@@ -212,6 +252,21 @@ export async function composeSignals(store, nowDate = new Date(), userId) {
     }
     if (!out[metric]) out[metric] = null
   }
+
+  // A manually-entered workout (server/db.js's getManualWorkout — no
+  // connected-wearable concept, so it isn't one of PROVIDERS/PREFERENCE's
+  // candidates above) always wins the `workout` slot when present. This is
+  // deliberately unconditional, not just a fallback for "no wearable data":
+  // it's how someone with no Garmin/Apple connection gets a real (non-demo)
+  // workout signal at all, and even for a connected wearable, the user
+  // telling Plan directly "I'm running at 5:30" is more current than
+  // whatever the device auto-detected or hasn't detected yet.
+  const manual = await store.getManualWorkout?.(userId, ymd(nowDate))
+  if (manual) {
+    const { recorded_at, ...workoutValue } = manual
+    out.workout = sig(workoutValue, { unit: null, provider: 'manual', recorded_at, fetched_at: recorded_at, demo: false })
+  }
+
   return out
 }
 

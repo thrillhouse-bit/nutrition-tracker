@@ -271,6 +271,14 @@ class PgStore {
     return rows[0]
   }
 
+  // See JsonStore's sibling method for why this exists separately from
+  // getLatestTargets, which always returns a non-null default.
+  async hasTargets(userId) {
+    const sql = await this.ready()
+    const rows = await sql`select 1 from daily_targets where user_id = ${userId} limit 1`
+    return rows.length > 0
+  }
+
   // --- biometric profile (one row per user, user_id IS the primary key) ------
   async getProfile(userId) {
     const sql = await this.ready()
@@ -434,14 +442,53 @@ class PgStore {
     return rows.length
   }
 
+  // --- Manual workout input (per user per day) --------------------------------
+  // No new table: wearable_signals already models "one signal, one provider,
+  // one day" — provider='manual' fits exactly, no schema change needed. This
+  // is how a user without a connected wearable still gets a real (non-demo)
+  // workout signal into the SAME composeSignals pipeline every other
+  // provider feeds — see providers.js.
+  async getManualWorkout(userId, day) {
+    const sql = await this.ready()
+    const rows = await sql`select value, recorded_at from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'workout' and day = ${day} limit 1`
+    return rows[0] ? { ...rows[0].value, recorded_at: rows[0].recorded_at } : null
+  }
+
+  async setManualWorkout(userId, day, workout) {
+    const sql = await this.ready()
+    const nowIso = new Date().toISOString()
+    await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'workout' and day = ${day}`
+    await sql`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value)
+      values (${userId}, 'manual', 'workout', ${day}, ${nowIso}, ${nowIso}, ${JSON.stringify(workout)})`
+    return workout
+  }
+
+  async clearManualWorkout(userId, day) {
+    const sql = await this.ready()
+    const rows = await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'workout' and day = ${day} returning day`
+    return rows.length > 0
+  }
+
   // --- Oura readiness history (backfilled once after connect, per user;
   // wearable_signals was designed to hold "any provider we persist rather
   // than fetch live", per its own schema comment — reused here rather than a
   // parallel table.
   async saveOuraHistory(userId, rows) {
     const sql = await this.ready()
-    const days = [...new Set(rows.map((r) => r.day).filter(Boolean))]
-    for (const day of days) {
+    // Only touch days that actually have a score this run. A re-run backfill
+    // can get a transient null for a day that scored fine before (Oura
+    // rate-limited, a partial-outage response — the readiness endpoint still
+    // returns an entry for every day in range, just with score: null); if
+    // every requested day were deleted first regardless of whether the new
+    // row has a score, a re-run during exactly that hiccup would silently
+    // erase a previously-correct value instead of leaving it alone. Proven
+    // live 25 Aug 2026 (production-verification audit): a second backfill
+    // with 08-02 flipped to score:null deleted 08-02's real 75 and never put
+    // anything back. Days with no score this run are left untouched, not
+    // deleted — whatever was already stored (from an earlier successful run,
+    // or nothing) stands.
+    const scoredDays = [...new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))]
+    for (const day of scoredDays) {
       await sql`delete from wearable_signals where user_id = ${userId} and provider = 'oura' and metric = 'readiness' and day = ${day}`
     }
     let n = 0
@@ -464,6 +511,45 @@ class PgStore {
   async listOuraHistory(userId, fromYmd, toYmd) {
     const sql = await this.ready()
     return sql`select day, value, extra from wearable_signals where user_id = ${userId} and provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
+  }
+
+  // --- Body weight log (per user per day) — same "no new table" reasoning
+  // as manual workout above: provider='manual', metric='weight', one row per
+  // user per day, delete-then-insert (the same idempotency shape
+  // saveOuraHistory established for this table, so re-logging the same day
+  // replaces rather than duplicates).
+  async saveWeightEntry(userId, day, kg) {
+    const sql = await this.ready()
+    const nowIso = new Date().toISOString()
+    await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day = ${day}`
+    await sql`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value, unit)
+      values (${userId}, 'manual', 'weight', ${day}, ${nowIso}, ${nowIso}, ${JSON.stringify(kg)}, 'kg')`
+    return { day, kg }
+  }
+
+  async listWeightEntries(userId, fromYmd, toYmd) {
+    const sql = await this.ready()
+    const rows = await sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day between ${fromYmd} and ${toYmd} order by day`
+    return rows.map((r) => ({ day: r.day, kg: Number(r.value) }))
+  }
+
+  async deleteWeightEntry(userId, day) {
+    const sql = await this.ready()
+    const rows = await sql`delete from wearable_signals where user_id = ${userId} and provider = 'manual' and metric = 'weight' and day = ${day} returning day`
+    return rows.length > 0
+  }
+
+  // --- Clear synced history (Connections page's "Delete synced history") ----
+  // See JsonStore's sibling method for why this excludes provider='manual'
+  // and leaves the OAuth accounts (oura_accounts/garmin_accounts) untouched.
+  async clearSyncedHistory(userId) {
+    const sql = await this.ready()
+    const signals = await sql`delete from wearable_signals where user_id = ${userId} and (provider = 'oura' or provider = 'apple') returning id`
+    const garmin = await sql`
+      delete from garmin_dailies using garmin_accounts
+      where garmin_dailies.account_id = garmin_accounts.id and garmin_accounts.user_id = ${userId}
+      returning garmin_dailies.id`
+    return signals.length + garmin.length
   }
 
   // --- daily plans (per user snapshot of baseline/adjusted targets + rationale)
@@ -742,6 +828,16 @@ export class JsonStore {
     return mine[mine.length - 1]
   }
 
+  // getLatestTargets always returns SOMETHING (DEFAULT_TARGETS when nothing
+  // was ever saved) so Today/Plan always have numbers to render — but that
+  // fallback erases the difference between "chose 2000 kcal" and "never set
+  // anything, got the hardcoded default silently." This is that distinction,
+  // for the one place it matters: whether onboarding still needs to run.
+  async hasTargets(userId) {
+    const d = await this.load()
+    return d.targets.some((t) => t.user_id === Number(userId))
+  }
+
   async setTargets(userId, t) {
     const d = await this.load()
     const row = {
@@ -927,13 +1023,41 @@ export class JsonStore {
     return rows.length
   }
 
+  // --- Manual workout input (per user per day) — see PgStore's sibling
+  // methods for why this reuses wearable_signals rather than a new table.
+  async getManualWorkout(userId, day) {
+    const d = await this.load()
+    const row = (d.wearable_signals || []).find((s) => s.user_id === Number(userId) && s.provider === 'manual' && s.metric === 'workout' && s.day === day)
+    return row ? { ...row.value, recorded_at: row.recorded_at } : null
+  }
+
+  async setManualWorkout(userId, day, workout) {
+    const d = await this.load()
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === Number(userId) && s.provider === 'manual' && s.metric === 'workout' && s.day === day))
+    const nowIso = new Date().toISOString()
+    d.wearable_signals.push({ user_id: Number(userId), provider: 'manual', metric: 'workout', day, recorded_at: nowIso, fetched_at: nowIso, value: workout, unit: null, extra: null })
+    await this.persist()
+    return workout
+  }
+
+  async clearManualWorkout(userId, day) {
+    const d = await this.load()
+    const before = (d.wearable_signals || []).length
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === Number(userId) && s.provider === 'manual' && s.metric === 'workout' && s.day === day))
+    await this.persist()
+    return d.wearable_signals.length < before
+  }
+
   async saveOuraHistory(userId, rows) {
     const d = await this.load()
     d.wearable_signals = d.wearable_signals || []
     const uid = Number(userId)
-    const days = [...new Set(rows.map((r) => r.day).filter(Boolean))]
+    // See PgStore.saveOuraHistory for why this is scoredDays, not every
+    // requested day: a re-run's transient null must not erase a
+    // previously-correct score for that day.
+    const scoredDays = [...new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))]
     d.wearable_signals = d.wearable_signals.filter(
-      (s) => !(s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && days.includes(s.day)),
+      (s) => !(s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && scoredDays.includes(s.day)),
     )
     let n = 0
     const now = new Date().toISOString()
@@ -957,6 +1081,63 @@ export class JsonStore {
     return (d.wearable_signals || [])
       .filter((s) => s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && s.day >= fromYmd && s.day <= toYmd)
       .sort((a, b) => (a.day < b.day ? -1 : 1))
+  }
+
+  // --- Body weight log (per user per day) — see PgStore's sibling methods
+  // for why this reuses wearable_signals rather than a new table.
+  async saveWeightEntry(userId, day, kg) {
+    const d = await this.load()
+    d.wearable_signals = d.wearable_signals || []
+    const uid = Number(userId)
+    d.wearable_signals = d.wearable_signals.filter((s) => !(s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day === day))
+    const nowIso = new Date().toISOString()
+    d.wearable_signals.push({ user_id: uid, provider: 'manual', metric: 'weight', day, recorded_at: nowIso, fetched_at: nowIso, value: kg, unit: 'kg', extra: null })
+    await this.persist()
+    return { day, kg }
+  }
+
+  async listWeightEntries(userId, fromYmd, toYmd) {
+    const d = await this.load()
+    const uid = Number(userId)
+    return (d.wearable_signals || [])
+      .filter((s) => s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day >= fromYmd && s.day <= toYmd)
+      .sort((a, b) => (a.day < b.day ? -1 : 1))
+      .map((s) => ({ day: s.day, kg: Number(s.value) }))
+  }
+
+  async deleteWeightEntry(userId, day) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const before = (d.wearable_signals || []).length
+    d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === uid && s.provider === 'manual' && s.metric === 'weight' && s.day === day))
+    await this.persist()
+    return d.wearable_signals.length < before
+  }
+
+  // --- Clear synced history (Connections page's "Delete synced history") ----
+  // Removes cached wearable RECORDS (Oura/Apple wearable_signals rows, Garmin
+  // daily summaries) without touching the OAuth accounts themselves — that's
+  // the separate, existing disconnect action. Scoped to exactly what the
+  // button's own copy promises: "Oura, Garmin, and Apple Health records
+  // synced to this app" — provider='manual' (the user's own typed-in
+  // workout) is deliberately excluded, since that's authored data, not
+  // something synced from a wearable.
+  async clearSyncedHistory(userId) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const beforeSignals = (d.wearable_signals || []).length
+    d.wearable_signals = (d.wearable_signals || []).filter(
+      (s) => !(s.user_id === uid && (s.provider === 'oura' || s.provider === 'apple')),
+    )
+    const signalsRemoved = beforeSignals - d.wearable_signals.length
+
+    const garminAccountIds = new Set((d.garmin_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    const beforeGarmin = (d.garmin_dailies || []).length
+    d.garmin_dailies = (d.garmin_dailies || []).filter((g) => !garminAccountIds.has(g.account_id))
+    const garminRemoved = beforeGarmin - d.garmin_dailies.length
+
+    await this.persist()
+    return signalsRemoved + garminRemoved
   }
 
   async getPlan(userId, date) {
