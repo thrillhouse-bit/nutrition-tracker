@@ -24,6 +24,7 @@ doesn't repeat that ground.
 | Medium | Insights.jsx | Hardcodes "Oura"/"Garmin" in two section headers instead of reading the actually-connected provider (Plan.jsx already does this correctly) | Reported (2026-08-25) |
 | Medium | Search (OFF) | Search depends on Open Food Facts' legacy `cgi/search.pl` endpoint, which returned intermittent 503s during this pass (reproduced independently of the app) | Reported (2026-08-25) |
 | Info | Live deploy | `GET /api/health` on the live site reports `backend: "json-file"` — no `DATABASE_URL` configured in production, so data lives in the container's local store, not Neon | Reported (2026-08-25) |
+| Info | Live deploy | Live site hasn't redeployed since before this session's first pass (identical ETag/Last-Modified across all three passes today) — now 12 merged commits behind `main`, including the SEO/robots.txt fix | Reported (2026-08-25) |
 | — | SEO metadata | Missing `<meta name="description">`, no `robots.txt` | Merged (2026-08-25, PR #18) |
 | — | Accessibility | Search-foods input had no accessible name (placeholder only) | Merged (2026-08-25, PR #19) |
 | — | Connections copy | "Delete synced history" footer described working functionality; button admits it's not wired up | Merged (2026-08-25, PR #20) |
@@ -347,3 +348,25 @@ here, since the UI/UX review's brief was explicit that a hierarchy problem
 which actively misleads about what's important is a usability bug, not a
 taste preference — it's deferred from *fixing* (needs a type-scale
 decision) but not from the main findings.
+
+## 2026-08-25 — Check-in pass (recurring)
+
+Re-invoked via the recurring audit routine. Pulled latest `main`: no new
+commits since the expanded-scope pass earlier today (still at `0017ca5`).
+The other session's in-progress PR #25 (`Fix db:init: neon() driver has no
+sql.query()`) remains open/unmerged, so nothing on the repo side had
+changed to re-verify — none of the "Reported" items in Open Items could
+have been resolved without a new commit landing, and a spot-check of a
+few (Insights' hardcoded provider names, the Apple ingest timing-unsafe
+compare) confirmed they're still present as described. `npm test` still
+146/146.
+
+One new finding: the live site (`https://omnifuelapp.tech`) has not
+redeployed since before this session started — identical `ETag`/
+`Last-Modified` across all three passes today, and `robots.txt` still
+returns the SPA shell rather than the file merged in PR #18. Live is now
+12 commits behind `main`. Added as an Info item above; likely just means
+the deploy pipeline hasn't run yet, not a defect in the repo.
+
+Nothing else new or changed. Next pass: re-check whether PR #25 merged,
+and re-verify the live site has caught up.
