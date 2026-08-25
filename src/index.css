@@ -10,8 +10,13 @@
    the selected state, and confident data. Pale sage and lavender are used ONLY
    as recovery / training context swatches and bands, never as macro colors.
    Bodoni Moda (high-contrast serif) for titles and large numerals; Archivo for
-   labels, controls, and body. White = a moment that matters (a recommendation,
-   a confirmation, a saved action).
+   labels, controls, and body. White = a moment that matters (a confirmation,
+   a saved action). The Today recommendation card was white too until 25 Aug
+   2026 (owner: "stark", "jarring") — being the first, most emphasized thing
+   on the page made bg-card's pure #fff read as a glaring cutout rather than
+   a lifted sheet. It now uses cobalt-soft instead (see Today.jsx), the same
+   wash already used for a positive/highlighted moment elsewhere (the success
+   toast) — still a distinct, elevated surface, just not white.
    ------------------------------------------------------------------------ */
 @theme {
   --font-serif: 'Bodoni Moda', 'Didot', 'Times New Roman', Georgia, serif;
