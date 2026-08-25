@@ -50,7 +50,14 @@ import { allProviderStatuses, composeSignals } from './providers.js'
 const app = express()
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
-app.use(cors({ origin: true, credentials: true })) // credentials:true so the session cookie survives a cross-origin dev setup (Vite on :5173 -> API on :3001); harmless in prod, where it's same-origin anyway.
+// credentials:true so the session cookie survives a cross-origin dev setup
+// (Vite on :5173 -> API on :3001). origin:true (reflecting any request's
+// Origin) was "harmless in prod, where it's same-origin anyway" BEFORE there
+// was a session cookie to reflect it TO — same-origin requests never consult
+// CORS at all, so echoing an arbitrary origin with credentials only ever
+// matters for a genuinely cross-origin caller, i.e. never a legitimate one in
+// prod. Scope it to dev, where the cross-port convenience is real.
+app.use(cors({ origin: process.env.NODE_ENV === 'production' ? false : true, credentials: true }))
 app.use(attachUser) // sets req.userId (or null) on every request; does not itself reject anything
 
 // The native iOS/watch companion has no interactive login, so it can never
@@ -115,17 +122,24 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
   res.status(201).json({ user: { id: user.id, email: user.email } })
 }))
 
+// A well-formed but arbitrary salt:hash pair, matching hashPassword's shape
+// (16-byte salt, 64-byte hash, both hex) — used only to make verifyPassword
+// perform a real scrypt computation when the account doesn't exist at all.
+const NO_SUCH_USER_HASH = `${'0'.repeat(32)}:${'0'.repeat(128)}`
+
 app.post('/api/auth/login', asyncH(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase()
   const password = String(req.body?.password || '')
   const user = await store.getUserByEmail(email)
-  // Same generic error whether the email doesn't exist or the password is
+  // Same response body whether the email doesn't exist or the password is
   // wrong — a distinct "no such account" message would let anyone enumerate
-  // which emails are registered.
-  const invalid = () => res.status(401).json({ error: 'Incorrect email or password.' })
-  if (!user) return invalid()
-  const ok = await verifyPassword(password, user.password_hash)
-  if (!ok) return invalid()
+  // which emails are registered. That protection is only real if the two
+  // paths also take the same TIME: scrypt is deliberately slow, so a login
+  // for an unknown email returning instantly (skipping it) while a known
+  // email with a wrong password takes tens of milliseconds is itself an
+  // oracle — always run the same hash comparison either way.
+  const ok = await verifyPassword(password, user?.password_hash || NO_SUCH_USER_HASH)
+  if (!user || !ok) return res.status(401).json({ error: 'Incorrect email or password.' })
   setSessionCookie(res, user.id)
   res.json({ user: { id: user.id, email: user.email } })
 }))
