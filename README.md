@@ -31,7 +31,7 @@ Five tabs:
 
 | Tab | What it holds |
 |---|---|
-| **Today** | Home. A context strip (recovery/training with source + freshness), a focal **next-action recommendation** with a **"Why?"** disclosure, compact progress vs. targets, and the chronological log. |
+| **Today** | Home. A context strip (recovery/training with source + freshness), a focal **next-action recommendation** with a **"Why this?"** disclosure, compact progress vs. targets, and the chronological log. |
 | **Log** | The four ways to add food — scan barcode, scan label, search, manual — plus one-tap re-log of recents, grouped by meal. |
 | **Plan** | Baseline vs. adjusted daily targets with a plain-language rationale for **every** adjustment. The baseline is editable and is **never** changed silently by the engine. |
 | **Insights** | Nutrition trends over 7 / 14 / 30 days with an explicit insufficient-data state. Recovery/training correlations are shown cautiously — never causal, never medical. |
@@ -264,8 +264,8 @@ Health API hold above.
   the wearable measured it) and `fetched_at` (when we ingested it), which is what
   drives the freshness label.
 - **`daily_plans`** — a per-day snapshot of baseline + adjusted targets, the
-  rationale, the signals used, and the rules version — so a day's **"Why?"** is
-  reproducible after the fact rather than recomputed against changed inputs.
+  rationale, the signals used, and the rules version — so a day's **"Why this?"**
+  is reproducible after the fact rather than recomputed against changed inputs.
 
 Full DDL in [`schema.sql`](./schema.sql).
 
@@ -314,7 +314,7 @@ Full DDL in [`schema.sql`](./schema.sql).
 - [x] Editable daily targets (versioned)
 - [x] Explainable **adjusted targets** — baseline vs. adjusted with a
   plain-language rationale for every adjustment (baseline never changed silently)
-- [x] Focal **next-action recommendation** with a "Why?" disclosure
+- [x] Focal **next-action recommendation** with a "Why this?" disclosure
 - [x] Provider abstraction with per-signal **provenance + freshness**
   (Oura, Garmin, Apple Health behind one adapter shape)
 - [x] Seeded **demo scenario** (evening run) so the full experience works with no
