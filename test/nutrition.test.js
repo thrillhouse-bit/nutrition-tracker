@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { entryNutrient, entryIncomplete, sumEntries, dayBounds, num, fmt } from '../src/lib/nutrition.js'
+import { entryNutrient, entryIncomplete, sumEntries, dayBounds, num, fmt, restoreEntryPayload } from '../src/lib/nutrition.js'
 
 describe('nutrition math', () => {
   const food = { calories: 100, protein_g: 5, carbs_g: 20, fat_g: 3, fiber_g: 2, sugar_g: 8, sodium_mg: 150 }
@@ -34,6 +34,26 @@ describe('nutrition math', () => {
     })
     it('does not flag a fully-specified entry', () => {
       expect(entryIncomplete({ food, servings_consumed: 1 })).toBe(false)
+    })
+  })
+
+  describe('restoreEntryPayload', () => {
+    it('converts food_id and servings_consumed to numbers (control: real entries API shape)', () => {
+      // Shaped exactly like a real GET /api/entries row: Postgres bigint/
+      // numeric columns round-trip over JSON as strings (measured live,
+      // production-verification audit 25 Aug 2026) — the "undo delete" path
+      // sent these straight through and 400'd against the server's strict
+      // z.number() entry schema.
+      const entry = { food_id: '7', servings_consumed: '2', meal: 'dinner', logged_at: '2026-08-25T18:00:00.000Z' }
+      const payload = restoreEntryPayload(entry)
+      expect(payload).toEqual({ food_id: 7, servings_consumed: 2, meal: 'dinner', logged_at: '2026-08-25T18:00:00.000Z' })
+      expect(typeof payload.food_id).toBe('number')
+      expect(typeof payload.servings_consumed).toBe('number')
+    })
+    it('passes meal and logged_at through unchanged (not numeric fields)', () => {
+      const payload = restoreEntryPayload({ food_id: '1', servings_consumed: '1', meal: null, logged_at: null })
+      expect(payload.meal).toBeNull()
+      expect(payload.logged_at).toBeNull()
     })
   })
 

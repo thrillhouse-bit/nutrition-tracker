@@ -109,6 +109,18 @@ app.get('/api/health', asyncH(async (req, res) => {
   })
 }))
 
+// --- version (public — no auth; the only way to prove what's actually
+// deployed beyond fingerprinting the frontend bundle's own content. GIT_SHA
+// is baked in at `docker build` time (Dockerfile's ARG GIT_SHA, passed by
+// docker-compose's `args`) — "unknown" here means nobody set it at build
+// time, not that the lookup failed silently. ---
+app.get('/api/version', asyncH(async (req, res) => {
+  res.json({
+    sha: process.env.GIT_SHA || 'unknown',
+    node: process.version,
+  })
+}))
+
 // --- auth (public) ----------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

@@ -17,7 +17,14 @@
 # (Neon or your own Postgres) if you want cross-device sync.
 services:
   app:
-    build: .
+    build:
+      context: .
+      # Bakes the deployed commit into the image so GET /api/version can
+      # report it (Dockerfile's ARG GIT_SHA). Set it on the invoking shell —
+      # `GIT_SHA=$(git rev-parse HEAD) docker compose up -d --build` — or it
+      # defaults to "unknown" rather than a fabricated value.
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     restart: unless-stopped
     env_file: .env                      # OURA_* / DATABASE_URL / etc. (SITE_ADDRESS ignored here)
     environment:

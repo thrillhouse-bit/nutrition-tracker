@@ -22,7 +22,15 @@
 # to find it — "letsencrypt" is a common default, not a universal one).
 services:
   app:
-    build: .
+    build:
+      context: .
+      # Bakes the deployed commit into the image so GET /api/version can
+      # report it (Dockerfile's ARG GIT_SHA). Set it on the invoking shell —
+      # `GIT_SHA=$(git rev-parse HEAD) docker compose -f
+      # docker-compose.app-only.yml up -d --build` — or it defaults to
+      # "unknown" rather than a fabricated value.
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     restart: unless-stopped
     env_file: .env                      # OURA_* / DATABASE_URL / SITE_ADDRESS / etc.
     environment:
