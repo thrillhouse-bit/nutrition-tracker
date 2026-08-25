@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest'
 import {
   oauthConfigured,
   signState,
   verifyState,
   authorizeUrl,
   expiryFrom,
+  activityRange,
 } from '../server/integrations/oura.js'
 
 // These helpers read Oura config from process.env at call time, so we set the
@@ -98,5 +99,40 @@ describe('oura expiryFrom', () => {
       expect(t).toBeGreaterThanOrEqual(before + 86400 * 1000 - 1000)
       expect(t).toBeLessThanOrEqual(Date.now() + 86400 * 1000 + 1000)
     }
+  })
+})
+
+describe('oura activityRange', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('returns one normalized record per day the range API returns', async () => {
+    const fetchSpy = vi.fn(async (url) => {
+      const u = new URL(url)
+      expect(u.searchParams.get('start_date')).toBe('2026-08-01')
+      expect(u.searchParams.get('end_date')).toBe('2026-08-03')
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            { day: '2026-08-01', score: 70, total_calories: 2100, active_calories: 400, steps: 8000 },
+            { day: '2026-08-02', score: 75, total_calories: 2200, active_calories: 500, steps: 9000 },
+          ],
+        }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await activityRange('tok', '2026-08-01', '2026-08-03')
+    expect(fetchSpy).toHaveBeenCalledTimes(1) // one call for the whole range, not one per day
+    expect(rows).toEqual([
+      { day: '2026-08-01', total_calories: 2100, active_calories: 400, steps: 8000, score: 70 },
+      { day: '2026-08-02', total_calories: 2200, active_calories: 500, steps: 9000, score: 75 },
+    ])
+  })
+
+  it('returns an empty array rather than throwing when the range has no data (control)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })))
+    const rows = await activityRange('tok', '2026-08-01', '2026-08-03')
+    expect(rows).toEqual([])
   })
 })

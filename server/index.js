@@ -16,6 +16,7 @@ import {
   ouraConfigured,
   getToken as ouraToken,
   dailySummary as ouraDailySummary,
+  activityRange as ouraActivityRange,
   oauthConfigured as ouraOAuthConfigured,
   signState as ouraSignState,
   verifyState as ouraVerifyState,
@@ -181,6 +182,19 @@ async function resolveOuraToken() {
   return ouraValidAccessToken(primary, (t) => store.updateOuraTokens(primary.id, t))
 }
 
+// One-call historical pull (Oura's range query returns every matched day at
+// once — no need to loop a day at a time) so Insights' "Readiness · Oura"
+// slot has real history the moment an account connects, not just from today
+// forward. Callers decide how to handle a failure — this never touches
+// the connect flow's own success/failure.
+async function backfillOuraHistory(token, days = 30) {
+  const end = new Date()
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - (days - 1))
+  const rows = await ouraActivityRange(token, localYmd(start), localYmd(end))
+  return store.saveOuraHistory(rows)
+}
+
 app.get('/api/oura/summary', asyncH(async (req, res) => {
   const token = await resolveOuraToken()
   if (!token) return res.json({ configured: false, activity: null })
@@ -213,7 +227,23 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
     refresh_token: tokens.refresh_token,
     expires_at: ouraExpiryFrom(tokens.expires_in),
   })
+  try {
+    await backfillOuraHistory(tokens.access_token)
+  } catch {
+    // A successful connect must still read as connected even if the
+    // historical pull hiccups — POST /api/oura/backfill can retry it.
+  }
   res.redirect('/?oura=connected')
+}))
+
+// Re-run the history backfill for an already-connected account (the normal
+// path only fires this once, at connect time).
+app.post('/api/oura/backfill', asyncH(async (req, res) => {
+  const token = await resolveOuraToken()
+  if (!token) return res.status(400).json({ error: 'No Oura account connected.' })
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
+  const saved = await backfillOuraHistory(token, days)
+  res.json({ ok: true, days, daysSaved: saved })
 }))
 
 // Connected accounts (tokens stripped) + config state, for the settings UI.
@@ -539,11 +569,14 @@ app.get('/api/insights', asyncH(async (req, res) => {
   const calTarget = Number(targets?.calories) || 0
   const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
 
+  const ouraReadiness = (await store.listOuraHistory?.(localYmd(start), localYmd(new Date(end - 1)))) || []
+
   res.json({
     window,
     insufficientData: tracked < 3,
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
     days,
+    ouraReadiness: ouraReadiness.map((r) => ({ date: r.day, score: Number(r.value) })).filter((r) => Number.isFinite(r.score)),
     correlations: {
       available: false,
       note: 'Recovery/training correlations need several days of retained wearable history — connect a provider and revisit after a few days.',
