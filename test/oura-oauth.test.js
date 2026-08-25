@@ -6,6 +6,9 @@ import {
   authorizeUrl,
   expiryFrom,
   activityRange,
+  dailyReadiness,
+  readinessRange,
+  dailySleepHours,
 } from '../server/integrations/oura.js'
 
 // These helpers read Oura config from process.env at call time, so we set the
@@ -134,5 +137,78 @@ describe('oura activityRange', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })))
     const rows = await activityRange('tok', '2026-08-01', '2026-08-03')
     expect(rows).toEqual([])
+  })
+})
+
+describe('oura dailyReadiness / readinessRange', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  // Regression coverage: this app used to fetch daily_activity and call ITS
+  // score "readiness" — these hit a genuinely different endpoint.
+  it('dailyReadiness fetches daily_readiness (not daily_activity) and widens the window by a day', async () => {
+    const fetchSpy = vi.fn(async (url) => {
+      const u = new URL(url)
+      expect(u.pathname).toContain('/daily_readiness')
+      expect(u.searchParams.get('start_date')).toBe('2026-08-24')
+      expect(u.searchParams.get('end_date')).toBe('2026-08-25') // widened by one day
+      return {
+        ok: true, status: 200,
+        json: async () => ({ data: [{ day: '2026-08-24', score: 91 }] }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const r = await dailyReadiness('tok', '2026-08-24')
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(r).toEqual({ day: '2026-08-24', score: 91 })
+  })
+
+  it('dailyReadiness returns null when Oura has no record for that day yet (control)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })))
+    expect(await dailyReadiness('tok', '2026-08-24')).toBeNull()
+  })
+
+  it('readinessRange returns one normalized record per day, one call for the whole range', async () => {
+    const fetchSpy = vi.fn(async (url) => {
+      const u = new URL(url)
+      expect(u.pathname).toContain('/daily_readiness')
+      return {
+        ok: true, status: 200,
+        json: async () => ({ data: [
+          { day: '2026-08-01', score: 70 },
+          { day: '2026-08-02', score: null },
+        ] }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const rows = await readinessRange('tok', '2026-08-01', '2026-08-03')
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(rows).toEqual([{ day: '2026-08-01', score: 70 }, { day: '2026-08-02', score: null }])
+  })
+})
+
+describe('oura dailySleepHours', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('hits the sleep endpoint and sums same-day sessions into hours', async () => {
+    const fetchSpy = vi.fn(async (url) => {
+      const u = new URL(url)
+      expect(u.pathname).toContain('/sleep')
+      return {
+        ok: true, status: 200,
+        json: async () => ({ data: [
+          { day: '2026-08-24', total_sleep_duration: 6 * 3600 },
+          { day: '2026-08-24', total_sleep_duration: 0.5 * 3600 }, // a nap, same day
+          { day: '2026-08-25', total_sleep_duration: 8 * 3600 }, // a different day — must not be counted
+        ] }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const hours = await dailySleepHours('tok', '2026-08-24')
+    expect(hours).toBeCloseTo(6.5, 5)
+  })
+
+  it('returns null rather than 0 when there is no sleep data for that day (control)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })))
+    expect(await dailySleepHours('tok', '2026-08-24')).toBeNull()
   })
 })

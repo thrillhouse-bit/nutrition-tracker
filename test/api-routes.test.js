@@ -103,6 +103,7 @@ const oura = vi.hoisted(() => ({
   legacy: false, // whether OURA_TOKEN-style config appears present
   dailySummary: async () => null,
   activityRange: async () => [],
+  readinessRange: async () => [],
 }))
 
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
@@ -114,6 +115,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     getToken: () => 'legacy-token',
     dailySummary: (...args) => oura.dailySummary(...args),
     activityRange: (...args) => oura.activityRange(...args),
+    readinessRange: (...args) => oura.readinessRange(...args),
   }
 })
 
@@ -330,25 +332,37 @@ describe('POST /api/oura/backfill', () => {
     expect(res.status).toBe(400)
   })
 
-  it('pulls the range in one call and stores every scored day', async () => {
+  it('stores the READINESS score, not the Activity score, using activity only for steps/calories context', async () => {
     oura.legacy = true
     fake.state.ouraHistory = []
-    let asked
+    let askedActivity, askedReadiness
     oura.activityRange = async (token, from, to) => {
-      asked = { token, from, to }
+      askedActivity = { token, from, to }
+      // Activity's score (55/60) is deliberately different from Readiness's
+      // (70/null) below — regression coverage for the bug where this app
+      // stored Activity's score under the "readiness" history, which is not
+      // what Readiness actually reads on a real account.
       return [
-        { day: '2026-08-01', score: 70, total_calories: 2100, active_calories: 400, steps: 8000 },
-        { day: '2026-08-02', score: null, total_calories: 2000, active_calories: 300, steps: 6000 }, // no score that day
+        { day: '2026-08-01', score: 55, total_calories: 2100, active_calories: 400, steps: 8000 },
+        { day: '2026-08-02', score: 60, total_calories: 2000, active_calories: 300, steps: 6000 },
+      ]
+    }
+    oura.readinessRange = async (token, from, to) => {
+      askedReadiness = { token, from, to }
+      return [
+        { day: '2026-08-01', score: 70 },
+        { day: '2026-08-02', score: null }, // no readiness recorded that day
       ]
     }
     const res = await post('/api/oura/backfill?days=10', {})
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.daysSaved).toBe(1) // the null-score day is dropped, not stored as 0
-    expect(asked.token).toBe('legacy-token')
+    expect(body.daysSaved).toBe(1) // the null-READINESS day is dropped, even though Activity had a score that day
+    expect(askedActivity.token).toBe('legacy-token')
+    expect(askedReadiness.token).toBe('legacy-token')
     const stored = await fake.store.listOuraHistory(authUserId, '2026-08-01', '2026-08-02')
-    expect(stored.map((r) => r.day)).toEqual(['2026-08-01'])
+    expect(stored).toEqual([{ day: '2026-08-01', value: 70 }]) // Readiness's score (70), never Activity's (55)
   })
 })
 

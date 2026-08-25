@@ -25,6 +25,7 @@ import {
   getToken as ouraToken,
   dailySummary as ouraDailySummary,
   activityRange as ouraActivityRange,
+  readinessRange as ouraReadinessRange,
   oauthConfigured as ouraOAuthConfigured,
   signState as ouraSignState,
   verifyState as ouraVerifyState,
@@ -381,11 +382,35 @@ async function resolveOuraToken(userId) {
 // slot has real history the moment an account connects, not just from today
 // forward. Callers decide how to handle a failure — this never touches
 // the connect flow's own success/failure.
+//
+// Two Oura endpoints, merged by day: readiness supplies the score this
+// history exists to track (previously this used activityRange's score,
+// which is the ACTIVITY score, not Readiness — the same mislabeling
+// providers.js's realSignals had for the live "today" value); activity
+// supplies the total_calories/active_calories/steps context that
+// store.saveOuraHistory has always stored alongside the score (and that
+// GET /api/profile/activity-suggestion reads back out of `extra.steps`) —
+// still worth keeping even though it's no longer the headline number.
 async function backfillOuraHistory(userId, token, days = 30) {
   const end = new Date()
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - (days - 1))
-  const rows = await ouraActivityRange(token, localYmd(start), localYmd(end))
+  const fromYmd = localYmd(start), toYmd = localYmd(end)
+  const [activity, readiness] = await Promise.all([
+    ouraActivityRange(token, fromYmd, toYmd),
+    ouraReadinessRange(token, fromYmd, toYmd),
+  ])
+  const activityByDay = new Map(activity.map((r) => [r.day, r]))
+  const rows = readiness.map((r) => {
+    const a = activityByDay.get(r.day)
+    return {
+      day: r.day,
+      score: r.score,
+      total_calories: a?.total_calories ?? null,
+      active_calories: a?.active_calories ?? null,
+      steps: a?.steps ?? null,
+    }
+  })
   return store.saveOuraHistory(userId, rows)
 }
 
