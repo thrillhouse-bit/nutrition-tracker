@@ -8,6 +8,14 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import { store, backend } from './db.js'
+import {
+  hashPassword,
+  verifyPassword,
+  attachUser,
+  requireAuth,
+  setSessionCookie,
+  clearSessionCookie,
+} from './auth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
@@ -33,6 +41,7 @@ import {
   exchangeCode as garminExchangeCode,
   normalizeDaily as garminNormalizeDaily,
   expiryFrom as garminExpiryFrom,
+  fetchGarminUserId,
 } from './integrations/garmin.js'
 import { computeAdjustedTargets, computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
@@ -41,7 +50,26 @@ import { allProviderStatuses, composeSignals } from './providers.js'
 const app = express()
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
-app.use(cors())
+app.use(cors({ origin: true, credentials: true })) // credentials:true so the session cookie survives a cross-origin dev setup (Vite on :5173 -> API on :3001); harmless in prod, where it's same-origin anyway.
+app.use(attachUser) // sets req.userId (or null) on every request; does not itself reject anything
+
+// The native iOS/watch companion has no interactive login, so it can never
+// carry a session cookie — it only ever has the per-user Apple ingest token
+// (generated from the signed-in web app via POST /api/apple/token, pasted
+// into the companion's settings). Before this existed, /api/today and
+// friends were reachable with no auth at all; requireAuth below would now
+// 401 every companion request outright, silently breaking the watch glance
+// and background sync. Falling back to the SAME token here (via the
+// already-defined resolveAppleIngestUser, hoisted below) means the token
+// authenticates the companion for reads generally, not just the ingest POST
+// — a reasonable extension of the trust it already carries (it already
+// attributes ALL of that user's synced HealthKit data).
+app.use((req, res, next) => {
+  if (req.userId != null) return next()
+  resolveAppleIngestUser(req)
+    .then((uid) => { if (uid != null) req.userId = uid; next() })
+    .catch(next)
+})
 
 const asyncH = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
@@ -50,7 +78,7 @@ const asyncH = (fn) => (req, res) =>
     res.status(status).json({ error: err.message || 'Server error' })
   })
 
-// --- health ---------------------------------------------------------------
+// --- health (public — no auth, used by deploy/monitoring before anyone's signed in) ---
 app.get('/api/health', asyncH(async (req, res) => {
   res.json({
     ok: true,
@@ -63,14 +91,80 @@ app.get('/api/health', asyncH(async (req, res) => {
   })
 }))
 
+// --- auth (public) ----------------------------------------------------------
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+app.post('/api/auth/signup', asyncH(async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' })
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' })
+  if (await store.getUserByEmail(email)) return res.status(409).json({ error: 'An account with that email already exists.' })
+  const password_hash = await hashPassword(password)
+  const user = await store.createUser({ email, password_hash })
+  // This box may already hold data logged before multi-user accounts existed
+  // (entries, targets, connected integrations with no owner). The first
+  // person to sign up on it is that data's only plausible owner — there's no
+  // password to invent for an auto-created account, so migration waits for a
+  // real signup rather than happening at boot. Only the very first account
+  // qualifies: a second signup must never inherit the first user's history.
+  if ((await store.countUsers()) === 1) {
+    await store.migrateLegacyDataToUser(user.id)
+  }
+  setSessionCookie(res, user.id)
+  res.status(201).json({ user: { id: user.id, email: user.email } })
+}))
+
+app.post('/api/auth/login', asyncH(async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  const user = await store.getUserByEmail(email)
+  // Same generic error whether the email doesn't exist or the password is
+  // wrong — a distinct "no such account" message would let anyone enumerate
+  // which emails are registered.
+  const invalid = () => res.status(401).json({ error: 'Incorrect email or password.' })
+  if (!user) return invalid()
+  const ok = await verifyPassword(password, user.password_hash)
+  if (!ok) return invalid()
+  setSessionCookie(res, user.id)
+  res.json({ user: { id: user.id, email: user.email } })
+}))
+
+app.post('/api/auth/logout', (req, res) => {
+  clearSessionCookie(res)
+  res.status(204).end()
+})
+
+// Read-only "am I signed in" check — the client calls this on boot to decide
+// login screen vs. app shell. Never gated by requireAuth: it has to answer
+// truthfully for a signed-OUT caller too.
+app.get('/api/auth/me', asyncH(async (req, res) => {
+  if (req.userId == null) return res.json({ user: null })
+  const user = await store.getUserById(req.userId)
+  res.json({ user: user ? { id: user.id, email: user.email } : null })
+}))
+
+// Everything below this line requires a signed-in user, EXCEPT the handful of
+// routes registered again individually further down with their own auth
+// handling (OAuth connect/callback, the Garmin webhook, and Apple ingest,
+// which is gated by its own per-user ingest token instead of a session —
+// none of those are ordinary XHRs from the logged-in SPA, so a blanket 401
+// JSON response would be either wrong (webhook/ingest have no session at
+// all) or a broken-looking page (an OAuth redirect getting a JSON body
+// instead of being sent back to login).
+const requireAuthRouter = express.Router()
+requireAuthRouter.use(requireAuth)
+app.use('/api', requireAuthRouter)
+
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------
-app.get('/api/lookup/:barcode', asyncH(async (req, res) => {
+requireAuthRouter.get('/lookup/:barcode', asyncH(async (req, res) => {
   const barcode = String(req.params.barcode).trim()
   if (!/^\d{6,14}$/.test(barcode)) {
     return res.status(400).json({ error: 'Invalid barcode.' })
   }
 
-  // 1. Local cache — repeat scans never hit the network.
+  // 1. Local cache — repeat scans never hit the network. (foods is a shared,
+  // unscoped lookup cache — see db.js — so this benefits every user.)
   const cached = await store.getFoodByBarcode(barcode)
   if (cached) return res.json({ food: cached, cached: true })
 
@@ -86,7 +180,7 @@ app.get('/api/lookup/:barcode', asyncH(async (req, res) => {
 }))
 
 // --- text search (produce / bulk / no barcode) ----------------------------
-app.get('/api/search', asyncH(async (req, res) => {
+requireAuthRouter.get('/search', asyncH(async (req, res) => {
   const q = String(req.query.q || '').trim()
   if (q.length < 2) return res.json({ results: [] })
   const results = await searchByText(q)
@@ -94,7 +188,7 @@ app.get('/api/search', asyncH(async (req, res) => {
 }))
 
 // --- label OCR (Claude vision) --------------------------------------------
-app.post('/api/ocr', asyncH(async (req, res) => {
+requireAuthRouter.post('/ocr', asyncH(async (req, res) => {
   const { imageBase64, mediaType } = req.body || {}
   const food = await parseLabel({ imageBase64, mediaType })
   res.json({ food })
@@ -102,14 +196,15 @@ app.post('/api/ocr', asyncH(async (req, res) => {
 
 // --- foods ----------------------------------------------------------------
 // Recently-logged foods, for one-tap re-logging.
-app.get('/api/foods/recent', asyncH(async (req, res) => {
+requireAuthRouter.get('/foods/recent', asyncH(async (req, res) => {
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
-  res.json({ foods: await store.recentFoods(limit) })
+  res.json({ foods: await store.recentFoods(req.userId, limit) })
 }))
 
 // Persist a food (manual entry, or an OCR/search result the user confirmed)
-// so it can be referenced by log entries and re-used later.
-app.post('/api/foods', asyncH(async (req, res) => {
+// so it can be referenced by log entries and re-used later. foods is a
+// shared cache (see db.js) — creating one isn't a per-user write.
+requireAuthRouter.post('/foods', asyncH(async (req, res) => {
   const body = req.body || {}
   if (!body.name || !String(body.name).trim()) {
     return res.status(400).json({ error: 'A food needs a name.' })
@@ -121,16 +216,16 @@ app.post('/api/foods', asyncH(async (req, res) => {
 }))
 
 // --- log entries ----------------------------------------------------------
-app.get('/api/entries', asyncH(async (req, res) => {
+requireAuthRouter.get('/entries', asyncH(async (req, res) => {
   const { from, to } = req.query
   if (!from || !to) return res.status(400).json({ error: 'from and to are required.' })
-  const entries = await store.listEntries({ from, to })
+  const entries = await store.listEntries(req.userId, { from, to })
   res.json({ entries })
 }))
 
 // Log a food. Accepts either an existing food_id, or an inline `food` object
 // (from a lookup/OCR/manual flow) which is persisted first, then logged.
-app.post('/api/entries', asyncH(async (req, res) => {
+requireAuthRouter.post('/entries', asyncH(async (req, res) => {
   const { food_id, food, servings_consumed = 1, meal = null, logged_at = null } = req.body || {}
 
   let id = food_id
@@ -144,29 +239,29 @@ app.post('/api/entries', asyncH(async (req, res) => {
     return res.status(404).json({ error: 'food_id not found.' })
   }
 
-  const entry = await store.addEntry({ food_id: id, servings_consumed, meal, logged_at })
+  const entry = await store.addEntry(req.userId, { food_id: id, servings_consumed, meal, logged_at })
   res.status(201).json({ entry })
 }))
 
-app.patch('/api/entries/:id', asyncH(async (req, res) => {
-  const entry = await store.updateEntry(req.params.id, req.body || {})
+requireAuthRouter.patch('/entries/:id', asyncH(async (req, res) => {
+  const entry = await store.updateEntry(req.userId, req.params.id, req.body || {})
   if (!entry) return res.status(404).json({ error: 'Entry not found.' })
   res.json({ entry })
 }))
 
-app.delete('/api/entries/:id', asyncH(async (req, res) => {
-  const ok = await store.deleteEntry(req.params.id)
+requireAuthRouter.delete('/entries/:id', asyncH(async (req, res) => {
+  const ok = await store.deleteEntry(req.userId, req.params.id)
   if (!ok) return res.status(404).json({ error: 'Entry not found.' })
   res.status(204).end()
 }))
 
 // --- daily targets --------------------------------------------------------
-app.get('/api/targets', asyncH(async (req, res) => {
-  res.json({ targets: await store.getLatestTargets() })
+requireAuthRouter.get('/targets', asyncH(async (req, res) => {
+  res.json({ targets: await store.getLatestTargets(req.userId) })
 }))
 
-app.put('/api/targets', asyncH(async (req, res) => {
-  const targets = await store.setTargets(req.body || {})
+requireAuthRouter.put('/targets', asyncH(async (req, res) => {
+  const targets = await store.setTargets(req.userId, req.body || {})
   res.json({ targets })
 }))
 
@@ -205,8 +300,8 @@ function validateProfilePatch(body = {}) {
   return { patch }
 }
 
-app.get('/api/profile', asyncH(async (req, res) => {
-  res.json({ profile: await store.getProfile() })
+requireAuthRouter.get('/profile', asyncH(async (req, res) => {
+  res.json({ profile: await store.getProfile(req.userId) })
 }))
 
 // Merge-saves the profile, then — only when every field computeBaseline needs
@@ -216,12 +311,12 @@ app.get('/api/profile', asyncH(async (req, res) => {
 // saved (so filling the form field by field works) but never touches
 // targets: this app's "no silent target changes" principle means a half-
 // filled form must never establish targets from guessed/missing inputs.
-app.put('/api/profile', asyncH(async (req, res) => {
+requireAuthRouter.put('/profile', asyncH(async (req, res) => {
   const { patch, error } = validateProfilePatch(req.body || {})
   if (error) return res.status(400).json({ error })
-  const profile = await store.setProfile(patch)
+  const profile = await store.setProfile(req.userId, patch)
   const computedBaseline = computeBaseline(profile)
-  if (computedBaseline) await store.setTargets(computedBaseline)
+  if (computedBaseline) await store.setTargets(req.userId, computedBaseline)
   res.json({ profile, computedBaseline })
 }))
 
@@ -240,11 +335,11 @@ function suggestFromAvgSteps(avg) {
   return 'very_active'
 }
 
-app.get('/api/profile/activity-suggestion', asyncH(async (req, res) => {
+requireAuthRouter.get('/profile/activity-suggestion', asyncH(async (req, res) => {
   const end = new Date()
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - 9) // 10 days inclusive
-  const history = await store.listOuraHistory(localYmd(start), localYmd(end))
+  const history = await store.listOuraHistory(req.userId, localYmd(start), localYmd(end))
   const steps = history.map((r) => Number(r.extra?.steps)).filter(Number.isFinite)
   if (!steps.length) return res.json({ suggested: null, basis: null })
   const avg = steps.reduce((a, b) => a + b, 0) / steps.length
@@ -253,15 +348,18 @@ app.get('/api/profile/activity-suggestion', asyncH(async (req, res) => {
 
 // --- wearables: Oura ------------------------------------------------------
 
-// Resolve a usable access token: a legacy OURA_TOKEN wins (single account),
-// else the first connected OAuth account (refreshing if near expiry).
-async function resolveOuraToken() {
+// Resolve a usable access token for THIS user: a legacy OURA_TOKEN wins (it's
+// a single static env-var PAT, so it's necessarily shared across every user
+// on this box — the same tradeoff a personal-use single-account token always
+// had), else that user's own connected OAuth account (refreshing if near
+// expiry).
+async function resolveOuraToken(userId) {
   if (ouraConfigured()) return ouraToken()
   if (!ouraOAuthConfigured()) return null
-  const accounts = await store.listOuraAccounts()
+  const accounts = await store.listOuraAccounts(userId)
   if (!accounts.length) return null
   const primary = accounts[0]
-  return ouraValidAccessToken(primary, (t) => store.updateOuraTokens(primary.id, t))
+  return ouraValidAccessToken(primary, (t) => store.updateOuraTokens(userId, primary.id, t))
 }
 
 // One-call historical pull (Oura's range query returns every matched day at
@@ -269,16 +367,16 @@ async function resolveOuraToken() {
 // slot has real history the moment an account connects, not just from today
 // forward. Callers decide how to handle a failure — this never touches
 // the connect flow's own success/failure.
-async function backfillOuraHistory(token, days = 30) {
+async function backfillOuraHistory(userId, token, days = 30) {
   const end = new Date()
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - (days - 1))
   const rows = await ouraActivityRange(token, localYmd(start), localYmd(end))
-  return store.saveOuraHistory(rows)
+  return store.saveOuraHistory(userId, rows)
 }
 
-app.get('/api/oura/summary', asyncH(async (req, res) => {
-  const token = await resolveOuraToken()
+requireAuthRouter.get('/oura/summary', asyncH(async (req, res) => {
+  const token = await resolveOuraToken(req.userId)
   if (!token) return res.json({ configured: false, activity: null })
   // Default to the SERVER-LOCAL day like every sibling endpoint (garmin/energy/
   // today). The old toISOString().slice(0,10) default was the UTC day, so for
@@ -291,26 +389,44 @@ app.get('/api/oura/summary', asyncH(async (req, res) => {
   res.json({ configured: true, activity })
 }))
 
-// Begin OAuth: redirect the browser to Oura's consent screen.
+// Begin OAuth: redirect the browser to Oura's consent screen. This is a
+// top-level navigation (an <a href>, not an XHR), so it's registered on
+// `app` directly rather than the auto-401-JSON requireAuthRouter — an
+// unauthenticated hit here should bounce to login, not show a raw JSON body.
+// Pins which local user initiated the connect (keyed by the state nonce)
+// rather than depending solely on the session cookie surviving the redirect
+// round-trip to Oura and back — see the matching Garmin PKCE map below for
+// the same reasoning.
+const ouraConnectPending = new Map() // nonce -> { userId, exp }
+
 app.get('/api/oura/connect', (req, res) => {
+  if (req.userId == null) return res.redirect('/?error=not_signed_in')
   if (!ouraOAuthConfigured()) return res.status(501).send('Oura OAuth is not configured on the server.')
-  res.redirect(ouraAuthorizeUrl(ouraSignState()))
+  const state = ouraSignState()
+  const nonce = state.split('.')[0]
+  ouraConnectPending.set(nonce, { userId: req.userId, exp: Date.now() + 10 * 60 * 1000 })
+  res.redirect(ouraAuthorizeUrl(state))
 })
 
 // OAuth callback: verify state, exchange the code, store the account, return.
 app.get('/api/oura/callback', asyncH(async (req, res) => {
   const { code, state, error } = req.query
   if (error || !code || !ouraVerifyState(state)) return res.redirect('/?oura=error')
+  const nonce = String(state).split('.')[0]
+  const pending = ouraConnectPending.get(nonce)
+  ouraConnectPending.delete(nonce)
+  const userId = pending && pending.exp >= Date.now() ? pending.userId : req.userId
+  if (userId == null) return res.redirect('/?oura=error') // no session AND no pinned initiator — can't attribute this connection to anyone
   const tokens = await ouraExchangeCode(String(code))
   const info = await ouraPersonalInfo(tokens.access_token)
-  await store.saveOuraAccount({
+  await store.saveOuraAccount(userId, {
     label: info?.email || info?.id || 'Oura account',
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: ouraExpiryFrom(tokens.expires_in),
   })
   try {
-    await backfillOuraHistory(tokens.access_token)
+    await backfillOuraHistory(userId, tokens.access_token)
   } catch {
     // A successful connect must still read as connected even if the
     // historical pull hiccups — POST /api/oura/backfill can retry it.
@@ -320,39 +436,42 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
 
 // Re-run the history backfill for an already-connected account (the normal
 // path only fires this once, at connect time).
-app.post('/api/oura/backfill', asyncH(async (req, res) => {
-  const token = await resolveOuraToken()
+requireAuthRouter.post('/oura/backfill', asyncH(async (req, res) => {
+  const token = await resolveOuraToken(req.userId)
   if (!token) return res.status(400).json({ error: 'No Oura account connected.' })
   const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
-  const saved = await backfillOuraHistory(token, days)
+  const saved = await backfillOuraHistory(req.userId, token, days)
   res.json({ ok: true, days, daysSaved: saved })
 }))
 
 // Connected accounts (tokens stripped) + config state, for the settings UI.
-app.get('/api/oura/accounts', asyncH(async (req, res) => {
-  const accounts = (await store.listOuraAccounts()).map((a) => ({
+requireAuthRouter.get('/oura/accounts', asyncH(async (req, res) => {
+  const accounts = (await store.listOuraAccounts(req.userId)).map((a) => ({
     id: a.id, label: a.label, expires_at: a.expires_at, created_at: a.created_at,
   }))
   res.json({ oauth: ouraOAuthConfigured(), legacy: ouraConfigured(), accounts })
 }))
 
-app.delete('/api/oura/accounts/:id', asyncH(async (req, res) => {
-  const ok = await store.deleteOuraAccount(req.params.id)
+requireAuthRouter.delete('/oura/accounts/:id', asyncH(async (req, res) => {
+  const ok = await store.deleteOuraAccount(req.userId, req.params.id)
   if (!ok) return res.status(404).json({ error: 'Account not found.' })
   res.status(204).end()
 }))
 
 // --- wearables: Garmin (data-in, OAuth 2.0 PKCE + push webhook) ------------
 // PKCE verifiers must be recalled at the callback but never leave the server;
-// stash them in-memory keyed by `state`, short TTL. (Single-process personal
-// app — fine; a restart mid-connect just means retrying the connect.)
+// stash them in-memory keyed by `state`, short TTL, alongside which local
+// user initiated the connect (mirrors ouraConnectPending above — same
+// reasoning: don't depend solely on the session cookie surviving the
+// redirect round-trip to Garmin and back).
 const garminPkce = new Map()
 
 app.get('/api/garmin/connect', (req, res) => {
+  if (req.userId == null) return res.redirect('/?error=not_signed_in')
   if (!garminConfigured()) return res.status(501).send('Garmin OAuth is not configured on the server.')
   const state = crypto.randomBytes(16).toString('hex')
   const { verifier, challenge } = garminPkcePair()
-  garminPkce.set(state, { verifier, exp: Date.now() + 10 * 60 * 1000 })
+  garminPkce.set(state, { verifier, userId: req.userId, exp: Date.now() + 10 * 60 * 1000 })
   res.redirect(garminAuthorizeUrl({ state, challenge }))
 })
 
@@ -362,49 +481,64 @@ app.get('/api/garmin/callback', asyncH(async (req, res) => {
   garminPkce.delete(String(state || ''))
   if (error || !code || !entry || entry.exp < Date.now()) return res.redirect('/?garmin=error')
   const tokens = await garminExchangeCode({ code: String(code), verifier: entry.verifier })
-  await store.saveGarminAccount({
+  // VERIFY (see integrations/garmin.js): the id fetched here is what a later
+  // PUSHED webhook uses to route back to this account — there's no session
+  // on an incoming webhook to resolve the user from otherwise.
+  const garminUserId = await fetchGarminUserId(tokens.access_token)
+  await store.saveGarminAccount(entry.userId, {
     label: 'Garmin account',
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: garminExpiryFrom(tokens.expires_in),
+    garmin_user_id: garminUserId,
   })
   res.redirect('/?garmin=connected')
 }))
 
-// Garmin PUSHES daily summaries here (its data model is webhook, not pull).
-// Body shape (VERIFY): { dailies: [ { calendarDate, activeKilocalories, bmrKilocalories, steps, ... } ] }
+// Garmin PUSHES daily summaries here (its data model is webhook, not pull) —
+// no session, no cookie: Garmin is a server calling us directly. Each pushed
+// "daily" carries Garmin's OWN opaque userId (VERIFY against partner docs),
+// which we match against garmin_accounts.garmin_user_id (captured at connect
+// time — see the callback above) to find which of OUR users it belongs to.
+// A daily with no matching account, or no garmin_user_id in the payload at
+// all, is skipped rather than guessed at — attributing pushed data to the
+// wrong user would be a real cross-user data leak, not just a display bug.
+// Body shape (VERIFY): { dailies: [ { userId, calendarDate, activeKilocalories, bmrKilocalories, steps, ... } ] }
 app.post('/api/garmin/webhook', asyncH(async (req, res) => {
   const dailies = Array.isArray(req.body?.dailies) ? req.body.dailies : []
-  const accounts = await store.listGarminAccounts()
-  const accountId = accounts[0]?.id // single-account personal app
-  if (accountId) {
-    for (const d of dailies) {
-      // Skip malformed elements instead of throwing: a 500 here makes Garmin
-      // retry the whole batch and loses the valid summaries around the junk.
-      if (!d || typeof d !== 'object') continue
-      const norm = garminNormalizeDaily(d)
-      if (norm.day) await store.upsertGarminDaily({ account_id: accountId, ...norm, raw: d })
+  const accountCache = new Map() // garmin_user_id -> account | null, avoid a lookup per daily in one batch
+  for (const d of dailies) {
+    // Skip malformed elements instead of throwing: a 500 here makes Garmin
+    // retry the whole batch and loses the valid summaries around the junk.
+    if (!d || typeof d !== 'object' || !d.userId) continue
+    let account = accountCache.get(d.userId)
+    if (account === undefined) {
+      account = await store.findGarminAccountByGarminUserId(d.userId)
+      accountCache.set(d.userId, account)
     }
+    if (!account) continue // no local account claims this Garmin user id
+    const norm = garminNormalizeDaily(d)
+    if (norm.day) await store.upsertGarminDaily({ account_id: account.id, ...norm, raw: d })
   }
   res.status(200).json({ received: dailies.length }) // 200 fast so Garmin doesn't retry
 }))
 
-app.get('/api/garmin/accounts', asyncH(async (req, res) => {
-  const accounts = (await store.listGarminAccounts()).map((a) => ({
+requireAuthRouter.get('/garmin/accounts', asyncH(async (req, res) => {
+  const accounts = (await store.listGarminAccounts(req.userId)).map((a) => ({
     id: a.id, label: a.label, expires_at: a.expires_at, created_at: a.created_at,
   }))
   res.json({ oauth: garminConfigured(), accounts })
 }))
 
-app.delete('/api/garmin/accounts/:id', asyncH(async (req, res) => {
-  const ok = await store.deleteGarminAccount(req.params.id)
+requireAuthRouter.delete('/garmin/accounts/:id', asyncH(async (req, res) => {
+  const ok = await store.deleteGarminAccount(req.userId, req.params.id)
   if (!ok) return res.status(404).json({ error: 'Account not found.' })
   res.status(204).end()
 }))
 
 // Stored Garmin expenditure for a day (served from pushed data, not a live pull).
-app.get('/api/garmin/summary', asyncH(async (req, res) => {
-  const accounts = await store.listGarminAccounts()
+requireAuthRouter.get('/garmin/summary', asyncH(async (req, res) => {
+  const accounts = await store.listGarminAccounts(req.userId)
   if (!accounts.length) return res.json({ configured: garminConfigured(), activity: null })
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
   const row = await store.getGarminDaily(accounts[0].id, day)
@@ -429,28 +563,28 @@ function dayRange(ymd) {
 }
 
 // Nutrition totals vs. targets for a day — used by the Garmin Connect IQ watch app.
-app.get('/api/today/summary', asyncH(async (req, res) => {
+requireAuthRouter.get('/today/summary', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
   const { from, to } = dayRange(date)
-  const entries = await store.listEntries({ from, to })
+  const entries = await store.listEntries(req.userId, { from, to })
   const totals = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0]))
   for (const e of entries) {
     const s = Number(e.servings_consumed) || 0
     for (const k of NUTRIENT_KEYS) totals[k] += (Number(e.food?.[k]) || 0) * s
   }
-  const targets = await store.getLatestTargets()
+  const targets = await store.getLatestTargets(req.userId)
   const remaining = { calories: targets?.calories != null ? Number(targets.calories) - totals.calories : null }
   res.json({ date, totals, targets, remaining })
 }))
 
 // Unified energy expenditure ("out") for a day: Oura preferred, Garmin fallback.
-app.get('/api/energy/summary', asyncH(async (req, res) => {
+requireAuthRouter.get('/energy/summary', asyncH(async (req, res) => {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
   // Oura preferred — but a failing Oura (API down, refresh rejected) must fall
   // through to Garmin, not turn the whole unified read into a 500. The fallback
   // is this endpoint's entire purpose.
   try {
-    const token = await resolveOuraToken()
+    const token = await resolveOuraToken(req.userId)
     if (token) {
       const a = await ouraDailySummary(token, day)
       if (a && a.total_calories != null) {
@@ -460,7 +594,7 @@ app.get('/api/energy/summary', asyncH(async (req, res) => {
   } catch {
     // fall through to Garmin
   }
-  const gaccts = await store.listGarminAccounts()
+  const gaccts = await store.listGarminAccounts(req.userId)
   if (gaccts.length) {
     const row = await store.getGarminDaily(gaccts[0].id, day)
     if (row && row.total_calories != null) {
@@ -480,31 +614,34 @@ function sumIntake(entries) {
   return totals
 }
 
-// Which signal categories the user allows to influence the plan.
-async function planInfluence() {
-  const row = await store.getIntegration('plan')
+// Which signal categories the user allows to influence the plan. Stored as a
+// pseudo-provider ('plan') in the per-user integrations table — reuses the
+// existing settings-jsonb mechanism rather than a dedicated table for one
+// small object.
+async function planInfluence(userId) {
+  const row = await store.getIntegration(userId, 'plan')
   return { readiness: true, sleep: true, workouts: true, ...(row.settings?.influence || {}) }
 }
 
-async function buildPlan(date, nowDate) {
-  const baseline = await store.getLatestTargets()
-  const signals = await composeSignals(store, nowDate)
-  const influence = await planInfluence()
+async function buildPlan(userId, date, nowDate) {
+  const baseline = await store.getLatestTargets(userId)
+  const signals = await composeSignals(store, nowDate, userId)
+  const influence = await planInfluence(userId)
   const { adjusted, rationale, rulesVersion } = computeAdjustedTargets(baseline, signals, { influence })
   return { date, baseline, adjusted, rationale, signals, influence, rulesVersion }
 }
 
-async function todayComposite(date, nowDate, bounds = null) {
-  const plan = await buildPlan(date, nowDate)
+async function todayComposite(userId, date, nowDate, bounds = null) {
+  const plan = await buildPlan(userId, date, nowDate)
   const { from, to } = bounds || dayRange(date)
-  const entries = await store.listEntries({ from, to })
+  const entries = await store.listEntries(userId, { from, to })
   const intake = sumIntake(entries)
   const nowHour = nowDate.getHours() + nowDate.getMinutes() / 60
   const recommendation = computeRecommendation({
     baseline: plan.baseline, adjusted: plan.adjusted, intake, signals: plan.signals, nowHour, influence: plan.influence,
   })
   // Snapshot the plan so "why?" is reproducible for the day.
-  await store.savePlan(date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  await store.savePlan(userId, date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
   return { date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signals: plan.signals, recommendation, entries, generatedAt: nowDate.toISOString() }
 }
 
@@ -513,61 +650,61 @@ async function todayComposite(date, nowDate, bounds = null) {
 // /api/entries): the server's local midnight is not the user's, and without
 // this the composite intake/recommendation silently disagreed with the entry
 // list the client fetches for the very same calendar day.
-app.get('/api/today', asyncH(async (req, res) => {
+requireAuthRouter.get('/today', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
   const { from, to } = req.query
   const bounds =
     typeof from === 'string' && typeof to === 'string' && !isNaN(Date.parse(from)) && !isNaN(Date.parse(to))
       ? { from, to }
       : null
-  res.json(await todayComposite(date, new Date(), bounds))
+  res.json(await todayComposite(req.userId, date, new Date(), bounds))
 }))
 
 // Plan for a day: baseline vs. adjusted targets + rationale + signals used.
-app.get('/api/plan/today', asyncH(async (req, res) => {
+requireAuthRouter.get('/plan/today', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
-  const plan = await buildPlan(date, new Date())
-  await store.savePlan(date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  const plan = await buildPlan(req.userId, date, new Date())
+  await store.savePlan(req.userId, date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
   res.json(plan)
 }))
 
 // Composed wearable signals (one per metric) with provenance + freshness.
-app.get('/api/signals', asyncH(async (req, res) => {
+requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   const now = new Date()
-  res.json({ date: localYmd(now), signals: await composeSignals(store, now) })
+  res.json({ date: localYmd(now), signals: await composeSignals(store, now, req.userId) })
 }))
 
 // Connections: provider statuses (incl. demo) + the plan-influence toggles.
-app.get('/api/connections', asyncH(async (req, res) => {
-  const providers = await allProviderStatuses(store)
+requireAuthRouter.get('/connections', asyncH(async (req, res) => {
+  const providers = await allProviderStatuses(store, req.userId)
   const withEnabled = []
   for (const p of providers) {
-    const s = await store.getIntegration(p.id)
+    const s = await store.getIntegration(req.userId, p.id)
     withEnabled.push({ ...p, enabled: s.enabled !== false })
   }
-  res.json({ providers: withEnabled, influence: await planInfluence() })
+  res.json({ providers: withEnabled, influence: await planInfluence(req.userId) })
 }))
 
-app.put('/api/connections/influence', asyncH(async (req, res) => {
-  const cur = await planInfluence()
+requireAuthRouter.put('/connections/influence', asyncH(async (req, res) => {
+  const cur = await planInfluence(req.userId)
   const b = req.body || {}
   const influence = {
     readiness: b.readiness != null ? !!b.readiness : cur.readiness,
     sleep: b.sleep != null ? !!b.sleep : cur.sleep,
     workouts: b.workouts != null ? !!b.workouts : cur.workouts,
   }
-  const row = await store.getIntegration('plan')
-  await store.setIntegration('plan', { settings: { ...(row.settings || {}), influence } })
+  const row = await store.getIntegration(req.userId, 'plan')
+  await store.setIntegration(req.userId, 'plan', { settings: { ...(row.settings || {}), influence } })
   res.json({ influence })
 }))
 
-app.put('/api/connections/:provider', asyncH(async (req, res) => {
+requireAuthRouter.put('/connections/:provider', asyncH(async (req, res) => {
   const id = req.params.provider
   if (!['oura', 'garmin', 'apple'].includes(id)) return res.status(404).json({ error: 'Unknown provider.' })
   const patch = {}
   if (req.body?.enabled != null) patch.enabled = !!req.body.enabled
   if (req.body?.demo != null) patch.demo = !!req.body.demo
-  const row = await store.setIntegration(id, patch)
+  const row = await store.setIntegration(req.userId, id, patch)
   res.json({ provider: id, enabled: row.enabled !== false, demo: row.demo !== false })
 }))
 
@@ -594,17 +731,50 @@ function normalizeApplePermissions(p, rows) {
   return { requested, available, updated_at: new Date().toISOString() }
 }
 
+// A per-user Apple ingest token, generated on demand — the iOS companion has
+// no interactive login (it's a background sync, not a browser), so it can't
+// carry a session cookie the way the SPA does. The legacy single global
+// APPLE_INGEST_TOKEN env var still works too (checked first) for a
+// single-owner deploy that hasn't generated a per-user token — but it's
+// necessarily shared across every user on the box, same tradeoff as the
+// legacy Oura PAT above.
+requireAuthRouter.post('/apple/token', asyncH(async (req, res) => {
+  const row = await store.getIntegration(req.userId, 'apple')
+  const token = crypto.randomBytes(24).toString('hex')
+  await store.setIntegration(req.userId, 'apple', { settings: { ...(row.settings || {}), ingest_token: token } })
+  res.json({ token })
+}))
+
 // Apple Health ingest: a native HealthKit companion / Health export POSTs
-// normalized samples here (there is no Apple cloud API). Token-gated if
-// APPLE_INGEST_TOKEN is set.
+// normalized samples here (there is no Apple cloud API). No session — the
+// companion authenticates with its own per-user token (see POST
+// /api/apple/token above) instead, checked against every user's stored
+// integrations.apple.settings.ingest_token to find whose data this is. The
+// legacy global APPLE_INGEST_TOKEN, if set, is checked first and — being a
+// single shared secret — can't identify a user on its own; it's accepted
+// only when exactly one user account exists on the box, so it still can't be
+// silently misattributed once a second person signs up.
+async function resolveAppleIngestUser(req) {
+  const presented = req.get('x-ingest-token')
+  if (!presented) return null
+  const legacy = process.env.APPLE_INGEST_TOKEN
+  if (legacy && presented === legacy) {
+    // A shared single secret can only be attributed while it's unambiguous —
+    // once a second account exists, getSoleUserId() returns null and this
+    // falls through to the per-user lookup below (which the legacy token
+    // won't match, since it was never stored as anyone's ingest_token).
+    return store.getSoleUserId()
+  }
+  return store.findUserIdByAppleIngestToken(presented)
+}
+
 app.post('/api/apple/ingest', asyncH(async (req, res) => {
-  const token = process.env.APPLE_INGEST_TOKEN
-  if (token && req.get('x-ingest-token') !== token) return res.status(401).json({ error: 'Invalid ingest token.' })
+  const userId = await resolveAppleIngestUser(req)
+  if (userId == null) {
+    return res.status(401).json({ error: 'Invalid ingest token.' })
+  }
   const { date, samples, permissions } = req.body || {}
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
-  // Keep only well-formed samples; a metric name is required and everything
-  // else is optional. Absent metrics are simply not stored (never inferred as
-  // denied). Timestamps default to now so a minimal client still works.
   const nowIso = new Date().toISOString()
   const rows = (Array.isArray(samples) ? samples : [])
     .filter((s) => s && typeof s.metric === 'string' && s.metric)
@@ -616,10 +786,10 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
       fetched_at: s.fetched_at || nowIso,
       extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
     }))
-  const n = await store.replaceAppleSignals(day, rows)
-  const cur = await store.getIntegration('apple')
+  const n = await store.replaceAppleSignals(userId, day, rows)
+  const cur = await store.getIntegration(userId, 'apple')
   const perms = normalizeApplePermissions(permissions, rows)
-  await store.setIntegration('apple', {
+  await store.setIntegration(userId, 'apple', {
     connected_at: cur.connected_at || nowIso,
     last_synced_at: nowIso,
     settings: { ...(cur.settings || {}), permissions: perms },
@@ -629,13 +799,13 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
 
 // Insights: nutrition trends over a window; signal correlations flagged as
 // insufficient-data until enough history exists (never causal/medical copy).
-app.get('/api/insights', asyncH(async (req, res) => {
+requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const window = [7, 14, 30].includes(Number(req.query.window)) ? Number(req.query.window) : 7
   const now = new Date()
   const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1))
   const end = new Date(now); end.setHours(0, 0, 0, 0); end.setDate(end.getDate() + 1)
-  const entries = await store.listEntries({ from: start.toISOString(), to: end.toISOString() })
-  const targets = await store.getLatestTargets()
+  const entries = await store.listEntries(req.userId, { from: start.toISOString(), to: end.toISOString() })
+  const targets = await store.getLatestTargets(req.userId)
 
   const byDay = new Map()
   for (const e of entries) {
@@ -651,7 +821,7 @@ app.get('/api/insights', asyncH(async (req, res) => {
   const calTarget = Number(targets?.calories) || 0
   const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
 
-  const ouraReadiness = (await store.listOuraHistory?.(localYmd(start), localYmd(new Date(end - 1)))) || []
+  const ouraReadiness = (await store.listOuraHistory?.(req.userId, localYmd(start), localYmd(new Date(end - 1)))) || []
 
   res.json({
     window,
@@ -665,6 +835,45 @@ app.get('/api/insights', asyncH(async (req, res) => {
     },
   })
 }))
+
+// --- scheduled Oura re-sync ------------------------------------------------
+// Oura history only ever gets backfilled at connect time (or by manually
+// hitting POST /api/oura/backfill) — nothing keeps it current after that, so
+// Insights' readiness trend and the activity-level suggestion (both read
+// from wearable_signals, not a live call) quietly go stale a day after
+// connecting. This runs a small trailing-window backfill for every
+// connected account on a timer, so the stored history stays current without
+// anyone having to remember to re-trigger it. A short window, not the full
+// 30/90-day connect-time pull — Oura's own data can lag a day or two behind
+// real time, so re-covering the last few days catches anything that wasn't
+// final yet on a prior pass; older history never needs re-fetching.
+const OURA_RESYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
+const OURA_RESYNC_WINDOW_DAYS = 3
+
+async function resyncAllOuraAccounts() {
+  const accounts = await store.listAllOuraAccounts()
+  for (const account of accounts) {
+    try {
+      const token = await ouraValidAccessToken(account, (t) => store.updateOuraTokens(account.user_id, account.id, t))
+      await backfillOuraHistory(account.user_id, token, OURA_RESYNC_WINDOW_DAYS)
+    } catch (err) {
+      // One account's failure (an expired/revoked refresh token, a transient
+      // Oura outage) must not stop the rest of the batch from syncing.
+      console.error(`[oura-resync] account ${account.id} (user ${account.user_id}) failed: ${err.message}`)
+    }
+  }
+}
+
+// Guarded on ouraOAuthConfigured() so a box with no Oura app registered never
+// schedules pointless polling, and on !process.env.VITEST so the test suite
+// (which sets these env vars in test/oura-oauth.test.js to exercise the OAuth
+// flow) never arms a real network timer mid-run. `.unref()` is a second,
+// independent safeguard: even if this guard were ever bypassed, an unref'd
+// timer still can't keep the process alive past its natural exit.
+if (ouraOAuthConfigured() && !process.env.VITEST) {
+  setTimeout(resyncAllOuraAccounts, 60 * 1000).unref() // shortly after boot, not immediately at import
+  setInterval(resyncAllOuraAccounts, OURA_RESYNC_INTERVAL_MS).unref()
+}
 
 // In production (or any time a build exists) the same process serves the
 // built PWA alongside the API, so one container/host handles everything and

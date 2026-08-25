@@ -284,7 +284,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   )
 }
 
-export default function Connections({ refreshKey, onChanged }) {
+export default function Connections({ refreshKey, onChanged, user, onLogout }) {
   const [conn, setConn] = useState(null)
   const [ouraAccts, setOuraAccts] = useState([])
   const [garminAccts, setGarminAccts] = useState([])
@@ -428,6 +428,17 @@ export default function Connections({ refreshKey, onChanged }) {
           {deleteNote && <p className="mt-1 max-w-[150px] text-[10px] leading-snug text-faint">{deleteNote}</p>}
         </div>
       </footer>
+
+      {/* Account — the session, not a wearable; kept last and visually separate. */}
+      {user && (
+        <section className="mt-6 flex items-center justify-between gap-3 border-t border-line pt-3">
+          <div className="min-w-0">
+            <div className="eyebrow">Signed in</div>
+            <div className="truncate text-sm text-ink">{user.email}</div>
+          </div>
+          <Button variant="subtle" onClick={onLogout} className="shrink-0">Log out</Button>
+        </section>
+      )}
     </div>
   )
 }

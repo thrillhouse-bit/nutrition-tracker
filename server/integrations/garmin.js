@@ -120,6 +120,18 @@ export async function backfillDailies(token, startSec, endSec) {
   return res.json().catch(() => null)
 }
 
+// Garmin's own opaque id for the connected account. VERIFY the exact path
+// against the partner docs — Health API providers commonly expose a "who am
+// I" endpoint right after token exchange for exactly this reason: it's the
+// only identifier a later PUSHED webhook carries, and a multi-user server has
+// no session/cookie context on an incoming webhook to route by otherwise.
+export async function fetchGarminUserId(token) {
+  const res = await fetch(`${WELLNESS_BASE}/user/id`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) return null // connect still succeeds without it; the webhook just can't route to this account yet
+  const body = await res.json().catch(() => null)
+  return body?.userId || null
+}
+
 export async function validAccessToken(account, persist) {
   const exp = account.expires_at ? new Date(account.expires_at).getTime() : 0
   if (account.access_token && exp > Date.now() + 60000) return account.access_token

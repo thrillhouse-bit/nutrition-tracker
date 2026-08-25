@@ -14,6 +14,7 @@ import LogView from './components/LogView.jsx'
 import Plan from './components/Plan.jsx'
 import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
+import Auth from './components/Auth.jsx'
 
 const RECENTS_KEY = 'nt_recents_v1'
 
@@ -75,6 +76,27 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
 }
 
 export default function App() {
+  // Auth gate: 'loading' avoids a flash of the login screen while /auth/me
+  // resolves, 'out' shows Auth, 'in' shows the app. Everything below this
+  // point already assumes a session exists — the rest of the app's fetches
+  // rely on the cookie, not on `user`, so they don't need to be re-wired.
+  const [authState, setAuthState] = useState('loading')
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    api.me()
+      .then(({ user }) => { if (alive) { setUser(user); setAuthState(user ? 'in' : 'out') } })
+      .catch(() => { if (alive) setAuthState('out') })
+    return () => { alive = false }
+  }, [])
+
+  const logout = async () => {
+    await api.logout().catch(() => {})
+    setUser(null)
+    setAuthState('out')
+  }
+
   const [tab, setTab] = useState('today')
   const [date, setDate] = useState(() => new Date())
   const [entries, setEntries] = useState([])
@@ -277,6 +299,22 @@ export default function App() {
 
   const shared = { date, refreshKey, openAdd, onEditEntry: setEditingEntry, onDeleteEntry: deleteEntry }
 
+  // Below this point every fetch relies on the session cookie. While signed
+  // out, the effects above already fired once at mount and 401'd (entries,
+  // today, recents all sit at their empty-state values) — that's fine while
+  // Auth is on screen, but a fresh sign-in needs those effects to refire
+  // rather than leave the just-unlocked app showing yesterday's empty fetch.
+  if (authState === 'loading') {
+    return (
+      <div className="flex min-h-full items-center justify-center">
+        <Spinner label="Loading…" />
+      </div>
+    )
+  }
+  if (authState === 'out') {
+    return <Auth onAuthed={(u) => { setUser(u); setAuthState('in'); bump() }} />
+  }
+
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col">
       {/* Offline strip — the only global chrome; each screen owns its own title. */}
@@ -313,7 +351,7 @@ export default function App() {
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}
         {tab === 'plan' && <Plan {...shared} onChanged={bump} />}
         {tab === 'insights' && <Insights refreshKey={refreshKey} />}
-        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} />}
+        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} />}
       </main>
 
       {/* Bottom nav — rail bar, active tab drawn with a cobalt top rule */}

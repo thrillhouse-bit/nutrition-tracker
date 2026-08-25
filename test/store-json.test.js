@@ -6,6 +6,10 @@ import { JsonStore, DEFAULT_PROFILE } from '../server/db.js'
 
 // JsonStore behavioral contract tests. The JSON store is the dev fallback for
 // PgStore and the two must behave identically (routes only ever see `store`).
+// Every personal-data method now takes userId as its first argument — these
+// tests exercise a single fixed test user throughout (USER), since none of
+// them are about cross-user isolation.
+const USER = 1
 let dir
 
 beforeEach(async () => {
@@ -59,8 +63,8 @@ describe('JsonStore logged_at timestamps match PgStore timestamptz semantics', (
     // 2026-08-25T02:00:00+05:00 === 2026-08-24T21:00:00Z — inside the window.
     // Postgres compares it as a timestamptz and returns it; a raw string
     // comparison sorts it after "2026-08-25T00:00:00.000Z" and drops it.
-    await s.addEntry({ food_id: food.id, logged_at: '2026-08-25T02:00:00+05:00' })
-    const rows = await s.listEntries(day)
+    await s.addEntry(USER, { food_id: food.id, logged_at: '2026-08-25T02:00:00+05:00' })
+    const rows = await s.listEntries(USER, day)
     expect(rows).toHaveLength(1)
     expect(rows[0].logged_at).toBe('2026-08-24T21:00:00.000Z')
   })
@@ -68,24 +72,24 @@ describe('JsonStore logged_at timestamps match PgStore timestamptz semantics', (
   it('still excludes a timestamp genuinely outside the range (control)', async () => {
     const { s, food } = await seeded()
     // 2026-08-25T06:00:00+05:00 === 2026-08-25T01:00:00Z — outside the window.
-    await s.addEntry({ food_id: food.id, logged_at: '2026-08-25T06:00:00+05:00' })
-    expect(await s.listEntries(day)).toHaveLength(0)
+    await s.addEntry(USER, { food_id: food.id, logged_at: '2026-08-25T06:00:00+05:00' })
+    expect(await s.listEntries(USER, day)).toHaveLength(0)
   })
 
   it('keeps an already-UTC timestamp byte-for-byte (control)', async () => {
     const { s, food } = await seeded()
-    const e = await s.addEntry({ food_id: food.id, logged_at: '2026-08-24T12:00:00.000Z' })
+    const e = await s.addEntry(USER, { food_id: food.id, logged_at: '2026-08-24T12:00:00.000Z' })
     expect(e.logged_at).toBe('2026-08-24T12:00:00.000Z')
-    expect(await s.listEntries(day)).toHaveLength(1)
+    expect(await s.listEntries(USER, day)).toHaveLength(1)
   })
 
   it('normalizes an offset timestamp set through updateEntry too', async () => {
     const { s, food } = await seeded()
-    const e = await s.addEntry({ food_id: food.id, logged_at: '2026-08-24T12:00:00.000Z' })
+    const e = await s.addEntry(USER, { food_id: food.id, logged_at: '2026-08-24T12:00:00.000Z' })
     // 23:59 in UTC-4 is 03:59Z the next day — the entry must move out of the window.
-    await s.updateEntry(e.id, { logged_at: '2026-08-24T23:59:00-04:00' })
-    expect(await s.listEntries(day)).toHaveLength(0)
-    const next = await s.listEntries({ from: '2026-08-25T00:00:00.000Z', to: '2026-08-26T00:00:00.000Z' })
+    await s.updateEntry(USER, e.id, { logged_at: '2026-08-24T23:59:00-04:00' })
+    expect(await s.listEntries(USER, day)).toHaveLength(0)
+    const next = await s.listEntries(USER, { from: '2026-08-25T00:00:00.000Z', to: '2026-08-26T00:00:00.000Z' })
     expect(next).toHaveLength(1)
     expect(next[0].logged_at).toBe('2026-08-25T03:59:00.000Z')
   })
@@ -94,25 +98,25 @@ describe('JsonStore logged_at timestamps match PgStore timestamptz semantics', (
 describe('JsonStore Oura readiness history (backfill)', () => {
   it('round-trips saved days through listOuraHistory, filtered by range', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
-    await s.saveOuraHistory([
+    await s.saveOuraHistory(USER, [
       { day: '2026-08-01', score: 70, total_calories: 2100, active_calories: 400, steps: 8000 },
       { day: '2026-08-02', score: 75, total_calories: 2200, active_calories: 500, steps: 9000 },
       { day: '2026-08-03', score: 68, total_calories: 2000, active_calories: 350, steps: 7000 },
     ])
-    const all = await s.listOuraHistory('2026-08-01', '2026-08-03')
+    const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-03')
     expect(all.map((r) => r.day)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03'])
     expect(all[0].value).toBe(70)
 
-    const narrowed = await s.listOuraHistory('2026-08-02', '2026-08-02')
+    const narrowed = await s.listOuraHistory(USER, '2026-08-02', '2026-08-02')
     expect(narrowed).toHaveLength(1)
     expect(narrowed[0].day).toBe('2026-08-02')
   })
 
   it('re-saving a day replaces it rather than duplicating (control: other days untouched)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
-    await s.saveOuraHistory([{ day: '2026-08-01', score: 70 }, { day: '2026-08-02', score: 75 }])
-    await s.saveOuraHistory([{ day: '2026-08-01', score: 91 }]) // re-backfill overlapping one day
-    const all = await s.listOuraHistory('2026-08-01', '2026-08-02')
+    await s.saveOuraHistory(USER, [{ day: '2026-08-01', score: 70 }, { day: '2026-08-02', score: 75 }])
+    await s.saveOuraHistory(USER, [{ day: '2026-08-01', score: 91 }]) // re-backfill overlapping one day
+    const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-02')
     expect(all).toHaveLength(2) // not 3 — the old 2026-08-01 row was replaced, not duplicated
     expect(all.find((r) => r.day === '2026-08-01').value).toBe(91)
     expect(all.find((r) => r.day === '2026-08-02').value).toBe(75) // untouched
@@ -120,12 +124,12 @@ describe('JsonStore Oura readiness history (backfill)', () => {
 
   it('skips a day with no score rather than storing a null (control: valid days still saved)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
-    const n = await s.saveOuraHistory([
+    const n = await s.saveOuraHistory(USER, [
       { day: '2026-08-01', score: null, total_calories: 2000 }, // Oura had no score that day
       { day: '2026-08-02', score: 80 },
     ])
     expect(n).toBe(1)
-    const all = await s.listOuraHistory('2026-08-01', '2026-08-02')
+    const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-02')
     expect(all.map((r) => r.day)).toEqual(['2026-08-02'])
   })
 })
@@ -133,19 +137,19 @@ describe('JsonStore Oura readiness history (backfill)', () => {
 describe('JsonStore biometric profile (singleton)', () => {
   it('returns the all-null default when nothing has been saved yet (never throws/404s)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
-    expect(await s.getProfile()).toEqual(DEFAULT_PROFILE)
+    expect(await s.getProfile(USER)).toEqual(DEFAULT_PROFILE)
   })
 
   it('setProfile merges a patch into what is already stored — earlier fields survive', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
-    await s.setProfile({ height_cm: 180, weight_kg: 80 })
-    const after = await s.setProfile({ sex: 'male', age_years: 40 }) // a second, later field-by-field save
+    await s.setProfile(USER, { height_cm: 180, weight_kg: 80 })
+    const after = await s.setProfile(USER, { sex: 'male', age_years: 40 }) // a second, later field-by-field save
     expect(after).toMatchObject({ height_cm: 180, weight_kg: 80, sex: 'male', age_years: 40 })
   })
 
   it('sets updated_at itself on every save, ignoring any value the caller passes', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
-    const saved = await s.setProfile({ height_cm: 180, updated_at: '1999-01-01T00:00:00.000Z' })
+    const saved = await s.setProfile(USER, { height_cm: 180, updated_at: '1999-01-01T00:00:00.000Z' })
     expect(saved.updated_at).not.toBe('1999-01-01T00:00:00.000Z')
     expect(new Date(saved.updated_at).toString()).not.toBe('Invalid Date')
   })
@@ -153,8 +157,8 @@ describe('JsonStore biometric profile (singleton)', () => {
   it('persists to disk and round-trips through a fresh JsonStore instance', async () => {
     const file = path.join(dir, 'store.json')
     const s = new JsonStore(file)
-    await s.setProfile({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
+    await s.setProfile(USER, { height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
     const reopened = new JsonStore(file)
-    expect(await reopened.getProfile()).toMatchObject({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
+    expect(await reopened.getProfile(USER)).toMatchObject({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
   })
 })

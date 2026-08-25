@@ -6,6 +6,13 @@ const nowIso = () => new Date().toISOString()
 
 // A store where Oura/Garmin have no data or demo (so Apple is the only live
 // source) and Apple carries whatever ingested rows + integration state we pass.
+// USER is a fixed test user id — these tests are single-user, not about
+// cross-user isolation, so every method just ignores it except getIntegration
+// (which needs the real (userId, provider) argument order — a fixture that
+// mistakenly read `provider` out of the userId slot would silently return the
+// default settings for every provider and mask what these tests check).
+const USER = 1
+
 function appleStore({ rows = [], integration = {} } = {}) {
   const integrations = {
     oura: { enabled: true, demo: false, settings: {} },
@@ -14,11 +21,11 @@ function appleStore({ rows = [], integration = {} } = {}) {
     plan: { enabled: true, demo: true, settings: {} },
   }
   return {
-    getIntegration: async (id) => integrations[id] || { enabled: true, demo: true, settings: {} },
-    listOuraAccounts: async () => [],
-    listGarminAccounts: async () => [],
+    getIntegration: async (userId, id) => integrations[id] || { enabled: true, demo: true, settings: {} },
+    listOuraAccounts: async (userId) => [],
+    listGarminAccounts: async (userId) => [],
     getGarminDaily: async () => null,
-    listAppleSignals: async () => rows,
+    listAppleSignals: async (userId) => rows,
     updateOuraTokens: async () => {},
   }
 }
@@ -31,7 +38,7 @@ describe('Apple Health ingested signals flow through the provider-neutral model'
       { metric: 'expenditure', value: 2100, unit: 'kcal', recorded_at: nowIso(), fetched_at: nowIso(), extra: { active: 560 } },
       { metric: 'hrv', value: 68, unit: 'ms', recorded_at: nowIso(), fetched_at: nowIso() },
     ]
-    const sig = await composeSignals(appleStore({ rows }), new Date())
+    const sig = await composeSignals(appleStore({ rows }), new Date(), USER)
     expect(sig.workout.provider).toBe('apple')
     expect(sig.workout.value.kind).toBe('ride')
     expect(sig.sleep.provider).toBe('apple')
@@ -49,7 +56,7 @@ describe('Apple provider status (connected / partial / stale / disconnected / de
 
   it('is connected with today data and echoes permissions', async () => {
     const rows = [{ metric: 'sleep', value: 7, unit: 'h', recorded_at: nowIso(), fetched_at: nowIso() }]
-    const st = await providerStatus(appleStore({ rows, integration: withPerms(['workouts', 'sleep', 'activeEnergy'], ['workouts', 'sleep', 'activeEnergy']) }), 'apple', new Date())
+    const st = await providerStatus(appleStore({ rows, integration: withPerms(['workouts', 'sleep', 'activeEnergy'], ['workouts', 'sleep', 'activeEnergy']) }), USER, 'apple', new Date())
     expect(st.status).toBe('connected')
     expect(st.partial).toBe(false)
     expect(st.permissions.available).toContain('sleep')
@@ -57,31 +64,31 @@ describe('Apple provider status (connected / partial / stale / disconnected / de
 
   it('flags partial when fewer categories are available than requested', async () => {
     const rows = [{ metric: 'sleep', value: 7, unit: 'h', recorded_at: nowIso(), fetched_at: nowIso() }]
-    const st = await providerStatus(appleStore({ rows, integration: withPerms(['workouts', 'sleep', 'hrv'], ['sleep']) }), 'apple', new Date())
+    const st = await providerStatus(appleStore({ rows, integration: withPerms(['workouts', 'sleep', 'hrv'], ['sleep']) }), USER, 'apple', new Date())
     expect(st.status).toBe('connected')
     expect(st.partial).toBe(true)
   })
 
   it('is stale when a recent sync exists but no data today', async () => {
     const last = new Date(Date.now() - 30 * 3600000).toISOString()
-    const st = await providerStatus(appleStore({ rows: [], integration: { connected_at: last, last_synced_at: last } }), 'apple', new Date())
+    const st = await providerStatus(appleStore({ rows: [], integration: { connected_at: last, last_synced_at: last } }), USER, 'apple', new Date())
     expect(st.status).toBe('stale')
   })
 
   it('is disconnected when the last sync is old', async () => {
     const last = new Date(Date.now() - 100 * 3600000).toISOString()
-    const st = await providerStatus(appleStore({ rows: [], integration: { connected_at: last, last_synced_at: last } }), 'apple', new Date())
+    const st = await providerStatus(appleStore({ rows: [], integration: { connected_at: last, last_synced_at: last } }), USER, 'apple', new Date())
     expect(st.status).toBe('disconnected')
   })
 
   it('falls back to demo only when the companion never connected', async () => {
-    const st = await providerStatus(appleStore({ rows: [] }), 'apple', new Date())
+    const st = await providerStatus(appleStore({ rows: [] }), USER, 'apple', new Date())
     expect(st.status).toBe('demo')
   })
 
   it('never reports "denied" — an unavailable category is simply absent', async () => {
     const rows = [{ metric: 'sleep', value: 7, unit: 'h', recorded_at: nowIso(), fetched_at: nowIso() }]
-    const st = await providerStatus(appleStore({ rows, integration: withPerms(['sleep', 'hrv'], ['sleep']) }), 'apple', new Date())
+    const st = await providerStatus(appleStore({ rows, integration: withPerms(['sleep', 'hrv'], ['sleep']) }), USER, 'apple', new Date())
     expect(st.permissions.available).not.toContain('hrv')
     expect(JSON.stringify(st.permissions)).not.toMatch(/deni/i)
   })
