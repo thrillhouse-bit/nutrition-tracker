@@ -17,8 +17,20 @@ const fake = vi.hoisted(() => {
     garminAccounts: [],
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
+    profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null },
+    setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
   }
   const store = {
+    getProfile: async () => state.profile,
+    setProfile: async (patch) => {
+      state.profile = { ...state.profile, ...patch, updated_at: '2026-08-25T00:00:00.000Z' }
+      return state.profile
+    },
+    setTargets: async (t) => {
+      state.setTargetsCalls.push(t)
+      state.targets = { ...t }
+      return state.targets
+    },
     getIntegration: async (p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
     setIntegration: async (p, patch) => {
       const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, provider: p }
@@ -94,11 +106,22 @@ afterEach(() => {
   fake.state.garminDailies = {}
   fake.state.appleSignals = {}
   fake.state.integrations = {}
+  fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
+  fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null }
+  fake.state.setTargetsCalls = []
+  fake.state.ouraHistory = []
 })
 
 const post = (path, body, headers = {}) =>
   fetch(`${base}${path}`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  })
+
+const put = (path, body, headers = {}) =>
+  fetch(`${base}${path}`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   })
@@ -320,5 +343,143 @@ describe('GET /api/today day bounds', () => {
     const res = await fetch(`${base}/api/today?date=2026-08-25&from=garbage&to=alsogarbage`)
     expect(res.status).toBe(200)
     expect((await res.json()).intake.calories).toBe(500)
+  })
+})
+
+describe('GET /api/profile', () => {
+  it('returns an all-null-fields object when nothing has been saved yet (never 404s)', async () => {
+    const res = await fetch(`${base}/api/profile`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.profile).toMatchObject({ height_cm: null, weight_kg: null, sex: null, age_years: null, activity_level: null, goal: null })
+  })
+})
+
+describe('PUT /api/profile validation', () => {
+  it.each([
+    ['sex', 'nonbinary-typo'],
+    ['activity_level', 'super_active'],
+    ['goal', 'shred'],
+    ['units_pref', 'furlongs'],
+  ])('rejects an invalid %s enum value with 400', async (field, bad) => {
+    const before = fake.state.profile[field]
+    const res = await put('/api/profile', { [field]: bad })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(new RegExp(field))
+    // The gate really blocked the write, not just the response.
+    expect(fake.state.profile[field]).toBe(before)
+  })
+
+  it('rejects units_pref: null (it is not nullable — unlike the other enum fields)', async () => {
+    const res = await put('/api/profile', { units_pref: null })
+    expect(res.status).toBe(400)
+  })
+
+  it.each([
+    ['height_cm', -5],
+    ['weight_kg', 0],
+    ['age_years', 'not-a-number'],
+    ['height_cm', '20kg'], // Number('20kg') is NaN — not finite
+  ])('rejects a non-positive or non-finite %s with 400', async (field, bad) => {
+    const res = await put('/api/profile', { [field]: bad })
+    expect(res.status).toBe(400)
+    expect(fake.state.setTargetsCalls).toHaveLength(0) // an invalid PUT must never reach the calculator
+  })
+
+  it('accepts null for a nullable numeric/enum field (clearing a value, control)', async () => {
+    await put('/api/profile', { height_cm: 180 })
+    const res = await put('/api/profile', { height_cm: null })
+    expect(res.status).toBe(200)
+    expect((await res.json()).profile.height_cm).toBeNull()
+  })
+})
+
+describe('PUT /api/profile merge + calculated baseline', () => {
+  it('saves a partial profile but does NOT call setTargets while fields are missing', async () => {
+    const res = await put('/api/profile', { height_cm: 180, weight_kg: 80 })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.profile).toMatchObject({ height_cm: 180, weight_kg: 80 })
+    expect(body.computedBaseline).toBeNull()
+    expect(fake.state.setTargetsCalls).toHaveLength(0) // no silent target changes from an incomplete profile
+  })
+
+  it('merges across separate calls — filling the form field by field keeps earlier fields (control)', async () => {
+    await put('/api/profile', { height_cm: 180 })
+    await put('/api/profile', { weight_kg: 80 })
+    const res = await fetch(`${base}/api/profile`)
+    const body = await res.json()
+    expect(body.profile).toMatchObject({ height_cm: 180, weight_kg: 80 })
+  })
+
+  it('computes and saves a baseline via store.setTargets once every required field is present', async () => {
+    await put('/api/profile', { height_cm: 180, weight_kg: 80 })
+    await put('/api/profile', { sex: 'male', age_years: 40 })
+    const res = await put('/api/profile', { activity_level: 'sedentary', goal: 'maintain' })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // bmr = 10*80 + 6.25*180 - 5*40 + 5 = 1730; tdee = 1730*1.2 = 2076 -> 2080
+    expect(body.computedBaseline).toMatchObject({ calories: 2080, protein_g: 128 })
+    expect(fake.state.setTargetsCalls).toHaveLength(1) // fired exactly once, on the completing call
+    expect(fake.state.targets).toMatchObject({ calories: 2080, protein_g: 128 })
+  })
+
+  it('reuses the existing targets mechanism: the saved row is exactly what setTargets returned (no parallel system)', async () => {
+    const res = await put('/api/profile', {
+      height_cm: 180, weight_kg: 80, sex: 'male', age_years: 40, activity_level: 'sedentary', goal: 'maintain',
+    })
+    const body = await res.json()
+    const targetsRes = await fetch(`${base}/api/targets`)
+    expect((await targetsRes.json()).targets).toEqual(body.computedBaseline)
+  })
+})
+
+describe('GET /api/profile/activity-suggestion', () => {
+  it('returns nulls when there is no Oura history to base a suggestion on', async () => {
+    fake.state.ouraHistory = []
+    const res = await fetch(`${base}/api/profile/activity-suggestion`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ suggested: null, basis: null })
+  })
+
+  it('maps a 10-day step average to the documented activity band', async () => {
+    // The suite pins TZ=Pacific/Apia (UTC+13, no DST — see the file header) so
+    // this UTC instant is already local 2026-08-26; the endpoint windows by
+    // localYmd like every sibling date-defaulting endpoint in this file, so
+    // the query range is ['2026-08-17', '2026-08-26'] — both days below sit
+    // inside it.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    // Two days averaging 8400 steps/day -> "moderate" band (7500-10000).
+    fake.state.ouraHistory = [
+      { day: '2026-08-18', value: 70, extra: { steps: 8000 } },
+      { day: '2026-08-19', value: 70, extra: { steps: 8800 } },
+    ]
+    const res = await fetch(`${base}/api/profile/activity-suggestion`)
+    const body = await res.json()
+    expect(body.suggested).toBe('moderate')
+    expect(body.basis).toBe('10-day avg steps: 8400')
+  })
+
+  it.each([
+    [4999, 'sedentary'],
+    [5000, 'light'], // shared boundary belongs to the lower band, not sedentary
+    [7500, 'light'],
+    [7501, 'moderate'],
+    [10000, 'moderate'],
+    [12500, 'active'],
+    [12501, 'very_active'],
+  ])('classifies an average of %i steps as %s', async (steps, level) => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.ouraHistory = [{ day: '2026-08-20', value: 70, extra: { steps } }]
+    const res = await fetch(`${base}/api/profile/activity-suggestion`)
+    expect((await res.json()).suggested).toBe(level)
+  })
+
+  it('never writes to the profile — it is a suggestion only (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.ouraHistory = [{ day: '2026-08-20', value: 70, extra: { steps: 15000 } }] // would suggest very_active
+    await fetch(`${base}/api/profile/activity-suggestion`)
+    expect(fake.state.profile.activity_level).toBeNull() // untouched
   })
 })

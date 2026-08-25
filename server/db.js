@@ -25,6 +25,20 @@ export const DEFAULT_TARGETS = {
   sodium_mg: 2300,
 }
 
+// Singleton biometric profile (see schema.sql's `profile` table comment) —
+// this is the "nothing saved yet" shape, never a 404: the calculator UI needs
+// somewhere to start from even before the user has typed anything.
+export const DEFAULT_PROFILE = {
+  height_cm: null,
+  weight_kg: null,
+  sex: null,
+  age_years: null,
+  units_pref: 'imperial',
+  activity_level: null,
+  goal: null,
+  updated_at: null,
+}
+
 const FOOD_FIELDS = [
   'barcode', 'name', 'brand', 'serving_size', 'serving_unit',
   'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg',
@@ -175,6 +189,32 @@ class PgStore {
     return rows[0]
   }
 
+  // --- biometric profile (singleton, id pinned to 1 — see schema.sql) -------
+  async getProfile() {
+    const sql = await this.ready()
+    const rows = await sql`
+      select height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, updated_at
+      from profile where id = 1 limit 1`
+    return rows[0] || { ...DEFAULT_PROFILE }
+  }
+
+  // Merges the patch into whatever's stored — a user filling the form field
+  // by field must not lose earlier fields. updated_at is always server-set,
+  // never taken from the caller.
+  async setProfile(patch) {
+    const sql = await this.ready()
+    const m = { ...(await this.getProfile()), ...patch }
+    const rows = await sql`
+      insert into profile (id, height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, updated_at)
+      values (1, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.age_years}, ${m.units_pref}, ${m.activity_level}, ${m.goal}, now())
+      on conflict (id) do update set
+        height_cm = excluded.height_cm, weight_kg = excluded.weight_kg, sex = excluded.sex,
+        age_years = excluded.age_years, units_pref = excluded.units_pref,
+        activity_level = excluded.activity_level, goal = excluded.goal, updated_at = excluded.updated_at
+      returning height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, updated_at`
+    return rows[0]
+  }
+
   // Oura OAuth accounts (connected wearable data sources). Tokens are stored so
   // the server can fetch and refresh; never exposed to the client.
   async listOuraAccounts() {
@@ -311,9 +351,16 @@ class PgStore {
     return n
   }
 
+  // `extra` carries the steps/total_calories/active_calories snapshot saved
+  // alongside each day's readiness score (see saveOuraHistory) — selected
+  // here too so this matches JsonStore's return shape, which returns the
+  // whole stored row. GET /api/profile/activity-suggestion reads extra.steps;
+  // narrowing this select to day/value only would silently starve it on the
+  // Postgres backend while JsonStore kept working (the exact PgStore/JsonStore
+  // drift shape this codebase has been bitten by before).
   async listOuraHistory(fromYmd, toYmd) {
     const sql = await this.ready()
-    return sql`select day, value from wearable_signals where provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
+    return sql`select day, value, extra from wearable_signals where provider = 'oura' and metric = 'readiness' and day between ${fromYmd} and ${toYmd} order by day`
   }
 
   // --- daily plans (snapshot of baseline/adjusted targets + rationale) -------
@@ -499,6 +546,23 @@ export class JsonStore {
     d.targets.push(row)
     await this.persist()
     return row
+  }
+
+  // --- biometric profile (singleton — mirrors PgStore's pinned-id-1 upsert) --
+  async getProfile() {
+    const d = await this.load()
+    return d.profile ? { ...d.profile } : { ...DEFAULT_PROFILE }
+  }
+
+  async setProfile(patch) {
+    const d = await this.load()
+    const cur = d.profile || { ...DEFAULT_PROFILE }
+    // updated_at is always server-set, never taken from the caller — same
+    // contract as PgStore's `now()`.
+    const m = { ...cur, ...patch, updated_at: new Date().toISOString() }
+    d.profile = m
+    await this.persist()
+    return { ...m }
   }
 
   async listOuraAccounts() {

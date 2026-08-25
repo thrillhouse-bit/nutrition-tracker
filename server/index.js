@@ -35,6 +35,7 @@ import {
   expiryFrom as garminExpiryFrom,
 } from './integrations/garmin.js'
 import { computeAdjustedTargets, computeRecommendation } from './plan.js'
+import { computeBaseline } from './planCalc.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
 
 const app = express()
@@ -167,6 +168,87 @@ app.get('/api/targets', asyncH(async (req, res) => {
 app.put('/api/targets', asyncH(async (req, res) => {
   const targets = await store.setTargets(req.body || {})
   res.json({ targets })
+}))
+
+// --- biometric profile + calculated baseline -------------------------------
+const PROFILE_ENUMS = {
+  sex: ['male', 'female'],
+  activity_level: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
+  goal: ['maintain', 'lose_fat', 'build_muscle', 'endurance'],
+  units_pref: ['imperial', 'metric'],
+}
+// height_cm/weight_kg/age_years — canonical storage is always metric; the
+// client converts imperial input before it reaches this endpoint.
+const PROFILE_NUMERIC_FIELDS = ['height_cm', 'weight_kg', 'age_years']
+
+// Validates a PUT /api/profile body into a clean patch, or returns an error
+// string. Unknown/undefined keys are left out of the patch entirely so a
+// partial update (one field at a time) can't clobber fields the caller didn't
+// send — store.setProfile does the actual merge.
+function validateProfilePatch(body = {}) {
+  const patch = {}
+  for (const [key, allowed] of Object.entries(PROFILE_ENUMS)) {
+    if (!(key in body)) continue
+    const v = body[key]
+    if (v === null && key !== 'units_pref') { patch[key] = null; continue } // units_pref always has a value
+    if (!allowed.includes(v)) return { error: `${key} must be one of: ${allowed.join(', ')}${key === 'units_pref' ? '' : ', or null'}.` }
+    patch[key] = v
+  }
+  for (const key of PROFILE_NUMERIC_FIELDS) {
+    if (!(key in body)) continue
+    const v = body[key]
+    if (v === null) { patch[key] = null; continue }
+    const n = Number(v)
+    if (!Number.isFinite(n) || n <= 0) return { error: `${key} must be a positive number, or null.` }
+    patch[key] = n
+  }
+  return { patch }
+}
+
+app.get('/api/profile', asyncH(async (req, res) => {
+  res.json({ profile: await store.getProfile() })
+}))
+
+// Merge-saves the profile, then — only when every field computeBaseline needs
+// is now present — recomputes the baseline and pushes it through the SAME
+// mechanism EditTargets uses (store.setTargets), so Plan's baseline reflects
+// it immediately with no separate wiring. An incomplete profile is still
+// saved (so filling the form field by field works) but never touches
+// targets: this app's "no silent target changes" principle means a half-
+// filled form must never establish targets from guessed/missing inputs.
+app.put('/api/profile', asyncH(async (req, res) => {
+  const { patch, error } = validateProfilePatch(req.body || {})
+  if (error) return res.status(400).json({ error })
+  const profile = await store.setProfile(patch)
+  const computedBaseline = computeBaseline(profile)
+  if (computedBaseline) await store.setTargets(computedBaseline)
+  res.json({ profile, computedBaseline })
+}))
+
+// Suggests an activity_level from recent step history — a SUGGESTION only,
+// never written to the profile itself; the client decides whether to apply
+// it (PUT /api/profile is the only write path).
+// Bounds as specced: <5000 sedentary, 5000-7500 light, 7500-10000 moderate,
+// 10000-12500 active, >12500 very_active. Each shared boundary (5000, 7500,
+// 10000, 12500) belongs to the LOWER band, matching the "<5000"/">12500"
+// wording at the two open ends.
+function suggestFromAvgSteps(avg) {
+  if (avg < 5000) return 'sedentary'
+  if (avg <= 7500) return 'light'
+  if (avg <= 10000) return 'moderate'
+  if (avg <= 12500) return 'active'
+  return 'very_active'
+}
+
+app.get('/api/profile/activity-suggestion', asyncH(async (req, res) => {
+  const end = new Date()
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 9) // 10 days inclusive
+  const history = await store.listOuraHistory(localYmd(start), localYmd(end))
+  const steps = history.map((r) => Number(r.extra?.steps)).filter(Number.isFinite)
+  if (!steps.length) return res.json({ suggested: null, basis: null })
+  const avg = steps.reduce((a, b) => a + b, 0) / steps.length
+  res.json({ suggested: suggestFromAvgSteps(avg), basis: `10-day avg steps: ${Math.round(avg)}` })
 }))
 
 // --- wearables: Oura ------------------------------------------------------
