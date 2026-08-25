@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NUTRIENTS, MEALS, num, fmt } from '../lib/nutrition.js'
-import { Button, Field, inputCls } from './ui.jsx'
+import { Button, Field, ServingStepper, inputCls } from './ui.jsx'
 
 const CORE_FIELDS = [
   'name', 'brand', 'serving_size', 'serving_unit',
@@ -73,8 +73,6 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
     onLog(payload)
   }
 
-  const step = (delta) => setServings((s) => Math.max(0.25, Math.round((num(s) + delta) * 100) / 100))
-
   /* --- presentation-only derivations (no behavior) --------------------- */
   const srcKey = String(draft.source || 'manual').toLowerCase()
   const sourceLabel = SOURCE_LABELS[srcKey] || (draft.source ? draft.source[0].toUpperCase() + draft.source.slice(1) : 'Manual')
@@ -140,25 +138,7 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
               </span>
             </div>
           ) : (
-            <div className="flex items-stretch border-[1.5px] border-ink">
-              <button
-                onClick={() => step(-0.5)}
-                aria-label="Fewer servings"
-                className="serif flex h-11 w-11 items-center justify-center border-r-[1.5px] border-ink text-[20px] text-muted hover:bg-fill"
-              >
-                −
-              </button>
-              <div className="numeral flex min-w-[78px] items-center justify-center px-2 text-[19px] text-ink">
-                {fmt(servings, 2)}
-              </div>
-              <button
-                onClick={() => step(0.5)}
-                aria-label="More servings"
-                className="serif flex h-11 w-11 items-center justify-center border-l-[1.5px] border-ink text-[20px] text-cobalt hover:bg-fill"
-              >
-                +
-              </button>
-            </div>
+            <ServingStepper value={servings} onChange={setServings} />
           )}
         </div>
 

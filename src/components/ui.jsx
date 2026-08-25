@@ -4,7 +4,7 @@
 // circles), hairline rules in ink, cobalt as the single accent, status shown by
 // SHAPE + WORD (never color alone), Bodoni numerals, Archivo labels. White is a
 // moment that matters. Every control has a visible focus ring and a real label.
-import { fmt } from '../lib/nutrition.js'
+import { fmt, num } from '../lib/nutrition.js'
 
 /* --- buttons ------------------------------------------------------------- */
 // Block CTA: uppercase, tracked, bold, sharp. The design's primary language.
@@ -52,6 +52,41 @@ export function Field({ label, children, hint, right }) {
       {children}
       {hint && <span className="mt-1 block text-xs text-faint">{hint}</span>}
     </label>
+  )
+}
+
+// Bordered −/value/+ servings stepper — the one control every servings-editing
+// surface uses (FoodConfirm confirming a new log, EntryEditor editing one
+// already logged), so the same conceptual task looks and behaves identically
+// everywhere. h-11/w-11 buttons meet the 44px touch floor.
+export function ServingStepper({ value, onChange, min = 0.25, step = 0.5, className = '' }) {
+  const bump = (delta) => onChange(Math.max(min, Math.round((num(value) + delta) * 100) / 100))
+  return (
+    // inline-flex, not flex: a plain `flex` box blockifies to its parent's full
+    // width, which is invisible inside FoodConfirm's `justify-between` row (the
+    // sibling eyebrow already constrains it) but stretched this control edge to
+    // edge the moment it was dropped into EntryEditor's stacked block layout.
+    <div className={`inline-flex items-stretch border-[1.5px] border-ink ${className}`}>
+      <button
+        type="button"
+        onClick={() => bump(-step)}
+        aria-label="Fewer servings"
+        className="serif flex h-11 w-11 items-center justify-center border-r-[1.5px] border-ink text-[20px] text-muted hover:bg-fill"
+      >
+        −
+      </button>
+      <div className="numeral flex min-w-[78px] items-center justify-center px-2 text-[19px] text-ink">
+        {fmt(value, 2)}
+      </div>
+      <button
+        type="button"
+        onClick={() => bump(step)}
+        aria-label="More servings"
+        className="serif flex h-11 w-11 items-center justify-center border-l-[1.5px] border-ink text-[20px] text-cobalt hover:bg-fill"
+      >
+        +
+      </button>
+    </div>
   )
 }
 
