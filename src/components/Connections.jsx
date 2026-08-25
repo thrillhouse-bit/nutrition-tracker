@@ -277,6 +277,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
                 id={`demo-${id}`}
               />
             </label>
+            {working && <p className="text-xs text-faint">Saving…</p>}
           </div>
         </div>
       )}
