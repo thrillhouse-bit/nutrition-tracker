@@ -65,7 +65,12 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
     // Don't mutate a canonical cached/looked-up product: if the user edited the
     // numbers, log a fresh food instead of overwriting the shared one.
     if (food.id && !coreChanged(food, draft)) {
-      payload.food_id = food.id
+      // Postgres bigint ids come back over JSON as strings (confirmed live,
+      // production-verification audit 25 Aug 2026) — the server's own
+      // food_id schema is deliberately z.number(), strict, so an unconverted
+      // string 400s. This was the primary log-an-existing-food path (scan,
+      // search, or re-log with no edits) failing in production outright.
+      payload.food_id = Number(food.id)
     } else {
       const { id, created_at, ...rest } = draft
       payload.food = rest

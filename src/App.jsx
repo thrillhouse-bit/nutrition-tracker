@@ -308,9 +308,14 @@ export default function App() {
       kind: 'success',
       text: `Deleted ${restore.food?.name || 'entry'}`,
       onUndo: async () => {
+        // restore.food_id AND restore.servings_consumed came from an entries
+        // API response, so — same as FoodConfirm's food_id shortcut — both
+        // are JSON strings over Postgres numeric columns; the server's
+        // schema is strict z.number() for both (confirmed live: an entry's
+        // own servings_consumed round-trips as "1", a string, not 1).
         await api.addEntry({
-          food_id: restore.food_id,
-          servings_consumed: restore.servings_consumed,
+          food_id: Number(restore.food_id),
+          servings_consumed: Number(restore.servings_consumed),
           meal: restore.meal,
           logged_at: restore.logged_at,
         })
