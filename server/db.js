@@ -63,7 +63,10 @@ function pickFood(f = {}) {
 // --------------------------------------------------------------------------
 // Neon Postgres backend
 // --------------------------------------------------------------------------
-class PgStore {
+// Exported (unlike before) so a test can construct one directly and stub
+// `.sql` to exercise error-handling logic (e.g. createUser's unique-violation
+// catch) without a real DATABASE_URL — this environment has never had one.
+export class PgStore {
   constructor(url) {
     this.url = url
     this.sql = null
@@ -77,13 +80,32 @@ class PgStore {
   }
 
   // --- users -----------------------------------------------------------------
+  // The signup route already checks getUserByEmail first, but that leaves a
+  // real race: two concurrent signups for the same email can both pass that
+  // check before either inserts. Without this catch, the loser hit Postgres's
+  // raw unique-violation error (23505) — no `.status`, so it fell through to
+  // asyncH's generic 500 handler, which both returned an unhelpful 500 to the
+  // client instead of 409 AND logged the raw driver error (its `detail` field
+  // embeds the offending email) server-side (production-verification audit,
+  // 25 Aug 2026 — flagged as a residual risk; already a named open item in
+  // docs/qa-qc-report.md). JsonStore's createUser already throws this same
+  // clean 409 defensively; this brings PgStore to parity.
   async createUser({ email, password_hash }) {
     const sql = await this.ready()
-    const rows = await sql`
-      insert into users (email, password_hash)
-      values (${email}, ${password_hash})
-      returning id, email, created_at`
-    return rows[0]
+    try {
+      const rows = await sql`
+        insert into users (email, password_hash)
+        values (${email}, ${password_hash})
+        returning id, email, created_at`
+      return rows[0]
+    } catch (err) {
+      if (err.code === '23505') {
+        const dup = new Error('An account with that email already exists.')
+        dup.status = 409
+        throw dup
+      }
+      throw err
+    }
   }
 
   // Includes password_hash — only for verifying a login, never sent to a client.
@@ -576,7 +598,9 @@ class PgStore {
   // user_id — the columns didn't exist before tonight) it would already have
   // failed the NOT NULL constraint on insert, so a fresh `create table` never
   // has this problem. This exists for the ALTER-TABLE path on a database that
-  // already had the old single-tenant schema applied — see migrate.sql.
+  // already had the old single-tenant schema applied — this function IS that
+  // migration (an UPDATE-based backfill in application code); there is no
+  // separate migrate.sql file in this repo.
   async migrateLegacyDataToUser(userId) {
     const sql = await this.ready()
     await sql`update log_entries set user_id = ${userId} where user_id is null`

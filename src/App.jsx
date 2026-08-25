@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api/client.js'
-import { dayBounds, MEALS, num, fmt, ymd } from './lib/nutrition.js'
+import { dayBounds, MEALS, num, fmt, ymd, restoreEntryPayload } from './lib/nutrition.js'
 import { enqueue, dequeue, getQueue, pendingEntry } from './lib/outbox.js'
 import { Button, Sheet, ErrorNote, Spinner, StatusTag, ServingStepper } from './components/ui.jsx'
 // Scanner pulls in the large zxing library — load only when opened.
@@ -308,17 +308,10 @@ export default function App() {
       kind: 'success',
       text: `Deleted ${restore.food?.name || 'entry'}`,
       onUndo: async () => {
-        // restore.food_id AND restore.servings_consumed came from an entries
-        // API response, so — same as FoodConfirm's food_id shortcut — both
-        // are JSON strings over Postgres numeric columns; the server's
-        // schema is strict z.number() for both (confirmed live: an entry's
-        // own servings_consumed round-trips as "1", a string, not 1).
-        await api.addEntry({
-          food_id: Number(restore.food_id),
-          servings_consumed: Number(restore.servings_consumed),
-          meal: restore.meal,
-          logged_at: restore.logged_at,
-        })
+        // restoreEntryPayload (lib/nutrition.js) handles the food_id/
+        // servings_consumed string-vs-number coercion — same fix
+        // FoodConfirm's own food_id shortcut needed, unit-tested there.
+        await api.addEntry(restoreEntryPayload(restore))
         setRefreshKey((k) => k + 1)
         setToast(null)
       },

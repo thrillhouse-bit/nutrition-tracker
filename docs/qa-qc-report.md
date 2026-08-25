@@ -545,3 +545,43 @@ signup.
 last check-in — the added test count reflects the new zod-validation,
 Apple-ingest-disabled, TZ-bucketing, and `upsertFoodByBarcode`-race
 regression tests written alongside their fixes).
+
+## 2026-08-25 — Audit residual-gap cleanup
+
+Follow-up to `docs/PRODUCTION-VERIFICATION-AUDIT.md` (same day): closed four
+of its named residual gaps, none requiring VPS/production access.
+
+- **Postgres-only raw-constraint-message leak on concurrent duplicate
+  signups** (reported above, "Also newly reported this pass") — **fixed.**
+  `PgStore.createUser` now catches the unique-violation (SQLSTATE `23505`)
+  and re-throws a clean `409` ("An account with that email already exists.")
+  instead of letting Postgres's raw driver error — its `detail` field embeds
+  the offending email — fall through to the generic 500 handler, which both
+  logged it in full server-side and returned an unhelpful 500 to the client.
+  `JsonStore.createUser` already did this defensively; `PgStore` now matches.
+  `PgStore` is exported for the first time specifically so this could be
+  tested (`test/store-pg.test.js`, stubbed `.sql`, no real Postgres needed —
+  this environment has never had `DATABASE_URL`).
+- **Finding 9 (no version endpoint)** — added `GET /api/version`, `GIT_SHA`
+  baked in via a new Dockerfile `ARG`/`docker-compose*.yml` `build.args`
+  (defaults to `'unknown'` when unset, never fabricated).
+- **Finding 8 (dangling `migrate.sql` comment)** — corrected; the function
+  it sat on (`migrateLegacyDataToUser`) IS the migration, no separate file.
+- **Undo-restore path (Finding 1's sibling, no independent regression test)**
+  — extracted the `Number()` coercion into `restoreEntryPayload`
+  (`lib/nutrition.js`), unit-tested directly rather than rendering all of
+  `App.jsx` (which still has no component-test harness — this avoids needing
+  one for a one-line fix, same conclusion the audit reached, different path
+  to a passing test).
+
+Full suite: 233/233. Build: clean. Landed on `claude/audit-residual-cleanup`
+(off `claude/nutrition-tracking-pwa-g8kyfi` @ `ae121a7`) — the parent branch
+is locked to further direct writes per the owner's instruction, so this is a
+separate PR, not a push onto it.
+
+**Not attempted, unchanged from the audit**: Finding 2's 27/30-days figure
+(needs production DB/API access to the actual affected account), PgStore's
+Oura-backfill fix still has no *independent* integration-test proof (only
+code symmetry with JsonStore — same environment constraint as above, no
+`DATABASE_URL`), `SESSION_SECRET`'s production state, and the Neon rotation
+plan (deliberately not executed — deploy first, per the audit's own gate).

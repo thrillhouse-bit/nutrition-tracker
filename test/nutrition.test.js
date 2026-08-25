@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { entryNutrient, entryIncomplete, sumEntries, dayBounds, num, fmt } from '../src/lib/nutrition.js'
+import { entryNutrient, entryIncomplete, sumEntries, dayBounds, num, fmt, restoreEntryPayload } from '../src/lib/nutrition.js'
 
 describe('nutrition math', () => {
   const food = { calories: 100, protein_g: 5, carbs_g: 20, fat_g: 3, fiber_g: 2, sugar_g: 8, sodium_mg: 150 }
@@ -25,6 +25,28 @@ describe('nutrition math', () => {
   it('does not treat an explicit 0 as missing', () => {
     expect(entryNutrient({ food: { calories: 0 }, servings_consumed: 1 }, 'calories')).toBe(0)
     expect(entryIncomplete({ food: { calories: 0 }, servings_consumed: 1 })).toBe(false)
+  })
+
+  // App.jsx's "undo delete" restore path (deleteEntry's onUndo) re-logs an
+  // entry it read back from the entries API — same production bug as
+  // FoodConfirm's food_id shortcut (production-verification audit, 25 Aug
+  // 2026): Postgres bigint/numeric columns round-trip over JSON as strings,
+  // and the server's addEntry schema is strict z.number() for both fields.
+  describe('restoreEntryPayload (App.jsx undo-delete restore path)', () => {
+    it('coerces food_id and servings_consumed to numbers, shaped exactly like a real API response', () => {
+      const entry = {
+        id: 9, food_id: '4', servings_consumed: '1', meal: 'snack',
+        logged_at: '2026-08-25T12:00:00.000Z',
+      }
+      expect(restoreEntryPayload(entry)).toEqual({
+        food_id: 4, servings_consumed: 1, meal: 'snack', logged_at: '2026-08-25T12:00:00.000Z',
+      })
+    })
+
+    it('is a no-op when the source is already numeric (control)', () => {
+      const entry = { food_id: 4, servings_consumed: 2, meal: null, logged_at: '2026-08-25T12:00:00.000Z' }
+      expect(restoreEntryPayload(entry)).toEqual(entry)
+    })
   })
 
   describe('entryIncomplete', () => {
