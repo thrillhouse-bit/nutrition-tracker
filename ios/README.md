@@ -117,6 +117,7 @@ fueling context** only — no clinical data:
 | Heart-rate variability | `heartRateVariabilitySDNN` | **context only** — never changes a target |
 | Resting heart rate | `restingHeartRate` | **context only** |
 | Steps | `stepCount` | activity context |
+| Body weight | `bodyMass` | feeds trend-weight (`server/weightTrend.js`); requested in kilograms directly (`HKUnit.gramUnit(with: .kilo)`), matching the backend's canonical storage unit, so there's no display-unit conversion to get wrong regardless of the Health app's own locale setting |
 
 Rules honored end-to-end: **minimum permissions; no clinical data; HRV / resting
 HR are context-only (the backend rules engine never reads them, proven by
@@ -124,6 +125,16 @@ HR are context-only (the backend rules engine never reads them, proven by
 hides read-denials, so we only ever report *available* vs *requested*); **no
 workout recording** (approved workouts are read, never started); tokens live in
 the Keychain and only in the `x-ingest-token` header.
+
+**Body weight merges with manual entries, never double-counts.** A synced
+`bodyMass` reading lands server-side as `provider='apple', metric='weight'` —
+the exact same trend-weight feature the app's own manual weigh-in form
+writes to as `provider='manual'`. `store.listWeightEntries` merges the two
+per day: a manual entry always wins a same-day conflict (so correcting a bad
+auto-read, or a manual re-weigh, is never silently overwritten by a later
+sync), and a day is never counted twice toward the trend. Deleting the
+manual entry for a day lets that day's Apple-synced reading show through on
+the next read, rather than leaving the day blank.
 
 ## Nutrition write-back (opt-in, off by default)
 

@@ -98,6 +98,32 @@ create table if not exists garmin_accounts (
 );
 create index if not exists garmin_accounts_user_id_idx on garmin_accounts (user_id);
 
+-- Oura workouts (auto-detected or manually logged in the Oura app), pulled
+-- from GET /v2/usercollection/workout. One row per Oura workout id per
+-- account — `oura_id` is Oura's own identifier for the workout, so a re-run
+-- backfill (or a workout Oura itself edits) upserts in place instead of
+-- duplicating. `day` is Oura's own day attribution (not derived from
+-- start_datetime here) so it always agrees with which day Oura itself
+-- shows the workout under.
+create table if not exists oura_workouts (
+  id             bigint generated always as identity primary key,
+  account_id     bigint not null references oura_accounts (id) on delete cascade,
+  oura_id        text not null,
+  day            text not null,               -- 'YYYY-MM-DD'
+  activity       text,                        -- Oura's own activity label, e.g. 'running'
+  intensity      text,                        -- Oura's own intensity label, e.g. 'moderate'
+  source         text,                        -- Oura's own source, e.g. 'manual' | 'autodetected' | 'confirmed'
+  label          text,                        -- user-entered label in the Oura app, if any
+  calories       numeric,
+  distance       numeric,                     -- meters, Oura's own unit
+  start_datetime timestamptz,
+  end_datetime   timestamptz,
+  raw            jsonb,
+  created_at     timestamptz not null default now(),
+  unique (account_id, oura_id)
+);
+create index if not exists oura_workouts_account_day_idx on oura_workouts (account_id, day);
+
 -- Garmin daily summaries. Garmin's Health API PUSHES these to our webhook, so
 -- we store them and serve today's expenditure from here. One row per account
 -- per calendar day (upserted).

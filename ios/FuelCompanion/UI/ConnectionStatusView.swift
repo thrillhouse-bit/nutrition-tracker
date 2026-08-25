@@ -263,6 +263,7 @@ struct ConnectionStatusView: View {
         case .hrv:         return "Heart-rate variability (context)"
         case .restingHR:   return "Resting heart rate (context)"
         case .steps:       return "Steps"
+        case .bodyMass:    return "Body weight"
         }
     }
 

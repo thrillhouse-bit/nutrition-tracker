@@ -32,6 +32,55 @@ describe('PgStore.createUser — concurrent-duplicate-signup race', () => {
   })
 })
 
+describe('PgStore.listWeightEntries — manual vs. Apple-sync merge', () => {
+  it('a manual entry wins over an Apple-synced reading for the same day, never both', async () => {
+    const store = new PgStore('postgres://unused')
+    // listWeightEntries issues [manualRows, appleRows] via Promise.all, in
+    // that argument order — awaited in that same order regardless of which
+    // underlying query settles first, so a call counter reliably identifies
+    // "the manual query" (1st) vs. "the apple query" (2nd).
+    let n = 0
+    store.sql = () => {
+      n++
+      return n === 1 ? [{ day: '2026-08-20', value: '79.9' }] : [{ day: '2026-08-20', value: '78.4' }]
+    }
+    const rows = await store.listWeightEntries(1, '2026-08-01', '2026-08-31')
+    expect(rows).toEqual([{ day: '2026-08-20', kg: 79.9, source: 'manual' }])
+  })
+
+  it('an Apple-only day (no manual entry) is attributed to apple (control)', async () => {
+    const store = new PgStore('postgres://unused')
+    let n = 0
+    store.sql = () => { n++; return n === 1 ? [] : [{ day: '2026-08-20', value: '78.4' }] }
+    const rows = await store.listWeightEntries(1, '2026-08-01', '2026-08-31')
+    expect(rows).toEqual([{ day: '2026-08-20', kg: 78.4, source: 'apple' }])
+  })
+})
+
+describe('PgStore.saveOuraWorkouts', () => {
+  it('skips a workout with no id or day without issuing a query for it (control: a valid one alongside it still saves)', async () => {
+    const store = new PgStore('postgres://unused')
+    let calls = 0
+    store.sql = () => { calls++; return [] }
+    const n = await store.saveOuraWorkouts(1, [
+      { day: '2026-08-24', activity: 'running' }, // no id
+      { id: 'w1' }, // no day
+      { id: 'w2', day: '2026-08-24', activity: 'cycling' }, // valid
+    ])
+    expect(n).toBe(1) // only the valid row counted
+    expect(calls).toBe(1) // and only the valid row ever reached `sql`
+  })
+
+  it('returns 0 without querying when every workout is malformed (control)', async () => {
+    const store = new PgStore('postgres://unused')
+    let calls = 0
+    store.sql = () => { calls++; return [] }
+    const n = await store.saveOuraWorkouts(1, [{ activity: 'running' }])
+    expect(n).toBe(0)
+    expect(calls).toBe(0)
+  })
+})
+
 // Same stub-only limits as above: this proves the JS aggregation over
 // whatever rows the query returns, not the SQL text itself.
 describe('PgStore.listAppleWorkoutHistory', () => {
