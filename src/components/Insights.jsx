@@ -210,7 +210,7 @@ export default function Insights({ refreshKey }) {
                     <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
                   </div>
                 </div>
-                <ChartCaption left="Mist band · recovery" right="Oura" />
+                <ChartCaption left="Mist band · readiness" right="Oura" />
               </>
             )}
           </section>

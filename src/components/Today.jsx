@@ -207,7 +207,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
           )}
         </ContextCell>
 
-        <ContextCell tone="lavender" label="Training" signal={wo} missing={!wo}>
+        <ContextCell tone="lavender" label="Workouts" signal={wo} missing={!wo}>
           {!wo ? (
             <div className="numeral text-[17px] leading-[1.15] text-faint">—</div>
           ) : woLabel ? (
