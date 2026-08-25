@@ -40,6 +40,7 @@ export default function SearchFood({ onPick }) {
     <div className="space-y-3">
       <input
         autoFocus
+        aria-label="Search foods"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search foods (e.g. banana, cheddar)"
