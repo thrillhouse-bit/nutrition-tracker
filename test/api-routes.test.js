@@ -447,12 +447,16 @@ describe('POST /api/oura/backfill', () => {
     oura.legacy = true
     fake.state.ouraHistory = []
     let askedActivity, askedReadiness
-    // Must be readinessRange (daily_readiness) that supplies the score, never
-    // activityRange (daily_activity) — this endpoint used to call the wrong
-    // one and store an activity score mislabeled as readiness (see
+    // Must read readinessRange (daily_readiness), not activityRange
+    // (daily_activity) alone, for the score — this endpoint used to call
+    // only the activity endpoint and store its score as "readiness" (see
     // integrations/oura.js). Activity's score (55/60) is deliberately
     // different from Readiness's (70/null) below so a regression would be
-    // caught rather than coincidentally match.
+    // caught rather than coincidentally match, while activity's
+    // total_calories/active_calories/steps still flow through as context
+    // (GET /api/profile/activity-suggestion reads them back out), so
+    // replacing activityRange outright would have silently starved that
+    // endpoint instead of fixing the mislabeling.
     oura.activityRange = async (token, from, to) => {
       askedActivity = { token, from, to }
       return [

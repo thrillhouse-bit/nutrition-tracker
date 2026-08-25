@@ -44,14 +44,9 @@ describe('oura normalizeReadiness', () => {
     expect(r).toEqual({ day: '2026-08-24', score: 91 })
   })
 
-  it('coerces a missing score to null but keeps the day', () => {
-    const r = normalizeReadiness({ day: '2026-08-24' })
-    expect(r).toEqual({ day: '2026-08-24', score: null })
-  })
-
-  it('coerces a non-numeric score to null but keeps the day', () => {
-    const r = normalizeReadiness({ day: '2026-08-24', score: 'x' })
-    expect(r).toEqual({ day: '2026-08-24', score: null })
+  it('coerces a missing/non-numeric score to null but keeps the day', () => {
+    expect(normalizeReadiness({ day: '2026-08-24' })).toEqual({ day: '2026-08-24', score: null })
+    expect(normalizeReadiness({ day: '2026-08-24', score: 'x' })).toEqual({ day: '2026-08-24', score: null })
   })
 })
 
