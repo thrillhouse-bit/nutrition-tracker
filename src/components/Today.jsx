@@ -274,20 +274,26 @@ export default function Today({ date, data, entries, loading, online, syncing, p
 
   return (
     <div className="space-y-5" {...swipeHandlers}>
-      {/* Masthead: day nav + Bodoni title + date badge, then the sync line */}
+      {/* Masthead: Bodoni title, then day nav flanking the date (owner, 25 Aug
+          2026: the date read as an afterthought at eyebrow size — 10px next
+          to the 32px title — while functionally being the one piece of state
+          this whole screen pivots on). The date is now its own line, sized to
+          actually read at a glance (18px, tnum, semibold) rather than
+          matched flat to the 32px title — two 32px elements side by side
+          measured well past 320px's width with the nav buttons included, so
+          "on par" is honored in legibility/prominence, not literal px parity.
+          Prev/next now sit directly beside the date they navigate, not the
+          static "Today"/weekday label, since that's the control they
+          actually act on. */}
       <div>
-        <div className="flex items-end justify-between">
-          <div className="flex items-end gap-1.5">
-            <button onClick={onPrevDay} aria-label="Previous day" className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink">‹</button>
-            <h1 className="serif text-[32px] leading-none text-ink">{dayLabel(date)}</h1>
-          </div>
-          <div className="flex items-end gap-1.5">
-            <span className="eyebrow tnum pb-0.5 text-muted">{dateBadge(date)}</span>
-            <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-my-2 -mr-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
-          </div>
+        <h1 className="serif text-[32px] leading-none text-ink">{dayLabel(date)}</h1>
+        <div className="mt-1.5 flex items-center gap-1">
+          <button onClick={onPrevDay} aria-label="Previous day" className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink">‹</button>
+          <span className="tnum text-[18px] font-semibold tracking-[0.02em] text-ink">{dateBadge(date)}</span>
+          <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-my-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
         </div>
         {!isToday(date) && (
-          <button onClick={onToday} className="mt-1 text-xs font-semibold text-cobalt hover:text-cobalt-ink">‹ Back to today</button>
+          <button onClick={onToday} className="text-xs font-semibold text-cobalt hover:text-cobalt-ink">‹ Back to today</button>
         )}
         <div className="mt-2.5 flex items-center gap-2">
           <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${syncLive ? 'bg-cobalt' : 'border border-line-heavy bg-transparent'}`} />

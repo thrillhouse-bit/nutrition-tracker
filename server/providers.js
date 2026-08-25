@@ -163,8 +163,8 @@ export async function allProviderStatuses(store, userId, nowDate = new Date()) {
 }
 
 // --- real per-provider signals (best-effort) ------------------------------
-async function realSignals(store, userId, id, nowDate) {
-  const day = ymd(nowDate)
+async function realSignals(store, userId, id, queryDate, nowDate) {
+  const day = ymd(queryDate)
   try {
     if (id === 'oura') {
       let token = null
@@ -218,10 +218,17 @@ async function realSignals(store, userId, id, nowDate) {
         })
       }
       if (activity?.total_calories != null) {
-        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: fetchedAt, fetched_at: fetchedAt, demo: false })
+        // recorded_at anchored to the QUERIED day (noon, same reasoning as
+        // `rec` above), not the live fetch moment — viewing a past day fetches
+        // its data fresh right now, but the data itself is however old that
+        // day is; stamping recorded_at as "now" would make freshnessOf read
+        // a 5-day-old day's expenditure as "fresh" and let plan.js treat it
+        // as a live signal. fetched_at stays the real fetch moment — that
+        // metadata genuinely is about when we made this API call.
+        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, demo: false })
       }
       if (activity?.steps != null) {
-        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: fetchedAt, fetched_at: fetchedAt, demo: false })
+        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, demo: false })
       }
       // Real workout detection — stored, not live-fetched (oura_workouts is
       // kept current by the same daily backfill/resync that already covers
@@ -232,9 +239,20 @@ async function realSignals(store, userId, id, nowDate) {
       // day is still retained in oura_workouts for a future multi-workout
       // view. No account row (legacy single-token path) means no workouts —
       // there's nowhere to have stored them.
+      //
+      // "walking" is filtered out before picking a candidate (owner, 25 Aug
+      // 2026): Oura logs an ordinary walk as its own workout the same as a
+      // run or a ride, but a walk isn't a fueling-relevant session — showing
+      // Plan's "Meal timing" a pre-fuel/recovery-fuel node for every walk
+      // would be noise the user has to mentally filter on every visit, not
+      // a real signal. Every OTHER Oura activity kind still counts; this is
+      // a name-specific exclusion, not a demotion of low-intensity activity
+      // generally (a filtered-out day still falls through to the next
+      // workout that day, if any, exactly as if the walk had never been
+      // logged — never a fabricated substitute).
       if (account && typeof store.listOuraWorkouts === 'function') {
         const workouts = await store.listOuraWorkouts(account.id, day).catch(() => [])
-        const w = workouts[0]
+        const w = workouts.find((x) => String(x.activity || '').toLowerCase() !== 'walking')
         if (w) {
           const kind = OURA_ACTIVITY_TO_KIND[String(w.activity || '').toLowerCase()] || 'workout'
           const start = w.start_datetime ? new Date(w.start_datetime) : null
@@ -263,10 +281,14 @@ async function realSignals(store, userId, id, nowDate) {
       if (!acct) return {}
       const row = await store.getGarminDaily(acct.id, day)
       if (!row) return {}
-      const rec = nowDate.toISOString()
+      // recorded_at anchored to the QUERIED day (see the matching Oura
+      // comment above) — was nowDate.toISOString(), which made a past day's
+      // expenditure/steps read as freshly recorded just for being fetched now.
+      const rec = `${day}T12:00:00`
+      const fetchedAt = nowDate.toISOString()
       const out = {}
-      if (row.total_calories != null) out.expenditure = sig(row.total_calories, { unit: 'kcal', active: row.active_calories, provider: 'garmin', recorded_at: rec, fetched_at: rec, demo: false })
-      if (row.steps != null) out.steps = sig(row.steps, { unit: 'steps', provider: 'garmin', recorded_at: rec, fetched_at: rec, demo: false })
+      if (row.total_calories != null) out.expenditure = sig(row.total_calories, { unit: 'kcal', active: row.active_calories, provider: 'garmin', recorded_at: rec, fetched_at: fetchedAt, demo: false })
+      if (row.steps != null) out.steps = sig(row.steps, { unit: 'steps', provider: 'garmin', recorded_at: rec, fetched_at: fetchedAt, demo: false })
       return out
     }
     if (id === 'apple') {
@@ -312,7 +334,17 @@ async function neverConnected(store, userId, id, settings) {
 }
 
 // --- compose one signal per metric, respecting provenance + toggles -------
-export async function composeSignals(store, nowDate = new Date(), userId) {
+// `queryDate` (defaults to `nowDate`) is which day's REAL provider data to
+// read — /api/today passes the day the user is actually viewing here, so
+// navigating to a past/future day shows that day's readiness/sleep/workout
+// instead of always today's (owner, 25 Aug 2026: signals stayed pinned to
+// "now" regardless of which day Today's prev/next arrows had navigated to).
+// `nowDate` still governs the DEMO scenario (demoSignals) and every
+// fetched_at stamp below — demo is a canned "what it looks like connected"
+// preview that was never meant to vary by day, and fetched_at genuinely is
+// "when we made this API call" metadata, distinct from which day the DATA
+// itself is about.
+export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate) {
   const settings = {}
   for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(userId, id)
   const demo = demoSignals(nowDate)
@@ -321,7 +353,7 @@ export async function composeSignals(store, nowDate = new Date(), userId) {
   const perProvider = {}
   for (const id of Object.keys(PROVIDERS)) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
-    const real = await realSignals(store, userId, id, nowDate)
+    const real = await realSignals(store, userId, id, queryDate, nowDate)
     if (Object.keys(real).length) perProvider[id] = real
     else if (settings[id]?.demo !== false && (await neverConnected(store, userId, id, settings[id]))) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}
