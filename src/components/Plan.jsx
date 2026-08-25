@@ -160,6 +160,8 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const wv = wSig?.value || null
   const workoutOK = !!(wSig && wv && wSig.freshness !== 'unavailable')
   const endurance = workoutOK && isEndurance(wv.kind)
+  const PROVIDER_NAMES = { oura: 'Oura', garmin: 'Garmin', apple: 'Apple Health' }
+  const workoutProviderLabel = PROVIDER_NAMES[wSig?.provider] || 'your wearable'
 
   // Demo must never look like a live connection. Today marks every context
   // cell; Plan is the other adjusted-targets surface and inherited nothing —
@@ -345,16 +347,19 @@ export default function Plan({ date, refreshKey, onChanged }) {
             </div>
           </section>
 
-          {/* Let Plan adapt — the workouts influence toggle */}
+          {/* Let Plan adapt — the workouts influence toggle. The provider name
+              must follow whichever wearable actually supplied the workout
+              signal (Oura/Garmin/Apple) — hardcoding "Garmin" here read as
+              wrong for every other source. */}
           <div className="mt-7 flex items-center justify-between gap-4 border-t border-line pt-3.5">
             <div className="min-w-0">
-              <div className="text-[13px] font-medium text-ink">Let Plan adapt to Garmin &amp; workouts</div>
+              <div className="text-[13px] font-medium text-ink">Let Plan adapt to {workoutProviderLabel} &amp; workouts</div>
               <div className="mt-1 text-[11px] leading-snug text-muted">Off keeps baseline targets every day.</div>
             </div>
             <Toggle
               checked={influence?.workouts !== false}
               onChange={setWorkoutsInfluence}
-              label="Let Plan adapt to Garmin and workouts"
+              label={`Let Plan adapt to ${workoutProviderLabel} and workouts`}
               id="inf-workouts"
             />
           </div>
