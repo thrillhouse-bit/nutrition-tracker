@@ -426,6 +426,13 @@ async function backfillOuraHistory(userId, token, days = 30) {
       steps: a?.steps ?? null,
     }
   })
+  const missingDays = rows.filter((r) => r.score == null).map((r) => r.day)
+  if (missingDays.length) {
+    // Named, not just counted: which days is what an operator needs to tell
+    // "Oura genuinely has nothing for these dates" from "something's wrong
+    // with the request window" — a bare count reads the same either way.
+    console.warn(`[oura-backfill] user ${userId}: no readiness score from Oura for ${missingDays.length}/${rows.length} day(s): ${missingDays.join(', ')}`)
+  }
   return store.saveOuraHistory(userId, rows)
 }
 

@@ -132,6 +132,30 @@ describe('JsonStore Oura readiness history (backfill)', () => {
     const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-02')
     expect(all.map((r) => r.day)).toEqual(['2026-08-02'])
   })
+
+  it('a re-run with a transient null for a day that scored before leaves the old score standing, not erased', async () => {
+    // Regression for the production-verification audit (25 Aug 2026): the
+    // first version of this method deleted EVERY requested day before
+    // re-inserting, so a re-run that got a transient null for a day (Oura
+    // rate-limited, a partial-outage response — the readiness endpoint still
+    // returns an entry for every day in range, just with score: null) wiped
+    // that day's previously-correct score and never put anything back.
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.saveOuraHistory(USER, [
+      { day: '2026-08-01', score: 82 },
+      { day: '2026-08-02', score: 75 }, // this is the day that will hiccup next run
+      { day: '2026-08-03', score: 90 },
+    ])
+    const rerun = await s.saveOuraHistory(USER, [
+      { day: '2026-08-01', score: 82 },
+      { day: '2026-08-02', score: null }, // transient — NOT evidence the real value was wrong
+      { day: '2026-08-03', score: 90 },
+    ])
+    expect(rerun).toBe(2) // only the two still-scored days were touched this run
+    const all = await s.listOuraHistory(USER, '2026-08-01', '2026-08-03')
+    expect(all.map((r) => r.day)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03']) // 08-02 still present
+    expect(all.find((r) => r.day === '2026-08-02').value).toBe(75) // and still its real score, not erased
+  })
 })
 
 describe('JsonStore manual workout input', () => {

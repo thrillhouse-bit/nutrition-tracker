@@ -475,8 +475,20 @@ class PgStore {
   // parallel table.
   async saveOuraHistory(userId, rows) {
     const sql = await this.ready()
-    const days = [...new Set(rows.map((r) => r.day).filter(Boolean))]
-    for (const day of days) {
+    // Only touch days that actually have a score this run. A re-run backfill
+    // can get a transient null for a day that scored fine before (Oura
+    // rate-limited, a partial-outage response — the readiness endpoint still
+    // returns an entry for every day in range, just with score: null); if
+    // every requested day were deleted first regardless of whether the new
+    // row has a score, a re-run during exactly that hiccup would silently
+    // erase a previously-correct value instead of leaving it alone. Proven
+    // live 25 Aug 2026 (production-verification audit): a second backfill
+    // with 08-02 flipped to score:null deleted 08-02's real 75 and never put
+    // anything back. Days with no score this run are left untouched, not
+    // deleted — whatever was already stored (from an earlier successful run,
+    // or nothing) stands.
+    const scoredDays = [...new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))]
+    for (const day of scoredDays) {
       await sql`delete from wearable_signals where user_id = ${userId} and provider = 'oura' and metric = 'readiness' and day = ${day}`
     }
     let n = 0
@@ -1014,9 +1026,12 @@ export class JsonStore {
     const d = await this.load()
     d.wearable_signals = d.wearable_signals || []
     const uid = Number(userId)
-    const days = [...new Set(rows.map((r) => r.day).filter(Boolean))]
+    // See PgStore.saveOuraHistory for why this is scoredDays, not every
+    // requested day: a re-run's transient null must not erase a
+    // previously-correct score for that day.
+    const scoredDays = [...new Set(rows.filter((r) => r.day != null && r.score != null).map((r) => r.day))]
     d.wearable_signals = d.wearable_signals.filter(
-      (s) => !(s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && days.includes(s.day)),
+      (s) => !(s.user_id === uid && s.provider === 'oura' && s.metric === 'readiness' && scoredDays.includes(s.day)),
     )
     let n = 0
     const now = new Date().toISOString()
