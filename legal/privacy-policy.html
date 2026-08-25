@@ -125,7 +125,7 @@
   <header class="doc">
     <h1>Privacy Policy</h1>
     <p class="brand">Nutrition Tracker — a personal project operated at <a href="https://tryrerun.com">tryrerun.com</a></p>
-    <p class="updated">Last updated: <span class="ph">[EFFECTIVE DATE — fill in]</span></p>
+    <p class="updated">Last updated: August 25, 2026</p>
   </header>
 
   <p class="lead">This Privacy Policy explains what the Nutrition Tracker app (the &ldquo;app,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;) collects, how it is used, and the third-party services it relies on. The app is a small, personal-use project &mdash; not a company product &mdash; and this policy is written to be honest about exactly that.</p>
@@ -156,13 +156,15 @@
   <h2 id="collected">2. Information we collect</h2>
   <p>The app is built around a single core of data you create by using it:</p>
   <ul>
+    <li><strong>Account credentials</strong> &mdash; the email address and password you sign up with. Your password is never stored in plain text: only a salted, one-way cryptographic hash of it is kept, and the app cannot recover or display your original password. Signing in issues a signed session token, held in an httpOnly browser cookie, that expires automatically after 30 days.</li>
     <li><strong>Food log entries</strong> &mdash; the foods you log, how many servings, the time logged, and an optional meal label (breakfast/lunch/dinner/snack).</li>
-    <li><strong>Foods</strong> &mdash; the product and nutrition records the app saves and caches: name, brand, barcode (when present), serving size, calories, and macro/micronutrient values (protein, carbs, fat, fiber, sugar, sodium), plus the raw lookup response the app keeps for re-parsing and debugging.</li>
+    <li><strong>Foods</strong> &mdash; the product and nutrition records the app saves and caches: name, brand, barcode (when present), serving size, calories, and macro/micronutrient values (protein, carbs, fat, fiber, sugar, sodium), plus the raw lookup response the app keeps for re-parsing and debugging. This lookup cache is shared across every account &mdash; it holds product data, not your personal food log.</li>
     <li><strong>Daily targets</strong> &mdash; the nutrition goals you set, kept as a versioned history so you can change them over time.</li>
+    <li><strong>Biometric profile (optional)</strong> &mdash; if you fill in the Plan tab&rsquo;s setup form: your height, weight, sex, age, activity level, and goal, used only to calculate a starting nutrition-target baseline. You can leave this blank and set targets manually instead. It is never used for any medical purpose and is never shown to anyone but you.</li>
     <li><strong>Wearable connection data</strong> &mdash; if, and only if, you connect a wearable (see <a href="#wearables">section 6</a>): the OAuth access and refresh tokens issued to the app, a display label for the connected account (for example its email), and the daily activity/energy metrics the app reads to show your energy balance.</li>
   </ul>
-  <p>Depending on how the app is deployed, this data is stored either in a PostgreSQL database (for example a hosted Neon database) or in a local file on the server. The app has <strong>no user accounts and no login</strong>: it is designed for personal, single-operator use, so it does not collect names, passwords, or profile information to identify you.</p>
-  <p>Images of nutrition labels you photograph are sent for one-time processing (see <a href="#wearables">wearables</a> and <a href="#third-parties">third parties</a>); the app keeps the structured nutrition values that come back, <strong>not the photo itself</strong>.</p>
+  <p>Depending on how the app is deployed, this data is stored either in a PostgreSQL database (for example a hosted Neon database) or in a local file on the server. <strong>Each account&rsquo;s data is private to that account</strong> &mdash; there is no way for one account to see another account&rsquo;s log, targets, biometric profile, or connected wearables.</p>
+  <p>Images of nutrition labels you photograph are sent for one-time processing (see <a href="#third-parties">third parties</a>); the app keeps the structured nutrition values that come back, <strong>not the photo itself</strong>.</p>
 
   <h2 id="notcollected">3. What we do <em>not</em> do</h2>
   <ul>
@@ -187,21 +189,22 @@
     <li><strong>Open Food Facts</strong> &mdash; queried by barcode or search term to retrieve crowd-sourced product and nutrition data. A lookup sends the barcode or search text; it does not send your food log.</li>
     <li><strong>USDA FoodData Central</strong> &mdash; the U.S. Department of Agriculture&rsquo;s nutrition database, queried as a fallback and second source for barcodes and whole-food searches. As above, a lookup sends only the query.</li>
     <li><strong>Anthropic (Claude API)</strong> &mdash; when you use &ldquo;scan label,&rdquo; the <em>photograph of the nutrition-facts panel</em> is sent to Anthropic&rsquo;s Claude vision API, which reads it and returns the values as structured data. The image is sent only to perform this extraction for your request. Per Anthropic&rsquo;s API terms, inputs submitted through the API are <strong>not used to train its models</strong>, and the app itself does not retain the image beyond the request &mdash; only the extracted nutrition fields are saved.</li>
-    <li><strong>Wearable providers &mdash; Oura and Garmin</strong> &mdash; connected only at your explicit choice via OAuth. (Garmin&rsquo;s integration is built, but usable only once Garmin&rsquo;s partner-approval program grants API access.) See <a href="#wearables">section 6</a> for exactly what is accessed and how it is protected.</li>
+    <li><strong>Wearable providers &mdash; Oura and Garmin</strong> &mdash; connected only at your explicit choice via OAuth. (Garmin&rsquo;s integration is built, but usable only once Garmin&rsquo;s partner-approval program grants API access.) See <a href="#wearables">section 6</a> for exactly what is accessed and how it is protected. <strong>Apple Health is not listed here</strong> because no Apple server is ever contacted &mdash; see the Apple Health entry in <a href="#wearables">section 6</a> for how that integration actually works.</li>
     <li><strong>Infrastructure / hosting</strong> &mdash; the service and its database run on general-purpose hosting infrastructure (for example a managed PostgreSQL provider such as Neon, and the server host chosen for deployment). These providers process and store data on our behalf to run the service.</li>
   </ul>
   <p>Links to each provider&rsquo;s own privacy policy: Open Food Facts, USDA FoodData Central, <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://ouraring.com/privacy-policy">Oura</a>, and <a href="https://www.garmin.com/en-US/privacy/global/policy/">Garmin</a>.</p>
 
   <div class="callout" id="wearables">
     <h2 style="border:0;padding:0;">6. Wearable &amp; health data</h2>
-    <p>This section describes the most sensitive data the app handles &mdash; the health and activity data from a connected wearable &mdash; and it applies specifically to <strong>Oura</strong> and <strong>Garmin</strong> (Garmin usable once Garmin&rsquo;s partner-approval program grants API access).</p>
+    <p>This section describes the most sensitive data the app handles &mdash; the health and activity data from a connected wearable &mdash; and it applies to <strong>Oura</strong>, <strong>Garmin</strong>, and <strong>Apple Health</strong> (Garmin usable once Garmin&rsquo;s partner-approval program grants API access).</p>
     <ul>
-      <li><strong>Connected only with your consent.</strong> The app can read your wearable data only after <em>you</em> authorize it through the provider&rsquo;s own OAuth consent screen. Nothing is accessed unless and until you click &ldquo;Connect&rdquo; and approve the requested scopes on the provider&rsquo;s site.</li>
-      <li><strong>What is accessed.</strong> With your authorization, the app reads your daily activity and energy-expenditure metrics (for example total daily calorie expenditure and steps) and closely related health metrics needed to compute an energy balance. It requests only the scopes required for this feature.</li>
-      <li><strong>What it is used for.</strong> This data is used for exactly one purpose: to display <em>your own</em> energy balance (calories in versus calories out) and related stats to you, inside the app.</li>
+      <li><strong>Oura and Garmin: connected only with your consent, via OAuth.</strong> The app can read your Oura or Garmin data only after <em>you</em> authorize it through that provider&rsquo;s own OAuth consent screen. Nothing is accessed unless and until you click &ldquo;Connect&rdquo; and approve the requested scopes on the provider&rsquo;s site. With your authorization, the app reads your daily activity and energy-expenditure metrics (for example total daily calorie expenditure and steps) and closely related health metrics needed to compute an energy balance, requesting only the scopes required for this feature.</li>
+      <li><strong>Apple Health works differently &mdash; no OAuth, and no Apple server is ever involved.</strong> Apple provides no cloud API for HealthKit data, so the app cannot connect to Apple directly. Instead, a companion app you install and run yourself on your own iOS/watchOS device reads your HealthKit data and sends it straight from your device to this app&rsquo;s server &mdash; workouts, active energy, exercise minutes, sleep, heart-rate variability, resting heart rate, and step count. Apple itself never receives or transmits any of this on the app&rsquo;s behalf. The companion authenticates using a private, per-account token generated inside the app&rsquo;s Connections tab; this token is shown to you once, since you have to enter it into the companion yourself &mdash; unlike Oura/Garmin OAuth tokens, which the app never displays to anyone.</li>
+      <li><strong>What it is used for.</strong> All of this data is used for exactly one purpose: to display <em>your own</em> energy balance and recovery/training context to you, inside the app.</li>
       <li><strong>Never sold or shared.</strong> Your wearable and health data is <strong>never sold and never shared with third parties.</strong> It is not used for advertising, profiling, or any purpose other than showing you your stats.</li>
-      <li><strong>Stored securely, server-side.</strong> The OAuth access and refresh tokens the provider issues are stored on the server and are <strong>never returned to or exposed in the browser/client</strong>. The client asks the server for a summary; the server holds the credentials.</li>
-      <li><strong>You can revoke at any time.</strong> You may disconnect a wearable from within the app at any time, which deletes its stored tokens and stops any further access. You can also revoke the app&rsquo;s access from your Oura or Garmin account settings. Disconnecting stops future access; to also erase previously stored data, see <a href="#retention">Retention &amp; deletion</a> or contact us.</li>
+      <li><strong>Stored securely, server-side.</strong> Oura and Garmin&rsquo;s OAuth access and refresh tokens are stored on the server and are <strong>never returned to or exposed in the browser/client</strong> after the initial connection. Your Apple Health companion token is stored server-side the same way; you can regenerate it at any time from the Connections tab, which immediately invalidates the previous token and stops that companion instance from sending further data.</li>
+      <li><strong>You can revoke Oura/Garmin access at any time.</strong> Disconnecting Oura or Garmin from within the app deletes its stored tokens and stops any further access; you can also revoke access directly from your Oura or Garmin account settings. Disconnecting stops future access &mdash; to also erase previously stored data, see <a href="#retention">Retention &amp; deletion</a> or contact us.</li>
+      <li><strong>An honest limitation for Apple Health specifically.</strong> The app does not yet offer a single in-app action that both stops future Apple Health sync <em>and</em> deletes previously-synced Apple Health data, the way Oura/Garmin disconnection does. Regenerating your token stops future syncing; to also erase previously-synced Apple Health data, contact us (see <a href="#retention">Retention &amp; deletion</a>).</li>
       <li><strong>Platform-terms compliance.</strong> The app&rsquo;s access to and use of Oura data complies with Oura&rsquo;s applicable developer/API terms, and its access to and use of Garmin data complies with Garmin&rsquo;s applicable developer/API and platform terms. Wearable data is used consistently with those platforms&rsquo; requirements and with your authorization.</li>
     </ul>
   </div>
@@ -211,16 +214,17 @@
   <p><strong>An honest limitation:</strong> this is a personal project maintained by an individual, <em>not</em> a certified, audited, or enterprise-grade secure service. It carries no security certification (such as SOC 2 or ISO 27001) and makes no guarantee of absolute security. Depending on the deployment, stored tokens may not be encrypted at rest. You should weigh that before connecting sensitive accounts, and you should not treat the app as a system of record for health data. No method of transmission or storage is ever completely secure.</p>
 
   <h2 id="retention">8. Data retention &amp; deletion</h2>
-  <p>Your food log, foods, and targets are kept until you delete them. You are in control:</p>
+  <p>Your account&rsquo;s food log, targets, biometric profile, and wearable connections are kept until you or we delete them. You are in control:</p>
   <ul>
-    <li><strong>Delete individual entries or foods</strong> from within the app.</li>
-    <li><strong>Disconnect a wearable</strong> in the app to delete its stored tokens and stop further access.</li>
-    <li><strong>Erase everything.</strong> Because there is no login, the most complete deletion is to remove the underlying data store &mdash; drop or clear the database (or delete the local data file) for a self-hosted deployment. For the operator-run instance, email us at the address below to request erasure of the data associated with a connected account, and we will delete it.</li>
+    <li><strong>Delete individual log entries</strong> from within the app, at any time.</li>
+    <li><strong>Disconnect Oura or Garmin</strong> in the app to delete its stored tokens and stop further access. Apple Health has the narrower limitation described in <a href="#wearables">section 6</a>.</li>
+    <li><strong>Delete your whole account.</strong> The app does not yet have a self-service &ldquo;delete my account&rdquo; button. Email us at the address below and we will delete your account and everything tied to it &mdash; your log entries, targets, biometric profile, wearable connections and tokens, and any synced wearable data. Because accounts are private to each person, we delete only the requesting account&rsquo;s data, never another account&rsquo;s.</li>
   </ul>
+  <p>The shared product/nutrition lookup cache (barcode &amp; label data other users have already looked up) is not personal data tied to your account and is not deleted as part of an account-deletion request.</p>
   <p>Some third parties (for example Anthropic, Oura, or Garmin) may retain logs of requests you make to them under their own retention policies; those are governed by their policies, not this one.</p>
 
   <h2 id="rights">9. Your rights</h2>
-  <p>Depending on where you live, you may have rights to access, correct, export, or delete your personal data, and to withdraw consent. Because the app has no accounts, much of this is directly in your hands (you can view, edit, export, and delete your own entries, and disconnect wearables at will). For anything you cannot do yourself on an operator-run instance, contact us at the address below and we will help you exercise these rights. You may withdraw wearable authorization at any time without affecting the rest of the app.</p>
+  <p>Depending on where you live, you may have rights to access, correct, export, or delete your personal data, and to withdraw consent. Some of this is directly in your hands today: you can view and edit your own log entries and biometric profile, delete individual log entries, and connect or disconnect wearables, all from within the app. The app does not yet have self-service data export or self-service account deletion &mdash; for either of those, or anything else you cannot do yourself, contact us at the address below and we will help you exercise these rights, including providing a copy of your data or deleting your account entirely. You may withdraw wearable authorization at any time without affecting the rest of the app.</p>
 
   <h2 id="children">10. Children&rsquo;s privacy</h2>
   <p>The app is a personal tool that is not directed to children. It is not intended for use by anyone under 13 (or under 16 where a higher age of digital consent applies), and we do not knowingly collect personal information from children. If you believe a child has provided data through an operator-run instance, contact us and we will delete it.</p>
@@ -237,7 +241,7 @@
   <footer class="doc">
     <a href="https://tryrerun.com/terms">Terms of Service</a>
     <a href="https://tryrerun.com">tryrerun.com</a>
-    <p style="margin-top:12px;">&copy; <span class="ph">[YEAR]</span> <span class="ph">[LEGAL ENTITY / OWNER NAME]</span>. A personal project.</p>
+    <p style="margin-top:12px;">&copy; <span class="ph">2026</span> <span class="ph">[LEGAL ENTITY / OWNER NAME]</span>. A personal project.</p>
   </footer>
 </div>
 </body>
