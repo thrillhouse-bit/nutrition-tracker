@@ -75,9 +75,6 @@ export const api = {
   // server build — callers must treat a failure the same as "no suggestion".
   activitySuggestion: () => req('/profile/activity-suggestion'),
 
-  // History: daily aggregates over a range.
-  history: (days = 30) => req(`/history?days=${days}`),
-
   // Oura wearable: activity/expenditure for a local day (YYYY-MM-DD).
   ouraSummary: (ymd) => req(`/oura/summary?date=${encodeURIComponent(ymd)}`),
 
