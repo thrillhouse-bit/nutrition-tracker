@@ -22,7 +22,13 @@
 # to find it — "letsencrypt" is a common default, not a universal one).
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # Set before `docker compose up -d --build`, e.g.
+        # GIT_SHA=$(git rev-parse HEAD) docker compose -f docker-compose.app-only.yml up -d --build
+        # so GET /api/version reports what's actually deployed.
+        GIT_SHA: ${GIT_SHA:-unknown}
     restart: unless-stopped
     env_file: .env                      # OURA_* / DATABASE_URL / SITE_ADDRESS / etc.
     environment:
