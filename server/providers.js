@@ -26,12 +26,14 @@ import { garminConfigured } from './integrations/garmin.js'
 // (or another lane) would check "what does this provider actually give us"
 // without re-deriving it from realSignals/garmin.js/oura.js. Garmin's
 // previously listed 'workouts' and 'training load' — neither is true for a
-// real connected account: real Garmin workout detection was never built
-// (only demo data ever populates it), and Insights' "Training load" chart
-// is a deliberate, already-approved empty-skeleton placeholder (see its own
-// comment in src/components/Insights.jsx), not backed by any real Garmin
-// field this app fetches. See docs/garmin-capability-matrix.md for the full
-// per-metric status and what each would need to become real.
+// real connected Garmin account: real Garmin workout detection was never
+// built (only demo data ever populates it). Insights' "Training load" chart
+// is no longer the empty skeleton this comment once described elsewhere —
+// a parallel change wired it to real data — but that data comes from Apple
+// Health workouts (store.aggregateWorkoutRows), never from Garmin, so the
+// distinction this comment exists to make still holds. See
+// docs/garmin-capability-matrix.md for the full per-metric status and what
+// each would need to become real for Garmin specifically.
 export const PROVIDERS = {
   oura: { id: 'oura', name: 'Oura', connect: 'oauth', categories: ['readiness', 'sleep', 'expenditure', 'steps', 'workouts'] },
   garmin: { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['expenditure', 'steps'] },
