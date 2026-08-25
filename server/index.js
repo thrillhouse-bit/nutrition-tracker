@@ -768,11 +768,20 @@ requireAuthRouter.post('/apple/token', asyncH(async (req, res) => {
 // single shared secret — can't identify a user on its own; it's accepted
 // only when exactly one user account exists on the box, so it still can't be
 // silently misattributed once a second person signs up.
+// Same timing-safe-compare pattern as auth.js's session-token check — a
+// plain === here would leak how many leading bytes of a guessed token are
+// correct via response latency.
+function timingSafeStringEqual(a, b) {
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)
+}
+
 async function resolveAppleIngestUser(req) {
   const presented = req.get('x-ingest-token')
   if (!presented) return null
   const legacy = process.env.APPLE_INGEST_TOKEN
-  if (legacy && presented === legacy) {
+  if (legacy && timingSafeStringEqual(presented, legacy)) {
     // A shared single secret can only be attributed while it's unambiguous —
     // once a second account exists, getSoleUserId() returns null and this
     // falls through to the per-user lookup below (which the legacy token
