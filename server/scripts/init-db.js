@@ -29,8 +29,14 @@ async function main() {
     .map((s) => s.trim())
     .filter(Boolean)
 
+  // The installed @neondatabase/serverless version exposes no sql.query()/
+  // sql.unsafe() escape hatch for raw dynamic SQL (verified against the
+  // actual package: neon()'s return value has only `transaction` as an own
+  // property) — but the function itself accepts a plain string directly
+  // (confirmed: sql('select 1 as n') -> [{n:1}]), which is what this needs
+  // since these statements are parsed from schema.sql, not known ahead of time.
   for (const stmt of statements) {
-    await sql.query(stmt)
+    await sql(stmt)
   }
   console.log(`Applied ${statements.length} statements to the database.`)
 }
