@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { num } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Button, EmptyState, ErrorNote, Field, Stat, TextButton, inputCls } from './ui.jsx'
+import { Button, EmptyState, ErrorNote, Field, Stat, inputCls } from './ui.jsx'
 
 // The server only ever stores/receives metric — conversions happen here so
 // the API contract stays single-unit while the form speaks whichever unit
@@ -310,7 +310,7 @@ export default function SmartPlanForm({ onCancel, onSaved }) {
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
-        <TextButton onClick={onCancel}>Cancel</TextButton>
+        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
         <Button onClick={submit} disabled={!canSubmit || saving}>
           {saving ? 'Calculating…' : 'Calculate & save my targets'}
         </Button>
