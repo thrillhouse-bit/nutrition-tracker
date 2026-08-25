@@ -81,7 +81,15 @@ app.use((req, res, next) => {
 const asyncH = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
     const status = err.status || 500
-    if (status >= 500) console.error(err)
+    // 4xx messages are ours (validation, "not found", etc.) and safe to
+    // return as-is. A 500 means something unanticipated — often a raw
+    // driver/DB error (a Postgres constraint name, a type-coercion
+    // message) — so log the real thing server-side but send the client a
+    // generic message instead of echoing it back.
+    if (status >= 500) {
+      console.error(err)
+      return res.status(status).json({ error: 'Server error' })
+    }
     res.status(status).json({ error: err.message || 'Server error' })
   })
 
