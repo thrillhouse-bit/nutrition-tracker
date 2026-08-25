@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { fmt, num } from '../lib/nutrition.js'
+import { fmt, num, kgToLb, lbToKg } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Card, EmptyState, Spinner, Stat, StatusMark, TextButton } from './ui.jsx'
+import { Button, Card, EmptyState, ErrorNote, Spinner, Stat, StatusMark, TextButton, inputCls } from './ui.jsx'
 
 const WINDOWS = [7, 14, 30]
 
@@ -85,6 +85,38 @@ function ReadinessChart({ points }) {
   )
 }
 
+// WEIGHT — the smoothed trend (server/weightTrend.js: a gap-adjusted
+// exponential moving average) as the bold line, over the raw logged readings
+// as faint dots, so day-to-day water-weight noise doesn't read as the real
+// direction. Auto-scaled over BOTH series like EnergyChart — weight has no
+// fixed universal range the way Readiness's 0-100 does — and `toDisplay`
+// converts kg to whatever unit the profile prefers; the stored/API values
+// stay kg regardless.
+function WeightChart({ points, toDisplay }) {
+  const n = points.length
+  if (n < 2) return null
+  const raw = points.map((p) => toDisplay(p.kg))
+  const trend = points.map((p) => toDisplay(p.trend))
+  const min = Math.min(...raw, ...trend)
+  const max = Math.max(...raw, ...trend)
+  const span = max - min || 1
+  const TOP = 16
+  const BOT = 72
+  const y = (v) => BOT - ((v - min) / span) * (BOT - TOP)
+  const x = (i) => (i / (n - 1)) * 320
+  const trendPts = trend.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+  const lastY = y(trend[n - 1]).toFixed(1)
+  return (
+    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+      {raw.map((v, i) => (
+        <circle key={i} cx={x(i)} cy={y(v)} r="2" fill="#121210" fillOpacity="0.25" />
+      ))}
+      <polyline points={trendPts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
+      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+    </svg>
+  )
+}
+
 // Same provider-name map Plan.jsx uses to turn a `signals.<metric>.provider`
 // code into display copy — kept in sync here rather than hardcoding a single
 // brand in the section header regardless of who actually connected.
@@ -95,6 +127,10 @@ export default function Insights({ refreshKey }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [signals, setSignals] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [weightInput, setWeightInput] = useState('')
+  const [loggingWeight, setLoggingWeight] = useState(false)
+  const [weightError, setWeightError] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -119,8 +155,39 @@ export default function Insights({ refreshKey }) {
     return () => { alive = false }
   }, [refreshKey])
 
+  // units_pref decides display only — the API and stored data are always kg
+  // (see server/db.js's weight-log methods and lib/nutrition.js's converters,
+  // the same split SmartPlanForm already uses for height/weight input).
+  useEffect(() => {
+    let alive = true
+    api.getProfile().then((r) => alive && setProfile(r?.profile || null)).catch(() => alive && setProfile(null))
+    return () => { alive = false }
+  }, [refreshKey])
+
   const readinessProviderLabel = PROVIDER_NAMES[signals?.readiness?.provider] || null
   const workoutProviderLabel = PROVIDER_NAMES[signals?.workout?.provider] || null
+
+  const imperial = profile?.units_pref !== 'metric'
+  const unitLabel = imperial ? 'lb' : 'kg'
+  const toDisplayUnit = (kg) => (imperial ? kgToLb(kg) : kg)
+
+  async function handleLogWeight(e) {
+    e.preventDefault()
+    const displayVal = num(weightInput)
+    if (displayVal <= 0) { setWeightError('Enter a weight greater than 0.'); return }
+    setWeightError(null)
+    setLoggingWeight(true)
+    try {
+      await api.logWeight(imperial ? lbToKg(displayVal) : displayVal)
+      setWeightInput('')
+      const r = await api.insights(window)
+      setData(r)
+    } catch {
+      setWeightError('Could not save that reading — try again.')
+    } finally {
+      setLoggingWeight(false)
+    }
+  }
 
   const nutrition = data?.nutrition
   const days = data?.days || []
@@ -137,6 +204,9 @@ export default function Insights({ refreshKey }) {
 
   const readiness = data?.ouraReadiness || []
   const avgReadiness = readiness.length ? Math.round(readiness.reduce((a, r) => a + r.score, 0) / readiness.length) : null
+
+  const weightPoints = data?.weight || []
+  const latestTrend = weightPoints.length ? weightPoints[weightPoints.length - 1].trend : null
 
   return (
     <div className="space-y-6">
@@ -157,6 +227,53 @@ export default function Insights({ refreshKey }) {
           ))}
         </div>
       </header>
+
+      {/* WEIGHT — deliberately independent of the nutrition-logging streak
+          below: someone logging weight daily but not food for a few days
+          should still see their trend, not a "not enough data" wall that
+          exists for food-logging consistency, not this. */}
+      <section>
+        <SectionHead
+          label="Weight"
+          strong
+          right={weightPoints.length >= 2 ? (
+            // Same >= 2 threshold the chart below uses — a single reading is
+            // not a trend (computeTrend just seeds it as-is), so calling it
+            // one here would disagree with the "one more day" copy below.
+            <span className="tnum text-[13px] text-muted">trend {fmt(toDisplayUnit(latestTrend), 1)} {unitLabel}</span>
+          ) : null}
+        />
+        <form onSubmit={handleLogWeight} className="mt-2.5 flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            min="0"
+            placeholder={`Log today's weight (${unitLabel})`}
+            value={weightInput}
+            onChange={(e) => setWeightInput(e.target.value)}
+            className={inputCls}
+          />
+          <Button type="submit" variant="outline" disabled={loggingWeight || !weightInput} className="shrink-0 px-4 py-3 text-[11px]">
+            {loggingWeight ? '…' : 'Log'}
+          </Button>
+        </form>
+        {weightError && <div className="mt-2"><ErrorNote>{weightError}</ErrorNote></div>}
+        {loading && !data ? null : weightPoints.length >= 2 ? (
+          <>
+            <WeightChart points={weightPoints} toDisplay={toDisplayUnit} />
+            <ChartCaption
+              left={shortDate(weightPoints[0].day)}
+              mid="Trend line · logged dots"
+              right={shortDate(weightPoints[weightPoints.length - 1].day)}
+            />
+          </>
+        ) : weightPoints.length === 1 ? (
+          <p className="mt-2.5 text-sm text-muted">One more day of logging draws the trend line.</p>
+        ) : (
+          <p className="mt-2.5 text-sm text-muted">Log a weigh-in above to start your trend.</p>
+        )}
+      </section>
 
       {loading && !data ? (
         <Spinner label="Reading your history…" />

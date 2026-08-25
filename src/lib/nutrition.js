@@ -88,3 +88,11 @@ export function ymd(date = new Date()) {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+// kg is the canonical stored unit everywhere (profile, weight log); these
+// convert only for imperial display/input. Shared here rather than in one
+// component since both the profile form and any weight display need the
+// same conversion and must never drift apart.
+export const KG_PER_LB = 0.453592
+export const lbToKg = (lb) => num(lb) * KG_PER_LB
+export const kgToLb = (kg) => num(kg) / KG_PER_LB
