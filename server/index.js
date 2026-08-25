@@ -20,6 +20,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
+import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema } from './validation.js'
 import {
   ouraConfigured,
   getToken as ouraToken,
@@ -82,7 +83,15 @@ app.use((req, res, next) => {
 const asyncH = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
     const status = err.status || 500
-    if (status >= 500) console.error(err)
+    // 4xx messages are ours (validation, "not found", etc.) and safe to
+    // return as-is. A 500 means something unanticipated — often a raw
+    // driver/DB error (a Postgres constraint name, a type-coercion
+    // message) — so log the real thing server-side but send the client a
+    // generic message instead of echoing it back.
+    if (status >= 500) {
+      console.error(err)
+      return res.status(status).json({ error: 'Server error' })
+    }
     res.status(status).json({ error: err.message || 'Server error' })
   })
 
@@ -219,11 +228,8 @@ requireAuthRouter.get('/foods/recent', asyncH(async (req, res) => {
 // Persist a food (manual entry, or an OCR/search result the user confirmed)
 // so it can be referenced by log entries and re-used later. foods is a
 // shared cache (see db.js) — creating one isn't a per-user write.
-requireAuthRouter.post('/foods', asyncH(async (req, res) => {
-  const body = req.body || {}
-  if (!body.name || !String(body.name).trim()) {
-    return res.status(400).json({ error: 'A food needs a name.' })
-  }
+requireAuthRouter.post('/foods', validateBody(FoodInputSchema), asyncH(async (req, res) => {
+  const body = req.body
   const food = body.barcode
     ? await store.upsertFoodByBarcode(body)
     : await store.createFood(body)
@@ -240,8 +246,8 @@ requireAuthRouter.get('/entries', asyncH(async (req, res) => {
 
 // Log a food. Accepts either an existing food_id, or an inline `food` object
 // (from a lookup/OCR/manual flow) which is persisted first, then logged.
-requireAuthRouter.post('/entries', asyncH(async (req, res) => {
-  const { food_id, food, servings_consumed = 1, meal = null, logged_at = null } = req.body || {}
+requireAuthRouter.post('/entries', validateBody(EntryCreateSchema), asyncH(async (req, res) => {
+  const { food_id, food, servings_consumed = 1, meal = null, logged_at = null } = req.body
 
   let id = food_id
   if (!id) {
@@ -258,8 +264,8 @@ requireAuthRouter.post('/entries', asyncH(async (req, res) => {
   res.status(201).json({ entry })
 }))
 
-requireAuthRouter.patch('/entries/:id', asyncH(async (req, res) => {
-  const entry = await store.updateEntry(req.userId, req.params.id, req.body || {})
+requireAuthRouter.patch('/entries/:id', validateBody(EntryPatchSchema), asyncH(async (req, res) => {
+  const entry = await store.updateEntry(req.userId, req.params.id, req.body)
   if (!entry) return res.status(404).json({ error: 'Entry not found.' })
   res.json({ entry })
 }))
@@ -279,8 +285,8 @@ requireAuthRouter.get('/targets', asyncH(async (req, res) => {
   res.json({ targets, hasTargets })
 }))
 
-requireAuthRouter.put('/targets', asyncH(async (req, res) => {
-  const targets = await store.setTargets(req.userId, req.body || {})
+requireAuthRouter.put('/targets', validateBody(TargetsSchema), asyncH(async (req, res) => {
+  const targets = await store.setTargets(req.userId, req.body)
   res.json({ targets })
 }))
 
@@ -387,14 +393,19 @@ async function resolveOuraToken(userId) {
 // forward. Callers decide how to handle a failure — this never touches
 // the connect flow's own success/failure.
 //
-// Two Oura endpoints, merged by day: readiness supplies the score this
-// history exists to track (previously this used activityRange's score,
-// which is the ACTIVITY score, not Readiness — the same mislabeling
-// providers.js's realSignals had for the live "today" value); activity
-// supplies the total_calories/active_calories/steps context that
-// store.saveOuraHistory has always stored alongside the score (and that
+// Must call readinessRange (daily_readiness), never activityRange
+// (daily_activity) alone — they're different Oura endpoints with different
+// scores. This function used to call activityRange and store its score as
+// "readiness," which silently produced either wrong numbers (activity score
+// mislabeled as readiness) or nothing at all (rows with a null activity
+// score get filtered out downstream) depending on the account's data.
+// Two Oura endpoints are still merged by day, though: readiness supplies the
+// score this history exists to track, and activity supplies the
+// total_calories/active_calories/steps context that store.saveOuraHistory
+// has always stored alongside the score (and that
 // GET /api/profile/activity-suggestion reads back out of `extra.steps`) —
-// still worth keeping even though it's no longer the headline number.
+// dropping activityRange entirely (as a from-scratch fix would) would have
+// silently starved that endpoint instead.
 async function backfillOuraHistory(userId, token, days = 30) {
   const end = new Date()
   const start = new Date(end)
@@ -470,9 +481,13 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
   })
   try {
     await backfillOuraHistory(userId, tokens.access_token)
-  } catch {
+  } catch (err) {
     // A successful connect must still read as connected even if the
-    // historical pull hiccups — POST /api/oura/backfill can retry it.
+    // historical pull hiccups — POST /api/oura/backfill can retry it. But
+    // silence here must not mean invisible: this exact catch block once
+    // swallowed a wrong-endpoint bug (activityRange instead of
+    // readinessRange) for hours with zero signal that anything was wrong.
+    console.error(`[oura-connect-backfill] user ${userId} failed: ${err.message}`)
   }
   res.redirect('/?oura=connected')
 }))
@@ -603,6 +618,27 @@ function dayRange(ymd) {
   const end = new Date(start)
   end.setDate(end.getDate() + 1)
   return { from: start.toISOString(), to: end.toISOString() }
+}
+
+// Calendar-day math anchored to a client-supplied UTC offset (Date#
+// getTimezoneOffset() convention: minutes to ADD to local time to reach
+// UTC) instead of the server's own OS timezone — /insights is the one
+// place left that computed "today"/day-buckets purely server-side
+// (localYmd/dayRange above are still server-local; they're used by other
+// routes not touched by this fix). Only ever does UTC-getter/setter
+// arithmetic on a shifted instant, so it never depends on where the
+// process happens to be running.
+function ymdAtOffset(date, offsetMinutes) {
+  const shifted = new Date(date.getTime() - offsetMinutes * 60000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
+}
+// The UTC instant of local midnight, `daysDelta` days from `refDate`, for a
+// clock at `offsetMinutes`.
+function localMidnightAtOffset(refDate, offsetMinutes, daysDelta = 0) {
+  const shifted = new Date(refDate.getTime() - offsetMinutes * 60000)
+  shifted.setUTCHours(0, 0, 0, 0)
+  shifted.setUTCDate(shifted.getUTCDate() + daysDelta)
+  return new Date(shifted.getTime() + offsetMinutes * 60000)
 }
 
 // Nutrition totals vs. targets for a day — used by the Garmin Connect IQ watch app.
@@ -891,6 +927,13 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
   if (userId == null) {
     return res.status(401).json({ error: 'Invalid ingest token.' })
   }
+  // A valid token proves who the companion is, not that this user still
+  // wants it syncing — the Connections tab's "enabled" toggle is supposed
+  // to be the actual off switch. Honor it here rather than only on read.
+  const integration = await store.getIntegration(userId, 'apple')
+  if (integration.enabled === false) {
+    return res.status(403).json({ error: 'Apple Health is disabled for this account.' })
+  }
   const { date, samples, permissions } = req.body || {}
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
   const nowIso = new Date().toISOString()
@@ -919,15 +962,24 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
 // insufficient-data until enough history exists (never causal/medical copy).
 requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const window = [7, 14, 30].includes(Number(req.query.window)) ? Number(req.query.window) : 7
+  // Bucket by the CLIENT's calendar day, not the server's — the client
+  // sends its own UTC offset (see api.insights() in src/api/client.js); a
+  // missing/invalid value falls back to the server's own offset, which
+  // reproduces the old (server-local) behavior rather than erroring for a
+  // caller that hasn't been updated. Without this, two entries logged the
+  // same real-world evening could land in different day buckets whenever
+  // the server's TZ (commonly UTC in production) disagrees with the
+  // user's, inflating trackedDays and fragmenting daily totals.
+  const tzOffsetMinutes = Number.isFinite(Number(req.query.tzOffsetMinutes)) ? Number(req.query.tzOffsetMinutes) : new Date().getTimezoneOffset()
   const now = new Date()
-  const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1))
-  const end = new Date(now); end.setHours(0, 0, 0, 0); end.setDate(end.getDate() + 1)
+  const start = localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1))
+  const end = localMidnightAtOffset(now, tzOffsetMinutes, 1)
   const entries = await store.listEntries(req.userId, { from: start.toISOString(), to: end.toISOString() })
   const targets = await store.getLatestTargets(req.userId)
 
   const byDay = new Map()
   for (const e of entries) {
-    const key = localYmd(new Date(e.logged_at))
+    const key = ymdAtOffset(new Date(e.logged_at), tzOffsetMinutes)
     if (!byDay.has(key)) byDay.set(key, sumIntake([]))
     const t = byDay.get(key)
     const s = Number(e.servings_consumed) || 0
@@ -939,7 +991,7 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const calTarget = Number(targets?.calories) || 0
   const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
 
-  const ouraReadiness = (await store.listOuraHistory?.(req.userId, localYmd(start), localYmd(new Date(end - 1)))) || []
+  const ouraReadiness = (await store.listOuraHistory?.(req.userId, ymdAtOffset(start, tzOffsetMinutes), ymdAtOffset(new Date(end - 1), tzOffsetMinutes))) || []
 
   res.json({
     window,

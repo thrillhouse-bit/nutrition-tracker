@@ -154,12 +154,31 @@ class PgStore {
   }
 
   // Cache a looked-up product so repeat scans skip the API. Barcode is unique;
-  // on conflict we return the row already stored.
+  // on conflict we return the row already stored. Uses a single atomic
+  // INSERT ... ON CONFLICT DO NOTHING rather than a separate check-then-
+  // insert — two concurrent lookups for a brand-new barcode (a double-tap
+  // logging the same scan, or the offline outbox replaying a queued entry
+  // at the same moment as a live re-scan) would otherwise both see "not
+  // found" and both try to insert, and the loser would crash on the
+  // schema's unique constraint instead of just getting the winner's row.
   async upsertFoodByBarcode(food) {
     if (!food.barcode) return this.createFood(food)
-    const existing = await this.getFoodByBarcode(food.barcode)
-    if (existing) return existing
-    return this.createFood(food)
+    const sql = await this.ready()
+    const f = pickFood(food)
+    const rows = await sql`
+      insert into foods
+        (barcode, name, brand, serving_size, serving_unit, calories, protein_g,
+         carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, source, raw_api_response)
+      values
+        (${f.barcode}, ${f.name}, ${f.brand}, ${f.serving_size}, ${f.serving_unit},
+         ${f.calories}, ${f.protein_g}, ${f.carbs_g}, ${f.fat_g}, ${f.fiber_g},
+         ${f.sugar_g}, ${f.sodium_mg}, ${f.source},
+         ${f.raw_api_response ? JSON.stringify(f.raw_api_response) : null})
+      on conflict (barcode) do nothing
+      returning *`
+    if (rows[0]) return rows[0]
+    // Lost the race — a concurrent insert already claimed this barcode.
+    return this.getFoodByBarcode(food.barcode)
   }
 
   // --- log entries (user-owned) -----------------------------------------------
@@ -550,7 +569,17 @@ export class JsonStore {
     try {
       const raw = await fs.readFile(this.file, 'utf8')
       this.data = JSON.parse(raw)
-    } catch {
+    } catch (err) {
+      // ENOENT (no file yet — a fresh install) is the only case that should
+      // silently start empty. Anything else (a corrupt/truncated JSON parse
+      // failure, a permissions error) is not a fresh install and must not be
+      // treated as one — that would silently wipe every user's data on the
+      // next persist(). Fail loudly instead so it gets noticed and the file
+      // can be recovered/inspected rather than quietly replaced.
+      if (err.code !== 'ENOENT') {
+        console.error(`[nutrition-tracker] Failed to read/parse ${this.file} — refusing to silently start from an empty store. Fix or remove the file to continue.`, err)
+        throw err
+      }
       this.data = { foods: [], entries: [], targets: [], users: [], seq: { food: 0, entry: 0, target: 0, user: 0 } }
     }
     // Older on-disk stores predate `users`/per-row user_id — nothing to
@@ -572,7 +601,14 @@ export class JsonStore {
     // re-rejects with the old error even once its cause is gone.
     const write = async () => {
       await fs.mkdir(path.dirname(this.file), { recursive: true })
-      await fs.writeFile(this.file, JSON.stringify(this.data, null, 2))
+      // Write to a temp file and rename over the real one, rather than
+      // writeFile-ing the live path directly — rename is a single atomic
+      // directory-entry swap on POSIX, so a crash/OOM-kill/container
+      // restart mid-write leaves either the old complete file or the new
+      // complete file, never a truncated one.
+      const tmp = `${this.file}.tmp`
+      await fs.writeFile(tmp, JSON.stringify(this.data, null, 2))
+      await fs.rename(tmp, this.file)
     }
     this.writing = this.writing.then(write, write)
     return this.writing
@@ -642,11 +678,25 @@ export class JsonStore {
     return f
   }
 
+  // Same race this method's PgStore twin guards against, different
+  // mechanism: `load()` and `persist()` are each an `await` boundary, so a
+  // check-then-create split across two separately-awaited calls
+  // (getFoodByBarcode, then createFood) lets two concurrent callers both
+  // observe "not found" and both push a row for the same barcode — nothing
+  // enforces uniqueness in this backend. Doing the find-then-push here in
+  // one synchronous stretch, after a single `await load()`, closes that
+  // window: nothing else can run between the check and the push.
   async upsertFoodByBarcode(food) {
     if (!food.barcode) return this.createFood(food)
-    const existing = await this.getFoodByBarcode(food.barcode)
+    const d = await this.load()
+    const existing = d.foods.find((f) => f.barcode && f.barcode === food.barcode)
     if (existing) return existing
-    return this.createFood(food)
+    const f = pickFood(food)
+    f.id = ++d.seq.food
+    f.created_at = new Date().toISOString()
+    d.foods.push(f)
+    await this.persist()
+    return f
   }
 
   #withFood(entry) {

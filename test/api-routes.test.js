@@ -128,7 +128,9 @@ const oura = vi.hoisted(() => ({
   legacy: false, // whether OURA_TOKEN-style config appears present
   dailySummary: async () => null,
   activityRange: async () => [],
+  dailyReadiness: async () => null,
   readinessRange: async () => [],
+  dailySleepHours: async () => null,
 }))
 
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
@@ -140,7 +142,9 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     getToken: () => 'legacy-token',
     dailySummary: (...args) => oura.dailySummary(...args),
     activityRange: (...args) => oura.activityRange(...args),
+    dailyReadiness: (...args) => oura.dailyReadiness(...args),
     readinessRange: (...args) => oura.readinessRange(...args),
+    dailySleepHours: (...args) => oura.dailySleepHours(...args),
   }
 })
 
@@ -215,6 +219,13 @@ const put = (path, body, headers = {}) =>
 // route in this file is read through this rather than a bare fetch().
 const get = (path, headers = {}) => fetch(`${base}${path}`, { headers: { Cookie: authCookie, ...headers } })
 
+const patch = (path, body, headers = {}) =>
+  fetch(`${base}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Cookie: authCookie, ...headers },
+    body: JSON.stringify(body),
+  })
+
 describe('POST /api/apple/ingest token gate', () => {
   const sample = { date: '2026-08-20', samples: [{ metric: 'sleep', value: 7.2, unit: 'h' }] }
 
@@ -256,6 +267,60 @@ describe('POST /api/apple/ingest token gate', () => {
     }, { 'x-ingest-token': 'sekret' })
     expect(res.status).toBe(200)
     expect((await res.json()).ingested).toBe(1)
+  })
+
+  // A valid token proves who the companion is, not that this account still
+  // wants it syncing — the Connections tab's "enabled" toggle must actually
+  // stop writes, not just change how they're displayed.
+  it('refuses the write once the account has disabled Apple Health, even with a valid token', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    fake.state.integrations.apple = { provider: 'apple', enabled: false, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+    const res = await post('/api/apple/ingest', sample, { 'x-ingest-token': 'sekret' })
+    expect(res.status).toBe(403)
+    expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
+  })
+})
+
+describe('Input validation (zod) on mutating routes', () => {
+  it('PUT /api/targets rejects a non-numeric value before it reaches the store', async () => {
+    const res = await put('/api/targets', { calories: 'banana' })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/calories/i)
+    expect(fake.state.setTargetsCalls).toHaveLength(0) // never reached the store
+  })
+
+  it('PUT /api/targets rejects a negative value', async () => {
+    const res = await put('/api/targets', { protein_g: -5 })
+    expect(res.status).toBe(400)
+    expect(fake.state.setTargetsCalls).toHaveLength(0)
+  })
+
+  it('PUT /api/targets accepts a valid partial update (control)', async () => {
+    const res = await put('/api/targets', { calories: 2400 })
+    expect(res.status).toBe(200)
+    expect(fake.state.setTargetsCalls).toHaveLength(1)
+  })
+
+  it('POST /api/foods rejects a missing name', async () => {
+    const res = await post('/api/foods', { calories: 100 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/name/i)
+  })
+
+  it('POST /api/foods rejects a negative calorie count', async () => {
+    const res = await post('/api/foods', { name: 'Weird food', calories: -100 })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/entries rejects a non-positive servings_consumed', async () => {
+    const res = await post('/api/entries', { food_id: 1, servings_consumed: 0 })
+    expect(res.status).toBe(400)
+  })
+
+  it('PATCH /api/entries/:id rejects a negative servings_consumed', async () => {
+    fake.state.entries = [{ id: 5, food_id: 1, logged_at: '2026-08-20T12:00:00.000Z', servings_consumed: 1, meal: null }]
+    const res = await patch('/api/entries/5', { servings_consumed: -1 })
+    expect(res.status).toBe(400)
   })
 })
 
@@ -362,12 +427,17 @@ describe('POST /api/oura/backfill', () => {
     oura.legacy = true
     fake.state.ouraHistory = []
     let askedActivity, askedReadiness
+    // Must read readinessRange (daily_readiness), not activityRange
+    // (daily_activity) alone, for the score — this endpoint used to call
+    // only the activity endpoint and store its score as "readiness" (see
+    // integrations/oura.js). Activity's score (55/60) is deliberately
+    // different from Readiness's (70/null) below — regression coverage for
+    // that exact bug — while activity's total_calories/active_calories/steps
+    // still flow through as context (GET /api/profile/activity-suggestion
+    // reads them back out), so replacing activityRange outright would have
+    // silently starved that endpoint instead of fixing the mislabeling.
     oura.activityRange = async (token, from, to) => {
       askedActivity = { token, from, to }
-      // Activity's score (55/60) is deliberately different from Readiness's
-      // (70/null) below — regression coverage for the bug where this app
-      // stored Activity's score under the "readiness" history, which is not
-      // what Readiness actually reads on a real account.
       return [
         { day: '2026-08-01', score: 55, total_calories: 2100, active_calories: 400, steps: 8000 },
         { day: '2026-08-02', score: 60, total_calories: 2000, active_calories: 300, steps: 6000 },
@@ -507,6 +577,45 @@ describe('GET /api/insights ouraReadiness', () => {
     const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.ouraReadiness).toEqual([])
+  })
+})
+
+describe('GET /api/insights day-bucketing timezone', () => {
+  const meal = (name, calories, loggedAt) => ({
+    id: Math.random(), food_id: 1, logged_at: loggedAt, servings_consumed: 1, meal: null,
+    food: { id: 1, name, calories, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0 },
+  })
+
+  // 06:00 and 20:00 UTC, same UTC calendar day — but this suite pins the
+  // SERVER's own local time to Pacific/Apia (UTC+13, see file header), which
+  // splits these across two Apia calendar days (06:00 UTC -> 19:00 Apia
+  // Aug 25; 20:00 UTC -> 09:00 Apia Aug 26). A fix that silently ignored
+  // tzOffsetMinutes and fell through to the server-local path would still
+  // report 2 tracked days here, same as the pre-fix bug — so this is a
+  // real test of "the passed offset is what's driving the bucketing," not
+  // just a case that happens to look right under Apia too.
+  it('buckets same-UTC5-day entries together when the client sends its own tzOffsetMinutes, even though the server-local (Apia) day would split them', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.entries = [
+      meal('Breakfast', 600, '2026-08-25T06:00:00.000Z'),
+      meal('Dinner', 200, '2026-08-25T20:00:00.000Z'),
+    ]
+    const res = await get('/api/insights?window=7&tzOffsetMinutes=300') // UTC-5: both 01:00 and 15:00 local Aug 25
+    const body = await res.json()
+    expect(body.nutrition.trackedDays).toBe(1)
+    expect(body.days).toHaveLength(1)
+    expect(body.days[0].totals.calories).toBe(800)
+  })
+
+  it('the same two entries split into two days under the server-local (Apia) fallback when tzOffsetMinutes is omitted (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.entries = [
+      meal('Breakfast', 600, '2026-08-25T06:00:00.000Z'),
+      meal('Dinner', 200, '2026-08-25T20:00:00.000Z'),
+    ]
+    const res = await get('/api/insights?window=7') // no tzOffsetMinutes -> server-local (Apia) fallback
+    const body = await res.json()
+    expect(body.nutrition.trackedDays).toBe(2)
   })
 })
 

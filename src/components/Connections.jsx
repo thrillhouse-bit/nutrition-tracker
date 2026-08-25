@@ -79,6 +79,33 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   const [confirmingId, setConfirmingId] = useState(null)
   useEffect(() => { if (!open) setConfirmingId(null) }, [open])
 
+  // Apple Health has no OAuth account to connect — this is the only in-app
+  // action for it, and until this existed there was no way to use the
+  // integration end to end: POST /api/apple/token worked, but nothing in the
+  // UI ever called it. The token is shown once (it has to be, so it can be
+  // copied into the companion) and regenerating invalidates the previous one.
+  const [appleToken, setAppleToken] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const generateAppleToken = async () => {
+    setBusy(id)
+    setCopied(false)
+    try {
+      const { token } = await api.appleToken()
+      setAppleToken(token)
+    } finally {
+      setBusy(null)
+    }
+  }
+  const copyAppleToken = async () => {
+    try {
+      await navigator.clipboard.writeText(appleToken)
+      setCopied(true)
+    } catch {
+      // Clipboard access can be denied/unavailable — the token is still
+      // selectable text in the field below, so this never blocks pairing.
+    }
+  }
+
   const patch = async (body) => {
     setBusy(id)
     try {
@@ -255,6 +282,34 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
                   sent to any third party. You choose which signals influence your plan, and you can delete synced data
                   at any time.
                 </p>
+              </div>
+
+              <div>
+                <div className="eyebrow pb-1.5">Pair the companion</div>
+                <p className="text-muted">
+                  The iOS/watch companion has no login of its own — it authenticates with a pairing token generated
+                  here. Generate one, then enter it in the companion's Settings.
+                </p>
+                {appleToken ? (
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={appleToken}
+                        onFocus={(e) => e.target.select()}
+                        className="min-w-0 flex-1 truncate border border-line bg-fill px-2.5 py-2 font-mono text-[12px]"
+                      />
+                      <Button variant="outline" onClick={copyAppleToken}>{copied ? 'Copied' : 'Copy'}</Button>
+                    </div>
+                    <p className="text-[11px] text-faint">
+                      Shown once — copy it now. Generating a new token immediately invalidates this one.
+                    </p>
+                  </div>
+                ) : (
+                  <Button variant="outline" className="mt-2" disabled={working} onClick={generateAppleToken}>
+                    {working ? <Spinner /> : 'Generate pairing token'}
+                  </Button>
+                )}
               </div>
 
               <p className="text-[11px] leading-relaxed text-faint">
