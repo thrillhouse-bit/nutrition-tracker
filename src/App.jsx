@@ -275,10 +275,31 @@ export default function App() {
     if (pending.some((i) => i.clientId === id)) {
       dequeue(id); setPending(getQueue()); setEditingEntry(null); return
     }
+    // Snapshot before deleting so a mistaken tap (there's no confirm dialog
+    // on this action) can be undone — re-logs the same food/servings/meal/
+    // time rather than restoring the exact deleted row (the old row's id
+    // and any edit history don't come back, only its data does).
+    const restore = entries.find((e) => e.id === id)
     setSavingEntry(true)
     try {
       await api.deleteEntry(id); setEditingEntry(null); setRefreshKey((k) => k + 1)
     } finally { setSavingEntry(false) }
+    if (!restore) return
+    setToast({
+      kind: 'success',
+      text: `Deleted ${restore.food?.name || 'entry'}`,
+      onUndo: async () => {
+        await api.addEntry({
+          food_id: restore.food_id,
+          servings_consumed: restore.servings_consumed,
+          meal: restore.meal,
+          logged_at: restore.logged_at,
+        })
+        setRefreshKey((k) => k + 1)
+        setToast(null)
+      },
+    })
+    setTimeout(() => setToast((t) => (t?.onUndo ? null : t)), 6000)
   }
   const saveEntry = async (id, patch) => {
     setSavingEntry(true)
@@ -327,7 +348,12 @@ export default function App() {
       {toast && (
         <div className={`mx-4 mt-3 flex items-center justify-between gap-3 border px-3 py-2 text-sm ${toast.kind === 'success' ? 'border-cobalt/40 bg-cobalt-soft text-cobalt' : 'border-alert/40 bg-alert/5 text-alert'}`}>
           <span>{toast.text}</span>
-          <button onClick={() => setToast(null)} className="px-1.5 opacity-70 hover:opacity-100" aria-label="Dismiss">✕</button>
+          <span className="flex shrink-0 items-center gap-3">
+            {toast.onUndo && (
+              <button onClick={toast.onUndo} className="font-semibold underline underline-offset-2 hover:no-underline">Undo</button>
+            )}
+            <button onClick={() => setToast(null)} className="px-1.5 opacity-70 hover:opacity-100" aria-label="Dismiss">✕</button>
+          </span>
         </div>
       )}
 
