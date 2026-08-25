@@ -18,3 +18,7 @@ server/.data/
 .DS_Store
 *.log
 npm-debug.log*
+
+# Claude Code harness state (agent worktrees, session scaffolding) — local
+# tooling, not project source.
+.claude/
