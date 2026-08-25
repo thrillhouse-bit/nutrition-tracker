@@ -437,6 +437,45 @@ describe('GET /api/insights ouraReadiness', () => {
   })
 })
 
+describe('GET /api/insights day-bucketing timezone', () => {
+  const meal = (name, calories, loggedAt) => ({
+    id: Math.random(), food_id: 1, logged_at: loggedAt, servings_consumed: 1, meal: null,
+    food: { id: 1, name, calories, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0 },
+  })
+
+  // 06:00 and 20:00 UTC, same UTC calendar day — but this suite pins the
+  // SERVER's own local time to Pacific/Apia (UTC+13, see file header), which
+  // splits these across two Apia calendar days (06:00 UTC -> 19:00 Apia
+  // Aug 25; 20:00 UTC -> 09:00 Apia Aug 26). A fix that silently ignored
+  // tzOffsetMinutes and fell through to the server-local path would still
+  // report 2 tracked days here, same as the pre-fix bug — so this is a
+  // real test of "the passed offset is what's driving the bucketing," not
+  // just a case that happens to look right under Apia too.
+  it('buckets same-UTC5-day entries together when the client sends its own tzOffsetMinutes, even though the server-local (Apia) day would split them', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.entries = [
+      meal('Breakfast', 600, '2026-08-25T06:00:00.000Z'),
+      meal('Dinner', 200, '2026-08-25T20:00:00.000Z'),
+    ]
+    const res = await get('/api/insights?window=7&tzOffsetMinutes=300') // UTC-5: both 01:00 and 15:00 local Aug 25
+    const body = await res.json()
+    expect(body.nutrition.trackedDays).toBe(1)
+    expect(body.days).toHaveLength(1)
+    expect(body.days[0].totals.calories).toBe(800)
+  })
+
+  it('the same two entries split into two days under the server-local (Apia) fallback when tzOffsetMinutes is omitted (control)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 12, 0, 0) })
+    fake.state.entries = [
+      meal('Breakfast', 600, '2026-08-25T06:00:00.000Z'),
+      meal('Dinner', 200, '2026-08-25T20:00:00.000Z'),
+    ]
+    const res = await get('/api/insights?window=7') // no tzOffsetMinutes -> server-local (Apia) fallback
+    const body = await res.json()
+    expect(body.nutrition.trackedDays).toBe(2)
+  })
+})
+
 describe('GET /api/today day bounds', () => {
   const entry = {
     id: 1,
