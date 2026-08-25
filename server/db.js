@@ -60,6 +60,36 @@ function pickFood(f = {}) {
   return out
 }
 
+// Aggregates raw Apple `workout` wearable_signals rows into one row per day
+// — shared by PgStore.listAppleWorkoutHistory and JsonStore's sibling below.
+// Unlike Oura readiness (one score a day by construction — saveOuraHistory
+// deletes-then-inserts per day), a day can carry more than one completed
+// workout (see wearable_signals' own schema comment), and composeSignals's
+// "today" signal only keeps the LAST one for the plan engine — a load
+// HISTORY that did the same would silently undercount a two-workout day, so
+// this sums across every row for the day instead.
+//
+// `duration_min` is the wire field name the iOS companion actually sends
+// (ios/Shared/HealthModel.swift's WorkoutValue.CodingKeys, confirmed against
+// a real HKWorkout's duration) — minutes of activity is the only load figure
+// genuinely derivable from a stored workout row; HealthKit hands us no
+// strain/intensity score, so this reports "minutes trained", never an
+// invented composite "load" unit. A row with no duration_min still counts as
+// a session (sessions is a real count of workouts logged that day) but
+// contributes 0 minutes rather than being dropped or fabricated.
+export function aggregateWorkoutRows(rows) {
+  const byDay = new Map()
+  for (const r of rows) {
+    if (r.day == null) continue
+    if (!byDay.has(r.day)) byDay.set(r.day, { day: r.day, minutes: 0, sessions: 0 })
+    const bucket = byDay.get(r.day)
+    const mins = Number(r.value?.duration_min)
+    if (Number.isFinite(mins) && mins > 0) bucket.minutes += mins
+    bucket.sessions += 1
+  }
+  return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1))
+}
+
 // --------------------------------------------------------------------------
 // Neon Postgres backend
 // --------------------------------------------------------------------------
@@ -462,6 +492,16 @@ export class PgStore {
         values (${userId}, 'apple', ${r.metric}, ${day}, ${r.recorded_at}, ${r.fetched_at}, ${JSON.stringify(r.value ?? null)}, ${r.unit || null}, ${r.extra ? JSON.stringify(r.extra) : null})`
     }
     return rows.length
+  }
+
+  // Real per-day training-load history for Insights' Training Load chart —
+  // ranged like listOuraHistory below, but a day can hold more than one
+  // completed workout, so the rows are aggregated (see aggregateWorkoutRows
+  // above) rather than returned one-per-day the way readiness rows are.
+  async listAppleWorkoutHistory(userId, fromYmd, toYmd) {
+    const sql = await this.ready()
+    const rows = await sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'apple' and metric = 'workout' and day between ${fromYmd} and ${toYmd} order by day`
+    return aggregateWorkoutRows(rows)
   }
 
   // --- Manual workout input (per user per day) --------------------------------
@@ -1045,6 +1085,16 @@ export class JsonStore {
     }
     await this.persist()
     return rows.length
+  }
+
+  // See PgStore.listAppleWorkoutHistory for why this aggregates (a day can
+  // carry more than one completed workout) instead of returning raw rows.
+  async listAppleWorkoutHistory(userId, fromYmd, toYmd) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const rows = (d.wearable_signals || [])
+      .filter((s) => s.user_id === uid && s.provider === 'apple' && s.metric === 'workout' && s.day >= fromYmd && s.day <= toYmd)
+    return aggregateWorkoutRows(rows)
   }
 
   // --- Manual workout input (per user per day) — see PgStore's sibling
