@@ -582,6 +582,27 @@ function dayRange(ymd) {
   return { from: start.toISOString(), to: end.toISOString() }
 }
 
+// Calendar-day math anchored to a client-supplied UTC offset (Date#
+// getTimezoneOffset() convention: minutes to ADD to local time to reach
+// UTC) instead of the server's own OS timezone — /insights is the one
+// place left that computed "today"/day-buckets purely server-side
+// (localYmd/dayRange above are still server-local; they're used by other
+// routes not touched by this fix). Only ever does UTC-getter/setter
+// arithmetic on a shifted instant, so it never depends on where the
+// process happens to be running.
+function ymdAtOffset(date, offsetMinutes) {
+  const shifted = new Date(date.getTime() - offsetMinutes * 60000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
+}
+// The UTC instant of local midnight, `daysDelta` days from `refDate`, for a
+// clock at `offsetMinutes`.
+function localMidnightAtOffset(refDate, offsetMinutes, daysDelta = 0) {
+  const shifted = new Date(refDate.getTime() - offsetMinutes * 60000)
+  shifted.setUTCHours(0, 0, 0, 0)
+  shifted.setUTCDate(shifted.getUTCDate() + daysDelta)
+  return new Date(shifted.getTime() + offsetMinutes * 60000)
+}
+
 // Nutrition totals vs. targets for a day — used by the Garmin Connect IQ watch app.
 requireAuthRouter.get('/today/summary', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
@@ -837,15 +858,24 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
 // insufficient-data until enough history exists (never causal/medical copy).
 requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const window = [7, 14, 30].includes(Number(req.query.window)) ? Number(req.query.window) : 7
+  // Bucket by the CLIENT's calendar day, not the server's — the client
+  // sends its own UTC offset (see api.insights() in src/api/client.js); a
+  // missing/invalid value falls back to the server's own offset, which
+  // reproduces the old (server-local) behavior rather than erroring for a
+  // caller that hasn't been updated. Without this, two entries logged the
+  // same real-world evening could land in different day buckets whenever
+  // the server's TZ (commonly UTC in production) disagrees with the
+  // user's, inflating trackedDays and fragmenting daily totals.
+  const tzOffsetMinutes = Number.isFinite(Number(req.query.tzOffsetMinutes)) ? Number(req.query.tzOffsetMinutes) : new Date().getTimezoneOffset()
   const now = new Date()
-  const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (window - 1))
-  const end = new Date(now); end.setHours(0, 0, 0, 0); end.setDate(end.getDate() + 1)
+  const start = localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1))
+  const end = localMidnightAtOffset(now, tzOffsetMinutes, 1)
   const entries = await store.listEntries(req.userId, { from: start.toISOString(), to: end.toISOString() })
   const targets = await store.getLatestTargets(req.userId)
 
   const byDay = new Map()
   for (const e of entries) {
-    const key = localYmd(new Date(e.logged_at))
+    const key = ymdAtOffset(new Date(e.logged_at), tzOffsetMinutes)
     if (!byDay.has(key)) byDay.set(key, sumIntake([]))
     const t = byDay.get(key)
     const s = Number(e.servings_consumed) || 0
@@ -857,7 +887,7 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const calTarget = Number(targets?.calories) || 0
   const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
 
-  const ouraReadiness = (await store.listOuraHistory?.(req.userId, localYmd(start), localYmd(new Date(end - 1)))) || []
+  const ouraReadiness = (await store.listOuraHistory?.(req.userId, ymdAtOffset(start, tzOffsetMinutes), ymdAtOffset(new Date(end - 1), tzOffsetMinutes))) || []
 
   res.json({
     window,

@@ -102,7 +102,11 @@ export const api = {
     ),
   planToday: (ymd) => req(`/plan/today?date=${encodeURIComponent(ymd)}`),
   signals: () => req('/signals'),
-  insights: (window = 7) => req(`/insights?window=${window}`),
+  // tzOffsetMinutes (Date#getTimezoneOffset() convention) lets the server
+  // bucket trend days by the browser's own calendar day instead of the
+  // server's — the same reasoning dayBounds()/ymd() in lib/nutrition.js
+  // already apply to /today and /entries, extended to /insights.
+  insights: (window = 7) => req(`/insights?window=${window}&tzOffsetMinutes=${new Date().getTimezoneOffset()}`),
   connections: () => req('/connections'),
   setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
   setProvider: (id, patch) => req(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
