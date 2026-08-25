@@ -174,6 +174,38 @@ async function lookupUSDA(barcode) {
   return normalizeUSDA(exact || foods[0], barcode)
 }
 
+// ---- Relevance ranking -----------------------------------------------------
+
+// USDA and Open Food Facts each hand back results in their own relevance
+// order, tuned for recall across every field they index (description,
+// ingredients, brand, category) — not for "this IS the food I typed."
+// Reported live 25 Aug 2026: searching "egg" surfaced "Egg Salad", "Deviled
+// Eggs", "Egg Drop Soup" ahead of plain "Egg", because those dish names also
+// contain the term and neither API is told the base food should outrank a
+// dish that merely uses it. Score by how the query relates to the food's own
+// NAME — exact, then prefix, then a whole word elsewhere in the name, then
+// any other substring — and put anything that only matched via a field OTHER
+// THAN the name (OFF searches ingredients/brand/category too, so a hit's name
+// can contain none of the query at all) at the very back.
+const ESCAPE_REGEX = /[.*+?^${}()|[\]\\]/g
+function nameMatchTier(name, query) {
+  const n = (name || '').toLowerCase().trim()
+  const q = query.toLowerCase().trim()
+  if (!q) return 4
+  if (n === q) return 0
+  if (n.startsWith(q)) return 1
+  if (new RegExp(`\\b${q.replace(ESCAPE_REGEX, '\\$&')}`).test(n)) return 2
+  if (n.includes(q)) return 3
+  return 4
+}
+
+// Exported for testing. Array#sort is stable (guaranteed since ES2019), so
+// ties keep each source's own relative order as the tiebreak within a tier —
+// that ordering is still the best signal available once tier is equal.
+export function rankByRelevance(results, query) {
+  return [...results].sort((a, b) => nameMatchTier(a.name, query) - nameMatchTier(b.name, query))
+}
+
 // ---- Public API ----------------------------------------------------------
 
 export async function lookupByBarcode(barcode) {
@@ -204,7 +236,9 @@ export async function searchByText(query) {
       }
     }
   }
-  return results.slice(0, 20)
+  // Re-rank before truncating: the base food a plain query names must not be
+  // cut off at 20 by a flood of dish/branded matches ahead of it.
+  return rankByRelevance(results, query).slice(0, 20)
 }
 
 function round(v, decimals = 2) {

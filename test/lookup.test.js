@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeOFF, normalizeUSDA } from '../server/lookup.js'
+import { normalizeOFF, normalizeUSDA, rankByRelevance } from '../server/lookup.js'
 
 describe('normalizeOFF', () => {
   it('uses per-serving values when a serving is defined', () => {
@@ -107,5 +107,52 @@ describe('normalizeUSDA', () => {
     expect(f.fiber_g).toBe(2.6)
     expect(f.sugar_g).toBe(12.2)
     expect(f.sodium_mg).toBe(1)
+  })
+})
+
+describe('rankByRelevance', () => {
+  it('ranks a plain "Egg" first against a realistic mix of dishes and an ingredient-only hit', () => {
+    // The USDA/OFF order these arrive in on the live site — dishes ahead of
+    // the base food — is exactly the bug reported live 25 Aug 2026.
+    const rows = [
+      { name: 'Egg Drop Soup' },
+      { name: 'Deviled Eggs' },
+      // Matched by OFF via its ingredients_text ("egg white powder"), not its
+      // own product name — this is the "term only in the ingredient list"
+      // case the fix must sink to the back.
+      { name: 'Trail Mix' },
+      { name: 'Egg Salad Sandwich' },
+      { name: 'Egg' },
+    ]
+    const ranked = rankByRelevance(rows, 'egg')
+    expect(ranked[0].name).toBe('Egg') // exact match must lead
+    expect(ranked.map((r) => r.name)).not.toContain(undefined)
+    // The ingredient-only hit (no "egg" anywhere in its own name) sinks to
+    // the very back, behind every row that actually names an egg food.
+    expect(ranked[ranked.length - 1].name).toBe('Trail Mix')
+  })
+
+  it('tiers exact > prefix > whole word > substring > name-mismatch, case-insensitively', () => {
+    const rows = [
+      { name: 'Bacon and Egg Casserole' }, // whole word "egg", not a prefix
+      { name: 'Preggo Sauce' }, // "egg" is a mid-word substring, no word boundary
+      { name: 'Trail Mix' }, // no "egg" anywhere in the name
+      { name: 'Eggplant Parmesan' }, // prefix
+      { name: 'EGG' }, // exact match, different case
+    ]
+    const ranked = rankByRelevance(rows, 'Egg')
+    expect(ranked.map((r) => r.name)).toEqual([
+      'EGG',
+      'Eggplant Parmesan',
+      'Bacon and Egg Casserole',
+      'Preggo Sauce',
+      'Trail Mix',
+    ])
+  })
+
+  it('keeps each source\'s own order as the tiebreak within a tier (stable sort)', () => {
+    const rows = [{ name: 'Egg Salad' }, { name: 'Egg Drop Soup' }, { name: 'Egg Sandwich' }]
+    const ranked = rankByRelevance(rows, 'egg')
+    expect(ranked.map((r) => r.name)).toEqual(['Egg Salad', 'Egg Drop Soup', 'Egg Sandwich'])
   })
 })
