@@ -3,9 +3,11 @@
 A personal-use Progressive Web App for **fueling intelligence**: it pairs
 food logging with wearable recovery and training signals (Oura, Garmin, Apple
 Health) to surface one clear, transparent, **non-medical** recommendation —
-*given my recovery, training, and intake so far, what should I do next?* Single
-user, no accounts, every "premium" feature just on: full macro + micronutrient
-tracking, unlimited scans, no ads.
+*given my recovery, training, and intake so far, what should I do next?* Each
+account is private — sign in with just an email and password, and your log,
+targets, and connected wearables belong to that account alone. Every
+"premium" feature is just on: full macro + micronutrient tracking, unlimited
+scans, no ads.
 
 Logging is the foundation and works **fully standalone** — scan a barcode, scan
 a label, search, or type it in, with no wearables connected. The wearable layer
