@@ -1,4 +1,4 @@
-# Nutrition Tracker
+# OmniFuel Tech
 
 A personal-use Progressive Web App for **fueling intelligence**: it pairs
 food logging with wearable recovery and training signals (Oura, Garmin, Apple

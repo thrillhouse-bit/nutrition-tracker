@@ -39,12 +39,13 @@ export default defineConfig({
       },
       includeAssets: ['icon.svg', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
       // Installed identity matches the in-app v2 system: the app titles itself
-      // "Fuel" (index.html) and paints ivory (#f7f4ec theme-color meta) — the
-      // old emerald/navy manifest gave the home-screen install a different
-      // product's icon, splash, and name.
+      // "OmniFuel Tech" (index.html) and paints ivory (#f7f4ec theme-color meta)
+      // — the old emerald/navy manifest gave the home-screen install a
+      // different product's icon, splash, and name. short_name stays shorter
+      // than the full name so it doesn't truncate on a home-screen grid.
       manifest: {
-        name: 'Fuel',
-        short_name: 'Fuel',
+        name: 'OmniFuel Tech',
+        short_name: 'OmniFuel',
         description: 'Scan barcodes and labels to track daily macros and micronutrients.',
         theme_color: '#f7f4ec',
         background_color: '#f7f4ec',
