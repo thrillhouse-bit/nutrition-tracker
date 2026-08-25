@@ -55,7 +55,7 @@ export default function Onboarding({ onDone }) {
     <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-4 py-10">
       <h1 className="serif text-[32px] leading-none text-ink">Welcome</h1>
       <p className="mt-3.5 max-w-[380px] text-sm leading-relaxed text-muted">
-        Fueling Intelligence adjusts your daily targets around your training and readiness. Start with your own
+        OmniFuel Tech adjusts your daily targets around your training and readiness. Start with your own
         baseline — calculate it from your body metrics and a goal, or type exact numbers yourself. Either way, you
         can change it any time from Plan.
       </p>

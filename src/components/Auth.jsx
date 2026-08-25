@@ -35,7 +35,7 @@ export default function Auth({ onAuthed }) {
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16">
       <header className="mb-8">
-        <div className="eyebrow mb-2 text-cobalt">Fueling Intelligence</div>
+        <div className="eyebrow mb-2 text-cobalt">OmniFuel Tech</div>
         <h1 className="serif text-4xl leading-none text-ink">
           {mode === 'signup' ? 'Create your account' : 'Sign in'}
         </h1>
