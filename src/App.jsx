@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api/client.js'
 import { dayBounds, MEALS, num, fmt, ymd } from './lib/nutrition.js'
 import { enqueue, dequeue, getQueue, pendingEntry } from './lib/outbox.js'
-import { Button, Sheet, ErrorNote, Spinner, StatusTag, inputCls } from './components/ui.jsx'
+import { Button, Sheet, ErrorNote, Spinner, StatusTag, ServingStepper } from './components/ui.jsx'
 // Scanner pulls in the large zxing library — load only when opened.
 const Scanner = lazy(() => import('./components/Scanner.jsx'))
 import LabelScan from './components/LabelScan.jsx'
@@ -46,10 +46,13 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
           {entry.food?.calories != null ? `${fmt(entry.food.calories, 0)} kcal / serving` : ''}
         </div>
       </div>
-      <label className="block">
+      <div>
         <span className="eyebrow mb-1 block">Servings</span>
-        <input type="number" step="0.25" min="0" value={servings} onChange={(e) => setServings(e.target.value)} className={inputCls} />
-      </label>
+        {/* Same bordered −/value/+ stepper as FoodConfirm — editing servings on an
+            already-logged entry is the same conceptual task, so it looks and
+            behaves the same. */}
+        <ServingStepper value={servings} onChange={setServings} />
+      </div>
       <div className="flex flex-wrap gap-2">
         {['', ...MEALS].map((m) => (
           <button
