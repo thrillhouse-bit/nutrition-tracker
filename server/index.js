@@ -20,6 +20,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
+import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema } from './validation.js'
 import {
   ouraConfigured,
   getToken as ouraToken,
@@ -226,11 +227,8 @@ requireAuthRouter.get('/foods/recent', asyncH(async (req, res) => {
 // Persist a food (manual entry, or an OCR/search result the user confirmed)
 // so it can be referenced by log entries and re-used later. foods is a
 // shared cache (see db.js) — creating one isn't a per-user write.
-requireAuthRouter.post('/foods', asyncH(async (req, res) => {
-  const body = req.body || {}
-  if (!body.name || !String(body.name).trim()) {
-    return res.status(400).json({ error: 'A food needs a name.' })
-  }
+requireAuthRouter.post('/foods', validateBody(FoodInputSchema), asyncH(async (req, res) => {
+  const body = req.body
   const food = body.barcode
     ? await store.upsertFoodByBarcode(body)
     : await store.createFood(body)
@@ -247,8 +245,8 @@ requireAuthRouter.get('/entries', asyncH(async (req, res) => {
 
 // Log a food. Accepts either an existing food_id, or an inline `food` object
 // (from a lookup/OCR/manual flow) which is persisted first, then logged.
-requireAuthRouter.post('/entries', asyncH(async (req, res) => {
-  const { food_id, food, servings_consumed = 1, meal = null, logged_at = null } = req.body || {}
+requireAuthRouter.post('/entries', validateBody(EntryCreateSchema), asyncH(async (req, res) => {
+  const { food_id, food, servings_consumed = 1, meal = null, logged_at = null } = req.body
 
   let id = food_id
   if (!id) {
@@ -265,8 +263,8 @@ requireAuthRouter.post('/entries', asyncH(async (req, res) => {
   res.status(201).json({ entry })
 }))
 
-requireAuthRouter.patch('/entries/:id', asyncH(async (req, res) => {
-  const entry = await store.updateEntry(req.userId, req.params.id, req.body || {})
+requireAuthRouter.patch('/entries/:id', validateBody(EntryPatchSchema), asyncH(async (req, res) => {
+  const entry = await store.updateEntry(req.userId, req.params.id, req.body)
   if (!entry) return res.status(404).json({ error: 'Entry not found.' })
   res.json({ entry })
 }))
@@ -282,8 +280,8 @@ requireAuthRouter.get('/targets', asyncH(async (req, res) => {
   res.json({ targets: await store.getLatestTargets(req.userId) })
 }))
 
-requireAuthRouter.put('/targets', asyncH(async (req, res) => {
-  const targets = await store.setTargets(req.userId, req.body || {})
+requireAuthRouter.put('/targets', validateBody(TargetsSchema), asyncH(async (req, res) => {
+  const targets = await store.setTargets(req.userId, req.body)
   res.json({ targets })
 }))
 
