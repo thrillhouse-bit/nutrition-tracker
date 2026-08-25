@@ -249,13 +249,13 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
         )}
       </div>
 
-      {/* Actions — full-width cobalt ADD TO LOG + outline CANCEL */}
+      {/* Actions — full-width cobalt ADD TO LOG + subtle CANCEL */}
       <div className="mt-5 flex gap-[9px]">
         <Button onClick={submit} disabled={logging} className="flex-1">
           {logging ? 'Adding…' : 'Add to log'}
         </Button>
         {onBack && (
-          <Button variant="outline" onClick={onBack} className="w-[104px]">
+          <Button variant="subtle" onClick={onBack} className="w-[104px]">
             Cancel
           </Button>
         )}
