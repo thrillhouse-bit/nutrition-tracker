@@ -18,7 +18,8 @@ import {
 } from './auth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { lookupByBarcode, searchByText } from './lookup.js'
+import { lookupByBarcode } from './lookup.js'
+import { searchFoods } from './foodSearch/index.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
 import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema } from './validation.js'
 import {
@@ -217,12 +218,44 @@ requireAuthRouter.get('/lookup/:barcode', asyncH(async (req, res) => {
 }))
 
 // --- text search (produce / bulk / no barcode) ----------------------------
+// Structured, PII-free diagnostics: the query text itself is a food name a
+// user typed, not a secret, but no user id/session data rides along here —
+// this is a food-search reliability log, not a per-user audit trail.
+function logSearch(outcome) {
+  console.log('[food-search]', JSON.stringify({
+    query: outcome.parsed.normalized,
+    variantsTried: outcome.parsed.variants,
+    correctedTo: outcome.parsed.corrected && outcome.usedCorrection ? outcome.parsed.corrected : null,
+    resultCount: outcome.results.length,
+    degraded: outcome.degraded,
+    totalLatencyMs: outcome.totalLatencyMs,
+    sources: outcome.sources.map((s) => ({ source: s.source, dataset: s.dataset, ok: s.ok, count: s.count, latencyMs: s.latencyMs, skipped: s.skipped })),
+  }))
+}
+
 requireAuthRouter.get('/search', asyncH(async (req, res) => {
   const q = String(req.query.q || '').trim()
-  if (q.length < 2) return res.json({ results: [] })
-  const results = await searchByText(q)
-  res.json({ results })
+  if (q.length < 2) return res.json({ results: [], degraded: false })
+  const outcome = await searchFoods(q)
+  logSearch(outcome)
+  // `degraded` tells the client every attempted provider genuinely failed
+  // (a transient outage), distinct from a normal empty result — the client
+  // shows a "search is having trouble, try again" state only for the former.
+  res.json({ results: outcome.results, degraded: outcome.degraded })
 }))
+
+// Dev-only diagnostic: the full ranking/retrieval breakdown for one query —
+// which sources were tried, what each returned, and why the final order came
+// out the way it did — without exposing any of this in the production
+// search response above (which stays a plain {results, degraded} contract).
+if (process.env.NODE_ENV !== 'production') {
+  requireAuthRouter.get('/search/debug', asyncH(async (req, res) => {
+    const q = String(req.query.q || '').trim()
+    if (q.length < 2) return res.json({ error: 'q must be at least 2 characters.' })
+    const outcome = await searchFoods(q)
+    res.json(outcome)
+  }))
+}
 
 // --- label OCR (Claude vision) --------------------------------------------
 requireAuthRouter.post('/ocr', asyncH(async (req, res) => {

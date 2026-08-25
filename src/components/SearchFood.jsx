@@ -13,28 +13,48 @@ export default function SearchFood({ onPick }) {
   const [results, setResults] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Whether the LAST completed search's providers all genuinely failed
+  // (a transient outage) — distinct from a real, honest "nothing matched".
+  // The query text itself is never cleared on failure (below), so retrying
+  // doesn't mean re-typing.
+  const [degraded, setDegraded] = useState(false)
   const debounced = useRef(null)
   if (!debounced.current) {
-    debounced.current = createDebouncedSearch((query) => api.searchFoods(query).then((r) => r.results))
+    debounced.current = createDebouncedSearch((query) => api.searchFoods(query))
+  }
+
+  const runSearch = (query) => {
+    debounced.current.search(query, {
+      onStart: () => {
+        setBusy(true)
+        setError('')
+      },
+      onResult: (body) => {
+        setResults(body.results)
+        setDegraded(!!body.degraded)
+      },
+      onError: (err) => setError(err.message || 'Search failed.'),
+      onSettled: () => setBusy(false),
+    })
   }
 
   useEffect(() => {
     if (q.trim().length < 2) {
       debounced.current.cancel()
       setResults([])
+      setDegraded(false)
+      setError('')
       return
     }
-    debounced.current.search(q.trim(), {
-      onStart: () => {
-        setBusy(true)
-        setError('')
-      },
-      onResult: (results) => setResults(results),
-      onError: (err) => setError(err.message || 'Search failed.'),
-      onSettled: () => setBusy(false),
-    })
+    runSearch(q.trim())
     return () => debounced.current.cancel()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q])
+
+  // Retries the SAME query immediately (bypassing the debounce delay) — the
+  // query the user already typed is untouched throughout, per the "preserve
+  // the user's query on failure" requirement.
+  const retry = () => q.trim().length >= 2 && runSearch(q.trim())
 
   return (
     <div className="space-y-3">
@@ -61,9 +81,27 @@ export default function SearchFood({ onPick }) {
         instead of resizing the sheet around them.
       */}
       <div className={q.trim().length >= 2 ? 'h-[45vh] overflow-y-auto' : ''}>
+        {/* Idle: nothing typed yet, or too short to search — no spinner, no
+            empty-state message, just the plain input. */}
+        {q.trim().length < 2 && (
+          <p className="px-1 py-2 text-sm text-faint">Type at least 2 characters to search.</p>
+        )}
         {busy && <Spinner label="Searching…" />}
         <ErrorNote>{error}</ErrorNote>
-        {!busy && q.trim().length >= 2 && results.length === 0 && (
+        {/* Upstream/provider failure — every source genuinely failed. Distinct
+            from a real "nothing matched": the query is preserved, and a Retry
+            action re-runs the SAME search immediately. */}
+        {!busy && !error && q.trim().length >= 2 && degraded && (
+          <EmptyState title="Search is having trouble right now">
+            We couldn't reach any food database — this is usually temporary.
+            <div className="mt-3">
+              <button type="button" onClick={retry} className="min-h-11 px-4 text-sm font-semibold text-cobalt hover:text-cobalt-ink">
+                Retry
+              </button>
+            </div>
+          </EmptyState>
+        )}
+        {!busy && !error && q.trim().length >= 2 && !degraded && results.length === 0 && (
           <EmptyState title="No matches">
             Try manual entry instead — or, on the server, add a USDA key for better whole-food coverage.
           </EmptyState>

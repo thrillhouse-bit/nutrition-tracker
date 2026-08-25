@@ -209,7 +209,16 @@ const oura = vi.hoisted(() => ({
   workoutsRange: async () => [],
 }))
 
+const foodSearch = vi.hoisted(() => ({
+  searchFoods: async () => ({
+    results: [], degraded: false, usedCorrection: false, sources: [],
+    parsed: { normalized: '', tokens: [], variants: [], corrected: null },
+    totalLatencyMs: 0,
+  }),
+}))
+
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
+vi.mock('../server/foodSearch/index.js', () => ({ searchFoods: (...args) => foodSearch.searchFoods(...args) }))
 vi.mock('../server/integrations/oura.js', async (importOriginal) => {
   const real = await importOriginal()
   return {
@@ -275,6 +284,11 @@ afterEach(() => {
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
   fake.state.weightEntries = []
+  foodSearch.searchFoods = async () => ({
+    results: [], degraded: false, usedCorrection: false, sources: [],
+    parsed: { normalized: '', tokens: [], variants: [], corrected: null },
+    totalLatencyMs: 0,
+  })
   // Note: fake.state.users is intentionally NOT reset — the one signed-up
   // test user (and authCookie/authUserId) must survive across every test in
   // this file.
@@ -1367,5 +1381,95 @@ describe('GET /api/insights correlations', () => {
       n: null,
       note: 'No wearable readiness data connected yet — connect a provider to unlock this observation.',
     })
+  })
+})
+
+describe('GET /api/search', () => {
+  it('returns an empty result with degraded:false for a query under 2 characters, without calling searchFoods', async () => {
+    const spy = vi.fn()
+    foodSearch.searchFoods = async (...args) => { spy(...args); return { results: [] } }
+    const res = await get('/api/search?q=a')
+    const body = await res.json()
+    expect(body).toEqual({ results: [], degraded: false })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('passes the trimmed query through to searchFoods and returns its results', async () => {
+    let received
+    foodSearch.searchFoods = async (q) => {
+      received = q
+      return {
+        results: [{ name: 'Zucchini, raw', calories: 17, source: 'usda' }], degraded: false, usedCorrection: false,
+        sources: [], parsed: { normalized: 'zucchini', tokens: ['zucchini'], variants: ['courgette'], corrected: null },
+        totalLatencyMs: 5,
+      }
+    }
+    const res = await get('/api/search?q=%20zucchini%20')
+    const body = await res.json()
+    expect(received).toBe('zucchini') // trimmed
+    expect(body.results[0].name).toBe('Zucchini, raw')
+    expect(body.degraded).toBe(false)
+  })
+
+  it('surfaces degraded:true to the client when every provider genuinely failed', async () => {
+    foodSearch.searchFoods = async () => ({
+      results: [], degraded: true, usedCorrection: false, sources: [{ source: 'usda', ok: false }],
+      parsed: { normalized: 'zucchini', tokens: ['zucchini'], variants: [], corrected: null }, totalLatencyMs: 5,
+    })
+    const res = await get('/api/search?q=zucchini')
+    const body = await res.json()
+    expect(body.degraded).toBe(true)
+    expect(body.results).toEqual([])
+  })
+
+  it('the JSON response never leaks internal diagnostics (sources/parsed/latency stay server-side)', async () => {
+    foodSearch.searchFoods = async () => ({
+      results: [], degraded: false, usedCorrection: false,
+      sources: [{ source: 'usda', ok: true, count: 0, latencyMs: 12 }],
+      parsed: { normalized: 'zucchini', tokens: ['zucchini'], variants: ['courgette'], corrected: null },
+      totalLatencyMs: 12,
+    })
+    const res = await get('/api/search?q=zucchini')
+    const body = await res.json()
+    expect(Object.keys(body).sort()).toEqual(['degraded', 'results'])
+  })
+
+  it('logs structured, query-only diagnostics to the console (no user id, no session data)', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    foodSearch.searchFoods = async () => ({
+      results: [], degraded: false, usedCorrection: false,
+      sources: [{ source: 'usda', dataset: 'generic', ok: true, count: 0, latencyMs: 12 }],
+      parsed: { normalized: 'zucchini', tokens: ['zucchini'], variants: ['courgette'], corrected: null },
+      totalLatencyMs: 12,
+    })
+    await get('/api/search?q=zucchini')
+    expect(spy).toHaveBeenCalledWith('[food-search]', expect.stringContaining('"query":"zucchini"'))
+    const logged = JSON.parse(spy.mock.calls.find((c) => c[0] === '[food-search]')[1])
+    expect(logged).not.toHaveProperty('userId')
+    expect(logged).not.toHaveProperty('sessionId')
+    spy.mockRestore()
+  })
+})
+
+describe('GET /api/search/debug (dev-only diagnostic)', () => {
+  it('returns the full diagnostic breakdown when not running in production', async () => {
+    foodSearch.searchFoods = async () => ({
+      results: [{ name: 'Zucchini, raw' }], degraded: false, usedCorrection: true,
+      sources: [{ source: 'usda', dataset: 'generic', ok: true, count: 1, latencyMs: 8 }],
+      parsed: { normalized: 'zucchini', tokens: ['zucchini'], variants: ['courgette'], corrected: 'zucchini' },
+      totalLatencyMs: 8,
+    })
+    const res = await get('/api/search/debug?q=zuccini')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.sources).toBeDefined()
+    expect(body.parsed.corrected).toBe('zucchini')
+    expect(body.usedCorrection).toBe(true)
+  })
+
+  it('rejects a query under 2 characters', async () => {
+    const res = await get('/api/search/debug?q=a')
+    const body = await res.json()
+    expect(body.error).toMatch(/at least 2 characters/)
   })
 })
