@@ -51,7 +51,8 @@ doesn't repeat that ground.
 | Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
 | Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Reported (2026-08-25) |
 | Medium | Provider abstraction | README's "adding a provider means adding an adapter" claim doesn't fully hold: `providers.js` has three separate provider-name branches, and Apple has no dedicated `server/integrations/apple.js` (the Insights-specific symptom of this is fixed, PR #41; the general architecture point stands) | Reported (2026-08-25) |
-| Medium | Onboarding | A fresh signup drops straight into an empty Today with no baseline-setup prompt and no mention that a demo scenario exists to explore | Reported (2026-08-25) |
+| — | Onboarding | A fresh signup dropped straight into an empty Today with no baseline-setup prompt | Merged (2026-08-25, PR #54, other session) |
+| Low | Onboarding | The new first-run gate (PR #54) still doesn't mention that Connections' demo-data toggles exist to preview what recommendations look like with a wearable connected | Reported (2026-08-25) |
 | Medium | Auth | No "forgot password" / account-recovery path exists — attempted, judged too large for a direct fix (needs new email-service infrastructure with no existing provider configured anywhere in this project); see the implementation proposal in this pass's section below | Reported (2026-08-25) — proposal written up, not attempted |
 | High | Garmin webhook | `POST /api/garmin/webhook` has no signature/shared-secret verification — researched; infeasible to implement safely right now (every base URL and field name in `garmin.js` is marked `VERIFY` — the exact signing scheme, if any, is unknown until Garmin partner access is granted) | Reported (2026-08-25) — researched, blocked on Garmin partner docs |
 | Medium | Garmin OAuth | `refreshAccessToken`/`validAccessToken` are implemented but never called — researched; bigger than scoped (needs new `listAllGarminAccounts()` methods on both storage backends, and the refresh cadence/necessity itself is unverified against partner docs) | Reported (2026-08-25) — researched, deferred as larger than scoped |
@@ -610,3 +611,69 @@ onboarding, so nothing changed there to re-check.
 Nothing new found beyond the two items above (both already fixed by the
 other session, not left for this pass to act on) — this check-in required
 no fixes of its own.
+
+## 2026-08-25 — Check-in pass (recurring, 20:36 UTC)
+
+Re-invoked via the recurring audit routine, ~5 hours after the previous
+check-in (PR #53). Pulled `main`: one large merge landed since then, PR #54
+("Reconcile Oura readiness/backfill, preserve onboarding gate, add trend
+weight"), 23 files changed, ~2,092 insertions. `npm test`: 224/224 (up from
+160 — 64 new tests). `npm run build`: clean.
+
+PR #54 is substantial enough that a full line-by-line review wasn't
+practical in this pass's time budget; focused verification instead on (a)
+whether it touches anything this report already tracks, and (b) live
+smoke-testing the parts that do, rather than re-reviewing the whole diff
+from scratch:
+
+- **Onboarding gate (`src/components/Onboarding.jsx`, new).** Directly
+  fixes this report's own "Medium — Onboarding" finding (empty Today, no
+  baseline prompt) — updated the table to Merged. Verified live: fresh
+  signup now lands on a "Welcome" screen with two paths (calculate via
+  `SmartPlanForm`, or enter manually via a newly-exported `EditTargets`),
+  gated behind a `hasTargets` check that's a genuinely new server method
+  (`store.hasTargets`, distinct from `getLatestTargets`'s silent
+  2000-kcal fallback) and fails *open* on a broken check rather than
+  trapping a real user. Manual path tested end to end — save, redirect to
+  Today, correct numbers rendered. One sub-part of the original finding is
+  still open, downgraded to Low: the gate never mentions that Connections'
+  demo-data toggles exist to preview recommendations with a wearable
+  connected. Added as its own row.
+- **Oura readiness/backfill.** This PR's own commit messages describe
+  fixing a *second*, independent bug in the same area PR #51 touched
+  earlier today: a re-run backfill that got a transient `null` score for a
+  day that had scored fine before was deleting that day's real value and
+  never replacing it (`saveOuraHistory` was unconditionally deleting every
+  requested day before re-inserting, regardless of whether the new fetch
+  actually had a score). Fixed by only touching days with a non-null score
+  this run. Read the diff and the fix logic is sound; the two-bugs-in-one-
+  area pattern (PR #51 this morning, this fix this afternoon) is worth
+  the other session's own awareness, not something for this pass to
+  re-litigate.
+- **New features verified live, no regressions found:** manual workout
+  entry (Plan tab — type/time/duration form, validated server-side against
+  the same `WORKOUT_KINDS` whitelist the UI offers, clearable), body-weight
+  logging with a gap-adjusted EMA trend line (Insights tab — the trend math
+  in `server/weightTrend.js` correctly compounds `1 - (1-α)^gapDays` for
+  multi-day gaps between weigh-ins rather than treating every gap as one
+  day), and "Delete synced history" is now actually wired up end-to-end
+  (not just honestly-labeled-as-broken, which was this report's own PR #20
+  fix) — Connections' footer copy now describes real behavior.
+- **No regressions found** against previously-fixed items: Insights'
+  dynamic provider labels (PR #41) and timezone bucketing (PR #48) both
+  still render correctly with the new Weight section added above them;
+  Apple pairing-token UI (PR #52) still works; zod/manual input validation
+  on existing routes is untouched.
+- **Live site:** redeployed again since the last check-in (fresh
+  `Last-Modified`), confirmed serving `main` as of this pass.
+- **Re-verified remaining "Reported" items unchanged:** OFF search 503s,
+  Apple-token dual-role, Postgres duplicate-signup error leak,
+  provider-abstraction README claim, forgot-password, both Garmin items —
+  no commits since the last check-in touch any of those areas.
+
+No fixes made directly by this pass — the one relevant open item
+(onboarding) was already closed by the other session; the new Low item
+(demo-data mention) was judged too minor and too close to the other
+session's own deliberate scope decision on `Onboarding.jsx` to change
+unilaterally in the same file within an hour of it landing, so it's
+reported rather than edited.
