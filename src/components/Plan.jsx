@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NUTRIENTS, fmt, num, ymd } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Button, EmptyState, ErrorNote, Field, inputCls, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
+import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
+import SmartPlanForm from './SmartPlanForm.jsx'
 
 const meta = Object.fromEntries(NUTRIENTS.map((n) => [n.key, n]))
 const provLabel = (p) => (p ? p[0].toUpperCase() + p.slice(1) : 'Signal')
@@ -136,6 +137,7 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const [plan, setPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
+  const [calculating, setCalculating] = useState(false)
   const [savingInf, setSavingInf] = useState(false)
 
   useEffect(() => {
@@ -275,11 +277,22 @@ export default function Plan({ date, refreshKey, onChanged }) {
             onSaved={() => { setEditing(false); onChanged?.() }}
           />
         </div>
+      ) : calculating ? (
+        <div className="mt-5">
+          <SmartPlanForm
+            onCancel={() => setCalculating(false)}
+            onSaved={() => onChanged?.()}
+          />
+        </div>
       ) : !hasBaseline ? (
         <div className="mt-5">
           <EmptyState title="Set your baseline targets">
-            Your plan starts from targets you set. Adjustments layer on top — always with a reason and a source.
-            <div className="mt-4"><Button onClick={() => setEditing(true)}>Set targets</Button></div>
+            Your plan starts from targets you set. Calculate them from your body metrics and a goal, or type exact
+            numbers yourself — adjustments layer on top either way, always with a reason and a source.
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button onClick={() => setCalculating(true)}>Calculate my targets</Button>
+              <Button variant="outline" onClick={() => setEditing(true)}>Enter targets manually</Button>
+            </div>
           </EmptyState>
         </div>
       ) : (
@@ -322,14 +335,20 @@ export default function Plan({ date, refreshKey, onChanged }) {
             </div>
 
             {/* Nothing is locked — edit any value and the plan keeps it */}
-            <div className="mt-3.5 flex items-center justify-between gap-3">
-              <p className="max-w-[210px] text-[11.5px] leading-snug text-muted">
+            <div className="mt-3.5 flex items-start justify-between gap-3">
+              <p className="max-w-[190px] text-[11.5px] leading-snug text-muted">
                 Nothing here is locked. Edit any adjusted value and the plan keeps it.
               </p>
-              {/* No text-cobalt override: outline's own text-ink won the cascade
-                  anyway (class order doesn't beat stylesheet order), and the
-                  rendered ink matches the other outline buttons. */}
-              <Button variant="outline" onClick={() => setEditing(true)}>Edit targets</Button>
+              <div className="flex flex-col items-end gap-1.5">
+                {/* No text-cobalt override: outline's own text-ink won the cascade
+                    anyway (class order doesn't beat stylesheet order), and the
+                    rendered ink matches the other outline buttons. */}
+                <Button variant="outline" onClick={() => setEditing(true)}>Edit targets</Button>
+                {/* Reachable even with a manually-typed baseline already set —
+                    someone who typed their own numbers may still want to try
+                    the calculator. */}
+                <TextButton onClick={() => setCalculating(true)} chevron>Calculate targets</TextButton>
+              </div>
             </div>
           </section>
 

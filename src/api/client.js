@@ -56,6 +56,18 @@ export const api = {
   setTargets: (targets) =>
     req('/targets', { method: 'PUT', body: JSON.stringify(targets) }),
 
+  // Body profile + goal, for calculating targets instead of typing them.
+  // PUT returns { profile, computedBaseline } — the server saves a non-null
+  // computedBaseline as the real targets itself, same mechanism setTargets
+  // above already uses, so there is no separate save step here.
+  getProfile: () => req('/profile'),
+  setProfile: (profile) =>
+    req('/profile', { method: 'PUT', body: JSON.stringify(profile) }),
+
+  // Optional: a wearable-derived activity-level guess. May not exist on every
+  // server build — callers must treat a failure the same as "no suggestion".
+  activitySuggestion: () => req('/profile/activity-suggestion'),
+
   // History: daily aggregates over a range.
   history: (days = 30) => req(`/history?days=${days}`),
 
