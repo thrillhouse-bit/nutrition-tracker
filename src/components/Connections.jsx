@@ -63,6 +63,13 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   const context = categories.slice(0, 3).join(' · ')
   const [open, setOpen] = useState(false)
   const working = busy === id
+  // Disconnecting means re-doing an OAuth flow to undo, so it gets a second
+  // tap rather than firing on the first — mirrors no other confirm pattern
+  // in this app because it's the only one-tap action here with real friction
+  // to reverse. Any other click (opening another account's confirm, closing
+  // the panel) drops back to the unconfirmed state.
+  const [confirmingId, setConfirmingId] = useState(null)
+  useEffect(() => { if (!open) setConfirmingId(null) }, [open])
 
   const patch = async (body) => {
     setBusy(id)
@@ -76,6 +83,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
 
   const disconnect = async (accountId) => {
     setBusy(id)
+    setConfirmingId(null)
     try {
       if (id === 'oura') await api.disconnectOura(accountId)
       else if (id === 'garmin') await api.disconnectGarmin(accountId)
@@ -174,11 +182,15 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
                     <div key={a.id} className="flex items-center justify-between gap-3 text-sm">
                       <span className="min-w-0 truncate text-ink">{a.label || 'Account'}</span>
                       <button
-                        onClick={() => disconnect(a.id)}
+                        onClick={() => (confirmingId === a.id ? disconnect(a.id) : setConfirmingId(a.id))}
                         disabled={working}
-                        className="shrink-0 border border-alert/50 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-alert transition hover:bg-alert/5 disabled:opacity-40"
+                        className={`shrink-0 border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition disabled:opacity-40 ${
+                          confirmingId === a.id
+                            ? 'border-alert bg-alert/10 text-alert'
+                            : 'border-alert/50 text-alert hover:bg-alert/5'
+                        }`}
                       >
-                        Disconnect
+                        {confirmingId === a.id ? 'Tap again to disconnect' : 'Disconnect'}
                       </button>
                     </div>
                   ))}
