@@ -29,11 +29,16 @@ describe('oura normalizeActivity', () => {
   })
 })
 
+// Separate from normalizeActivity on purpose: daily_activity and
+// daily_readiness are different Oura endpoints with their own scores. This
+// app once conflated them — the readiness backfill and the live "today"
+// signal both queried daily_activity and stored its score as "readiness" —
+// which silently produced either the wrong number or nothing at all
+// depending on the account (see the comment on readinessRange). A shape
+// this close to normalizeActivity's is exactly what let that slip past
+// review; keeping the two tested separately is the guard against it
+// happening again.
 describe('oura normalizeReadiness', () => {
-  // Regression: this app used to relabel daily_activity's Activity score as
-  // "readiness" — normalizeReadiness exists specifically to read the
-  // daily_readiness endpoint's OWN score instead, a genuinely different
-  // number on a real account.
   it('maps the daily_readiness score, independent of any activity fields', () => {
     const r = normalizeReadiness({ day: '2026-08-24', score: 91, temperature_deviation: -0.2, contributors: { hrv_balance: 88 } })
     expect(r).toEqual({ day: '2026-08-24', score: 91 })
@@ -41,6 +46,11 @@ describe('oura normalizeReadiness', () => {
 
   it('coerces a missing score to null but keeps the day', () => {
     const r = normalizeReadiness({ day: '2026-08-24' })
+    expect(r).toEqual({ day: '2026-08-24', score: null })
+  })
+
+  it('coerces a non-numeric score to null but keeps the day', () => {
+    const r = normalizeReadiness({ day: '2026-08-24', score: 'x' })
     expect(r).toEqual({ day: '2026-08-24', score: null })
   })
 })

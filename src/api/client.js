@@ -75,9 +75,6 @@ export const api = {
   // server build — callers must treat a failure the same as "no suggestion".
   activitySuggestion: () => req('/profile/activity-suggestion'),
 
-  // History: daily aggregates over a range.
-  history: (days = 30) => req(`/history?days=${days}`),
-
   // Oura wearable: activity/expenditure for a local day (YYYY-MM-DD).
   ouraSummary: (ymd) => req(`/oura/summary?date=${encodeURIComponent(ymd)}`),
 
@@ -113,7 +110,11 @@ export const api = {
   getWorkout: () => req('/plan/workout'),
   setWorkout: (workout) => req('/plan/workout', { method: 'PUT', body: JSON.stringify(workout) }),
   clearWorkout: () => req('/plan/workout', { method: 'DELETE' }),
-  insights: (window = 7) => req(`/insights?window=${window}`),
+  // tzOffsetMinutes (Date#getTimezoneOffset() convention) lets the server
+  // bucket trend days by the browser's own calendar day instead of the
+  // server's — the same reasoning dayBounds()/ymd() in lib/nutrition.js
+  // already apply to /today and /entries, extended to /insights.
+  insights: (window = 7) => req(`/insights?window=${window}&tzOffsetMinutes=${new Date().getTimezoneOffset()}`),
   connections: () => req('/connections'),
   setInfluence: (patch) => req('/connections/influence', { method: 'PUT', body: JSON.stringify(patch) }),
   setProvider: (id, patch) => req(`/connections/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
@@ -121,4 +122,9 @@ export const api = {
   // Deletes cached Oura/Garmin/Apple records synced to this app (not the
   // OAuth accounts themselves — see Connections.jsx's per-account Disconnect).
   clearSyncedHistory: () => req('/connections/history', { method: 'DELETE' }),
+
+  // Apple Health has no OAuth "Connect" — this generates (or regenerates,
+  // invalidating the previous one) the per-account token the iOS/watch
+  // companion authenticates with, since it can't carry a session cookie.
+  appleToken: () => req('/apple/token', { method: 'POST' }),
 }

@@ -1,4 +1,4 @@
-# Nutrition Tracker
+# OmniFuel Tech
 
 A personal-use Progressive Web App for **fueling intelligence**: it pairs
 food logging with wearable recovery and training signals (Oura, Garmin, Apple
@@ -300,6 +300,7 @@ Full DDL in [`schema.sql`](./schema.sql).
 | DELETE | `/garmin/accounts/:id` | disconnect a Garmin account |
 | GET | `/garmin/summary?date=` | a stored Garmin day (served from the store, not fetched) |
 | GET | `/energy/summary?date=` | unified expenditure (out): Oura if connected, else Garmin |
+| POST | `/apple/token` | generate (and invalidate the previous) per-account pairing token for the companion — Connections tab has a "Generate pairing token" button for this |
 | POST | `/apple/ingest` | ingest Apple Health samples (token-gated by `APPLE_INGEST_TOKEN`) |
 | GET | `/connections` | provider statuses (incl. demo) + the plan-influence toggles |
 | PUT | `/connections/influence` | set which signal categories (readiness / sleep / workouts) may influence the plan |

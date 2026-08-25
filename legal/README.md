@@ -1,7 +1,7 @@
 # Legal pages (TEMPLATES — review before use)
 
-Two self-contained, hostable HTML pages for the Nutrition Tracker app, branded
-for **tryrerun.com**:
+Two self-contained, hostable HTML pages for the OmniFuel Tech app, branded
+for **omnifuelapp.tech**:
 
 - `privacy-policy.html`
 - `terms-of-service.html`
@@ -25,21 +25,23 @@ Oura/Garmin as the developer application's privacy-policy and terms URLs):
 
 | File | URL |
 |---|---|
-| `privacy-policy.html` | https://tryrerun.com/privacy |
-| `terms-of-service.html` | https://tryrerun.com/terms |
+| `privacy-policy.html` | https://omnifuelapp.tech/privacy |
+| `terms-of-service.html` | https://omnifuelapp.tech/terms |
 
-The pages cross-link to each other and to https://tryrerun.com using those
+The pages cross-link to each other and to https://omnifuelapp.tech using those
 canonical paths, so wire the routes `/privacy` and `/terms` to these files
 (e.g. a reverse-proxy rewrite or a static route). Both are plain static HTML —
 no server logic required.
 
 ## Contact inbox
 
-The pages list **privacy@tryrerun.com** as the contact / data-deletion address.
-**This inbox must actually exist and be monitored** (a real mailbox or a
-forwarding alias) before you publish — Oura/Garmin reviewers and users will use
-it. If you'd rather use a different address, replace `privacy@tryrerun.com`
-everywhere in both HTML files first.
+The pages list **privacy@omnifuelapp.tech** as the contact / data-deletion
+address. **This inbox must actually exist and be monitored** (a real mailbox
+or a forwarding alias) before you publish — Oura/Garmin reviewers and users
+will use it. This address was updated to match the app's real domain but its
+existence has not been verified — confirm it's live before publishing, or
+replace `privacy@omnifuelapp.tech` everywhere in both HTML files with a
+different address.
 
 ## Placeholders to fill in
 
@@ -62,8 +64,12 @@ Every item below appears in the pages as a highlighted bracketed placeholder
 
 ## Notes on accuracy (why the pages say what they say)
 
-- **No accounts / no login:** the app is single-operator with no user
-  authentication, so the policy does not claim to collect names or passwords.
+- **Multi-user accounts (updated):** the app now has self-service signup with
+  email + hashed password per account, and a per-account biometric profile.
+  The Privacy Policy's "Information we collect" and "Your rights" sections
+  describe this for real — they used to (incorrectly) claim no accounts or
+  logins existed at all. Keep this note in sync if the auth model changes
+  again.
 - **Label photos → Anthropic:** the OCR route sends the nutrition-label image to
   the Claude API and stores only the extracted structured values, not the image.
   The Privacy Policy states this, and that API inputs are not used to train

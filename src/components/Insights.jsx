@@ -65,7 +65,7 @@ function EnergyChart({ days, avg, showAvg }) {
   )
 }
 
-// READINESS · OURA — the backfilled score history. Fixed 0-100 scale, unlike
+// READINESS — the backfilled score history. Fixed 0-100 scale, unlike
 // EnergyChart's min/max stretch: a readiness score already has a meaningful
 // absolute range, and stretching a narrow real span (say 68-74) would make
 // ordinary day-to-day variation look dramatic.
@@ -85,10 +85,16 @@ function ReadinessChart({ points }) {
   )
 }
 
+// Same provider-name map Plan.jsx uses to turn a `signals.<metric>.provider`
+// code into display copy — kept in sync here rather than hardcoding a single
+// brand in the section header regardless of who actually connected.
+const PROVIDER_NAMES = { oura: 'Oura', garmin: 'Garmin', apple: 'Apple Health' }
+
 export default function Insights({ refreshKey }) {
   const [window, setWindow] = useState(7)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [signals, setSignals] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -99,6 +105,22 @@ export default function Insights({ refreshKey }) {
       .finally(() => alive && setLoading(false))
     return () => { alive = false }
   }, [window, refreshKey])
+
+  // Which provider is actually supplying readiness/workout right now — same
+  // composed-signal source Plan.jsx and Today.jsx read, so the header names
+  // whoever is really connected instead of a fixed brand. Independent of the
+  // window selector, so it's fetched on its own (refetched when connections
+  // change, same as Plan.jsx's refreshKey dependency).
+  useEffect(() => {
+    let alive = true
+    api.signals()
+      .then((r) => alive && setSignals(r?.signals || null))
+      .catch(() => alive && setSignals(null))
+    return () => { alive = false }
+  }, [refreshKey])
+
+  const readinessProviderLabel = PROVIDER_NAMES[signals?.readiness?.provider] || null
+  const workoutProviderLabel = PROVIDER_NAMES[signals?.workout?.provider] || null
 
   const nutrition = data?.nutrition
   const days = data?.days || []
@@ -179,12 +201,14 @@ export default function Insights({ refreshKey }) {
             )}
           </section>
 
-          {/* READINESS · OURA — real backfilled score history once a connected
+          {/* READINESS — real backfilled score history once a connected
               account has retained at least two days; the honest greyed
-              placeholder (no invented numbers) otherwise. */}
+              placeholder (no invented numbers) otherwise. Labeled by whichever
+              provider is actually supplying readiness today, not a fixed
+              brand — see QA report "Insights hardcodes provider names." */}
           <section>
             <SectionHead
-              label="Readiness · Oura"
+              label={readinessProviderLabel ? `Readiness · ${readinessProviderLabel}` : 'Readiness'}
               right={
                 readiness.length >= 2 ? (
                   <span className="tnum text-[13px] text-muted">avg {avgReadiness}</span>
@@ -210,16 +234,17 @@ export default function Insights({ refreshKey }) {
                     <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
                   </div>
                 </div>
-                <ChartCaption left="Mist band · readiness" right="Oura" />
+                <ChartCaption left="Mist band · readiness" right={readinessProviderLabel || 'No source connected'} />
               </>
             )}
           </section>
 
-          {/* TRAINING LOAD · GARMIN — same: an empty lavender-bar skeleton, no
-              fabricated session data. */}
+          {/* TRAINING LOAD — same: an empty lavender-bar skeleton, no
+              fabricated session data. Labeled by whichever provider is
+              actually supplying workouts today, not a fixed brand. */}
           <section>
             <SectionHead
-              label="Training load · Garmin"
+              label={workoutProviderLabel ? `Training load · ${workoutProviderLabel}` : 'Training load'}
               right={<StatusMark status="unavailable" label="Awaiting history" />}
             />
             <div className="mt-3 flex h-[46px] items-end gap-1 border-b border-line-strong">
@@ -227,7 +252,7 @@ export default function Insights({ refreshKey }) {
                 <div key={i} aria-hidden className="h-3 flex-1 border border-line-strong border-b-0 bg-sand/55" />
               ))}
             </div>
-            <ChartCaption left="Sand bars · training" right="Garmin" />
+            <ChartCaption left="Sand bars · training" right={workoutProviderLabel || 'No source connected'} />
           </section>
 
           {/* WHAT WE NOTICE — an observation only when correlations are available;
