@@ -16,6 +16,20 @@ function since(ts) {
   return `${d} d ago`
 }
 
+// Human copy for a persisted sync_error code (server/providers.js's
+// classifyOuraRefreshError) — the whole point of persisting a classified
+// reason instead of a raw error message is that this file can translate it
+// into something a non-technical reader acts on, rather than repeating
+// whatever Oura's API happened to say.
+function describeSyncError(code) {
+  if (!code) return null
+  if (code === 'refresh_token_expired') return 'Authorization expired or was revoked — reconnect to resume'
+  if (code === 'oura_api_unreachable') return 'Oura API was unreachable on the last attempt'
+  const apiErr = /^oura_api_error_(\d+)$/.exec(code)
+  if (apiErr) return `Oura API error (${apiErr[1]}) on the last attempt`
+  return 'The last sync attempt failed'
+}
+
 // The three real influence signals, in the design's order, with the design's
 // one-line descriptions. Keys map straight onto `influence[...]`.
 const SIGNALS = [
@@ -27,10 +41,19 @@ const SIGNALS = [
 // STATE REFERENCE legend — shape + word, never color alone. Static, straight
 // from the artboard. `label` overrides StatusMark's default word where the
 // design's word differs (DISCONNECTED vs the component's "Not connected").
+// Stale's 48h figure matches PROVIDER_STALE_HOURS in server/providers.js (the
+// same threshold Apple's own status branch already used) — not a separate
+// number invented for this legend. `demo`/`not-configured` were always
+// reachable states but weren't listed here until this legend needed to tell
+// them apart from `disconnected` — a provider can be not-configured on the
+// server and STILL show demo data (two independent facts), which is why
+// they're distinct rows rather than one.
 const STATES = [
   { status: 'connected', desc: 'Solid mark · syncing on schedule' },
   { status: 'syncing', desc: 'Hatched · progress bar shown' },
-  { status: 'stale', desc: 'Hollow · last sync over 24 h ago' },
+  { status: 'stale', desc: 'Hollow · last successful sync over 48 h ago' },
+  { status: 'demo', desc: 'Hollow dot · seeded sample data, never a live connection' },
+  { status: 'not-configured', desc: 'Dashed · this server has no client id/secret for this provider at all' },
   { status: 'disconnected', label: 'Disconnected', desc: 'Dashed · recommendations use intake only' },
   { status: 'error', desc: 'Mark plus reason and a retry action' },
 ]
@@ -63,11 +86,20 @@ const DISPLAY_NAME = {
 }
 
 function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
-  const { id, name, connect, categories = [], status, demo, enabled, last_synced_at, permissions, partial } = provider
+  const {
+    id, name, connect, categories = [], status, demo, enabled, last_synced_at, permissions, partial,
+    last_attempted_sync, last_sync_counts, sync_error,
+  } = provider
   const oauth = connect === 'oauth'
   const connectedish = status === 'connected' || status === 'stale' || status === 'syncing'
-  const isDemo = status === 'demo'
+  const notConfigured = status === 'not-configured'
+  // `demo` is its own field, independent of `status` — a not-configured
+  // provider can still show demo data (two separate facts: can anyone on
+  // this server ever connect vs. is this user currently seeing sample data),
+  // so this reads the flag directly rather than assuming status === 'demo'.
+  const isDemo = demo === true
   const syncedLabel = since(last_synced_at)
+  const attemptedLabel = since(last_attempted_sync)
   const context = categories.slice(0, 3).join(' · ')
   const [open, setOpen] = useState(false)
   const working = busy === id
@@ -136,6 +168,21 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
         Manage
       </Button>
     )
+  } else if (oauth && notConfigured) {
+    // A "Connect" link here would navigate to /api/{id}/connect, which
+    // 501s — this server has no OAuth client id/secret for this provider at
+    // all, so there is no functional action to offer any user, not just this
+    // one. Showing Connect anyway (as the general oauth branch below does for
+    // demo/disconnected) would look identical to a live, working option right
+    // up until the click fails.
+    action = (
+      <span
+        className="inline-flex items-center justify-center px-5 py-4 text-right text-[10px] font-semibold uppercase leading-[1.5] tracking-[0.1em] text-faint"
+        title={`${name} is not configured on this server — ask the operator to set it up`}
+      >
+        Not available here
+      </span>
+    )
   } else if (oauth) {
     // disconnected / error / demo: the primary action is to connect (a browser
     // navigation to the OAuth start on your own server — never a fetch).
@@ -154,7 +201,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   }
 
   return (
-    <div className="border-b border-line px-1 py-2.5">
+    <div className="border-b border-line px-1 py-2.5" data-provider={id}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="serif text-[21px] leading-none text-ink">{DISPLAY_NAME[id] || name}</div>
@@ -167,12 +214,26 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
               Demo data — not a live connection
             </div>
           )}
+          {/* Demo can be showing for two independent reasons — this user
+              never connected (nothing further to say) vs. nobody on this
+              server ever could (worth saying, so a user doesn't go looking
+              for a Connect button that would only 501). */}
+          {isDemo && notConfigured && (
+            <div className="mt-1 text-[10.5px] uppercase tracking-[0.06em] text-faint">
+              Not available on this server
+            </div>
+          )}
 
           {/* Device / context · last sync (or start, mid-sync). */}
           {!isDemo && connectedish && syncedLabel && (
             <div className="tnum mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
               {context && `${context} · `}
               {status === 'syncing' ? 'Started' : 'Last sync'} {syncedLabel}
+            </div>
+          )}
+          {!isDemo && notConfigured && (
+            <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
+              Not set up on this server — ask the operator to configure {name}
             </div>
           )}
           {!isDemo && status === 'disconnected' && (
@@ -183,6 +244,19 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
           {!isDemo && status === 'error' && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
               Sync error — reconnect to resume
+            </div>
+          )}
+          {/* The persisted token-refresh/backfill failure reason (server/
+              providers.js's classifyOuraRefreshError) — this is what makes a
+              `stale` Oura row diagnosable from the Connections tab alone,
+              instead of "it just says stale, who knows why." Independent of
+              the `error` StatusMark above (dead — no status branch has ever
+              emitted it): this renders off the real, persisted field for
+              whichever status is actually showing (most often `stale`). */}
+          {!isDemo && sync_error && (
+            <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-alert">
+              {describeSyncError(sync_error)}
+              {attemptedLabel && ` — last attempt ${attemptedLabel}`}
             </div>
           )}
           {!isDemo && partial && (
@@ -233,16 +307,37 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
               ) : (
                 <p className="text-sm text-muted">No linked accounts yet.</p>
               )}
-              <a
-                href={`/api/${id}/connect`}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-cobalt hover:text-cobalt-ink"
-              >
-                {accounts?.length > 0 ? 'Add another account' : `Connect ${name}`}
-                <span aria-hidden>›</span>
-              </a>
+              {notConfigured ? (
+                // Same reasoning as the summary row's action above: a link to
+                // /api/{id}/connect here would 501, so the panel says why
+                // instead of offering a control that can't work.
+                <p className="text-sm text-muted">
+                  {name} has no client id/secret configured on this server, so no account here can connect it yet.
+                </p>
+              ) : (
+                <a
+                  href={`/api/${id}/connect`}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-cobalt hover:text-cobalt-ink"
+                >
+                  {accounts?.length > 0 ? 'Add another account' : `Connect ${name}`}
+                  <span aria-hidden>›</span>
+                </a>
+              )}
               <p className="text-[11px] text-faint">
                 Authorization happens on {name}. Tokens are stored on your own server and are never sent to the browser.
               </p>
+              {/* Most recent backfill/resync counts (Oura only, for now — see
+                  server/index.js's trackedOuraBackfill) — "deduplicated" means
+                  Oura returned it this run but it wasn't newly stored (no
+                  score yet, or missing the id a workout needs), not a literal
+                  already-seen check. */}
+              {last_sync_counts && (
+                <p className="tnum text-[11px] text-faint">
+                  Last backfill: {last_sync_counts.fetched} fetched · {last_sync_counts.accepted} accepted ·{' '}
+                  {last_sync_counts.deduplicated} not new
+                  {attemptedLabel && ` (${attemptedLabel})`}
+                </p>
+              )}
             </div>
           ) : (
             // Apple Health: no cloud API — a native iOS/watch companion reads
@@ -289,6 +384,11 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
                 <p className="text-muted">
                   The iOS/watch companion has no login of its own — it authenticates with a pairing token generated
                   here. Generate one, then enter it in the companion's Settings.
+                </p>
+                <p className="text-[11px] text-faint">
+                  No Mac to build the native companion? The same token also works with the App Store app{' '}
+                  <span className="font-semibold text-muted">Health Auto Export</span> — no code required. See{' '}
+                  <code className="bg-fill px-1">docs/health-auto-export-setup.md</code> for exact setup steps.
                 </p>
                 {appleToken ? (
                   <div className="mt-2 space-y-1.5">

@@ -54,6 +54,74 @@ const PREFERENCE = {
 
 const HOURS = (ms) => ms / 3600000
 
+// Same 48h boundary freshnessOf already uses for "stale vs unavailable", and
+// the number Apple's own providerStatus branch below has used for "stale vs
+// disconnected" since before this file tracked Oura the same way — reused
+// here rather than picking a new arbitrary threshold for Oura specifically.
+const PROVIDER_STALE_HOURS = 48
+
+// --- Oura sync observability (per user, persisted — not console-only) -----
+// Closes a real gap: a token-refresh failure used to be swallowed with, at
+// best, a console.error with no server-side trace and nothing an API could
+// ever read back. `last_attempted_sync`/`last_sync_counts` live in
+// integrations.settings (JSON, already on the table — no migration); the
+// failure reason reuses integrations.error, an existing column that nothing
+// had ever written to for any provider. See docs/oura-sync-runbook.md for how
+// an investigation reads these back.
+
+// Turns a thrown token-refresh/backfill error into a short, stable code —
+// distinguishing "the grant is dead, reconnect" from "Oura's API had a bad
+// moment" is exactly what a console.error's free-text message couldn't answer
+// after the fact. postToken() (server/integrations/oura.js) sets `err.status`
+// to Oura's OAuth token endpoint's own HTTP status; a network-level failure
+// (DNS, timeout, connection refused) never gets a `.status` at all.
+export function classifyOuraRefreshError(err) {
+  const status = err?.status
+  const msg = String(err?.message || err || '')
+  if (status === 400 || status === 401 || /invalid_grant|invalid_client/i.test(msg)) return 'refresh_token_expired'
+  if (status != null) return `oura_api_error_${status}`
+  if (err?.name === 'AbortError' || /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(msg)) return 'oura_api_unreachable'
+  return 'oura_refresh_failed'
+}
+
+// Records one sync attempt (backfill or live-fetch token use), regardless of
+// outcome — see the callers in server/index.js and realSignals below.
+// `outcome.ok` clears any previously-recorded error (a later success is the
+// only thing that should un-flag a past failure); `outcome.counts`, when
+// given, is this attempt's { fetched, accepted, deduplicated } — see
+// backfillOuraHistory's own comment for exactly what each counts.
+// `outcome.synced` (only ever true from a completed backfill, never the live
+// path) is what actually advances `last_synced_at` — a live read succeeding
+// only proves the token still works, not that anything new was stored.
+export async function recordOuraAttempt(store, userId, outcome) {
+  const cur = await store.getIntegration(userId, 'oura')
+  const nowIso = new Date().toISOString()
+  const settings = { ...(cur.settings || {}), last_attempted_sync: nowIso }
+  if (outcome.counts) settings.last_sync_counts = { ...outcome.counts, at: nowIso }
+  const patch = { settings }
+  if (outcome.ok) {
+    patch.error = null
+    if (outcome.synced) patch.last_synced_at = nowIso
+  } else {
+    patch.error = outcome.reason || 'oura_sync_failed'
+  }
+  return store.setIntegration(userId, 'oura', patch)
+}
+
+// --- "actively syncing" transient state (Connections tab) ------------------
+// In-memory only, per process, keyed by `${userId}:${providerId}` — true only
+// for the duration of a live backfill call. Deliberately NOT persisted: this
+// is a single-process Node server with no job queue, so a process restart
+// mid-sync clears it along with the in-flight request itself, and the
+// provider falls back to whatever `connected`/`stale` already reads from
+// last_synced_at — never a flag stuck "syncing" forever, which would be the
+// worse failure (see docs/oura-sync-runbook.md).
+const syncingNow = new Set()
+const syncKey = (userId, providerId) => `${userId}:${providerId}`
+export function markSyncing(userId, providerId) { syncingNow.add(syncKey(userId, providerId)) }
+export function clearSyncing(userId, providerId) { syncingNow.delete(syncKey(userId, providerId)) }
+export function isSyncing(userId, providerId) { return syncingNow.has(syncKey(userId, providerId)) }
+
 // Oura's own `activity` strings (its taxonomy runs to 40+ values — VERIFY
 // against a real connected account's actual traffic; this list covers the
 // common ones, not confirmed exhaustive) mapped onto this app's own
@@ -117,7 +185,17 @@ export function demoSignals(nowDate = new Date()) {
 }
 
 // --- provider status (Connections tab) ------------------------------------
-// status ∈ connected | stale | disconnected | error | demo
+// status ∈ connected | syncing | stale | disconnected | not-configured |
+// error | demo — the Connections screen's own STATE REFERENCE legend already
+// anticipated `syncing`/`error` glyphs before anything here ever emitted
+// them. `not-configured` is env-level (nobody on this server CAN connect —
+// same fact /api/health already reports per-provider as 'not-configured'),
+// distinct from `demo` (this user specifically never connected, but the
+// server could accept one) and from `disconnected` (configured, but this
+// user turned off the demo fallback and hasn't connected). A provider can be
+// not-configured AND still show demo data (`demo` field independent of
+// `status` — ProviderRow's isDemo check reads `provider.demo`, not the
+// status string, for exactly this reason).
 export async function providerStatus(store, userId, id, nowDate = new Date()) {
   const meta = PROVIDERS[id]
   const settings = await store.getIntegration(userId, id)
@@ -125,15 +203,27 @@ export async function providerStatus(store, userId, id, nowDate = new Date()) {
 
   if (id === 'oura') {
     const configured = ouraConfigured() || ouraOAuthConfigured()
-    if (!configured) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
+    // Sync-observability fields (see recordOuraAttempt) — surfaced on every
+    // branch below, not just `connected`/`stale`, so a caller always sees the
+    // full attempt history even if, say, an operator turns OAuth off after a
+    // period of it working.
+    const obs = {
+      last_attempted_sync: settings?.settings?.last_attempted_sync || null,
+      last_sync_counts: settings?.settings?.last_sync_counts || null,
+      sync_error: settings?.error || null,
+    }
+    if (!configured) return { ...meta, ...obs, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
     const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : (ouraConfigured() ? [{ id: 'legacy' }] : [])
-    if (!accounts.length) return { ...meta, status: 'disconnected', demo: false, last_synced_at: null }
-    return { ...meta, status: 'connected', demo: false, last_synced_at: settings?.last_synced_at || null }
+    if (!accounts.length) return { ...meta, ...obs, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
+    if (isSyncing(userId, id)) return { ...meta, ...obs, status: 'syncing', demo: false, last_synced_at: settings?.last_synced_at || null }
+    const lastSynced = settings?.last_synced_at || null
+    const ageH = lastSynced ? HOURS(nowDate.getTime() - new Date(lastSynced).getTime()) : Infinity
+    return { ...meta, ...obs, status: ageH <= PROVIDER_STALE_HOURS ? 'connected' : 'stale', demo: false, last_synced_at: lastSynced }
   }
   if (id === 'garmin') {
-    if (!garminConfigured()) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
+    if (!garminConfigured()) return { ...meta, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
     const accounts = await store.listGarminAccounts(userId)
-    if (!accounts.length) return { ...meta, status: 'disconnected', demo: false, last_synced_at: null }
+    if (!accounts.length) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
     const daily = await store.getGarminDaily(accounts[0].id, ymd(nowDate)).catch(() => null)
     const status = daily ? 'connected' : 'stale'
     return { ...meta, status, demo: false, last_synced_at: settings?.last_synced_at || null }
@@ -172,7 +262,29 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
       if (ouraConfigured()) token = ouraToken()
       else if (ouraOAuthConfigured()) {
         account = (await store.listOuraAccounts(userId))[0]
-        if (account) token = await ouraValidToken(account, (t) => store.updateOuraTokens(userId, account.id, t))
+        if (account) {
+          try {
+            token = await ouraValidToken(account, (t) => store.updateOuraTokens(userId, account.id, t))
+          } catch (err) {
+            // A refresh failure here used to propagate straight to this
+            // function's own outer try/catch (return {}) with zero trace —
+            // composeSignals then showed nothing for this user's readiness/
+            // sleep/expenditure and there was no way afterward to tell
+            // "refresh token expired or revoked" from "Oura API unreachable"
+            // apart. Persisted (not just logged) so a later investigation —
+            // via GET /api/connections or docs/oura-sync-runbook.md — has
+            // something to read; last_attempted_sync moves too, since this
+            // genuinely was an attempt, unlike the common case just below
+            // where the cached token is still valid and nothing was tried.
+            // last_synced_at is untouched — a live read proves the token
+            // still works, never that anything new landed in storage.
+            const reason = classifyOuraRefreshError(err)
+            console.error(`[oura] token refresh failed for user ${userId} (account ${account.id}): ${err?.message || err}`)
+            await recordOuraAttempt(store, userId, { ok: false, reason }).catch((e) => {
+              console.error(`[oura-sync-observability] failed to persist live-path attempt for user ${userId}: ${e.message}`)
+            })
+          }
+        }
       }
       if (!token) return {}
       const rec = `${day}T07:00:00`
@@ -359,13 +471,36 @@ export async function composeSignals(store, nowDate = new Date(), userId, queryD
     else perProvider[id] = {}
   }
 
+  // Merge per metric: ANY provider's real (non-demo) value outranks ANY
+  // provider's demo value, regardless of PREFERENCE order — only fall back to
+  // demo when no provider in the list has real data for that metric. This is
+  // two passes rather than one so PREFERENCE order still breaks ties WITHIN
+  // each pass (two demo providers, or — hypothetically — two real ones,
+  // still resolve by the existing preference order).
+  //
+  // Before this, a single pass took the first non-null value in PREFERENCE
+  // order with no real/demo distinction, so a provider listed earlier that
+  // was merely in default demo mode (never connected) pre-empted a
+  // correctly-connected, later-listed provider's real data outright — e.g.
+  // `workout: ['garmin', 'apple', 'oura']` let Garmin's canned "Evening Run"
+  // win over a real, connected Oura account's actual workout every single
+  // time, purely because Garmin sorts first, never because Garmin's demo was
+  // in any sense a better answer. Confirmed live: `garmin: "not-configured"`,
+  // `oura: "oauth"`, yet Workouts showed the fixed demo scenario.
   const out = {}
   for (const [metric, order] of Object.entries(PREFERENCE)) {
+    let chosen = null
     for (const id of order) {
       const s = perProvider[id]?.[metric]
-      if (s && s.value != null) { out[metric] = s; break }
+      if (s && s.value != null && s.demo !== true) { chosen = s; break }
     }
-    if (!out[metric]) out[metric] = null
+    if (!chosen) {
+      for (const id of order) {
+        const s = perProvider[id]?.[metric]
+        if (s && s.value != null) { chosen = s; break }
+      }
+    }
+    out[metric] = chosen
   }
 
   // A manually-entered workout (server/db.js's getManualWorkout — no

@@ -52,13 +52,33 @@ import { computeAdjustedTargets, computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
-import { allProviderStatuses, composeSignals } from './providers.js'
-import { computeProgress } from './afp/engine.js'
+import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
+import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
+import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
+// A malformed JSON body (or one over the 15mb limit above) throws INSIDE
+// express.json() — before any route, requireAuth, or asyncH runs, since this
+// error surfaces from body-parser's own stream read, not from a handler
+// asyncH ever sees. With no error-handling middleware registered, Express's
+// built-in default answers with a raw stack trace as HTML (server file paths
+// included) — the exact "leaked internals" asyncH's own 500 branch below
+// exists to prevent for every route's OWN errors, just not reached in time
+// for this one. This matters most for a caller that can't see server logs to
+// debug a cryptic HTML page — e.g. Health Auto Export's on-device automation
+// runner misconfigured with the wrong body/header. Scoped narrowly to
+// body-parser's two known error `type`s so any other error (there shouldn't
+// be one this early) still falls through to Express's default handling
+// rather than being silently reclassified as a 400.
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
+    return res.status(err.status || 400).json({ error: 'Invalid request body.' })
+  }
+  next(err)
+})
 // credentials:true so the session cookie survives a cross-origin dev setup
 // (Vite on :5173 -> API on :3001). origin:true (reflecting any request's
 // Origin) was "harmless in prod, where it's same-origin anyway" BEFORE there
@@ -521,9 +541,11 @@ async function backfillOuraHistory(userId, token, days = 30, accountId = null) {
   // activity have always worked without one; workouts are new and this is
   // the one part of them that genuinely needs it).
   let workoutsSaved = 0
+  let workoutsFetched = 0
   if (accountId != null) {
     try {
       const workouts = await ouraWorkoutsRange(token, fromYmd, toYmd)
+      workoutsFetched = workouts.length
       workoutsSaved = await store.saveOuraWorkouts(accountId, workouts)
     } catch (err) {
       // A 403 here (missing scope, once Oura requires one workouts doesn't
@@ -534,7 +556,49 @@ async function backfillOuraHistory(userId, token, days = 30, accountId = null) {
     }
   }
 
-  return { daysSaved, workoutsSaved }
+  // daysFetched/workoutsFetched vs. daysSaved/workoutsSaved is what
+  // trackedOuraBackfill (below) turns into the persisted fetched/accepted/
+  // deduplicated counts a runbook reads back — daysFetched is every day
+  // Oura's readiness-range endpoint returned in the window (rows.length,
+  // before the score:null filter above), not merely the ones this run
+  // actually stored.
+  return { daysSaved, workoutsSaved, daysFetched: rows.length, workoutsFetched }
+}
+
+// Wraps backfillOuraHistory with persisted sync-attempt observability —
+// last_attempted_sync (always), last_synced_at + records fetched/accepted/
+// deduplicated (on success), or the classified failure reason in `error` (on
+// throw) — shared by all three call sites below (OAuth connect, the manual
+// POST /oura/backfill, and the scheduled resync loop) so none of them can
+// drift from the other two. Always re-throws: every existing caller's own
+// error handling (a 500 from the manual route, a per-account skip in the
+// resync loop, a swallow-and-log at connect time) is unchanged — this only
+// adds a persisted trace alongside whatever that caller already does.
+// "deduplicated" here means "Oura returned it this run but it wasn't newly
+// stored" (no score yet for a readiness day, or a workout missing the id/day
+// upsert needs) — not a literal re-fetch/already-seen check, since Oura's API
+// doesn't mark duplicates and a re-run workout upsert (on conflict do update)
+// counts as accepted either way. See docs/oura-sync-runbook.md.
+async function trackedOuraBackfill(userId, token, days, accountId) {
+  let result
+  try {
+    result = await backfillOuraHistory(userId, token, days, accountId)
+  } catch (err) {
+    await recordOuraAttempt(store, userId, { ok: false, reason: classifyOuraRefreshError(err) }).catch((e) => {
+      console.error(`[oura-sync-observability] failed to persist attempt for user ${userId}: ${e.message}`)
+    })
+    throw err
+  }
+  const fetched = result.daysFetched + (accountId != null ? result.workoutsFetched : 0)
+  const accepted = result.daysSaved + result.workoutsSaved
+  await recordOuraAttempt(store, userId, {
+    ok: true,
+    synced: true,
+    counts: { fetched, accepted, deduplicated: Math.max(0, fetched - accepted) },
+  }).catch((e) => {
+    console.error(`[oura-sync-observability] failed to persist attempt for user ${userId}: ${e.message}`)
+  })
+  return result
 }
 
 requireAuthRouter.get('/oura/summary', asyncH(async (req, res) => {
@@ -587,15 +651,21 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
     refresh_token: tokens.refresh_token,
     expires_at: ouraExpiryFrom(tokens.expires_in),
   })
+  markSyncing(userId, 'oura')
   try {
-    await backfillOuraHistory(userId, tokens.access_token, 30, account.id)
+    await trackedOuraBackfill(userId, tokens.access_token, 30, account.id)
   } catch (err) {
     // A successful connect must still read as connected even if the
     // historical pull hiccups — POST /api/oura/backfill can retry it. But
     // silence here must not mean invisible: this exact catch block once
     // swallowed a wrong-endpoint bug (activityRange instead of
     // readinessRange) for hours with zero signal that anything was wrong.
+    // trackedOuraBackfill has already persisted this outcome (last_attempted_
+    // sync + the classified reason in `error`) before re-throwing — this
+    // console.error is only this call site's own trace on top of that.
     console.error(`[oura-connect-backfill] user ${userId} failed: ${err.message}`)
+  } finally {
+    clearSyncing(userId, 'oura')
   }
   res.redirect('/?oura=connected')
 }))
@@ -603,12 +673,30 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
 // Re-run the history backfill for an already-connected account (the normal
 // path only fires this once, at connect time).
 requireAuthRouter.post('/oura/backfill', asyncH(async (req, res) => {
-  const token = await resolveOuraToken(req.userId)
+  let token
+  try {
+    token = await resolveOuraToken(req.userId)
+  } catch (err) {
+    // resolveOuraToken's own refresh (ouraValidAccessToken) can throw before
+    // ever reaching trackedOuraBackfill below — that failure is just as real
+    // a sync attempt as one inside the backfill itself, so it gets the same
+    // persisted trace here rather than only the 500 asyncH turns it into.
+    await recordOuraAttempt(store, req.userId, { ok: false, reason: classifyOuraRefreshError(err) }).catch(() => {})
+    throw err
+  }
   if (!token) return res.status(400).json({ error: 'No Oura account connected.' })
   const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
   const accountId = await resolveOuraAccountId(req.userId)
-  const saved = await backfillOuraHistory(req.userId, token, days, accountId)
-  res.json({ ok: true, days, daysSaved: saved.daysSaved, workoutsSaved: saved.workoutsSaved })
+  markSyncing(req.userId, 'oura')
+  try {
+    const saved = await trackedOuraBackfill(req.userId, token, days, accountId)
+    res.json({
+      ok: true, days, daysSaved: saved.daysSaved, workoutsSaved: saved.workoutsSaved,
+      daysFetched: saved.daysFetched, workoutsFetched: saved.workoutsFetched,
+    })
+  } finally {
+    clearSyncing(req.userId, 'oura')
+  }
 }))
 
 // Connected accounts (tokens stripped) + config state, for the settings UI.
@@ -905,6 +993,47 @@ requireAuthRouter.get('/plan/today', asyncH(async (req, res) => {
 // the user state their own plan directly; providers.js's composeSignals
 // treats it as an unconditional override for the `workout` metric.
 const WORKOUT_KINDS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+// Matches MET_TABLE's own tiers (server/afp/engine.js) and the AFP planned-
+// workout editor's intensity picker one-to-one — same three bands, same
+// default ('moderate'), so a typed-in session and an AFP-planned session
+// read the same word for the same effort.
+const WORKOUT_INTENSITIES = ['easy', 'moderate', 'hard']
+
+// The user's current body weight, kg — the one real input
+// estimateSessionEnergyKcal (server/afp/engine.js) needs beyond kind/
+// intensity/duration to turn a MET value into a calorie estimate. Two
+// existing sources, checked in order, never a third invented one: (1) the
+// dedicated weight-log feature (PUT /api/weight, store.listWeightEntries) —
+// the user's own "this is my weight today" reading, most likely to be
+// current; (2) the Adaptive Fuel Plan's own profile weight — the engine
+// already trusts afp_profile.weight_kg for this exact same MET-based
+// estimate (see engine.js's fillSessionEnergy), so a user who has already
+// set that up shouldn't be told "no weight on file" just because they never
+// separately used the weight-log feature. Both are real, user-entered
+// numbers; neither is fabricated. Returns null (never a guessed default
+// bodyweight) when neither exists — see estimateManualWorkoutKcal below.
+async function currentWeightKgForUser(userId) {
+  const entries = (await store.listWeightEntries?.(userId, '0001-01-01', localYmd())) || []
+  const latest = entries.length ? entries[entries.length - 1] : null // ascending by day
+  const fromLog = latest?.kg != null ? Number(latest.kg) : null
+  if (Number.isFinite(fromLog)) return fromLog
+  const afpProfile = await store.getAfpProfile?.(userId)
+  const fromAfp = afpProfile?.weight_kg != null ? Number(afpProfile.weight_kg) : null
+  return Number.isFinite(fromAfp) ? fromAfp : null
+}
+
+// estKcal stays null — honestly, not a fabricated guess — whenever there's
+// nothing real to compute it from: no duration (nothing to multiply MET ×
+// weight by) or no weight on file. estKcalReason distinguishes the second
+// case for the UI (see Plan.jsx's WorkoutForm/TimelineNode) so it can say
+// exactly why, rather than a bare missing field the user has to interpret.
+async function estimateManualWorkoutKcal(userId, kind, intensity, durationMin) {
+  if (!durationMin) return { estKcal: null, estKcalReason: null }
+  const weightKg = await currentWeightKgForUser(userId)
+  if (weightKg == null) return { estKcal: null, estKcalReason: 'no_weight_on_file' }
+  const kcal = estimateSessionEnergyKcal({ sport: kind, intensity, durationMin }, weightKg)
+  return { estKcal: Math.round(kcal), estKcalReason: null }
+}
 
 // Matches the iOS companion's own time-of-day label convention
 // (HealthKitManager.label(startHour:kind:)) so a workout reads the same —
@@ -924,23 +1053,31 @@ function formatHour12(hourFloat) {
 }
 
 requireAuthRouter.put('/plan/workout', asyncH(async (req, res) => {
-  const { kind, time, duration_min } = req.body || {}
+  const { kind, time, duration_min, intensity: rawIntensity } = req.body || {}
   if (!WORKOUT_KINDS.includes(kind)) return res.status(400).json({ error: `kind must be one of: ${WORKOUT_KINDS.join(', ')}` })
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time))) return res.status(400).json({ error: 'time must be HH:MM, 24h, local.' })
+  // Omitted -> 'moderate' (matches how estimateSessionEnergyKcal itself
+  // defaults via `table.intensity ?? table.moderate`); anything present but
+  // not one of the three bands is rejected rather than silently coerced.
+  const intensity = rawIntensity == null ? 'moderate' : rawIntensity
+  if (!WORKOUT_INTENSITIES.includes(intensity)) return res.status(400).json({ error: `intensity must be one of: ${WORKOUT_INTENSITIES.join(', ')}` })
   const [hh, mm] = String(time).split(':').map(Number)
   const startHour = hh + mm / 60
   const duration = Number(duration_min)
   const hasDuration = Number.isFinite(duration) && duration > 0
   const kindLabel = kind[0].toUpperCase() + kind.slice(1)
+  const { estKcal, estKcalReason } = await estimateManualWorkoutKcal(req.userId, kind, intensity, hasDuration ? duration : null)
   const workout = {
     label: `${partOfDay(startHour)} ${kindLabel}`,
     shortLabel: kind,
     kind,
+    intensity,
     time: formatHour12(startHour),
     startHour,
     endHour: hasDuration ? startHour + duration / 60 : null,
     durationMin: hasDuration ? duration : null,
-    estKcal: null,
+    estKcal,
+    estKcalReason,
     status: 'planned',
   }
   const saved = await store.setManualWorkout(req.userId, localYmd(), workout)
@@ -1158,8 +1295,21 @@ function timingSafeStringEqual(a, b) {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)
 }
 
+// Accepts either the native companion's own header (x-ingest-token) or a
+// plain Bearer token — the latter so a third-party exporter that can only
+// send `Authorization: Bearer <token>` (no custom header names), like Health
+// Auto Export below, can use the exact same per-user token a person
+// generates from Connections without this app inventing a second secret.
+function presentedIngestToken(req) {
+  const custom = req.get('x-ingest-token')
+  if (custom) return custom
+  const auth = req.get('authorization') || ''
+  const m = auth.match(/^Bearer\s+(.+)$/i)
+  return m ? m[1] : null
+}
+
 async function resolveAppleIngestUser(req) {
-  const presented = req.get('x-ingest-token')
+  const presented = presentedIngestToken(req)
   if (!presented) return null
   const legacy = process.env.APPLE_INGEST_TOKEN
   if (legacy && timingSafeStringEqual(presented, legacy)) {
@@ -1170,6 +1320,33 @@ async function resolveAppleIngestUser(req) {
     return store.getSoleUserId()
   }
   return store.findUserIdByAppleIngestToken(presented)
+}
+
+// Shared by both ingest entry points below (the native companion's own
+// shape, and the Health Auto Export adapter's translated shape) — one
+// persistence path, so permissions/last-synced bookkeeping never drifts
+// between the two.
+async function ingestAppleSamples(userId, day, rawSamples, rawPermissions) {
+  const nowIso = new Date().toISOString()
+  const rows = (Array.isArray(rawSamples) ? rawSamples : [])
+    .filter((s) => s && typeof s.metric === 'string' && s.metric)
+    .map((s) => ({
+      metric: s.metric,
+      value: s.value ?? null,
+      unit: s.unit || null,
+      recorded_at: s.recorded_at || nowIso,
+      fetched_at: s.fetched_at || nowIso,
+      extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
+    }))
+  const n = await store.replaceAppleSignals(userId, day, rows)
+  const cur = await store.getIntegration(userId, 'apple')
+  const perms = normalizeApplePermissions(rawPermissions, rows)
+  await store.setIntegration(userId, 'apple', {
+    connected_at: cur.connected_at || nowIso,
+    last_synced_at: nowIso,
+    settings: { ...(cur.settings || {}), permissions: perms },
+  })
+  return { ingested: n, day, permissions: perms }
 }
 
 app.post('/api/apple/ingest', asyncH(async (req, res) => {
@@ -1186,26 +1363,31 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
   }
   const { date, samples, permissions } = req.body || {}
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
-  const nowIso = new Date().toISOString()
-  const rows = (Array.isArray(samples) ? samples : [])
-    .filter((s) => s && typeof s.metric === 'string' && s.metric)
-    .map((s) => ({
-      metric: s.metric,
-      value: s.value ?? null,
-      unit: s.unit || null,
-      recorded_at: s.recorded_at || nowIso,
-      fetched_at: s.fetched_at || nowIso,
-      extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
-    }))
-  const n = await store.replaceAppleSignals(userId, day, rows)
-  const cur = await store.getIntegration(userId, 'apple')
-  const perms = normalizeApplePermissions(permissions, rows)
-  await store.setIntegration(userId, 'apple', {
-    connected_at: cur.connected_at || nowIso,
-    last_synced_at: nowIso,
-    settings: { ...(cur.settings || {}), permissions: perms },
-  })
-  res.json({ ingested: n, day, permissions: perms })
+  const result = await ingestAppleSamples(userId, day, samples, permissions)
+  res.json(result)
+}))
+
+// Alternative Apple Health ingest path for the "Health Auto Export" App
+// Store app (no code to write or build — just point its REST API automation
+// at this URL with `Authorization: Bearer <token>` from Connections). Same
+// destination/effect as /api/apple/ingest above, different source format —
+// see server/appleHealthAutoExport.js for the translation and why it's
+// built from HAE's published schema docs rather than a captured payload.
+app.post('/api/apple/health-auto-export', asyncH(async (req, res) => {
+  const userId = await resolveAppleIngestUser(req)
+  if (userId == null) {
+    return res.status(401).json({ error: 'Invalid ingest token.' })
+  }
+  const integration = await store.getIntegration(userId, 'apple')
+  if (integration.enabled === false) {
+    return res.status(403).json({ error: 'Apple Health is disabled for this account.' })
+  }
+  const { date, samples, unmapped } = mapHealthAutoExportPayload(req.body, localYmd())
+  const result = await ingestAppleSamples(userId, date, samples)
+  if (unmapped.length) {
+    console.log('[apple-health-auto-export]', JSON.stringify({ userId, unmapped }))
+  }
+  res.json({ ...result, unmapped })
 }))
 
 // Insights: nutrition trends over a window; signal correlations flagged as
@@ -1351,13 +1533,31 @@ const OURA_RESYNC_WINDOW_DAYS = 3
 async function resyncAllOuraAccounts() {
   const accounts = await store.listAllOuraAccounts()
   for (const account of accounts) {
+    // Token resolution and the backfill itself are tracked as two separate
+    // attempt outcomes rather than one big try/catch: trackedOuraBackfill
+    // already persists its own outcome, so folding a token-refresh failure
+    // into the same catch would either double-record it (harmless but
+    // wasteful) or, worse, get missed if the two were merged carelessly. This
+    // is exactly the scheduled job the reported "readiness/sleep looks stale
+    // for one account" symptom implicates — see docs/oura-sync-runbook.md.
+    let token
     try {
-      const token = await ouraValidAccessToken(account, (t) => store.updateOuraTokens(account.user_id, account.id, t))
-      await backfillOuraHistory(account.user_id, token, OURA_RESYNC_WINDOW_DAYS, account.id)
+      token = await ouraValidAccessToken(account, (t) => store.updateOuraTokens(account.user_id, account.id, t))
     } catch (err) {
-      // One account's failure (an expired/revoked refresh token, a transient
-      // Oura outage) must not stop the rest of the batch from syncing.
+      console.error(`[oura-resync] account ${account.id} (user ${account.user_id}) token refresh failed: ${err.message}`)
+      await recordOuraAttempt(store, account.user_id, { ok: false, reason: classifyOuraRefreshError(err) }).catch(() => {})
+      continue
+    }
+    markSyncing(account.user_id, 'oura')
+    try {
+      await trackedOuraBackfill(account.user_id, token, OURA_RESYNC_WINDOW_DAYS, account.id)
+    } catch (err) {
+      // One account's failure (a transient Oura outage, a data-fetch error)
+      // must not stop the rest of the batch from syncing. trackedOuraBackfill
+      // already persisted this outcome — this is only the loop's own trace.
       console.error(`[oura-resync] account ${account.id} (user ${account.user_id}) failed: ${err.message}`)
+    } finally {
+      clearSyncing(account.user_id, 'oura')
     }
   }
 }
