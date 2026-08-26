@@ -56,8 +56,10 @@ doesn't repeat that ground.
 | Medium | Auth | No "forgot password" / account-recovery path exists — attempted, judged too large for a direct fix (needs new email-service infrastructure with no existing provider configured anywhere in this project); see the implementation proposal in this pass's section below | Reported (2026-08-25) — proposal written up, not attempted |
 | High | Garmin webhook | `POST /api/garmin/webhook` has no signature/shared-secret verification — researched; infeasible to implement safely right now (every base URL and field name in `garmin.js` is marked `VERIFY` — the exact signing scheme, if any, is unknown until Garmin partner access is granted) | Reported (2026-08-25) — researched, blocked on Garmin partner docs |
 | Medium | Garmin OAuth | `refreshAccessToken`/`validAccessToken` are implemented but never called — researched; bigger than scoped (needs new `listAllGarminAccounts()` methods on both storage backends, and the refresh cadence/necessity itself is unverified against partner docs) | Reported (2026-08-25) — researched, deferred as larger than scoped |
-| Info | Live deploy | `GET /api/health` on the live site reports `backend: "json-file"` — no `DATABASE_URL` configured in production | Needs an owner deploy action, not a code fix |
-| Info | Live deploy | Live site hasn't redeployed since before this session's first pass — now well behind `main` | Needs an owner deploy action, not a code fix |
+| Info | Live deploy | `GET /api/health` on the live site reports `backend: "json-file"` — no `DATABASE_URL` configured in production | Resolved (2026-08-25, owner deploy — site now reports `backend: "postgres"`) |
+| Info | Live deploy | Live site hasn't redeployed since before this session's first pass — now well behind `main` | Resolved (2026-08-26 — `GET /api/version` confirms the live site matches `origin/main` HEAD exactly) |
+| Low | Server logging | Several `console.error(err)` calls log the *raw* error object server-side (client-facing 500s are already sanitized, PR #45) — a DB constraint-violation error can embed a user-submitted value (e.g. an email) in its message. Flagged by the other session's production-verification audit as a real but low-severity, unconfirmed-in-practice pattern, not a client-facing leak | Reported (2026-08-26, from `docs/PRODUCTION-VERIFICATION-AUDIT.md`) |
+| Info | Deploy config | `SESSION_SECRET`'s production state is unconfirmed (unset in every dev environment checked so far) — if unset in production, any restart for any reason mass-logs-out every signed-in user, independent of any other change | Needs an owner verification, not a code fix (flagged by the same audit) |
 
 ## 2026-08-25 — First pass
 
@@ -717,3 +719,88 @@ Oura-backfill fix still has no *independent* integration-test proof (only
 code symmetry with JsonStore — same environment constraint as above, no
 `DATABASE_URL`), `SESSION_SECRET`'s production state, and the Neon rotation
 plan (deliberately not executed — deploy first, per the audit's own gate).
+
+## 2026-08-26 — Check-in pass (recurring, 00:36 UTC)
+
+Re-invoked via the recurring audit routine, ~4 hours after the previous
+check-in (PR #58). This was by far the largest gap between check-ins: `git
+log` shows ~40 commits landed on `main` since then, spanning at least nine
+merged PRs (#59 through #75, non-contiguous — some numbers belong to
+branches that merged elsewhere). `npm test`: 511/511 (up from 224 — 287 new
+tests). `npm run build`: clean.
+
+Given the scale, this pass did not attempt a line-by-line review of every
+commit — that would just re-do work already done, carefully, by the
+sessions that produced it. Instead: read the other session's own
+`docs/PRODUCTION-VERIFICATION-AUDIT.md` (a genuinely independent, rigorous
+release-verification pass with real VPS/production visibility this session
+doesn't have), reconciled its findings against this report, and live
+smoke-tested the highest-risk surfaces rather than re-auditing everything.
+
+**Most significant finding, already fixed before this pass started:** the
+other audit caught a **CRITICAL bug in the primary food-logging flow** —
+`food_id` and `servings_consumed` round-trip over JSON as strings (a
+Postgres bigint serialization fact), but the zod schema this report's own
+PR #47 added correctly rejects a string `food_id` as strict-by-design. The
+one call site that skips editing a food (barcode scan → confirm, search →
+confirm, re-log a recent food — i.e. the *most common* path) sent the raw
+string through unconverted, so every one of those would have 400'd in
+production. Fixed same-day by the other session (commit `86a3ee7`) with a
+mutation-tested regression test, and independently re-verified live by this
+pass: signed up fresh, completed onboarding, logged a food via the manual-
+entry → confirm → "Add to log" path (the exact call site that had the bug),
+confirmed a clean `201` and correct intake totals on Today with zero
+console/network errors. Confirmed via `GET /api/version` that the live site
+is running this exact commit (SHA matches current `main` HEAD exactly) —
+the fix is deployed, not just merged.
+
+**Reconciled against this report:**
+
+- **Signup Postgres error leak** (this report's own "Reported" item) —
+  fixed by the same audit's residual-gap-cleanup follow-up (PR #55,
+  commit visible directly in `docs/qa-qc-report.md`'s own diff — that
+  session edited this exact file in this exact format, which is worth
+  noting for its own sake: two independent Claude sessions converging on
+  the same tracking convention). Verified the fix is real by reading
+  `PgStore.createUser`'s new SQLSTATE `23505` catch. Table updated.
+- **Both remaining live-deploy Info items are now resolved on their own** —
+  confirmed via the new `GET /api/version` endpoint (added by the audit's
+  Finding 9) that the live site's SHA matches `main` HEAD exactly, and
+  `/api/health` has reported `backend: "postgres"` since the last check-in.
+  Marked Resolved rather than deleted, so the history of what was wrong and
+  when it got fixed stays visible.
+- **Two new items added from the audit's own findings**, since they're
+  real, previously-untracked gaps this report hadn't surfaced: raw
+  server-side error logging that can embed user-submitted values (Low —
+  narrower than this report's own PR #45 fix, which only ever covered
+  client-facing responses) and `SESSION_SECRET`'s unconfirmed production
+  state (Info — same "needs owner verification" bucket as the resolved
+  deploy items above, not a code fix).
+
+**New features live-smoke-tested, no regressions found:**
+
+- **Adaptive Fuel Plan** (PR #72) — a real-time energy/macro target engine
+  with carb periodization, opt-in via a "Set up my profile" card above the
+  existing Quick Targets section. Rendered correctly, existing Quick
+  Targets/meal-timing/manual-workout flow (verified last check-in)
+  untouched underneath it.
+- **Insights nutrition trends + real correlations** (PRs #61–#66, #74–#75)
+  — per-section gating (readiness/training-load correctly show "Awaiting
+  connected history" rather than fabricated data for an account with no
+  wearable connected — an empty state, not a bug) and a "What we notice"
+  correlations section with real per-pair copy render cleanly.
+- Sleep score now shown alongside sleep duration on Today's context strip
+  — no layout regression.
+
+**Not re-verified independently** (would duplicate the other audit's own
+explicit, careful work rather than adding anything): PgStore-specific
+behavior (no `DATABASE_URL` in this environment either — same constraint
+the audit named), the Neon rotation plan (not executed by design, owner
+action), multi-user isolation (audit's Finding 3, already live-verified
+end-to-end by them).
+
+Live site: confirmed redeployed and at current `main` HEAD via
+`/api/version` (see above). `npm test` 511/511, build clean, no fixes made
+directly by this pass beyond the report reconciliation itself — every
+concrete, actionable item found this pass had already been fixed before
+this check-in started.
