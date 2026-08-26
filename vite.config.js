@@ -17,7 +17,12 @@ export default defineConfig({
     // and Playwright's `networkidle` never settled, so the measurement
     // harness broke the thing it was measuring. Nothing under scripts/ or
     // docs/ is part of the client bundle.
-    watch: { ignored: ['**/scripts/**', '**/docs/**'] },
+    // A PREDICATE, not globs: Vite 6 ships chokidar v4, which dropped glob
+    // support in `ignored` — the glob form is accepted silently and matches
+    // nothing, which is how this was first written and why the reload storm
+    // came back. Verified by watching the dev server log while an eval run
+    // appends, not by reading the config back.
+    watch: { ignored: (filePath) => /[\\/](scripts|docs|\.scratch)[\\/]/.test(filePath) },
   },
   plugins: [
     react(),

@@ -115,12 +115,17 @@ export default function SearchFood({ onPick }) {
 
   const pick = (food) => onPick({ ...food, search_method: food.search_method || 'text_search' })
 
-  // Keyboard: Down/Up walk the results from the input, Enter takes the
-  // highlighted one, Escape clears the query. Focus moves for real (rather
-  // than a purely visual highlight) so a screen reader follows along.
+  // Keyboard: Down/Up walk the results from the input and Enter takes the
+  // highlighted one. Focus moves for real (rather than a purely visual
+  // highlight) so a screen reader follows along.
+  //
+  // Escape is deliberately NOT handled here: the Sheet this lives in already
+  // owns Escape to close itself (ui.jsx), and every other sheet in the app
+  // behaves that way. An Escape-clears-the-query handler was tried and removed
+  // — it fired alongside the Sheet's, so one keypress both cleared the input
+  // and closed the panel, which is worse than either.
   const onKeyDown = (e) => {
     const n = showResults.length
-    if (e.key === 'Escape') { setQ(''); return }
     if (!n) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()

@@ -16,7 +16,13 @@ const RESULTS = path.join(__dirname, 'results.jsonl')
 const FAILURES = path.join(__dirname, 'failures.json')
 const SUMMARY = path.join(__dirname, 'summary.json')
 
+// Deduped by key on read: results.jsonl is append-only and checkpointed, so a
+// resumed run — or two runs accidentally overlapping, which happened once
+// during this work — can write the same (item, probe) pair twice. Counting it
+// twice would silently weight those items double.
+const seenKeys = new Set()
 const rows = fs.readFileSync(RESULTS, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+  .filter((r) => (seenKeys.has(r.key) ? false : (seenKeys.add(r.key), true)))
 
 const pct = (n, d) => (d ? (100 * n) / d : 0)
 const quantile = (sorted, q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] : null)

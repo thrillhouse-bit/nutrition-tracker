@@ -1,0 +1,3085 @@
+{
+  "generatedAt": "2026-08-26T16:06:55.101Z",
+  "completeQueryProbes": 200,
+  "failures": 60,
+  "items": [
+    {
+      "id": "walmart:coca cola 12 pack",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "coca cola 12 pack",
+      "query": "coca cola 12 pack",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 543,
+      "top5": [
+        {
+          "name": "Beverages, carbonated, cola, regular",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 42
+        },
+        {
+          "name": "Beverages, ZEVIA, cola",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 0
+        },
+        {
+          "name": "Brandy and cola",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 89
+        },
+        {
+          "name": "Rum and cola",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 89
+        },
+        {
+          "name": "Rum and diet cola",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 60
+        }
+      ]
+    },
+    {
+      "id": "walmart:folgers ground coffee",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "folgers ground coffee",
+      "query": "folgers ground coffee",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 502,
+      "top5": [
+        {
+          "name": "Beef, ground",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 261
+        },
+        {
+          "name": "Beef, ground, patty",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 272
+        },
+        {
+          "name": "Beef, ground, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 213
+        },
+        {
+          "name": "Bison, ground, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 164
+        },
+        {
+          "name": "Chicken, ground",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 201
+        }
+      ]
+    },
+    {
+      "id": "walmart:great value 2 percent milk",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "great value 2 percent milk",
+      "query": "great value 2 percent milk",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 553,
+      "top5": [
+        {
+          "name": "Chocolate milk, reduced fat (2%)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 76
+        },
+        {
+          "name": "Milk, evaporated, reduced fat (2%)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 92
+        },
+        {
+          "name": "Milk, reduced fat (2%)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 50
+        },
+        {
+          "name": "Strawberry milk, reduced fat (2%)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 71
+        },
+        {
+          "name": "Milk, lactose free, reduced fat (2%)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 50
+        }
+      ]
+    },
+    {
+      "id": "walmart:great value large eggs",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "great value large eggs",
+      "query": "great value large eggs",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 447,
+      "top5": [
+        {
+          "name": "Bagels, egg",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 278
+        },
+        {
+          "name": "Bread, egg",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 287
+        },
+        {
+          "name": "Congee, with egg",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 60
+        },
+        {
+          "name": "Egg burrito",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 249
+        },
+        {
+          "name": "Egg, Benedict",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 288
+        }
+      ]
+    },
+    {
+      "id": "walmart:great value vanilla ice cream",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "great value vanilla ice cream",
+      "query": "great value vanilla ice cream",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 808,
+      "top5": [
+        {
+          "name": "Ice creams, vanilla",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 207
+        },
+        {
+          "name": "Ice creams, vanilla, fat free",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 138
+        },
+        {
+          "name": "Ice creams, vanilla, light",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 180
+        },
+        {
+          "name": "Ice creams, vanilla, rich",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 249
+        },
+        {
+          "name": "Ice creams, french vanilla, soft-serve",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 222
+        }
+      ]
+    },
+    {
+      "id": "walmart:kraft shredded cheddar cheese",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "kraft shredded cheddar cheese",
+      "query": "kraft shredded cheddar cheese",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 479,
+      "top5": [
+        {
+          "name": "Cheese, cheddar",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 408
+        },
+        {
+          "name": "Cheese, Cheddar, reduced fat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 316
+        },
+        {
+          "name": "Cheese, Cheddar, reduced sodium",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 398
+        },
+        {
+          "name": "Cheese, parmesan, shredded",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 415
+        },
+        {
+          "name": "Sauce, barbecue, KRAFT, original",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 172
+        }
+      ]
+    },
+    {
+      "id": "walmart:oscar mayer bacon",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "oscar mayer bacon",
+      "query": "oscar mayer bacon",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 580,
+      "top5": [
+        {
+          "name": "Bacon biscuit sandwich",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 382
+        },
+        {
+          "name": "Bacon bits",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 476
+        },
+        {
+          "name": "Bacon bits, meatless",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 476
+        },
+        {
+          "name": "Bacon strip, meatless",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 309
+        },
+        {
+          "name": "Bacon, meatless",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 309
+        }
+      ]
+    },
+    {
+      "id": "walmart:ragu marinara sauce",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "ragu marinara sauce",
+      "query": "ragu marinara sauce",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 669,
+      "top5": [
+        {
+          "name": "Alfredo sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 150
+        },
+        {
+          "name": "Barbecue sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 172
+        },
+        {
+          "name": "Duck sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 245
+        },
+        {
+          "name": "Fish sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 35
+        },
+        {
+          "name": "Sauce, barbecue",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 172
+        }
+      ]
+    },
+    {
+      "id": "walmart:sara lee white bread",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "sara lee white bread",
+      "query": "sara lee white bread",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 505,
+      "top5": [
+        {
+          "name": "Bread, pita, white, enriched",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 275
+        },
+        {
+          "name": "Bread, pita, white, unenriched",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 275
+        },
+        {
+          "name": "Bread, reduced-calorie, white",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 207
+        },
+        {
+          "name": "Bread, white",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 267
+        },
+        {
+          "name": "Bread, white wheat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 238
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic black beans",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic black beans",
+      "query": "365 organic black beans",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 496,
+      "top5": [
+        {
+          "name": "Black bean salad",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 94
+        },
+        {
+          "name": "Black bean sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 168
+        },
+        {
+          "name": "Black beans with meat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 177
+        },
+        {
+          "name": "Black beans, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 181
+        },
+        {
+          "name": "Beans, black, mature seeds, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 341
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic blue corn tortilla chips",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic blue corn tortilla chips",
+      "query": "365 organic blue corn tortilla chips",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 727,
+      "top5": [
+        {
+          "name": "Bread, blue corn, somiviki (Hopi)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 186
+        },
+        {
+          "name": "Corn chips, flavored",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 543
+        },
+        {
+          "name": "Corn chips, plain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 535
+        },
+        {
+          "name": "Mush, blue corn with ash (Navajo)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 54
+        },
+        {
+          "name": "Snacks, tortilla chips, nacho cheese",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 519
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic extra virgin olive oil",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic extra virgin olive oil",
+      "query": "365 organic extra virgin olive oil",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 443,
+      "top5": [
+        {
+          "name": "Vitasoy USA, Organic Nasoya Extra Firm Tofu",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 98
+        },
+        {
+          "name": "Vitasoy USA Organic Nasoya, Tofu Plus Extra Firm",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 92
+        },
+        {
+          "name": "Corn oil",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 900
+        },
+        {
+          "name": "Mayonnaise, reduced fat,  with olive oil",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 361
+        },
+        {
+          "name": "Oil, corn, peanut, and olive",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 884
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic maple syrup",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic maple syrup",
+      "query": "365 organic maple syrup",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 878,
+      "top5": [
+        {
+          "name": "Fruit syrup",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 341
+        },
+        {
+          "name": "Sugars, maple",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 354
+        },
+        {
+          "name": "Syrup, Cane",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 269
+        },
+        {
+          "name": "Syrup, maple, Canadian",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 270
+        },
+        {
+          "name": "Syrups, grenadine",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 268
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic marinara sauce",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic marinara sauce",
+      "query": "365 organic marinara sauce",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 712,
+      "top5": [
+        {
+          "name": "Alfredo sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 150
+        },
+        {
+          "name": "Barbecue sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 172
+        },
+        {
+          "name": "Duck sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 245
+        },
+        {
+          "name": "Fish sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 35
+        },
+        {
+          "name": "Sauce, barbecue",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 172
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic quinoa",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic quinoa",
+      "query": "365 organic quinoa",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1087,
+      "top5": [
+        {
+          "name": "Flour, quinoa",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 378
+        },
+        {
+          "name": "Quinoa, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 120
+        },
+        {
+          "name": "Quinoa, fat added",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 146
+        },
+        {
+          "name": "Quinoa, uncooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 368
+        },
+        {
+          "name": "Quinoa, no added fat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 120
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic rolled oats",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic rolled oats",
+      "query": "365 organic rolled oats",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 531,
+      "top5": [
+        {
+          "name": "Cereals, QUAKER, Instant Oatmeal Organic, Regular",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 367
+        },
+        {
+          "name": "Bagels, oat bran",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 255
+        },
+        {
+          "name": "Bread, oat bran",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 236
+        },
+        {
+          "name": "Bread, oatmeal",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 269
+        },
+        {
+          "name": "Bread, oatmeal, toasted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 292
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic unsalted butter",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic unsalted butter",
+      "query": "365 organic unsalted butter",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 560,
+      "top5": [
+        {
+          "name": "Almonds, unsalted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 607
+        },
+        {
+          "name": "Cashews, unsalted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 584
+        },
+        {
+          "name": "Peanuts, roasted, unsalted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 599
+        },
+        {
+          "name": "Pecans, unsalted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 754
+        },
+        {
+          "name": "Pistachio nuts, unsalted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 582
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic whole milk greek yogurt",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic whole milk greek yogurt",
+      "query": "365 organic whole milk greek yogurt",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 751,
+      "top5": [
+        {
+          "name": "Cheese, mozzarella, whole milk",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 299
+        },
+        {
+          "name": "Cheese, ricotta, whole milk",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 157
+        },
+        {
+          "name": "Chocolate milk, whole",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 83
+        },
+        {
+          "name": "Milk, buttermilk, fluid, whole",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 62
+        },
+        {
+          "name": "Milk, evaporated, whole",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 134
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 sparkling water",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 sparkling water",
+      "query": "365 sparkling water",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 769,
+      "top5": [
+        {
+          "name": "Crackers, water",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 384
+        },
+        {
+          "name": "Crackers, water biscuits",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 384
+        },
+        {
+          "name": "Vodka and water",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 59
+        },
+        {
+          "name": "Water Chesnut",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 78
+        },
+        {
+          "name": "Water convolvulus,raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 19
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:amy s frozen margherita pizza",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "amy s frozen margherita pizza",
+      "query": "amy s frozen margherita pizza",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 515,
+      "top5": [
+        {
+          "name": "Pizza rolls, frozen, unprepared",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 328
+        },
+        {
+          "name": "Pizza, cheese, from frozen, thick crust",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 268
+        },
+        {
+          "name": "Pizza, cheese, from frozen, thin crust",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 263
+        },
+        {
+          "name": "Pizza with pepperoni, from frozen, medium crust",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 275
+        },
+        {
+          "name": "Pizza with pepperoni, from frozen, thick crust",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 276
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:applegate chicken sausage",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "applegate chicken sausage",
+      "query": "applegate chicken sausage",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 565,
+      "top5": [
+        {
+          "name": "Beef sausage",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 341
+        },
+        {
+          "name": "Blood sausage",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 379
+        },
+        {
+          "name": "Italian sausage",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 317
+        },
+        {
+          "name": "Pickled sausage",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 314
+        },
+        {
+          "name": "Polish sausage",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 337
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:applegate frozen chicken nuggets",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "applegate frozen chicken nuggets",
+      "query": "applegate frozen chicken nuggets",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 448,
+      "top5": [
+        {
+          "name": "Chicken nuggets, from frozen",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 298
+        },
+        {
+          "name": "Chicken patty, frozen, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 287
+        },
+        {
+          "name": "Chicken patty, frozen, uncooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 292
+        },
+        {
+          "name": "Chicken dinner, NFS, frozen meal",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 124
+        },
+        {
+          "name": "Chicken tenders, breaded, frozen, prepared",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 240
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:applegate hot dogs",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "applegate hot dogs",
+      "query": "applegate hot dogs",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 689,
+      "top5": [
+        {
+          "name": "Hot dog, beef",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 310
+        },
+        {
+          "name": "Hot dog, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 310
+        },
+        {
+          "name": "Hot dog, turkey",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 223
+        },
+        {
+          "name": "Hot dog, vegetarian",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 233
+        },
+        {
+          "name": "Corn dogs, frozen, prepared",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 250
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:bob's red mill almond flour",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "bob's red mill almond flour",
+      "query": "bob's red mill almond flour",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 840,
+      "top5": [
+        {
+          "name": "Arrowroot flour",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 357
+        },
+        {
+          "name": "Carob flour",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 222
+        },
+        {
+          "name": "Flour, 00",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 366
+        },
+        {
+          "name": "Flour, almond",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 578
+        },
+        {
+          "name": "Flour, amaranth",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 378
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:bragg organic apple cider vinegar",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "bragg organic apple cider vinegar",
+      "query": "bragg organic apple cider vinegar",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 693,
+      "top5": [
+        {
+          "name": "Babyfood, GERBER, 2nd Foods, apple, carrot and squash, organic",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 64
+        },
+        {
+          "name": "Apple cider",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 46
+        },
+        {
+          "name": "Apple, baked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 113
+        },
+        {
+          "name": "Apple, candied",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 134
+        },
+        {
+          "name": "Apple, dried",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 243
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:eden foods organic black beans",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "eden foods organic black beans",
+      "query": "eden foods organic black beans",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1099,
+      "top5": [
+        {
+          "name": "Eden Foods, Organic, Black Soy Beans, 15 oz (425 g) checkoutarrow",
+          "brand": "Eden",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 24
+        },
+        {
+          "name": "Beans, black, mature seeds, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 341
+        },
+        {
+          "name": "Black bean salad",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 94
+        },
+        {
+          "name": "Black bean sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 168
+        },
+        {
+          "name": "Black beans and brown rice",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 158
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:eden foods organic chickpeas",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "eden foods organic chickpeas",
+      "query": "eden foods organic chickpeas",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1102,
+      "top5": [
+        {
+          "name": "GARBANZO ORGANIC BEANS, GARBANZO",
+          "brand": "Eden Foods, Inc.",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 279
+        },
+        {
+          "name": "GARBANZO ORGANICS BEANS, GARBANZO",
+          "brand": "Eden Foods, Inc.",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 92
+        },
+        {
+          "name": "Babyfood, GERBER, 2nd Foods, apple, carrot and squash, organic",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 64
+        },
+        {
+          "name": "Baby Toddler food, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 75
+        },
+        {
+          "name": "Cake, angel food",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 257
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:ezekiel 4 9 sprouted bread",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "ezekiel 4 9 sprouted bread",
+      "query": "ezekiel 4 9 sprouted bread",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 581,
+      "top5": [
+        {
+          "name": "Alfalfa seeds, sprouted, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 23
+        },
+        {
+          "name": "Alfalfa sprouts, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 23
+        },
+        {
+          "name": "Bean sprouts, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 116
+        },
+        {
+          "name": "Bean sprouts, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 30
+        },
+        {
+          "name": "Bread, sprouted wheat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 188
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:gomacro protein bar",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "gomacro protein bar",
+      "query": "gomacro protein bar",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 534,
+      "top5": [
+        {
+          "name": "Soy protein isolate",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 335
+        },
+        {
+          "name": "Bread, high protein, toasted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 269
+        },
+        {
+          "name": "Bread, protein (includes gluten)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 245
+        },
+        {
+          "name": "Nutrition bar (Clif Bar)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 346
+        },
+        {
+          "name": "Textured vegetable protein, dry",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 366
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:health ade kombucha",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "health ade kombucha",
+      "query": "health ade kombucha",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 655,
+      "top5": [
+        {
+          "name": "Kombucha",
+          "brand": "Health Ade",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 70
+        },
+        {
+          "name": "Kombucha, strawberry Glo",
+          "brand": "Health-ade",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 14.8
+        },
+        {
+          "name": "Health-ade kombucha, a bubbly probiotic tea kombucha, carrot",
+          "brand": "Health-Ade Kombucha",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 15
+        },
+        {
+          "name": "Organic Mango Lemonade Kombucha",
+          "brand": "health ade Kombucha",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 16.9
+        },
+        {
+          "name": "A Bubbly Probiotic Tea Kombucha",
+          "brand": "Health-Ade Kombucha",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 12
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:jovial organic pasta",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "jovial organic pasta",
+      "query": "jovial organic pasta",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 492,
+      "top5": [
+        {
+          "name": "Flavored pasta",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 87
+        },
+        {
+          "name": "Pasta, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 157
+        },
+        {
+          "name": "Pasta, dry, enriched",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 371
+        },
+        {
+          "name": "Pasta, dry, unenriched",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 371
+        },
+        {
+          "name": "Pasta, gluten free",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 179
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:madegood granola bars",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "madegood granola bars",
+      "query": "madegood granola bars",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 452,
+      "top5": [
+        {
+          "name": "Cereal or Granola bar, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 471
+        },
+        {
+          "name": "Cereal or granola bar, nonfat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 342
+        },
+        {
+          "name": "Snacks, granola bars, hard, almond",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 495
+        },
+        {
+          "name": "Snacks, granola bars, hard, plain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 471
+        },
+        {
+          "name": "Cereal or granola bar, lowfat, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 408
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:nature's path organic granola",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "nature's path organic granola",
+      "query": "nature's path organic granola",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 816,
+      "top5": [
+        {
+          "name": "Cereals ready-to-eat, NATURE'S PATH, Organic FLAX PLUS, Pumpkin Granola",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 467
+        },
+        {
+          "name": "Nature's Path",
+          "brand": "Granola aux Graines De Citrouille",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 472.7
+        },
+        {
+          "name": "Nice and nobbly granola",
+          "brand": "Natures path",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 466.7
+        },
+        {
+          "name": "Apple Crumble Love Crunch Granola",
+          "brand": "Natures Path",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 467
+        },
+        {
+          "name": "Cereals ready-to-eat, NATURE'S PATH, Organic FLAX PLUS flakes",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 350
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:oatly oat milk",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "oatly oat milk",
+      "query": "oatly oat milk",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 496,
+      "top5": [
+        {
+          "name": "Bagel, oat bran",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 250
+        },
+        {
+          "name": "Bagels, oat bran",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 255
+        },
+        {
+          "name": "Bread, oat bran",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 236
+        },
+        {
+          "name": "Cereal, oat bunches",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 392
+        },
+        {
+          "name": "Cereal, oat squares",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 379
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:once again almond butter",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "once again almond butter",
+      "query": "once again almond butter",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 513,
+      "top5": [
+        {
+          "name": "Almond butter",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 641
+        },
+        {
+          "name": "Almond butter, creamy",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 603
+        },
+        {
+          "name": "Almond butter, lower sodium",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 645
+        },
+        {
+          "name": "Almond chicken",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 195
+        },
+        {
+          "name": "Almond oil",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 884
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:primal kitchen ranch dressing",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "primal kitchen ranch dressing",
+      "query": "primal kitchen ranch dressing",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 507,
+      "top5": [
+        {
+          "name": "Caesar dressing",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 542
+        },
+        {
+          "name": "Coleslaw dressing",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 404
+        },
+        {
+          "name": "Fruit dressing",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 219
+        },
+        {
+          "name": "Ranch dip, light",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 201
+        },
+        {
+          "name": "Ranch dip, regular",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 432
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:rao's homemade marinara sauce",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "rao's homemade marinara sauce",
+      "query": "rao's homemade marinara sauce",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 425,
+      "top5": [
+        {
+          "name": "Alfredo sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 150
+        },
+        {
+          "name": "Barbecue sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 172
+        },
+        {
+          "name": "Duck sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 245
+        },
+        {
+          "name": "Fish sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 35
+        },
+        {
+          "name": "Salsa, red, homemade",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 34
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:siete tortilla chips",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "siete tortilla chips",
+      "query": "siete tortilla chips",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1117,
+      "top5": [
+        {
+          "name": "Tortilla chips, flavored",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 519
+        },
+        {
+          "name": "Tortilla chips, plain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 472
+        },
+        {
+          "name": "Tortilla, corn",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 218
+        },
+        {
+          "name": "Tortilla chips, reduced sodium",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 489
+        },
+        {
+          "name": "Snacks, tortilla chips, nacho cheese",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 519
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:simple mills almond flour crackers",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "simple mills almond flour crackers",
+      "query": "simple mills almond flour crackers",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 430,
+      "top5": [
+        {
+          "name": "Arrowroot flour",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 357
+        },
+        {
+          "name": "Carob flour",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 222
+        },
+        {
+          "name": "Crackers, multigrain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 482
+        },
+        {
+          "name": "Crackers, oatmeal",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 455
+        },
+        {
+          "name": "Crackers, oyster",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 418
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:simple mills pancake baking mix",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "simple mills pancake baking mix",
+      "query": "simple mills pancake baking mix",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 448,
+      "top5": [
+        {
+          "name": "Chinese pancake",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 207
+        },
+        {
+          "name": "Pancake syrup",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 265
+        },
+        {
+          "name": "Pancakes, buckwheat, dry mix, incomplete",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 340
+        },
+        {
+          "name": "Pancakes, chocolate",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 341
+        },
+        {
+          "name": "Pancakes, fruit",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 232
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:sir kensington's ketchup",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "sir kensington's ketchup",
+      "query": "sir kensington's ketchup",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 647,
+      "top5": [
+        {
+          "name": "Ketchup",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 109
+        },
+        {
+          "name": "Ketchup, reduced sodium",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 101
+        },
+        {
+          "name": "Ketchup, restaurant",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 117
+        },
+        {
+          "name": "Avocado Oil Mayonnaise",
+          "brand": "Sir Kensingtons",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 100
+        },
+        {
+          "name": "Sir kensington's mayonnaise variety spicy brown & chipotle",
+          "brand": "Kensington & Sons Llc",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 769.2
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:suja organic cold pressed juice",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "suja organic cold pressed juice",
+      "query": "suja organic cold pressed juice",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1100,
+      "top5": [
+        {
+          "name": "Acerola juice, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 23
+        },
+        {
+          "name": "Babyfood, juice, apple",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 47
+        },
+        {
+          "name": "Beet juice",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 25
+        },
+        {
+          "name": "Blueberry juice",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 42
+        },
+        {
+          "name": "Celery juice",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 17
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:sweet earth veggie burger",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "sweet earth veggie burger",
+      "query": "sweet earth veggie burger",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1609,
+      "top5": [
+        {
+          "name": "BURGER KING, Cheeseburger",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 286
+        },
+        {
+          "name": "BURGER KING, Chicken Strips",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 292
+        },
+        {
+          "name": "BURGER KING, Double Cheeseburger",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 282
+        },
+        {
+          "name": "BURGER KING, french fries",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 280
+        },
+        {
+          "name": "BURGER KING, Hamburger",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 261
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:thrive market extra virgin olive oil",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "thrive market extra virgin olive oil",
+      "query": "thrive market extra virgin olive oil",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 627,
+      "top5": [
+        {
+          "name": "Corn oil",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 900
+        },
+        {
+          "name": "Mayonnaise, reduced fat,  with olive oil",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 361
+        },
+        {
+          "name": "Oil, almond",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 884
+        },
+        {
+          "name": "Oil, canola",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 884
+        },
+        {
+          "name": "Oil, corn, peanut, and olive",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 884
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:wellshire farms deli turkey",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "wellshire farms deli turkey",
+      "query": "wellshire farms deli turkey",
+      "rank": null,
+      "verdict": "target absent from the 20 returned results",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 689,
+      "top5": [
+        {
+          "name": "Bacon, turkey, microwaved",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 368
+        },
+        {
+          "name": "Bologna, turkey",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 209
+        },
+        {
+          "name": "Fat, turkey",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 900
+        },
+        {
+          "name": "Frankfurter, turkey",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 223
+        },
+        {
+          "name": "Pastrami, turkey",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 139
+        }
+      ]
+    },
+    {
+      "id": "walmart:oscar mayer deli ham",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "oscar mayer deli ham",
+      "query": "oscar mayer deli ham",
+      "rank": 14,
+      "verdict": "target at rank 14, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 692,
+      "top5": [
+        {
+          "name": "Ham",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 117
+        },
+        {
+          "name": "Ham croquette",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 273
+        },
+        {
+          "name": "Ham stroganoff",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 131
+        },
+        {
+          "name": "Ham, canned",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 167
+        },
+        {
+          "name": "Ham, ground",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 167
+        }
+      ]
+    },
+    {
+      "id": "walmart:oscar mayer hot dogs",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "oscar mayer hot dogs",
+      "query": "oscar mayer hot dogs",
+      "rank": 11,
+      "verdict": "target at rank 11, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 492,
+      "top5": [
+        {
+          "name": "Hot dog, beef",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 310
+        },
+        {
+          "name": "Hot dog, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 310
+        },
+        {
+          "name": "Hot dog, reduced fat",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 216
+        },
+        {
+          "name": "Hot dog, turkey",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 223
+        },
+        {
+          "name": "Hot dog, vegetarian",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 233
+        }
+      ]
+    },
+    {
+      "id": "walmart:pepsi 12 pack",
+      "kind": "branded",
+      "store": "walmart",
+      "label": "pepsi 12 pack",
+      "query": "pepsi 12 pack",
+      "rank": 12,
+      "verdict": "target at rank 12, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 1135,
+      "top5": [
+        {
+          "name": "Jackfruit, canned, syrup pack",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 92
+        },
+        {
+          "name": "Mangosteen, canned, syrup pack",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 73
+        },
+        {
+          "name": "Orange, canned, juice pack",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 37
+        },
+        {
+          "name": "Peach, canned, juice pack",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 41
+        },
+        {
+          "name": "Pear, canned, juice pack",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 45
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic salsa",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic salsa",
+      "query": "365 organic salsa",
+      "rank": 10,
+      "verdict": "target at rank 10, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 448,
+      "top5": [
+        {
+          "name": "Salsa, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 34
+        },
+        {
+          "name": "Salsa, red",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 34
+        },
+        {
+          "name": "Salsa, red, homemade",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 34
+        },
+        {
+          "name": "Salsa, pico de gallo",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 17
+        },
+        {
+          "name": "Salsa verde or salsa, green",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 38
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:365 organic whole milk",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "365 organic whole milk",
+      "query": "365 organic whole milk",
+      "rank": 2,
+      "verdict": "target at rank 2, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 821,
+      "top5": [
+        {
+          "name": "Whole Foods 365 Nonfat Skim Milk",
+          "brand": "365",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 33.3
+        },
+        {
+          "name": "365 WHOLE FOOD MARKET ORGANIC NONFAT MILK, 1 gallon",
+          "brand": "365",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 33.3
+        },
+        {
+          "name": "365 WHOLE FOOD MARKET ORGANIC WHOLE MILK, 1 gallon",
+          "brand": "365",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 62.5
+        },
+        {
+          "name": "365 Everyday Value  Organic Plain Whole Milk Yogurt, 32 oz",
+          "brand": "365",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 70.6
+        },
+        {
+          "name": "365 WHOLE FOODS MARKET ORGANIC LOWFAT MILK, 64 fl oz",
+          "brand": "365",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 41.7
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:allegro coffee organic breakfast blend",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "allegro coffee organic breakfast blend",
+      "query": "allegro coffee organic breakfast blend",
+      "rank": 14,
+      "verdict": "target at rank 14, not 1",
+      "resultCount": 18,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 503"
+      ],
+      "latencyMs": 1219,
+      "top5": [
+        {
+          "name": "Beef, cured, breakfast strips, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 449
+        },
+        {
+          "name": "Beverages, coffee, brewed, breakfast blend",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 2
+        },
+        {
+          "name": "Beverages, coffee, instant, chicory",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 3
+        },
+        {
+          "name": "Beverages, coffee, instant, with chicory",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 355
+        },
+        {
+          "name": "McDONALD'S, BIG BREAKFAST",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 285
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:amy s organic lentil soup",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "amy s organic lentil soup",
+      "query": "amy s organic lentil soup",
+      "rank": 11,
+      "verdict": "target at rank 11, not 1",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 834,
+      "top5": [
+        {
+          "name": "Lentils, dry",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 351
+        },
+        {
+          "name": "Lentils, pink or red, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 358
+        },
+        {
+          "name": "Lentils, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 352
+        },
+        {
+          "name": "Lentils, sprouted, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 106
+        },
+        {
+          "name": "SMART SOUP, French Lentil",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 53
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:annie's organic microwave mac and cheese",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "annie's organic microwave mac and cheese",
+      "query": "annie's organic microwave mac and cheese",
+      "rank": 20,
+      "verdict": "target at rank 20, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 592,
+      "top5": [
+        {
+          "name": "Bacon, turkey, microwaved",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 368
+        },
+        {
+          "name": "Beans, snap, green, microwaved",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 33
+        },
+        {
+          "name": "Big Mac (McDonalds)",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 261
+        },
+        {
+          "name": "Burrito, beef and bean, microwaved",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 298
+        },
+        {
+          "name": "Macaroni and Cheese, canned, microwavable",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 134
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:applegate naturals deli ham",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "applegate naturals deli ham",
+      "query": "applegate naturals deli ham",
+      "rank": 20,
+      "verdict": "target at rank 20, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 554,
+      "top5": [
+        {
+          "name": "Ham",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 117
+        },
+        {
+          "name": "Ham croquette",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 273
+        },
+        {
+          "name": "Ham stroganoff",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 131
+        },
+        {
+          "name": "Ham, canned",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 167
+        },
+        {
+          "name": "Ham, ground",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 167
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:daily harvest smoothie cups",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "daily harvest smoothie cups",
+      "query": "daily harvest smoothie cups",
+      "rank": 19,
+      "verdict": "target at rank 19, not 1",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 834,
+      "top5": [
+        {
+          "name": "Candies, REESE'S Peanut Butter Cups",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 515
+        },
+        {
+          "name": "Beverages, V8 SPLASH Smoothies, Peach Mango",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 37
+        },
+        {
+          "name": "Beverages, V8 SPLASH Smoothies, Strawberry Banana",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 37
+        },
+        {
+          "name": "Beverages, V8 SPLASH Smoothies, Tropical Colada",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 41
+        },
+        {
+          "name": "Fruit juice smoothie, ODWALLA, ORIGINAL SUPERFOOD",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 50
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:explore cuisine edamame spaghetti",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "explore cuisine edamame spaghetti",
+      "query": "explore cuisine edamame spaghetti",
+      "rank": 19,
+      "verdict": "target at rank 19, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 2588,
+      "top5": [
+        {
+          "name": "DENNY'S, spaghetti and meatballs",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 170
+        },
+        {
+          "name": "Edamame, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 140
+        },
+        {
+          "name": "Edamame, frozen, prepared",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 121
+        },
+        {
+          "name": "Edamame, frozen, unprepared",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 109
+        },
+        {
+          "name": "Spaghetti sauce",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 51
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:hu chocolate bar",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "hu chocolate bar",
+      "query": "hu chocolate bar",
+      "rank": 2,
+      "verdict": "target at rank 2, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 495,
+      "top5": [
+        {
+          "name": "HU, CHOCOLATE BAR",
+          "brand": "B R Group Inc.",
+          "source": "usda",
+          "datasetTier": "branded",
+          "calories": 533
+        },
+        {
+          "name": "Chocolate bar",
+          "brand": "Hu chocolate",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 600
+        },
+        {
+          "name": "Hu, Crunchy Banana Chocolate Bar",
+          "brand": "Hu Products Llc",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 567
+        },
+        {
+          "name": "Hu, Crunchy Fig Chocolate Bar",
+          "brand": "Hu Products Llc",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 567
+        },
+        {
+          "name": "Candies, KRACKEL Chocolate Bar",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 523
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:kind dark chocolate nuts sea salt bar",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "kind dark chocolate nuts sea salt bar",
+      "query": "kind dark chocolate nuts sea salt bar",
+      "rank": 19,
+      "verdict": "target at rank 19, not 1",
+      "resultCount": 20,
+      "partial": false,
+      "canonicalCoverage": "ok",
+      "failedSources": [],
+      "latencyMs": 765,
+      "top5": [
+        {
+          "name": "Candies, SPECIAL DARK Chocolate Bar",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 556
+        },
+        {
+          "name": "Chocolate candy with nuts",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 545
+        },
+        {
+          "name": "Dark chocolate candy with nuts",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 560
+        },
+        {
+          "name": "Dark chocolate candy with nuts, other, NFS",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 560
+        },
+        {
+          "name": "Mixed nuts, with peanuts, salted",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 610
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:rudi's organic multigrain bread",
+      "kind": "branded",
+      "store": "wholefoods",
+      "label": "rudi's organic multigrain bread",
+      "query": "rudi's organic multigrain bread",
+      "rank": 7,
+      "verdict": "target at rank 7, not 1",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 874,
+      "top5": [
+        {
+          "name": "Bagels, multigrain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 241
+        },
+        {
+          "name": "Crackers, multigrain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 482
+        },
+        {
+          "name": "Cereals, QUAKER, QUAKER MultiGrain Oatmeal, dry",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 334
+        },
+        {
+          "name": "Snacks, rice cakes, brown rice, multigrain",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 387
+        },
+        {
+          "name": "Babyfood, Multigrain whole grain cereal, dry fortified",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 407
+        }
+      ]
+    },
+    {
+      "id": "wholefoods:scallions",
+      "kind": "generic",
+      "store": "wholefoods",
+      "label": "organic scallions",
+      "query": "scallions",
+      "rank": 2,
+      "verdict": "target at rank 2, not 1",
+      "resultCount": 20,
+      "partial": true,
+      "canonicalCoverage": "ok",
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "latencyMs": 836,
+      "top5": [
+        {
+          "name": "Onions, green, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 32
+        },
+        {
+          "name": "Green onion, (scallion), bulb and greens, root removed, raw",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": null
+        },
+        {
+          "name": "Onions, green, cooked",
+          "brand": null,
+          "source": "usda",
+          "datasetTier": "generic",
+          "calories": 63
+        },
+        {
+          "name": "Scallions",
+          "brand": "Wegmans",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 32
+        },
+        {
+          "name": "Impala paté",
+          "brand": "Spring Onion & Garlic",
+          "source": "openfoodfacts",
+          "datasetTier": "branded",
+          "calories": 247
+        }
+      ]
+    }
+  ]
+}
