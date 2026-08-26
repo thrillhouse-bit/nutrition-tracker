@@ -10,6 +10,7 @@
 import { parseQuery } from './normalize.js'
 import { rankResults } from './rank.js'
 import { queryUsdaGeneric, queryUsdaBranded, queryOFF } from './providers.js'
+import { comparablePer100 } from '../lookup.js'
 
 // Beyond the primary query, try at most this many synonym variants — bounds
 // per-search request count/latency. Bidirectional synonym GROUPS in
@@ -72,7 +73,12 @@ export async function searchFoods(rawQuery) {
 
   const merged = [...byKey.values()]
   const rankingVariants = [parsed.normalized, ...parsed.variants, ...(parsed.corrected ? [parsed.corrected] : [])]
-  const results = rankResults(merged, rankingVariants).slice(0, MAX_RESULTS)
+  const ranked = rankResults(merged, rankingVariants).slice(0, MAX_RESULTS)
+  // A purely comparative, display-only figure — see comparablePer100's own
+  // comment. Attached here (once, at the orchestration layer) rather than in
+  // the UI so there is one implementation, and null for any unit it can't
+  // safely convert (never fabricated).
+  const results = ranked.map((food) => ({ ...food, per100: comparablePer100(food) }))
 
   // "Degraded" = every provider call that was actually ATTEMPTED (i.e. not
   // skipped for being unconfigured) came back a genuine failure. An

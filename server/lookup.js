@@ -28,15 +28,40 @@ const n = (v) => {
 
 // ---- Open Food Facts -----------------------------------------------------
 
+// Recognized mass/volume units only — deliberately narrower than the old
+// "any number followed by any letters" match, which grabbed the leading
+// quantity word instead of the real weight whenever OFF's serving_size
+// string reads "1 serving (28 g)" or "1 can (354.9 ml)": the naive regex's
+// first number+letters run is "1"+"serving"/"1"+"can", not the parenthetical
+// weight — reproduced live against real OFF data (Pringles UPC
+// 038000138416 -> "28 serving"; Diet Coke UPC 049000028911 -> "354.9 can").
+const MASS_VOLUME_RE = /([\d.,]+)\s*(kg|mg|g|l|ml|fl\s?oz|oz|lb)\b/i
+
 function offServingBasis(product) {
   let size = n(product.serving_quantity)
   let unit = null
+
   const ss = (product.serving_size ?? '').toString()
-  const m = ss.match(/([\d.,]+)\s*([a-zA-Zµ]+)/)
-  if (m) {
-    if (size == null) size = n(m[1].replace(',', '.'))
-    unit = m[2].toLowerCase()
+  // The real weight/volume, when present, is almost always the qualifier in
+  // parentheses ("1 serving (28 g)") — check there first so a leading
+  // quantity word never shadows it.
+  const parenMatch = ss.match(/\(([^)]*)\)/)
+  const strict = (parenMatch && parenMatch[1].match(MASS_VOLUME_RE)) || ss.match(MASS_VOLUME_RE)
+  if (strict) {
+    if (size == null) size = n(strict[1].replace(',', '.'))
+    unit = strict[2].toLowerCase().replace(/\s+/, '')
+  } else {
+    // No recognized mass/volume unit anywhere in the string — fall back to
+    // the loose "first number + word" match rather than reporting nothing,
+    // even though the resulting unit (e.g. "serving", "cup", "piece") isn't
+    // one we can compare or convert.
+    const loose = ss.match(/([\d.,]+)\s*([a-zA-Zµ]+)/)
+    if (loose) {
+      if (size == null) size = n(loose[1].replace(',', '.'))
+      unit = loose[2].toLowerCase()
+    }
   }
+
   if (size != null && size > 0) return { size, unit: unit || 'g', per: 'serving' }
   return { size: 100, unit: 'g', per: '100g' }
 }
@@ -125,6 +150,12 @@ export function normalizeUSDA(food, requestedBarcode = null) {
       brand: (food.brandOwner || food.brandName || '').trim() || null,
       serving_size: n(food.servingSize) ?? 1,
       serving_unit: (food.servingSizeUnit || 'serving').toLowerCase(),
+      // Real-world serving description ("1 cup diced", "1 container") —
+      // display-only context alongside the gram/unit amount above, not a
+      // second source of truth: never persisted, never fed into any macro
+      // math, just shown next to the amount so a "170 g" result also reads
+      // as "1 container" where USDA's Branded data happens to say so.
+      household_serving: (food.householdServingFullText || '').trim() || null,
       calories: round(label.calories?.value, 1),
       protein_g: round(label.protein?.value, 2),
       carbs_g: round(label.carbohydrates?.value, 2),
@@ -218,4 +249,34 @@ function round(v, decimals = 2) {
   if (!Number.isFinite(x)) return null
   const p = 10 ** decimals
   return Math.round(x * p) / p
+}
+
+// Search results can carry wildly different native serving bases (30 g vs
+// 170 g vs "1 serving") with no cross-provider standardization (see
+// docs/food-search.md and docs/serving-sizes.md) — this doesn't standardize
+// anything, it computes an EXTRA, purely comparative figure so a person
+// browsing a result list can tell at a glance which candidate is calorie-
+// dense without doing the arithmetic themselves. Deliberately narrow: only
+// mass or volume units with a known, unambiguous conversion factor are
+// handled; a unit like "serving"/"cup"/"piece"/"can" has no reliable weight
+// equivalence, so this returns null rather than inventing one. "oz" alone
+// means the WEIGHT ounce (28.3495 g); "fl oz"/"floz" (normalized by the
+// parser above) means the fluid ounce (29.5735 mL) — conflating the two
+// would silently misstate every oz-labeled solid food's comparison figure.
+const MASS_TO_G = { mg: 0.001, g: 1, kg: 1000, oz: 28.3495, lb: 453.592 }
+const VOLUME_TO_ML = { ml: 1, l: 1000, floz: 29.5735 }
+
+export function comparablePer100(food) {
+  const { calories, serving_size, serving_unit } = food || {}
+  if (calories == null || !(serving_size > 0) || !serving_unit) return null
+  const unit = serving_unit.toLowerCase()
+  if (MASS_TO_G[unit] != null) {
+    const grams = serving_size * MASS_TO_G[unit]
+    return { basis: 'g', calories: round((calories / grams) * 100, 0) }
+  }
+  if (VOLUME_TO_ML[unit] != null) {
+    const ml = serving_size * VOLUME_TO_ML[unit]
+    return { basis: 'ml', calories: round((calories / ml) * 100, 0) }
+  }
+  return null
 }

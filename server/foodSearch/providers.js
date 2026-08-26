@@ -34,7 +34,7 @@ export function queryUsdaGeneric(query, pageSize = 10) {
   return timed('usda', 'generic', query, async () => {
     const { configured, foods, error } = await usdaSearch(query, { dataType: ['Foundation', 'SR Legacy', 'Survey (FNDDS)'], pageSize })
     if (!configured) return { ok: null, count: 0, items: [], skipped: 'not_configured' }
-    if (error) return { ok: false, count: 0, items: [] }
+    if (error) return { ok: false, count: 0, items: [], error }
     const items = foods.map((f) => ({ ...normalizeUSDA(f), datasetTier: 'generic' }))
     return { ok: true, count: items.length, items }
   })
@@ -44,7 +44,7 @@ export function queryUsdaBranded(query, pageSize = 8) {
   return timed('usda', 'branded', query, async () => {
     const { configured, foods, error } = await usdaSearch(query, { dataType: 'Branded', pageSize })
     if (!configured) return { ok: null, count: 0, items: [], skipped: 'not_configured' }
-    if (error) return { ok: false, count: 0, items: [] }
+    if (error) return { ok: false, count: 0, items: [], error }
     const items = foods.map((f) => ({ ...normalizeUSDA(f), datasetTier: 'branded' }))
     return { ok: true, count: items.length, items }
   })
@@ -52,8 +52,8 @@ export function queryUsdaBranded(query, pageSize = 8) {
 
 export function queryOFF(query, pageSize = 15) {
   return timed('openfoodfacts', 'branded', query, async () => {
-    const { ok, data } = await offTextSearch(query, { pageSize })
-    if (!ok) return { ok: false, count: 0, items: [] }
+    const { ok, status, data, error } = await offTextSearch(query, { pageSize })
+    if (!ok) return { ok: false, count: 0, items: [], error: error || `HTTP ${status}` }
     const products = Array.isArray(data?.products) ? data.products : []
     const items = products
       .map((p) => ({ ...normalizeOFF(p, p.code || null), datasetTier: 'branded' }))
