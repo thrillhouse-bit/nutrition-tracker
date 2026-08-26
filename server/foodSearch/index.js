@@ -31,7 +31,19 @@ import { normalizeText } from './normalize.js'
 // per-search request count/latency. Bidirectional synonym GROUPS in
 // normalize.js are short by design, but this caps it regardless.
 const MAX_VARIANTS = 2
-const MAX_RESULTS = 20
+// Doubled from 20 (26 Aug 2026, owner request) after the generic-food ranking
+// fix pushed several real store-house-brand targets past the old cap — e.g.
+// "sara lee white bread" sat at exactly rank 20, "oatly oat milk" at 21
+// (docs/food-search-eval.md). Free: each provider's own page size (10/10/8/15,
+// server/foodSearch/providers.js) bounds what's fetched, not this constant —
+// raising it only changes how much of the already-fetched, already-ranked
+// pool gets returned. The client's results panel already scrolls
+// (`h-[45vh] overflow-y-auto`, SearchFood.jsx), so a longer list doesn't
+// break layout. Does NOT recover every regression: some targets (e.g. "365
+// organic rolled oats" at rank 61 of 79) are far deeper than any reasonable
+// cap — that needs a real brand-signal fix, not a bigger number
+// (docs/food-search-eval.md, "Where it still falls short").
+const MAX_RESULTS = 40
 
 // Whole-search ceiling. Each provider call already has its own 6s transport
 // timeout (server/lookup.js), but Promise.all waits for the SLOWEST of up to
