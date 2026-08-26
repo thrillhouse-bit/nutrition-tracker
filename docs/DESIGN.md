@@ -245,3 +245,56 @@ pre-existing Today test files (`today-wearable-refresh`,
 `today-energy-balance`, `today-sleep-score`) needed zero changes — the
 redesign kept their exact copy/aria-labels/DOM shape where those tests
 depend on it.
+
+### Follow-up (26 Aug 2026) — two real gaps found on independent re-review
+
+After this redesign shipped, a fresh review against a more detailed state
+matrix (future day, historical-day tense, a genuine full-error state,
+keyboard-only nav) found two real, in-scope gaps and fixed both:
+
+1. **Historical-day workout tense.** `PUT /api/plan/workout` stores a
+   manual entry with `status:'planned'` permanently — nothing in this app
+   ever flips it to `'completed'` after the fact. Viewing a PAST day with
+   one would have read "Evening Run planned at 5:30 PM" forever, a live,
+   forward-looking claim about a day already over. `workoutClause` and the
+   Workout card's own status label now take an `isHistoricalDay` flag
+   (`!isToday(date)`) and say "logged" instead of "planned" once the
+   VIEWED day, not the workout's own status, is in the past — "completed"
+   is untouched, since that's true on any day. Not currently reachable
+   through this app's own UI (manual workouts only ever save for today), so
+   this is a data-integrity fix for a shape the store doesn't prevent,
+   verified by targeted component tests rather than a live reproduction.
+2. **A genuine "full error" state.** `App.jsx`'s `/api/today` fetch used
+   `data == null` to mean "still loading" — but a failed fetch ALSO leaves
+   `data` null forever, so a real, permanent failure rendered as an eternal
+   loading skeleton with no explanation and no retry. A new `dataError`
+   prop (cleared at the start of every fetch attempt, set only on a genuine
+   catch) is checked ONLY alongside `data == null` (so real data arriving
+   always wins over a stale error flag) to show an honest message and a
+   working "Try again" action, wired to the same `onChanged`/`refreshKey`
+   mechanism every other retry action in this app already uses. Verified
+   live (blocking `/api/today` in the browser shows the message; the retry
+   click is proven in a component test to call `onChanged`) — a full
+   click-through-to-recovery live-browser check hit a timing flake in the
+   verification script itself rather than a confirmed product defect;
+   disclosed rather than rounded up to "fully verified live."
+
+Investigated and NOT changed, with reasons:
+- **Future-day navigation** — the app has no future-day view anywhere
+  (`disabled={isToday(date)}` on the Next-day button, app-wide); nothing to
+  fix here.
+- **"No workout" vs. "workout data unavailable"** — every provider fetch on
+  the server swallows its own errors internally (`.catch(() => null)`),
+  so a genuine fetch failure is indistinguishable from "nothing scheduled"
+  anywhere in `/api/today`'s response, even after the Oura-observability
+  work (PR #90), whose `sync_error` lives on a separate per-provider status
+  read, not on the per-metric signal this screen consumes. Building this
+  distinction honestly needs a server-side change (threading observability
+  data into `/api/today`) — out of scope here; fabricating a UI-only guess
+  would be exactly the kind of invented state this codebase avoids.
+- **Focus restoration after dialogs/popovers** — this component has no
+  dialogs or popovers (the workout/plan links are plain navigation); the
+  requirement doesn't apply to this surface.
+- **Large-text / OS Dynamic-Type scaling** — inherited from the app's
+  existing px-based Tailwind sizing, unchanged by and predating this
+  redesign; not a regression to fix here.
