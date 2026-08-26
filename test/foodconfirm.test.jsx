@@ -80,3 +80,66 @@ describe('FoodConfirm: logging an existing food unedited', () => {
     expect(typeof submitted.food_id).toBe('number') // NOT '4' — that 400s against the server's strict z.number() schema
   })
 })
+
+// ---------------------------------------------------------------------------
+// Provenance, 26 Aug 2026. Reproduced in a real browser: typing "zucchini" and
+// picking result #1 rendered "SCANNED · USDA" and the barcode 812997020233 for
+// an item the user never scanned (docs/food-search-baseline.md RC-6). The
+// premise of the old rule — "a barcode on the record means it came in through
+// the scanner" — is false: every USDA Branded row carries gtinUpc and every
+// Open Food Facts row carries code, so most branded TEXT-SEARCH hits have one.
+// The fix is to carry how the food was obtained (search_method) rather than
+// infer it from a data field.
+// ---------------------------------------------------------------------------
+
+async function render(food) {
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await act(async () => { root.render(<FoodConfirm food={food} onLog={() => {}} onBack={() => {}} logging={false} />) })
+  return container.textContent
+}
+
+const SEARCH_HIT = {
+  id: '9', barcode: '812997020233', name: 'ZUCCHINI', brand: 'KMB, LLC',
+  serving_size: 100, serving_unit: 'g', calories: 21, protein_g: 1.1, carbs_g: 4.2, fat_g: 0,
+  source: 'usda', search_method: 'text_search',
+}
+const SCANNED_HIT = { ...SEARCH_HIT, search_method: 'barcode_scan' }
+
+describe('FoodConfirm: provenance tells the truth about how the food was found', () => {
+  it('a TEXT-SEARCH result is never labelled "Scanned"', async () => {
+    const text = await render(SEARCH_HIT)
+    expect(text).not.toMatch(/Scanned/i)
+    expect(text).toMatch(/Search/i) // it says what it actually was
+    expect(text).toMatch(/USDA/)
+  })
+
+  it('CONTROL: an actual barcode scan IS labelled "Scanned"', async () => {
+    const text = await render(SCANNED_HIT)
+    expect(text).toMatch(/Scanned/i)
+    expect(text).toMatch(/USDA/)
+  })
+
+  it('shows the barcode when the record genuinely carries one', async () => {
+    const text = await render(SEARCH_HIT)
+    expect(text).toMatch(/812997020233/)
+  })
+
+  it('shows NO barcode when the source supplied none (a generic USDA whole food)', async () => {
+    const text = await render({ ...SEARCH_HIT, barcode: null, name: 'Squash, summer, green, zucchini, includes skin, raw', brand: null })
+    expect(text).not.toMatch(/\d{8,14}/)
+  })
+
+  it('an untagged food (older cached record, no search_method) is not claimed as a scan just because it has a barcode', async () => {
+    const { search_method, ...untagged } = SEARCH_HIT
+    const text = await render(untagged)
+    expect(text).not.toMatch(/Scanned/i)
+  })
+
+  it('a manual entry still reads as Manual', async () => {
+    const text = await render({ name: 'Deli salad', source: 'manual', search_method: 'manual', calories: 120 })
+    expect(text).toMatch(/Manual/i)
+    expect(text).not.toMatch(/Scanned/i)
+  })
+})

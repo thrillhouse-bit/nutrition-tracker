@@ -155,3 +155,168 @@ describe('rankResults', () => {
     expect(rankResults([], ['zucchini'])).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// GOLDEN SET, 26 Aug 2026 — ranked against REAL provider rows (captured live,
+// pinned in test/fixtures/liveFoodRows.js, regenerable with
+// scripts/food-search-eval/capture-fixtures.mjs). Every one of these FAILED
+// against the pre-overhaul ranker on this exact data; the live top-1 it
+// produced is quoted in each case. A failure here is a blocking failure, not a
+// statistic — an exact generic query MUST return the canonical generic food.
+// ---------------------------------------------------------------------------
+import { LIVE_ROWS } from './fixtures/liveFoodRows.js'
+import { parseQuery } from '../server/foodSearch/normalize.js'
+
+// Merge the three real provider pools exactly as server/foodSearch/index.js
+// does, then rank with the same variant list it builds.
+function rankLive(query) {
+  const rows = LIVE_ROWS[query]
+  if (!rows) throw new Error(`no captured rows for "${query}"`)
+  const parsed = parseQuery(query)
+  const merged = [...rows.usdaGeneric, ...rows.usdaBranded, ...rows.off]
+  const variants = [parsed.normalized, ...parsed.variants, ...(parsed.corrected ? [parsed.corrected] : [])]
+  return rankResults(merged, variants)
+}
+
+const DISH_WORDS = /\b(bread|muffin|cake|cupcake|cookie|cookies|cracker|crackers|pie|pudding|split|nectar|juice|chips|dressing|sauce|soup|salad|sandwich|roll|syrup|candy|candies|snack|snacks|smoothie|dip|spread|oil|jerky|loaf|lunchmeat|gelato|ice cream|frozen yogurt|guacamole|sushi|fried|powder)\b/i
+
+// Each golden food: what rank 1 MUST look like, and what the pre-overhaul
+// ranker actually produced on this same captured data.
+const GOLDEN = [
+  { q: 'zucchini',       must: /zucchini/i,      base: /\braw\b/i,          was: 'ZUCCHINI (KMB, LLC) / Zucchini, pickled' },
+  { q: 'banana',         must: /banana/i,        base: /\braw\b/i,          was: 'Banana, baked (161 kcal)', notAlso: /pepper|melon/i },
+  { q: 'avocado',        must: /avocado/i,       base: /\braw\b/i,          was: 'Avocado dressing (427 kcal)' },
+  { q: 'chicken breast', must: /chicken.*breast|breast.*chicken/i, base: /\braw\b/i, was: 'CHICKEN BREAST (Giant Eagle, Inc.)' },
+  { q: 'oatmeal',        must: /oatmeal|oats/i,  base: /\b(nfs|plain)\b/i,  was: 'Oatmeal, multigrain' },
+  { q: 'salmon',         must: /salmon/i,        base: /\b(nfs|raw)\b/i,    was: 'SALMON (High Liner Foods)' },
+  { q: 'peanut butter',  must: /peanut butter/i, base: /^peanut butter\b/i, was: 'PEANUT BUTTER (Reginald\'s Homemade, 600 kcal)' },
+  { q: 'greek yogurt',   must: /greek/i,         base: /\bplain\b/i,        was: 'GREEK YOGURT (Ocean Spray, 467 kcal)' },
+]
+
+describe('rankResults: golden set — an exact generic query returns the canonical generic food at rank 1', () => {
+  for (const { q, must, base, was, notAlso } of GOLDEN) {
+    it(`"${q}" ranks a canonical generic food first (was: ${was})`, () => {
+      const top = rankLive(q)[0]
+      expect(top, `no results at all for "${q}"`).toBeTruthy()
+      expect(top.datasetTier, `top result for "${q}" is ${top.name} [${top.brand}]`).toBe('generic')
+      expect(top.name, `top result for "${q}" is ${top.name}`).toMatch(must)
+      expect(top.name, `top result for "${q}" is ${top.name} — not a base form`).toMatch(base)
+      expect(top.name, `top result for "${q}" is a prepared dish: ${top.name}`).not.toMatch(DISH_WORDS)
+      if (notAlso) expect(top.name).not.toMatch(notAlso)
+    })
+  }
+
+  it('the canonical answer is not merely present — it beats every branded row with the bare query as its whole name', () => {
+    // "ZUCCHINI" (KMB, LLC) is a real live row whose entire description IS the
+    // query, i.e. a tier-0 exact match. The canonical USDA row is
+    // "Squash, summer, green, zucchini, includes skin, raw" — a tier-3 match
+    // under the pre-overhaul ladder. This is production symptom #4.
+    const ranked = rankLive('zucchini')
+    const kmb = ranked.findIndex((f) => f.brand === 'KMB, LLC')
+    const canonical = ranked.findIndex((f) => f.datasetTier === 'generic' && /zucchini/i.test(f.name) && /\braw\b/i.test(f.name))
+    expect(canonical).toBeGreaterThanOrEqual(0)
+    expect(kmb).toBeGreaterThanOrEqual(0) // the branded row is still THERE, just not first
+    expect(canonical).toBeLessThan(kmb)
+  })
+
+  it('a derived product never outranks the base food it is derived from', () => {
+    const ranked = rankLive('banana')
+    const raw = ranked.findIndex((f) => /banana/i.test(f.name) && /\braw\b/i.test(f.name) && !/pepper|melon/i.test(f.name))
+    const chips = ranked.findIndex((f) => /banana chips/i.test(f.name))
+    const baked = ranked.findIndex((f) => /banana, baked/i.test(f.name))
+    expect(raw).toBeGreaterThanOrEqual(0)
+    expect(chips).toBeGreaterThan(raw)
+    expect(baked).toBeGreaterThan(raw)
+  })
+})
+
+describe('rankResults: branded intent is preserved, not sacrificed to the generic fix', () => {
+  it('"chobani vanilla" ranks a Chobani vanilla product first', () => {
+    // The control for the golden set above: a gate that only ever prefers
+    // generic foods is indistinguishable from a wall. This query names a
+    // brand, and the answer must respect that.
+    const top = rankLive('chobani vanilla')[0]
+    const hay = `${top.name} ${top.brand || ''}`.toLowerCase()
+    expect(hay, `top result was ${top.name} [${top.brand}]`).toMatch(/chobani/)
+    expect(hay).toMatch(/vanilla/)
+  })
+
+  it('"chobani vanilla" does NOT return a generic vanilla dessert first', () => {
+    const top = rankLive('chobani vanilla')[0]
+    expect(top.name).not.toMatch(/gelato|ice cream|wafer|pie|cookie/i)
+  })
+
+  it('an exactly-named branded product still wins when the query names it and no generic food matches', () => {
+    const ranked = rankResults([
+      { name: 'Squash, summer, green, zucchini, includes skin, raw', datasetTier: 'generic', calories: 17, protein_g: 1.2, carbs_g: 3.1, fat_g: 0.3 },
+      { name: 'Rao\'s Homemade Marinara Sauce', brand: "Rao's Homemade", datasetTier: 'branded', calories: 100, protein_g: 2, carbs_g: 8, fat_g: 7 },
+    ], ['raos marinara'])
+    expect(ranked[0].brand).toBe("Rao's Homemade")
+  })
+})
+
+describe('rankResults: qualifiers and brand words are handled deliberately', () => {
+  const pool = [
+    { name: 'Bananas, raw', datasetTier: 'generic', calories: 89, protein_g: 1.1, carbs_g: 22.8, fat_g: 0.3 },
+    { name: 'Bananas, dehydrated, or banana powder', datasetTier: 'generic', calories: 346, protein_g: 3.9, carbs_g: 88.3, fat_g: 1.8 },
+    { name: 'Banana, baked', datasetTier: 'generic', calories: 161, protein_g: 1.5, carbs_g: 40, fat_g: 0.4 },
+  ]
+
+  it('a bare query prefers the BASE form over any prepared form', () => {
+    expect(rankResults(pool, ['banana'])[0].name).toBe('Bananas, raw')
+  })
+
+  it('CONTROL: asking for the prepared form gets the prepared form', () => {
+    expect(rankResults(pool, ['banana baked'])[0].name).toBe('Banana, baked')
+  })
+
+  it('"organic" stays a qualifier, not an identity token (regression on the prior audit\'s fix)', () => {
+    const ranked = rankResults([
+      { name: 'Infant formula, organic, ready-to-feed', datasetTier: 'generic', calories: 66, protein_g: 1.4, carbs_g: 7.2, fat_g: 3.5 },
+      { name: 'Sauce, pasta, spaghetti/marinara, ready-to-serve', datasetTier: 'generic', calories: 60, protein_g: 1.6, carbs_g: 9.1, fat_g: 1.8 },
+    ], ['365 organic marinara'])
+    expect(ranked[0].name).toMatch(/marinara/)
+  })
+
+  it('a form qualifier in the query is honoured across the whole set (raw vs cooked)', () => {
+    const p = [
+      { name: 'Squash, summer, zucchini, includes skin, cooked, boiled, drained', datasetTier: 'generic', calories: 15, protein_g: 1.1, carbs_g: 2.7, fat_g: 0.2 },
+      { name: 'Squash, summer, green, zucchini, includes skin, raw', datasetTier: 'generic', calories: 17, protein_g: 1.2, carbs_g: 3.1, fat_g: 0.3 },
+    ]
+    expect(rankResults(p, ['zucchini cooked'])[0].name).toMatch(/cooked/)
+    expect(rankResults(p, ['zucchini raw'])[0].name).toMatch(/raw/)
+  })
+
+  it('a brand word in the query does not demote that brand (no blanket branded penalty when the brand was asked for)', () => {
+    const p = [
+      { name: 'Yogurt, Greek, plain, nonfat', datasetTier: 'generic', calories: 59, protein_g: 10.2, carbs_g: 3.6, fat_g: 0.4 },
+      { name: 'Vanilla Blended Greek Yogurt', brand: 'Chobani', datasetTier: 'branded', calories: 120, protein_g: 12, carbs_g: 16, fat_g: 0 },
+    ]
+    expect(rankResults(p, ['chobani vanilla'])[0].brand).toBe('Chobani')
+    // ...and the control: with no brand named, the generic wins again.
+    expect(rankResults(p, ['greek yogurt'])[0].datasetTier).toBe('generic')
+  })
+})
+
+describe('rankResults: the winner does not depend on the order providers happened to return rows', () => {
+  // RC-11. "Banana, baked" and "Banana, raw" both scored EXACTLY 2000.5 under
+  // the pre-overhaul scorer (tier 2, generic, 4/4 nutrients, 1 extra token),
+  // so the stable sort handed rank 1 to whichever USDA listed first. Measured
+  // live: "Banana, baked" (161 kcal) at rank 1, "Banana, raw" at rank 2.
+  const shuffles = [
+    (a) => a,
+    (a) => [...a].reverse(),
+    (a) => [a[a.length - 1], ...a.slice(0, -1)],
+  ]
+
+  for (const q of ['zucchini', 'banana', 'avocado', 'oatmeal', 'salmon', 'greek yogurt', 'chicken breast', 'peanut butter']) {
+    it(`"${q}" picks the same rank-1 result whatever order the pool arrives in`, () => {
+      const rows = LIVE_ROWS[q]
+      const parsed = parseQuery(q)
+      const variants = [parsed.normalized, ...parsed.variants, ...(parsed.corrected ? [parsed.corrected] : [])]
+      const pool = [...rows.usdaGeneric, ...rows.usdaBranded, ...rows.off]
+      const winners = new Set(shuffles.map((s) => rankResults(s(pool), variants)[0].name))
+      expect([...winners], `rank 1 changed with input order: ${[...winners].join(' vs ')}`).toHaveLength(1)
+    })
+  }
+})

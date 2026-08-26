@@ -90,3 +90,153 @@ describe('queryOFF', () => {
     expect(r.items).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Pipeline overhaul, 26 Aug 2026. Measured against the live USDA API, n=20
+// identical requests per dataType (docs/food-search-baseline.md RC-8):
+//
+//   Foundation,SR Legacy,Survey (FNDDS)  ->  10/20 HTTP 400   (the shipped call)
+//   Survey (FNDDS)          alone        ->  11/20 HTTP 400
+//   Foundation,SR Legacy                 ->   0/20
+//   Branded                              ->   0/20
+//
+// The 400 is a bare nginx rejection bound to the `Survey (FNDDS)` VALUE — four
+// different URL encodings of it all fail at the same rate — not to request
+// formation and not to general upstream flakiness. Because all three datasets
+// shared one HTTP call, Survey's ~50% failure took Foundation and SR Legacy
+// down with it, so half of all searches lost the entire canonical whole-food
+// candidate pool. Survey cannot simply be dropped: it is the only dataset with
+// a usable `Oatmeal, NFS`, `Avocado, raw` or bare `Peanut butter`.
+// ---------------------------------------------------------------------------
+const { queryUsdaFoundation, queryUsdaSurvey } = await import('../server/foodSearch/providers.js')
+
+describe('the generic USDA pass is split so one dataset\'s failure cannot take the others down', () => {
+  it('queryUsdaFoundation asks for Foundation + SR Legacy and NOTHING else', async () => {
+    usdaSearch.mockResolvedValue({ configured: true, foods: [] })
+    await queryUsdaFoundation('zucchini')
+    const [, opts] = usdaSearch.mock.calls.at(-1)
+    const dt = Array.isArray(opts.dataType) ? opts.dataType.join(',') : String(opts.dataType)
+    expect(dt).toMatch(/Foundation/)
+    expect(dt).toMatch(/SR Legacy/)
+    expect(dt).not.toMatch(/Survey/) // the ~50%-failing value must not ride along
+    expect(dt).not.toMatch(/Branded/)
+  })
+
+  it('queryUsdaSurvey asks for Survey (FNDDS) on its own', async () => {
+    usdaSearch.mockResolvedValue({ configured: true, foods: [] })
+    await queryUsdaSurvey('oatmeal')
+    const [, opts] = usdaSearch.mock.calls.at(-1)
+    const dt = Array.isArray(opts.dataType) ? opts.dataType.join(',') : String(opts.dataType)
+    expect(dt).toBe('Survey (FNDDS)')
+  })
+
+  it('both generic passes tag their items generic and report tier:"generic"', async () => {
+    usdaSearch.mockResolvedValue({ configured: true, foods: [{ description: 'Oatmeal, NFS', cal: 76 }] })
+    for (const fn of [queryUsdaFoundation, queryUsdaSurvey]) {
+      const r = await fn('oatmeal')
+      expect(r.items[0].datasetTier).toBe('generic')
+      expect(r.tier).toBe('generic')
+    }
+  })
+
+  it('a failing Survey call leaves the Foundation call\'s results untouched (the whole point of the split)', async () => {
+    usdaSearch.mockImplementation((q, { dataType }) => {
+      const dt = Array.isArray(dataType) ? dataType.join(',') : String(dataType)
+      if (dt.includes('Survey')) return Promise.resolve({ configured: true, foods: [], error: 'HTTP 400' })
+      return Promise.resolve({ configured: true, foods: [{ description: 'Bananas, raw', cal: 89 }] })
+    })
+    const [survey, foundation] = await Promise.all([queryUsdaSurvey('banana'), queryUsdaFoundation('banana')])
+    expect(survey.ok).toBe(false)
+    expect(foundation.ok).toBe(true)
+    expect(foundation.items).toHaveLength(1)
+  })
+})
+
+describe('a transient provider failure is retried, not accepted', () => {
+  it('retries the Survey pass and succeeds on a later attempt', async () => {
+    let attempt = 0
+    usdaSearch.mockImplementation(() => {
+      attempt++
+      return attempt < 3
+        ? Promise.resolve({ configured: true, foods: [], error: 'HTTP 400' })
+        : Promise.resolve({ configured: true, foods: [{ description: 'Oatmeal, NFS', cal: 76 }] })
+    })
+    const r = await queryUsdaSurvey('oatmeal')
+    expect(r.ok).toBe(true)
+    expect(r.count).toBe(1)
+    expect(r.attempts).toBeGreaterThan(1)
+  })
+
+  it('gives up honestly rather than retrying forever, and reports the LAST real error', async () => {
+    usdaSearch.mockResolvedValue({ configured: true, foods: [], error: 'HTTP 400' })
+    const r = await queryUsdaSurvey('oatmeal')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/400/)
+    expect(r.attempts).toBeLessThanOrEqual(4)
+  })
+
+  it('CONTROL: a call that succeeds first time is not retried', async () => {
+    usdaSearch.mockResolvedValue({ configured: true, foods: [{ description: 'Bananas, raw', cal: 89 }] })
+    const r = await queryUsdaFoundation('banana')
+    expect(r.attempts).toBe(1)
+    expect(usdaSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('an UNCONFIGURED key is not a transient failure and is never retried', async () => {
+    usdaSearch.mockResolvedValue({ configured: false, foods: [] })
+    const r = await queryUsdaSurvey('oatmeal')
+    expect(r.ok).toBeNull()
+    expect(r.skipped).toBe('not_configured')
+    expect(usdaSearch).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Open Food Facts. Measured over the same 20 queries, 700ms apart
+// (docs/food-search-baseline.md RC-10):
+//   world.openfoodfacts.org/cgi/search.pl   ->  9/20 HTTP 503, p50 549ms
+//   search.openfoodfacts.org/search         ->  0/20,          p50 166ms
+// The 503s are not paced away (a single call after 20s idle still 503'd) and a
+// burst of three — which one user search issues, primary + 2 synonym variants
+// — measured 3/3 503.
+// ---------------------------------------------------------------------------
+describe('queryOFF: the reliable endpoint first, the legacy one as a fallback', () => {
+  it('calls the search-a-licious endpoint first', async () => {
+    offTextSearch.mockResolvedValue({ ok: true, status: 200, data: { hits: [{ code: '1', product_name: 'Zucchini', cal: 17 }] } })
+    await queryOFF('zucchini')
+    const [, opts] = offTextSearch.mock.calls[0]
+    expect(opts.endpoint).toBe('search')
+  })
+
+  it('falls back to the legacy cgi endpoint when the primary one fails, and says which it used', async () => {
+    offTextSearch.mockImplementation((q, { endpoint }) =>
+      endpoint === 'search'
+        ? Promise.resolve({ ok: false, status: 503, data: null })
+        : Promise.resolve({ ok: true, status: 200, data: { products: [{ code: '2', product_name: 'Zucchini Bio', cal: 17 }] } }))
+    const r = await queryOFF('zucchini')
+    expect(r.ok).toBe(true)
+    expect(r.count).toBe(1)
+    expect(r.endpoint).toBe('cgi')
+  })
+
+  it('reports a genuine failure only when BOTH endpoints fail', async () => {
+    offTextSearch.mockResolvedValue({ ok: false, status: 503, data: null })
+    const r = await queryOFF('zucchini')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/503/)
+  })
+
+  it('CONTROL: the fallback is not used when the primary endpoint answers', async () => {
+    offTextSearch.mockResolvedValue({ ok: true, status: 200, data: { hits: [{ code: '1', product_name: 'Zucchini', cal: 17 }] } })
+    const r = await queryOFF('zucchini')
+    expect(r.endpoint).toBe('search')
+    expect(offTextSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the search-a-licious `hits` shape as well as the legacy `products` shape', async () => {
+    offTextSearch.mockResolvedValue({ ok: true, status: 200, data: { hits: [{ code: '3', product_name: 'Banana', cal: 89 }] } })
+    const r = await queryOFF('banana')
+    expect(r.count).toBe(1)
+    expect(r.items[0].name).toBe('Banana')
+  })
+})

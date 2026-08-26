@@ -9,12 +9,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../server/foodSearch/providers.js', () => ({
-  queryUsdaGeneric: vi.fn(),
+  queryUsdaFoundation: vi.fn(),
+  queryUsdaSurvey: vi.fn(),
   queryUsdaBranded: vi.fn(),
   queryOFF: vi.fn(),
 }))
 
-const { queryUsdaGeneric, queryUsdaBranded, queryOFF } = await import('../server/foodSearch/providers.js')
+const { queryUsdaFoundation, queryUsdaSurvey, queryUsdaBranded, queryOFF } = await import('../server/foodSearch/providers.js')
 const { searchFoods } = await import('../server/foodSearch/index.js')
 
 const ok = (source, dataset, query, items) => ({ source, dataset, query, ok: true, count: items.length, items, latencyMs: 5 })
@@ -52,33 +53,34 @@ const OFF_COKE = [
 // Default: nothing configured/found anywhere unless a test wires it up.
 beforeEach(() => {
   vi.clearAllMocks()
-  queryUsdaGeneric.mockImplementation((q) => Promise.resolve(empty('usda', 'generic', q)))
+  queryUsdaFoundation.mockImplementation((q) => Promise.resolve(empty('usda', 'foundation', q)))
+  queryUsdaSurvey.mockImplementation((q) => Promise.resolve(empty('usda', 'survey', q)))
   queryUsdaBranded.mockImplementation((q) => Promise.resolve(empty('usda', 'branded', q)))
   queryOFF.mockImplementation((q) => Promise.resolve(empty('openfoodfacts', 'branded', q)))
 })
 
 describe('required queries: an appropriate edible result leads (or is clearly present)', () => {
   it('zucchini -> "Zucchini, raw" (or equivalent) leads, real branded noise present but outranked', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('usda', 'generic', q, [USDA_GENERIC.zucchini]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('usda', 'generic', q, [USDA_GENERIC.zucchini]) : empty('usda', 'generic', q)))
     queryOFF.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('openfoodfacts', 'branded', q, OFF_ZUCCHINI_NOISE) : empty('openfoodfacts', 'branded', q)))
     const r = await searchFoods('zucchini')
     expect(r.results[0].name).toBe('Zucchini, raw')
   })
 
   it('courgette -> the zucchini-equivalent result is found via the synonym variant', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('usda', 'generic', q, [USDA_GENERIC.zucchini]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('usda', 'generic', q, [USDA_GENERIC.zucchini]) : empty('usda', 'generic', q)))
     const r = await searchFoods('courgette')
     expect(r.results[0].name).toBe('Zucchini, raw')
   })
 
   it('zucchini raw -> a raw zucchini result leads, with the qualifier agreement not required to find it at all', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(ok('usda', 'generic', q, [USDA_GENERIC.zucchini])))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(ok('usda', 'generic', q, [USDA_GENERIC.zucchini])))
     const r = await searchFoods('zucchini raw')
     expect(r.results[0].name).toBe('Zucchini, raw')
   })
 
   it('chicken breast -> a plain chicken breast leads', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'chicken breast' ? ok('usda', 'generic', q, [USDA_GENERIC['chicken breast']]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'chicken breast' ? ok('usda', 'generic', q, [USDA_GENERIC['chicken breast']]) : empty('usda', 'generic', q)))
     queryOFF.mockImplementation((q) => Promise.resolve(q === 'chicken breast' ? ok('openfoodfacts', 'branded', q, [
       { name: 'Chargrilled British Chicken Breast Slices', calories: 106, protein_g: 20, carbs_g: 1, fat_g: 2, source: 'openfoodfacts', datasetTier: 'branded' },
     ]) : empty('openfoodfacts', 'branded', q)))
@@ -87,7 +89,7 @@ describe('required queries: an appropriate edible result leads (or is clearly pr
   })
 
   it('banana -> a plain banana leads over "Banana chips"', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'banana' ? ok('usda', 'generic', q, [USDA_GENERIC.banana]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'banana' ? ok('usda', 'generic', q, [USDA_GENERIC.banana]) : empty('usda', 'generic', q)))
     queryOFF.mockImplementation((q) => Promise.resolve(q === 'banana' ? ok('openfoodfacts', 'branded', q, [
       { name: 'Banana chips', calories: 528, protein_g: 2, carbs_g: 60, fat_g: 30, source: 'openfoodfacts', datasetTier: 'branded' },
     ]) : empty('openfoodfacts', 'branded', q)))
@@ -96,7 +98,7 @@ describe('required queries: an appropriate edible result leads (or is clearly pr
   })
 
   it('oatmeal -> a plain oats/oatmeal result leads', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'oatmeal' ? ok('usda', 'generic', q, [USDA_GENERIC.oatmeal]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'oatmeal' ? ok('usda', 'generic', q, [USDA_GENERIC.oatmeal]) : empty('usda', 'generic', q)))
     queryOFF.mockImplementation((q) => Promise.resolve(q === 'oatmeal' ? ok('openfoodfacts', 'branded', q, [
       { name: 'Oatmeal Squares', calories: 220, protein_g: 4, carbs_g: 40, fat_g: 3, source: 'openfoodfacts', datasetTier: 'branded' },
     ]) : empty('openfoodfacts', 'branded', q)))
@@ -105,7 +107,7 @@ describe('required queries: an appropriate edible result leads (or is clearly pr
   })
 
   it('greek yogurt -> a plain Greek yogurt leads', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'greek yogurt' ? ok('usda', 'generic', q, [USDA_GENERIC['greek yogurt']]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'greek yogurt' ? ok('usda', 'generic', q, [USDA_GENERIC['greek yogurt']]) : empty('usda', 'generic', q)))
     const r = await searchFoods('greek yogurt')
     expect(r.results[0].name).toMatch(/greek/i)
   })
@@ -121,7 +123,7 @@ describe('required queries: an appropriate edible result leads (or is clearly pr
 
 describe('required queries: typo tolerance without letting irrelevant results outrank the correct food', () => {
   it('"zuccini" (typo) still surfaces zucchini, ranked above wholly unrelated noise', async () => {
-    queryUsdaGeneric.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('usda', 'generic', q, [USDA_GENERIC.zucchini]) : empty('usda', 'generic', q)))
+    queryUsdaFoundation.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('usda', 'generic', q, [USDA_GENERIC.zucchini]) : empty('usda', 'generic', q)))
     queryOFF.mockImplementation((q) => Promise.resolve(q === 'zucchini' ? ok('openfoodfacts', 'branded', q, OFF_ZUCCHINI_NOISE) : empty('openfoodfacts', 'branded', q)))
     const r = await searchFoods('zuccini')
     expect(r.usedCorrection).toBe(true)
