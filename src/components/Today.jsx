@@ -129,10 +129,20 @@ function workoutMeta(wo) {
 // signal (real detection sets 'completed'; manual entry and the demo
 // scenario set 'planned') — never inferred from the clock, which would
 // guess wrong for a synced workout logged after the fact.
-function workoutClause(wo) {
+//
+// `isHistoricalDay` guards the one case that isn't just cosmetic: a manually
+// entered workout (PUT /api/plan/workout) is stored with status:'planned'
+// permanently — nothing in this app ever flips it to 'completed' after the
+// fact — so viewing a PAST day with one would otherwise read "planned at
+// 5:30 PM" forever, a live, forward-looking claim about a day already over.
+// "Completed" stays "completed" on any day (that's a true statement
+// regardless of when it's read); only the not-yet-completed case needs a
+// past-safe word once the day itself is in the past.
+function workoutClause(wo, isHistoricalDay) {
   const subject = workoutSubject(wo)
   if (!subject) return null
-  const verb = wo.value.status === 'completed' ? 'completed' : 'planned'
+  const completed = wo.value.status === 'completed'
+  const verb = completed ? 'completed' : (isHistoricalDay ? 'logged' : 'planned')
   return `${subject} ${verb}${wo.value.time ? ` at ${wo.value.time}` : ''}.`
 }
 
@@ -143,10 +153,10 @@ function workoutClause(wo) {
 // wording from the Recommendation card beneath it (which is about calories/
 // macros) and from the raw numerals the Daily Signals cards themselves show:
 // this is a plain-language translation, not a restatement.
-function daySentenceParts({ rd, sl, wo, hm }) {
+function daySentenceParts({ rd, sl, wo, hm, isHistoricalDay }) {
   const parts = []
   if (rd && rd.value != null && !rd.demo) parts.push(`${readinessBand(rd.value)}.`)
-  const wc = wo && !wo.demo ? workoutClause(wo) : null
+  const wc = wo && !wo.demo ? workoutClause(wo, isHistoricalDay) : null
   if (wc) parts.push(wc)
   if (parts.length === 0 && sl && sl.value != null && !sl.demo && hm) {
     parts.push(`Slept ${hm.h}h ${hm.m}m last night.`)
@@ -318,8 +328,13 @@ function useDaySwipe(onPrevDay, onNextDay, canGoNext) {
   }
 }
 
-export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onGoToPlan, onGoToConnections, onChanged }) {
+export default function Today({ date, data, dataError, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onGoToPlan, onGoToConnections, onChanged }) {
   const swipeHandlers = useDaySwipe(onPrevDay, onNextDay, !isToday(date))
+  // A workout's own 'planned'/'completed' status never changes itself once a
+  // day is over (see workoutClause's own comment) — this is what lets any
+  // rendering of it stay honest about tense once the VIEWED day, not the
+  // workout's status, has moved into the past.
+  const isHistoricalDay = !isToday(date)
   const [ouraBusy, setOuraBusy] = useState(false)
   const [ouraError, setOuraError] = useState('')
   const totals = useMemo(() => sumEntries(entries), [entries])
@@ -327,7 +342,13 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   // only replaces it once /api/today resolves) — distinct from a resolved
   // composite that genuinely has no signals/recommendation. Only the header
   // and Daily Signals below read this; the log list already has its own
-  // `loading` (entries) handling further down, unchanged.
+  // `loading` (entries) handling further down, unchanged. Deliberately does
+  // NOT distinguish loading from `dataError` here — a plain skeleton is a
+  // safe placeholder either way for the Daily Signals cards below; only the
+  // status line and day-sentence slot (which is where a user actually looks
+  // to understand "why isn't anything here") separately check `dataError` to
+  // give an honest message and a real retry action instead of a skeleton
+  // that would otherwise wait forever.
   const todayLoading = data == null
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
@@ -423,7 +444,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
     } else {
       syncText = `${liveProviders.join(' + ')} · SYNCED${syncTime ? ` ${syncTime}` : ''}`
     }
-    daySentence = daySentenceParts({ rd, sl, wo, hm })
+    daySentence = daySentenceParts({ rd, sl, wo, hm, isHistoricalDay })
   } else if (present.length > 0) {
     syncText = 'SAMPLE SIGNALS · NOT A LIVE SYNC'
     altMessage = 'Showing sample recovery data — connect a wearable for your own.'
@@ -509,8 +530,8 @@ export default function Today({ date, data, entries, loading, online, syncing, p
         </div>
 
         <div className="mt-1 flex items-center gap-2">
-          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${syncLive && !staleSignal ? 'bg-cobalt' : syncLive ? 'border border-alert bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
-          <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{todayLoading ? 'LOADING…' : syncText}</span>
+          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive ? 'border border-alert bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
+          <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{dataError && todayLoading ? 'COULD NOT LOAD TODAY' : todayLoading ? 'LOADING…' : syncText}</span>
         </div>
 
         {/* "Manage connection" — a real, always-available next step for a
@@ -569,7 +590,19 @@ export default function Today({ date, data, entries, loading, online, syncing, p
             line. Loading keeps the same block height (a muted bar, no text)
             so nothing shifts once /api/today resolves. */}
         <div className="mt-2.5">
-          {todayLoading ? (
+          {dataError && todayLoading ? (
+            // `&& todayLoading` (i.e. data == null) is defense-in-depth, not
+            // a reachable app state today: App.jsx always clears dataError
+            // alongside a successful setTodayData, so the two shouldn't be
+            // able to disagree — but real data arriving must always win over
+            // a stale error flag if they ever do.
+            <>
+              <p className="text-[14.5px] leading-snug text-ink">Couldn't load today's data. Your connection or the server may be having trouble.</p>
+              {onChanged && (
+                <TextButton chevron onClick={onChanged} className="-ml-2 text-[13px]">Try again</TextButton>
+              )}
+            </>
+          ) : todayLoading ? (
             <div className="h-[18px] w-3/4 bg-fill" />
           ) : syncLive ? (
             daySentence.length > 0 && <p className="text-[14.5px] leading-snug text-ink">{daySentence.join(' ')}</p>
@@ -684,7 +717,7 @@ export default function Today({ date, data, entries, loading, online, syncing, p
                     {woLabel && (
                       <div className="mt-1 text-[10px] font-medium leading-snug text-muted tnum">
                         <div className="truncate">
-                          {wo.value.status === 'completed' ? 'Completed' : 'Planned'}{wo.value.time ? ` · ${wo.value.time}` : ''}
+                          {wo.value.status === 'completed' ? 'Completed' : (isHistoricalDay ? 'Logged' : 'Planned')}{wo.value.time ? ` · ${wo.value.time}` : ''}
                         </div>
                         {workoutMeta(wo) && <div className="truncate">{workoutMeta(wo)}</div>}
                         {/* Honest "can't estimate" note — the same shape as
