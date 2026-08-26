@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode } from './lookup.js'
 import { searchFoods } from './foodSearch/index.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
-import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema } from './validation.js'
+import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
 import {
   ouraConfigured,
   getToken as ouraToken,
@@ -53,6 +53,8 @@ import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
+import { computeProgress } from './afp/engine.js'
+import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -954,6 +956,86 @@ requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
   res.status(ok ? 204 : 404).end()
 }))
 
+// --- Adaptive Fuel Plan ----------------------------------------------------
+// A separate, additive feature (server/afp/engine.js + server/afp/plan.js) —
+// its own profile, its own planned-workout list, its own daily-plan
+// snapshots. It never reads or writes daily_targets/daily_plans/profile
+// above, so nothing here can regress the existing Plan tab.
+requireAuthRouter.get('/afp/profile', asyncH(async (req, res) => {
+  res.json({ profile: await store.getAfpProfile(req.userId) })
+}))
+
+requireAuthRouter.put('/afp/profile', validateBody(AfpProfilePatchSchema), asyncH(async (req, res) => {
+  const profile = await store.setAfpProfile(req.userId, req.body)
+  res.json({ profile })
+}))
+
+// Planned training sessions. `from`/`to` default to a two-week-ahead window
+// (today .. today+13) — enough to plan a race taper without an unbounded
+// query; the client can still ask for any explicit range.
+requireAuthRouter.get('/afp/workouts', asyncH(async (req, res) => {
+  const { from, to } = req.query
+  const fromYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(from)) ? from : localYmd()
+  const toYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(to)) ? to : addDaysToYmd(fromYmd, 13)
+  res.json({ workouts: await store.listPlannedWorkouts(req.userId, fromYmd, toYmd) })
+}))
+
+// Upserts: an `id` in the body updates that session (only if it belongs to
+// this user — store.savePlannedWorkout returns null otherwise, reported as
+// 404 rather than silently succeeding on nothing); no `id` creates a new one.
+requireAuthRouter.put('/afp/workouts', validateBody(PlannedWorkoutSchema), asyncH(async (req, res) => {
+  const saved = await store.savePlannedWorkout(req.userId, req.body)
+  if (!saved) return res.status(404).json({ error: 'Session not found.' })
+  res.json({ workout: saved })
+}))
+
+requireAuthRouter.delete('/afp/workouts/:id', asyncH(async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id.' })
+  const ok = await store.deletePlannedWorkout(req.userId, id)
+  res.status(ok ? 204 : 404).end()
+}))
+
+// The computed (or frozen historical) plan for one day, plus fresh progress
+// against today's actual logged intake — progress is never frozen, even for
+// a past day whose TARGETS are (see docs/adaptive-fuel-plan.md).
+requireAuthRouter.get('/afp/plan', asyncH(async (req, res) => {
+  const today = localYmd()
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : today
+  const { row, recomputed } = await getOrComputeAfpPlan(store, req.userId, date, { today })
+  const { from, to } = dayRange(date)
+  const entries = await store.listEntries(req.userId, { from, to })
+  const intake = sumIntake(entries)
+  const progress = row.plan?.ok ? computeProgress(row.plan.targets, intake) : null
+  res.json({ ...row, today, recomputed, frozen: !recomputed && date !== today, progress })
+}))
+
+// The one explicit reconciliation escape hatch: force a past day's frozen
+// plan to recompute from current data (e.g. correcting a data-entry mistake).
+// Never called automatically — see getOrComputeAfpPlan's own freeze rule.
+requireAuthRouter.post('/afp/plan/:date/recompute', asyncH(async (req, res) => {
+  const date = req.params.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' })
+  const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd(), forceRecompute: true })
+  res.json({ plan: row })
+}))
+
+// A day-specific correction, layered on top of the computed plan — never
+// touches afp_profile's defaults. An empty body clears any override back to
+// the engine's own computed numbers. Ensures a plan exists for the day first
+// (the very first view of an old day has nothing to attach an override to
+// yet), then recomputes so the override is immediately reflected in
+// `plan.targets` rather than only sitting in the `overrides` field unapplied.
+requireAuthRouter.patch('/afp/plan/:date/overrides', validateBody(AfpOverridesSchema), asyncH(async (req, res) => {
+  const date = req.params.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' })
+  const hasKeys = Object.keys(req.body || {}).length > 0
+  await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd() })
+  await store.setAfpDailyPlanOverrides(req.userId, date, hasKeys ? req.body : null)
+  const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd(), forceRecompute: true })
+  res.json({ plan: row })
+}))
+
 // Body weight log — one entry per day. `day` defaults to today (same
 // pattern as /oura/summary's date param); logging twice for the same day
 // overwrites rather than adding a second reading (store.saveWeightEntry is
@@ -1143,7 +1225,17 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const start = localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1))
   const end = localMidnightAtOffset(now, tzOffsetMinutes, 1)
   const entries = await store.listEntries(req.userId, { from: start.toISOString(), to: end.toISOString() })
-  const targets = await store.getLatestTargets(req.userId)
+  // hasTargets distinguishes real, chosen numbers from the silent
+  // DEFAULT_TARGETS fallback getLatestTargets always returns otherwise (see
+  // server/db.js and the GET /targets route above, which exists for exactly
+  // this reason) — the signal the two NEW "real target" displays below
+  // (protein-consistency chart, Energy chart's target line) need so neither
+  // one draws a reference line against a number the user never actually set.
+  // onTargetDays below intentionally does NOT gate on this — it's an
+  // existing computation this change must not alter — but a caller that
+  // reads `targets.hasTargets` can still tell whether that count means
+  // anything.
+  const [targets, hasTargets] = await Promise.all([store.getLatestTargets(req.userId), store.hasTargets(req.userId)])
 
   const byDay = new Map()
   for (const e of entries) {
@@ -1157,10 +1249,35 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const tracked = days.length
   const avg = (k) => (tracked ? Math.round(days.reduce((a, d) => a + d.totals[k], 0) / tracked) : null)
   const calTarget = Number(targets?.calories) || 0
-  const onTargetDays = calTarget ? days.filter((d) => Math.abs(d.totals.calories - calTarget) <= calTarget * 0.1).length : 0
+  const proteinTarget = Number(targets?.protein_g) || 0
+
+  // Within ±10% of the calorie target — the ONE place this tolerance check
+  // exists. onTargetDays (the existing summary count) and onTargetDetail (the
+  // new per-day detail the Insights dot-row renders) both derive from calling
+  // this, rather than each re-deriving the ±10% arithmetic and risking the
+  // two-implementations-drift this codebase's history keeps warning about.
+  const isOnTarget = (totals) => calTarget > 0 && Math.abs(totals.calories - calTarget) <= calTarget * 0.1
+  const onTargetDays = days.filter((d) => isOnTarget(d.totals)).length
 
   const windowStartYmd = ymdAtOffset(start, tzOffsetMinutes)
   const windowEndYmd = ymdAtOffset(new Date(end - 1), tzOffsetMinutes)
+  // Every calendar day in the window, not just the ones with a log entry
+  // (`days` above is sparse) — the dot-row needs a real no-log/on-target/
+  // off-target verdict for EVERY day it draws a cell for, not only the days
+  // that happen to already be in `days`. Same offset-aware day math as
+  // start/end/windowStartYmd above, just walked one day at a time.
+  const windowDays = Array.from({ length: window }, (_, i) =>
+    ymdAtOffset(localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1) + i), tzOffsetMinutes))
+  const onTargetDetail = windowDays.map((date) => {
+    const totals = byDay.get(date)
+    // null (not false) whenever there's nothing to judge: no log that day,
+    // OR no positive calorie target to be within ±10% of. `false` is
+    // reserved for an actual logged-and-missed day — never used as a stand-in
+    // for "no target exists," which would misreport a day as "off-target"
+    // that was never compared against anything.
+    const onTarget = totals && calTarget > 0 ? isOnTarget(totals) : null
+    return { date, tracked: !!totals, onTarget }
+  })
   const ouraReadiness = (await store.listOuraHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
 
   // The trend must be computed over ALL history up to the window's end, not
@@ -1191,7 +1308,22 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     window,
     insufficientData: tracked < 3,
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
+    // Real target values, plus whether they're real: getLatestTargets always
+    // returns SOMETHING (DEFAULT_TARGETS when nothing was ever chosen), so
+    // the numbers alone can't tell a caller a target was actually set —
+    // hasTargets is what onboarding itself gates on (src/App.jsx) and is the
+    // only honest signal for that. calories/protein_g ride here unconditionally
+    // (same numbers onTargetDays above already uses) so a caller can still
+    // show what the app WOULD compare against; hasTargets is what decides
+    // whether it's honest to label that comparison "your target" out loud.
+    targets: { calories: calTarget, protein_g: proteinTarget, hasTargets },
     days,
+    // Per-day on-target detail for the FULL window (see isOnTarget above) —
+    // the Insights dot-row's source of truth. `onTarget` is null for a day
+    // with no log entry at all (nothing to judge) and also null for every
+    // day when calTarget is 0 (no calorie target to be within ±10% of) —
+    // both are "nothing to show," never rendered as a false "missed it."
+    onTargetDetail,
     ouraReadiness: ouraReadinessOut,
     weight,
     workoutLoad,
