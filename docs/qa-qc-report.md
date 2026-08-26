@@ -926,3 +926,74 @@ search commits), for at least two consecutive check-ins now (this pass and
 the last). Noted, not escalated to a new Info item yet: deploy cadence is
 the owner's call and every previous lag has resolved within a pass or two;
 worth a closer look only if it's still stuck here next check-in.
+
+## 2026-08-26 — Check-in pass (recurring, 16:36 UTC)
+
+Larger gap this time: ~30 commits, PRs #83–#93. `npm test`: 767/767 (up
+from 616 — 151 new tests). `npm run build`: clean. Given the volume, this
+pass triaged by commit message + targeted live verification of the
+highest-risk change (the Today redesign) rather than a full line-by-line
+review of every diff — consistent with this report's approach on every
+large batch so far.
+
+**Most significant: a genuine demo/real-data precedence bug, now fixed.**
+`composeSignals()` merged per-metric signals in a single provider-
+preference pass with no distinction between a provider's real data and
+its canned demo fallback — a provider that was simply never connected
+(running in default demo mode) could pre-empt a genuinely connected,
+later-ordered provider's *real* data purely by sorting first in
+`PREFERENCE`. Confirmed against production data: Garmin
+"not-configured", Oura "oauth" (i.e., actually connected), yet Workouts
+showed Garmin's fixed demo scenario instead of the user's real Oura
+workout. This is exactly the failure mode this report's own earlier
+passes flagged as unacceptable ("demo must never look like a live
+connection") — a real, previously-undetected instance of it. Fixed with
+a proper two-pass merge (real data first in preference order, demo only
+as a last resort); a fresh account with nothing connected is unaffected.
+Well-tested (dedicated precedence describe block, an end-to-end HTTP
+test against a real Express app).
+
+**Today header + Daily Signals redesign** (PRs #92, #93) — a substantial,
+carefully-scoped visual/structural redesign: a compact day-context header
+replacing an oversized masthead, a new circular readiness Dial, one
+hairline-divided Daily Signals row instead of three equal boxes, and a
+synthesized one-sentence day summary that's honest about absent/demo/stale
+data rather than ever fabricating one. Notably self-correcting: the
+following commit (PR #93) is the same effort's own re-review of its just-
+merged PR #92, catching and fixing two real gaps (a historical day's
+workout still read "planned" instead of "logged"; a genuine `/api/today`
+fetch failure was indistinguishable from "still loading," so an outage
+rendered a permanent skeleton instead of an error) — the kind of adversarial
+self-check this report's own practice has consistently valued. Live-
+verified: fresh signup, redesigned Today renders cleanly (Dial, honest
+"Showing sample recovery data" disclosure, correctly-sized intake numeral
+per this report's own earlier PR #43 fix, Energy Balance card, empty
+Today's-log state) — zero console/network errors.
+
+**Connections' 5-state distinction** (PR #90, Oura sync observability) —
+adds a proper `syncing`/`stale`/`demo`/`not-configured`/`disconnected`/
+`error` state model with a visible legend, "shape + word, never color
+alone" (explicit colorblind-safe design). Live-verified: this dev
+environment (no Oura/Garmin client credentials configured) correctly shows
+"NOT AVAILABLE HERE" for both rather than a misleading non-functional
+Connect button.
+
+**Also landed, reviewed at commit-message level only (small, well-tested,
+no red flags):** a no-code Apple Health ingest path via the Health Auto
+Export app (new route, shares the existing ingest token + persistence
+logic, honestly reports unmapped fields instead of dropping them); manual-
+workout calorie estimation using the user's real logged weight instead of
+a fabricated one; Plan's target-energy display between baseline and
+today's adjusted values; and a documentation-only keystroke-efficiency
+audit of food search (200 real queries against live USDA/OFF — 84.5%
+usable within 20 typed characters, branded items the identified weak spot,
+no code changes).
+
+**Live site**: `GET /api/version` reports `9f0dd1a` (PR #90) — 4 commits
+behind current `main`, but has moved forward since last check-in's stuck
+`c8fc50c`, so treated as normal deploy cadence rather than a stall.
+
+No fixes made directly by this pass. All remaining "Reported"/"Deferred"
+items unchanged — nothing since the last check-in touches the Apple-token
+bearer-credential item, provider-abstraction claim, forgot-password,
+server logging, `SESSION_SECRET`, or either Garmin item.
