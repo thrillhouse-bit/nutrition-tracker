@@ -10,6 +10,15 @@ import { VitePWA } from 'vite-plugin-pwa'
 const API_TARGET = process.env.API_TARGET || 'http://localhost:3001'
 
 export default defineConfig({
+  server: {
+    // Evaluation runs (scripts/food-search-eval/) append to results.jsonl
+    // continuously and the browser-driven probes navigate the dev server at
+    // the same time — without this, every append triggered an HMR page reload
+    // and Playwright's `networkidle` never settled, so the measurement
+    // harness broke the thing it was measuring. Nothing under scripts/ or
+    // docs/ is part of the client bundle.
+    watch: { ignored: ['**/scripts/**', '**/docs/**'] },
+  },
   plugins: [
     react(),
     tailwindcss(),

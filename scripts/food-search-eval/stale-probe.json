@@ -1,0 +1,16 @@
+{
+  "measuredAt": "2026-08-26T15:48:00.175Z",
+  "querySwitches": 80,
+  "searchRequests": 43,
+  "domSamples": 5834,
+  "samplesWithRowsRendered": 2730,
+  "staleCommits": 0,
+  "distinctStaleCommits": [],
+  "finalInputValue": "chicken breast",
+  "finalRows": [
+    "RESULT-FOR[chicken breast]"
+  ],
+  "finalStateMatchesFinalQuery": true,
+  "probeCouldHaveSeenAViolation": true,
+  "examples": []
+}

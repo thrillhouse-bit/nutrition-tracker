@@ -232,31 +232,78 @@ export function brandCoversQuery(candidate, variants) {
   return variants.some((v) => v.baseTokens.length && v.baseTokens.every((t) => brandStems.has(stem(t))))
 }
 
-// Query-level intent, derived from the candidate set rather than from a
-// hardcoded brand list: what share of the branded candidates are branded with
-// the words the user typed?
+// Query-level intent, derived from the candidate pool rather than from a
+// hardcoded brand list: is the query itself a BRAND NAME?
 //
-// This exists because of a real regression found while fixing the generic case.
+// This exists because of a regression found while fixing the generic case.
 // USDA files branded drinks under generic-looking descriptions —
 // "Beverages, COCA-COLA, POWERADE, lemon-lime flavored, ready-to-drink" is a
 // GENERIC-tier row whose facet "COCA-COLA" exactly covers the query "coca
 // cola", so the facet-identity rule promoted a lemon-lime Powerade to rank 1
 // for a Coke search (measured live 26 Aug 2026). Textually that row is
 // indistinguishable from "Squash, summer, green, zucchini, includes skin, raw"
-// matching "zucchini"; what separates them is the rest of the pool. When
-// "coca cola" is searched, nearly every branded candidate carries that brand.
-// When "banana" is searched, almost none do (one OFF row branded "Fresh
-// Banana" out of a dozen). So the ratio is the signal, and it needs no list of
-// brand names to maintain.
+// matching "zucchini"; what separates them is the rest of the pool.
+//
+// BOTH thresholds are measured, not chosen. Distinct brands whose brand field
+// covers the WHOLE query, and that share of the branded candidates, over live
+// searches on 26 Aug 2026:
+//
+//   coca cola                                    4 brands   ratio 0.84
+//   chicken breast                               2          0.15
+//   banana / avocado / salmon / peanut butter    1          0.10-0.25
+//   zucchini / oatmeal / greek yogurt / chobani  0          0.00
+//
+// The three-brand floor alongside the ratio is what stops a single Open Food
+// Facts row branded "Fresh Banana" from turning "banana" into a brand query: a
+// one-row pool trivially scores ratio 1.00. A control test pins exactly that,
+// and it caught this rule when the floor was missing.
 const BRANDED_QUERY_RATIO = 0.5
+const BRANDED_QUERY_MIN_BRANDS = 3
 
-export function brandedQueryRatio(candidates, variants) {
+export function brandedQuerySignal(candidates, variants) {
   const branded = candidates.filter((c) => c.datasetTier === 'branded')
-  if (!branded.length) return 0
-  return branded.filter((c) => brandCoversQuery(c, variants)).length / branded.length
+  if (!branded.length) return { ratio: 0, distinctBrands: 0, isBrandQuery: false }
+  const covering = branded.filter((c) => brandCoversQuery(c, variants))
+  const distinctBrands = new Set(covering.map((c) => normalizeText(c.brand))).size
+  const ratio = covering.length / branded.length
+  return { ratio, distinctBrands, isBrandQuery: ratio >= BRANDED_QUERY_RATIO && distinctBrands >= BRANDED_QUERY_MIN_BRANDS }
 }
 
-export function scoreCandidate(candidate, queryVariants, { brandedQuery = false } = {}) {
+// Query words that exist ONLY as a brand in this result set — no canonical
+// whole food in the pool has them in its name. "califia", "justins" and
+// "ezekiel" are brand-only; "banana", "almond" and "butter" are not.
+//
+// Added after the 200-item corpus run showed the mirror image of the defect the
+// golden set covers: "justins almond butter" put the generic "Almond butter,
+// creamy" at rank 1 and Justin's own jar at rank 11, and "califia farms almond
+// milk" did the same — the branded row matched MORE of the query (3 tokens of
+// 3, tier 3) yet lost to a generic row matching fewer (tier 4) once the flat
+// branded penalty was added. A brand-only word in the query is proof that the
+// generic answer is not the thing that was asked for, and it needs no list.
+export function brandOnlyQueryTokens(candidates, variants) {
+  const genericStems = new Set()
+  for (const c of candidates) {
+    if (c.datasetTier === 'branded') continue
+    for (const t of tokenize(normalizeText(c.name || ''))) genericStems.add(stem(t))
+  }
+  const queryStems = new Set(variants.flatMap((v) => v.baseTokens).map(stem))
+  const out = new Set()
+  for (const c of candidates) {
+    if (!c.brand) continue
+    for (const t of tokenize(normalizeText(c.brand))) {
+      const st = stem(t)
+      if (queryStems.has(st) && !genericStems.has(st)) out.add(st)
+    }
+  }
+  return out
+}
+
+const brandCarriesAny = (candidate, stems) => {
+  if (!candidate.brand || !stems.size) return false
+  return tokenize(normalizeText(candidate.brand)).some((t) => stems.has(stem(t)))
+}
+
+export function scoreCandidate(candidate, queryVariants, { isBrandQuery = false, brandOnlyStems = new Set() } = {}) {
   const variants = queryVariants.map(parseVariant)
   const nameMatch = bestTierAcrossVariants(candidate.name, variants)
   const { nameTokens, nameFacets } = nameMatch
@@ -276,9 +323,14 @@ export function scoreCandidate(candidate, queryVariants, { brandedQuery = false 
       tier = withBrand.tier
       variant = withBrand.variant
       brandedPenalty = BRAND_MATCH_PENALTY
-    } else if (brandedQuery && brandCoversQuery(candidate, variants)) {
+    } else if (isBrandQuery && brandCoversQuery(candidate, variants)) {
       // The query names this brand and the pool agrees the query IS a brand —
       // being branded is the answer, not a fault to be penalized.
+      brandedPenalty = BRAND_MATCH_PENALTY
+    } else if (brandCarriesAny(candidate, brandOnlyStems)) {
+      // The query carries a word that exists only as a brand in this pool, and
+      // this candidate is that brand. Penalizing it for being branded would be
+      // penalizing it for being the thing that was asked for.
       brandedPenalty = BRAND_MATCH_PENALTY
     }
   }
@@ -336,11 +388,13 @@ export function scoreCandidate(candidate, queryVariants, { brandedQuery = false 
 // the test suite asserts by shuffling the pool.
 export function rankResults(results, queryVariants) {
   const variants = queryVariants.length ? queryVariants : ['']
-  // Computed once over the whole pool, not per candidate: "is this query a
-  // brand name?" is a property of the query and its answers together.
-  const brandedQuery = brandedQueryRatio(results, variants.map(parseVariant)) >= BRANDED_QUERY_RATIO
+  // Both signals are properties of the QUERY AND ITS ANSWERS together, so they
+  // are computed once over the whole pool rather than per candidate.
+  const parsed = variants.map(parseVariant)
+  const { isBrandQuery } = brandedQuerySignal(results, parsed)
+  const brandOnlyStems = brandOnlyQueryTokens(results, parsed)
   return [...results]
-    .map((r) => ({ r, s: scoreCandidate(r, variants, { brandedQuery }) }))
+    .map((r) => ({ r, s: scoreCandidate(r, variants, { isBrandQuery, brandOnlyStems }) }))
     .sort((a, b) => a.s - b.s || String(a.r.name || '').localeCompare(String(b.r.name || '')))
     .map((x) => x.r)
 }

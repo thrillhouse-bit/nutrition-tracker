@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bestTierAcrossVariants, scoreCandidate, rankResults } from '../server/foodSearch/rank.js'
+import { bestTierAcrossVariants, scoreCandidate, rankResults, brandOnlyQueryTokens, brandedQuerySignal } from '../server/foodSearch/rank.js'
 import { normalizeText, tokenize, splitQualifiers } from '../server/foodSearch/normalize.js'
 
 // Mirror rank.js's internal parseVariant via normalize.js's own public API —
@@ -319,4 +319,123 @@ describe('rankResults: the winner does not depend on the order providers happene
       expect([...winners], `rank 1 changed with input order: ${[...winners].join(' vs ')}`).toHaveLength(1)
     })
   }
+})
+
+describe('rankResults: a query word that exists only as a BRAND is not a generic query', () => {
+  // Found by the 200-item corpus run, and it is the mirror image of the defect
+  // the golden set covers: "justins almond butter" put the generic
+  // "Almond butter, creamy" at rank 1 and Justin's own jar at rank 11, because
+  // the branded row matched MORE of the query (3 tokens of 3, tier 3) but lost
+  // to a generic row matching fewer (tier 4) once the flat branded penalty was
+  // added. "justins" appears in no canonical food's name — that is the proof
+  // the generic answer is not what was asked for, and it needs no brand list.
+  const POOL = [
+    { name: 'Almond butter, creamy', datasetTier: 'generic', calories: 614, protein_g: 21, carbs_g: 19, fat_g: 56 },
+    { name: 'Almond butter, plain, with salt added', datasetTier: 'generic', calories: 614, protein_g: 21, carbs_g: 19, fat_g: 56 },
+    { name: "Justin's Classic Almond Butter", brand: "Justin's", datasetTier: 'branded', calories: 190, protein_g: 7, carbs_g: 6, fat_g: 17 },
+  ]
+
+  it('"justins almond butter" ranks the brand\'s own jar first', () => {
+    expect(rankResults(POOL, ['justins almond butter'])[0].brand).toBe("Justin's")
+  })
+
+  it('CONTROL: "almond butter" with no brand word still ranks the canonical generic first', () => {
+    const top = rankResults(POOL, ['almond butter'])[0]
+    expect(top.datasetTier).toBe('generic')
+    expect(top.name).toMatch(/almond butter/i)
+  })
+
+  it('CONTROL: a brand word that a canonical food also uses grants no relief', () => {
+    // "banana" is a food word, not a brand word, even though a real Open Food
+    // Facts row is branded "Fresh Banana". A generic candidate's name carries
+    // it, so it is not brand-only and the branded penalty stands.
+    const pool = [
+      { name: 'Bananas, raw', datasetTier: 'generic', calories: 89, protein_g: 1.1, carbs_g: 22.8, fat_g: 0.3 },
+      { name: 'Banana', brand: 'Fresh Banana', datasetTier: 'branded', calories: 95, protein_g: 1, carbs_g: 23, fat_g: 0.3 },
+    ]
+    expect(rankResults(pool, ['banana'])[0].datasetTier).toBe('generic')
+  })
+
+  it('brandOnlyQueryTokens names exactly the words no canonical food in the pool uses', () => {
+    const variants = [parseQuery('justins almond butter')].map((p) => ({
+      normalized: p.normalized, tokens: p.tokens, baseTokens: p.baseTokens, qualifiers: p.qualifiers,
+    }))
+    const stems = brandOnlyQueryTokens(POOL, variants)
+    expect([...stems]).toEqual(['justin'])
+  })
+})
+
+describe('rankResults: a query word that exists only as a BRAND is not a generic query', () => {
+  // The mirror image of the golden set, found by the 200-item corpus run:
+  // "justins almond butter" put the generic "Almond butter, creamy" at rank 1
+  // and Justin's own jar at rank 11, and "califia farms almond milk" did the
+  // same. The branded row matched MORE of the query (3 tokens of 3, tier 3)
+  // yet lost to a generic row matching fewer (tier 4) once the flat branded
+  // penalty was added. "justins" appears in no canonical food's name — that is
+  // the proof the generic answer is not what was asked for.
+  const POOL = [
+    { name: 'Almond butter, creamy', datasetTier: 'generic', calories: 614, protein_g: 21, carbs_g: 19, fat_g: 56 },
+    { name: 'Almond butter, plain, with salt added', datasetTier: 'generic', calories: 614, protein_g: 21, carbs_g: 19, fat_g: 56 },
+    { name: "Justin's Classic Almond Butter", brand: "Justin's", datasetTier: 'branded', calories: 190, protein_g: 7, carbs_g: 6, fat_g: 17 },
+  ]
+  const asVariants = (q) => { const p = parseQuery(q); return [{ normalized: p.normalized, tokens: p.tokens, baseTokens: p.baseTokens, qualifiers: p.qualifiers }] }
+
+  it('"justins almond butter" ranks the brand\'s own jar first', () => {
+    expect(rankResults(POOL, ['justins almond butter'])[0].brand).toBe("Justin's")
+  })
+
+  it('CONTROL: "almond butter" with no brand word still ranks the canonical generic first', () => {
+    const top = rankResults(POOL, ['almond butter'])[0]
+    expect(top.datasetTier).toBe('generic')
+    expect(top.name).toMatch(/almond butter/i)
+  })
+
+  it('brandOnlyQueryTokens names exactly the words no canonical food in the pool uses', () => {
+    expect([...brandOnlyQueryTokens(POOL, asVariants('justins almond butter'))]).toEqual(['justin'])
+    expect([...brandOnlyQueryTokens(POOL, asVariants('almond butter'))]).toEqual([])
+  })
+})
+
+describe('rankResults: "is the query a brand name?" needs more than one branded row to say yes', () => {
+  // This control caught the rule when it was ratio-only. A pool containing ONE
+  // branded row whose brand happens to include the food word scores ratio 1.00,
+  // which turned "banana" into a brand query and put a barcoded packet above
+  // "Bananas, raw". The measured separation (live, 26 Aug 2026) is in distinct
+  // brands as well as share: coca cola 4 brands / 0.84, everything else <= 2
+  // brands / <= 0.25.
+  const ONE_BRANDED_ROW = [
+    { name: 'Bananas, raw', datasetTier: 'generic', calories: 89, protein_g: 1.1, carbs_g: 22.8, fat_g: 0.3 },
+    { name: 'Banana', brand: 'Fresh Banana', datasetTier: 'branded', calories: 95, protein_g: 1, carbs_g: 23, fat_g: 0.3 },
+  ]
+  const MANY_BRANDS = [
+    { name: 'Beverages, COCA-COLA, POWERADE, lemon-lime flavored, ready-to-drink', datasetTier: 'generic', calories: 32, protein_g: 0, carbs_g: 8, fat_g: 0 },
+    { name: 'Coca Cola', brand: 'Coca-Cola', datasetTier: 'branded', calories: 42, protein_g: 0, carbs_g: 10.6, fat_g: 0 },
+    { name: 'Coca Cola Zero', brand: 'Coke Zero', datasetTier: 'branded', calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+    { name: 'Coca-Cola Classic', brand: 'Coca Cola USA Operations', datasetTier: 'branded', calories: 39, protein_g: 0, carbs_g: 10, fat_g: 0 },
+    { name: 'Diet Coca Cola', brand: 'Coca-Cola Company', datasetTier: 'branded', calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+  ]
+  const asVariants = (q) => { const p = parseQuery(q); return [{ normalized: p.normalized, tokens: p.tokens, baseTokens: p.baseTokens, qualifiers: p.qualifiers }] }
+
+  it('CONTROL: one branded row scoring ratio 1.00 is NOT a brand query', () => {
+    const sig = brandedQuerySignal(ONE_BRANDED_ROW, asVariants('banana'))
+    expect(sig.ratio).toBe(1)
+    expect(sig.distinctBrands).toBe(1)
+    expect(sig.isBrandQuery).toBe(false)
+    expect(rankResults(ONE_BRANDED_ROW, ['banana'])[0].datasetTier).toBe('generic')
+  })
+
+  it('several distinct brands carrying the whole query IS a brand query', () => {
+    const sig = brandedQuerySignal(MANY_BRANDS, asVariants('coca cola'))
+    expect(sig.distinctBrands).toBeGreaterThanOrEqual(3)
+    expect(sig.isBrandQuery).toBe(true)
+  })
+
+  it('and it puts the actual Coke above the generic row that merely MENTIONS Coca-Cola', () => {
+    // "Beverages, COCA-COLA, POWERADE, lemon-lime flavored" is a real generic
+    // USDA row whose facet "COCA-COLA" exactly covers the query. It is a
+    // lemon-lime sports drink.
+    const top = rankResults(MANY_BRANDS, ['coca cola'])[0]
+    expect(top.datasetTier).toBe('branded')
+    expect(top.name).not.toMatch(/powerade/i)
+  })
 })
