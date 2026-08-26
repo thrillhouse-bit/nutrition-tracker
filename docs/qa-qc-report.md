@@ -47,7 +47,7 @@ doesn't repeat that ground.
 | — | Today.jsx | Day-nav (‹ ›) was the only frequent control anchored at the top of a tall screen | Merged (2026-08-25, PR #49, added a swipe gesture) |
 | High | Apple integration | `POST /api/apple/token` existed server-side but had no UI path to generate/copy it — the integration wasn't usable end-to-end through the app | Merged (2026-08-25, PR #52, other session) — flagged in the architecture-review pass but missed in this table's earlier reconciliation; corrected in this check-in |
 | — | Oura readiness signal | Every "readiness" value in the app (Today, Plan, Insights) was actually sourced from Oura's activity-score endpoint, not the dedicated readiness endpoint — a bug this session never found, caught and fixed independently | Merged (2026-08-25, PR #51, other session) |
-| — | Search (OFF) | Search depended on Open Food Facts' legacy `cgi/search.pl` endpoint alone (no fallback), with no graceful failure state — an upstream 503 left the UI stuck. Also fixed, same PR: without a configured USDA key, common whole-food queries (zucchini, courgette, a typo) returned zero or irrelevant results | Merged (2026-08-26, PR #73, real retrieval+ranking redesign + working retry state) |
+| — | Search (OFF) | Search depended on Open Food Facts' legacy `cgi/search.pl` endpoint alone (no fallback), with no graceful failure state — an upstream 503 left the UI stuck. Also fixed, same PR: without a configured USDA key, common whole-food queries (zucchini, courgette, a typo) returned zero or irrelevant results | Merged (2026-08-26, PR #73, real retrieval+ranking redesign + working retry state; further overhauled PR #95 — see below) |
 | Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
 | Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Merged (2026-08-25, PR #55, audit residual-gap cleanup) |
 | Medium | Provider abstraction | README's "adding a provider means adding an adapter" claim doesn't fully hold: `providers.js` has three separate provider-name branches, and Apple has no dedicated `server/integrations/apple.js` (the Insights-specific symptom of this is fixed, PR #41; the general architecture point stands) | Reported (2026-08-25) |
@@ -997,3 +997,53 @@ No fixes made directly by this pass. All remaining "Reported"/"Deferred"
 items unchanged — nothing since the last check-in touches the Apple-token
 bearer-credential item, provider-abstraction claim, forgot-password,
 server logging, `SESSION_SECRET`, or either Garmin item.
+
+## 2026-08-26 — Check-in pass (recurring, 20:35 UTC)
+
+One PR since the last check-in (#95), but a large one: a fully phased
+(1–6), evidence-driven overhaul of the entire food-search pipeline —
+transport, ranking, honesty, and client-side race conditions. `npm test`:
+874/874 (up from 767 — 107 new). `npm run build`: clean.
+
+**Quality note, not a finding.** This PR is the most rigorously
+self-documented piece of work this report has seen across every pass:
+every phase commit carries its own before/after measurements on the same
+200-item corpus from the same worktree base (not re-run separately, which
+would confound the comparison), reports a genuine regression it caused
+(latency +230ms p50, 4 items pushed past the result cap) rather than
+rounding it away, and includes a commit whose entire purpose is
+retracting an earlier commit's false claim ("verified by watching the
+dev-server log" — it wasn't) once the author caught it. Every phase commit
+carries a `NO-GO for production until the full pass is reviewed` line —
+the author's own gate, not a claim about the repo; the owner's merge of
+PR #95 is that review having happened. Given this level of built-in
+verification, this pass triaged by reading the full phase history rather
+than re-deriving what it already rigorously proved.
+
+**What changed, briefly:** split USDA's Foundation/SR-Legacy pass from its
+flakier Survey (FNDDS) pass so one no longer takes the other down;
+switched Open Food Facts' primary endpoint from the legacy `cgi/search.pl`
+(9/20 measured failures) to `search.openfoodfacts.org` (0/20), keeping the
+legacy endpoint as fallback; added a whole-search deadline so one hung
+provider can't block all results; separated `degraded`/`partial`/
+`canonicalCoverage` as distinct honesty facts instead of one boolean that
+was wrong 90% of the time on the baseline corpus; facet-aware ranking so
+USDA's inverted comma-separated names ("Squash, summer, ... zucchini,
+...") are correctly identified; a real Foundation-data bug where a missing
+nutrient code 1008 rendered as a fabricated "0 kcal" instead of reading
+the equivalent 2048/2047 codes; and client-side fixes for stale/crossed
+search results on fast typing (a query-owned generation guard with a real
+`AbortController`, not just a check-and-discard).
+
+**Live-verified in this sandbox** (previously a reliable way to hit a
+genuine upstream failure, since this environment has no egress to the old
+`cgi/search.pl`): searching "zucchini" now returns correct, relevant
+results (Zucchini, Courgettes, via `openfoodfacts`) with the new `per100`
+comparison figure rendering correctly — a direct, independent confirmation
+that the `search.openfoodfacts.org` transport fix is real, not just
+measured by the PR's own harness. Updated the Search (OFF) row above to
+note this further overhaul.
+
+Live site: `GET /api/version` confirms it's redeployed and running this
+exact commit (`45bbf76`, current `main` HEAD). No fixes made directly by
+this pass. All remaining "Reported"/"Deferred" items unchanged.
