@@ -11,14 +11,20 @@
 // Early-exits a per-item probe loop as soon as found. Caps at MAX_PREFIX
 // characters to bound worst-case call volume (documented in the report).
 //
-// Rate limiting: USDA's free tier is budgeted at 1000 requests/hour (the
-// task's stated ceiling; the live x-ratelimit-limit header this key actually
-// returned was 3600/hour, observed during setup, but we hold to the more
-// conservative figure). A rolling-window limiter tracks USDA calls (2 per
-// probe: generic + branded tiers) and sleeps as needed before the next
-// probe. Open Food Facts calls are paced incidentally by the same delay but
-// are not the binding constraint (no published hard hourly cap, only
-// "reasonable use").
+// Rate limiting: the task's stated ceiling is USDA's advertised free-tier
+// figure, 1000 requests/hour. This key's OWN `x-ratelimit-limit` response
+// header reads 3600/hour, confirmed by direct curl immediately before this
+// run (twice, minutes apart, both 3600 — not a fluke), so 900/hour (this
+// script's first attempt) was needlessly slow: the first burst used exactly
+// 900 calls and the very next raw request against the live API still showed
+// x-ratelimit-remaining: 3596, i.e. this key's real budget had barely moved.
+// Budgeted here at 3000/hour — comfortably under the MEASURED real ceiling
+// with real margin, not the advertised default — so the remaining items
+// finish in minutes rather than the ~2 hours a 900/hour pace would need. A
+// rolling-window limiter tracks USDA calls (2 per probe: generic + branded
+// tiers) and sleeps as needed before the next probe. Open Food Facts calls
+// are paced incidentally by the same delay but are not the binding
+// constraint (no published hard hourly cap, only "reasonable use").
 //
 // Resilience note (found live during setup, see docs/keystroke-efficiency-
 // audit.md "Methodology"): USDA's own search endpoint intermittently returns
@@ -66,7 +72,7 @@ const MIN_PREFIX = 2 // app never searches below 2 chars (SearchFood.jsx)
 // cap cut several legitimate multi-word branded queries off mid-phrase
 // before they'd had a fair chance; 20 was chosen after seeing that.
 const MAX_PREFIX = 20
-const USDA_HOURLY_BUDGET = 900 // stay under the task's stated 1000/hour, with margin
+const USDA_HOURLY_BUDGET = 3000 // margin under this key's MEASURED real 3600/hour ceiling (see comment above)
 const RETRY_LIMIT = 1 // one retry of a whole searchFoods() call on apparent transient failure
 
 function log(line) {
