@@ -207,3 +207,81 @@ create table if not exists daily_plans (
   generated_at    timestamptz not null default now(),
   primary key (user_id, date)
 );
+
+-- Adaptive Fuel Plan (server/afp/engine.js) ---------------------------------
+-- Deliberately a SEPARATE set of tables from profile/daily_targets/
+-- daily_plans above: the Adaptive Fuel Plan is an additive, independently-
+-- versioned feature that computes its own targets from its own richer
+-- profile, and never reads or writes the existing Plan tab's tables. This
+-- keeps the existing baseline-calculator + wearable-adjustment feature
+-- (server/planCalc.js, server/plan.js) fully working, untouched, for anyone
+-- who only wants that simpler flow.
+
+-- The Adaptive Fuel Plan's own biometric + goal profile. sex/body_fat_pct
+-- are nullable by design: sex null means "prefer not to say / neutral
+-- estimate" (server/afp/engine.js's estimateRMR handles this without
+-- guessing); body_fat_pct null means Mifflin-St Jeor is used instead of
+-- Cunningham. is_pregnant_or_postpartum/has_ed_risk_flag are self-reported
+-- safety context, never inferred — see evaluateSafety in the engine.
+create table if not exists afp_profile (
+  user_id                     bigint primary key references users (id) on delete cascade,
+  units_pref                  text not null default 'imperial' check (units_pref in ('imperial', 'metric')),
+  age_years                   numeric,
+  height_cm                   numeric,
+  weight_kg                   numeric,
+  sex                         text check (sex in ('male', 'female')),
+  body_fat_pct                numeric,
+  activity_level              text check (activity_level in ('sedentary', 'light', 'moderate', 'active', 'very_active')),
+  goal                        text not null default 'maintain' check (goal in ('maintain', 'gradual_loss', 'gradual_gain', 'custom')),
+  weekly_change_kg            numeric,             -- magnitude (kg/week), for gradual_loss/gradual_gain
+  calorie_adjustment          numeric,             -- signed kcal/day, for goal = 'custom'
+  is_pregnant_or_postpartum   boolean not null default false,
+  has_ed_risk_flag            boolean not null default false,
+  updated_at                  timestamptz not null default now()
+);
+
+-- A user's planned training sessions, one row per session (a day can carry
+-- more than one — a double-session day). `sport` reuses server/index.js's
+-- WORKOUT_KINDS vocabulary. distance_km is optional and most relevant to
+-- runs. is_race + carb_loading_opt_in together gate the opt-in
+-- carbohydrate-loading suggestion (server/afp/engine.js's
+-- evaluateCarbLoading) — carb loading is never applied automatically.
+create table if not exists planned_workouts (
+  id                  bigint generated always as identity primary key,
+  user_id             bigint not null references users (id) on delete cascade,
+  date                text not null,               -- 'YYYY-MM-DD'
+  sport               text not null,
+  start_time          text,                        -- 'HH:MM', local, optional
+  duration_min        numeric not null,
+  intensity           text not null check (intensity in ('easy', 'moderate', 'hard')),
+  distance_km         numeric,
+  is_key_session      boolean not null default false,
+  is_double_session   boolean not null default false,
+  is_race             boolean not null default false,
+  carb_loading_opt_in boolean not null default false,
+  notes               text,
+  created_at          timestamptz not null default now()
+);
+create index if not exists planned_workouts_user_date_idx on planned_workouts (user_id, date);
+
+-- One computed Adaptive Fuel Plan per user per day — the historical snapshot
+-- that makes a past day's plan explainable and reproducible. `input_snapshot`
+-- is everything computeAdaptivePlan was given (profile + sessions actually
+-- used) at compute time. TODAY is recomputed live on every read (so a
+-- synced workout landing mid-morning updates the plan); a PAST day is frozen
+-- after its first computation and is never silently overwritten by later
+-- wearable data — see afpPlan.js's reconciliation rule. `overrides` is a
+-- user's own day-specific correction, applied on top of and layered
+-- separately from the engine's own computed numbers (afpDailyPlans.
+-- computed_targets keeps the engine's un-overridden figures alongside it),
+-- and never touches afp_profile's defaults.
+create table if not exists afp_daily_plans (
+  user_id         bigint not null references users (id) on delete cascade,
+  date            text not null,               -- 'YYYY-MM-DD'
+  engine_version  integer not null,
+  input_snapshot  jsonb not null,
+  plan            jsonb not null,              -- the full computeAdaptivePlan() result
+  overrides       jsonb,                       -- null when no day-specific override is set
+  generated_at    timestamptz not null default now(),
+  primary key (user_id, date)
+);

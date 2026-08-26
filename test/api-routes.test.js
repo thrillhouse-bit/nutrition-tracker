@@ -31,6 +31,13 @@ const fake = vi.hoisted(() => {
     targetsEverSet: false, // real stores start false; getLatestTargets's default look identical either way
     profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null },
     setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
+    afpProfile: {
+      units_pref: 'imperial', age_years: null, height_cm: null, weight_kg: null, sex: null, body_fat_pct: null,
+      activity_level: null, goal: 'maintain', weekly_change_kg: null, calorie_adjustment: null,
+      is_pregnant_or_postpartum: false, has_ed_risk_flag: false, updated_at: null,
+    },
+    plannedWorkouts: [], // { id, user_id, date, sport, ... }
+    afpDailyPlans: {}, // `${userId}:${date}` -> row
   }
   let userSeq = 0
   const store = {
@@ -187,6 +194,45 @@ const fake = vi.hoisted(() => {
       return ouraCount + appleCount + garminCount
     },
 
+    // --- Adaptive Fuel Plan (mirrors server/db.js's afp_* methods) --------
+    getAfpProfile: async (userId) => ({ ...state.afpProfile }),
+    setAfpProfile: async (userId, patch) => {
+      state.afpProfile = { ...state.afpProfile, ...patch, updated_at: '2026-08-25T00:00:00.000Z' }
+      return { ...state.afpProfile }
+    },
+    listPlannedWorkouts: async (userId, from, to) =>
+      state.plannedWorkouts.filter((w) => w.user_id === userId && w.date >= from && w.date <= to)
+        .sort((a, b) => (a.date === b.date ? (a.start_time || '~').localeCompare(b.start_time || '~') : a.date < b.date ? -1 : 1)),
+    getPlannedWorkoutsForDay: async (userId, day) => state.plannedWorkouts.filter((w) => w.user_id === userId && w.date === day),
+    savePlannedWorkout: async (userId, w) => {
+      if (w.id != null) {
+        const row = state.plannedWorkouts.find((x) => x.id === w.id && x.user_id === userId)
+        if (!row) return null
+        Object.assign(row, w)
+        return { ...row }
+      }
+      const row = { id: state.plannedWorkouts.length + 1, user_id: userId, ...w }
+      state.plannedWorkouts.push(row)
+      return { ...row }
+    },
+    deletePlannedWorkout: async (userId, id) => {
+      const before = state.plannedWorkouts.length
+      state.plannedWorkouts = state.plannedWorkouts.filter((w) => !(w.id === id && w.user_id === userId))
+      return state.plannedWorkouts.length < before
+    },
+    getAfpDailyPlan: async (userId, date) => state.afpDailyPlans[`${userId}:${date}`] || null,
+    saveAfpDailyPlan: async (userId, date, { engineVersion, inputSnapshot, plan, overrides = null }) => {
+      const row = { user_id: userId, date, engine_version: engineVersion, input_snapshot: inputSnapshot, plan, overrides, generated_at: '2026-08-25T00:00:00.000Z' }
+      state.afpDailyPlans[`${userId}:${date}`] = row
+      return row
+    },
+    setAfpDailyPlanOverrides: async (userId, date, overrides) => {
+      const row = state.afpDailyPlans[`${userId}:${date}`]
+      if (!row) return null
+      row.overrides = overrides
+      return { ...row }
+    },
+
     // --- NOT userId-scoped (matches the real store — see server/db.js) ---
     getGarminDaily: async (id, day) => state.garminDailies[`${id}:${day}`] || null,
     upsertGarminDaily: async (row) => { state.garminDailies[`${row.account_id}:${row.day}`] = row; return row },
@@ -209,7 +255,16 @@ const oura = vi.hoisted(() => ({
   workoutsRange: async () => [],
 }))
 
+const foodSearch = vi.hoisted(() => ({
+  searchFoods: async () => ({
+    results: [], degraded: false, usedCorrection: false, sources: [],
+    parsed: { normalized: '', tokens: [], variants: [], corrected: null },
+    totalLatencyMs: 0,
+  }),
+}))
+
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
+vi.mock('../server/foodSearch/index.js', () => ({ searchFoods: (...args) => foodSearch.searchFoods(...args) }))
 vi.mock('../server/integrations/oura.js', async (importOriginal) => {
   const real = await importOriginal()
   return {
@@ -275,6 +330,13 @@ afterEach(() => {
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
   fake.state.weightEntries = []
+  fake.state.afpProfile = {
+    units_pref: 'imperial', age_years: null, height_cm: null, weight_kg: null, sex: null, body_fat_pct: null,
+    activity_level: null, goal: 'maintain', weekly_change_kg: null, calorie_adjustment: null,
+    is_pregnant_or_postpartum: false, has_ed_risk_flag: false, updated_at: null,
+  }
+  fake.state.plannedWorkouts = []
+  fake.state.afpDailyPlans = {}
   // Note: fake.state.users is intentionally NOT reset — the one signed-up
   // test user (and authCookie/authUserId) must survive across every test in
   // this file.
@@ -1444,5 +1506,225 @@ describe('GET /api/insights correlations', () => {
       n: null,
       note: 'No wearable readiness data connected yet — connect a provider to unlock this observation.',
     })
+  })
+})
+
+// --- Adaptive Fuel Plan ----------------------------------------------------
+// A fully separate feature (server/afp/engine.js + server/afp/plan.js) with
+// its own profile/planned-workouts/daily-plan state (see the fake store's
+// afpProfile/plannedWorkouts/afpDailyPlans above) — never touches
+// profile/daily_targets/daily_plans, so these tests never need to reset that
+// state.
+const FULL_AFP_PROFILE = {
+  weight_kg: 70, height_cm: 175, age_years: 30, sex: 'male', activity_level: 'sedentary', goal: 'maintain',
+}
+
+describe('GET/PUT /api/afp/profile', () => {
+  it('starts at the documented default shape (never a 404)', async () => {
+    const res = await get('/api/afp/profile')
+    const body = await res.json()
+    expect(body.profile.goal).toBe('maintain')
+    expect(body.profile.weight_kg).toBeNull()
+  })
+
+  it('merge-saves a partial patch without clobbering fields already set', async () => {
+    await put('/api/afp/profile', { weight_kg: 70, height_cm: 175 })
+    const res = await put('/api/afp/profile', { age_years: 30 })
+    const body = await res.json()
+    expect(body.profile.weight_kg).toBe(70)
+    expect(body.profile.age_years).toBe(30)
+  })
+
+  it('rejects an out-of-range value rather than silently storing it', async () => {
+    const res = await put('/api/afp/profile', { age_years: 999 })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects an unknown goal value', async () => {
+    const res = await put('/api/afp/profile', { goal: 'shred_hard' })
+    expect(res.status).toBe(400)
+  })
+
+  it('accepts sex: null (the "prefer not to say" path)', async () => {
+    await put('/api/afp/profile', { sex: 'male' })
+    const res = await put('/api/afp/profile', { sex: null })
+    const body = await res.json()
+    expect(body.profile.sex).toBeNull()
+  })
+})
+
+describe('GET/PUT/DELETE /api/afp/workouts', () => {
+  it('creates a planned session with no id in the body', async () => {
+    const res = await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 45, intensity: 'moderate' })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.workout.id).toBeDefined()
+    expect(body.workout.sport).toBe('run')
+  })
+
+  it('rejects an unknown sport / bad intensity', async () => {
+    const bad1 = await put('/api/afp/workouts', { date: '2026-08-25', sport: 'quidditch', duration_min: 45, intensity: 'moderate' })
+    expect(bad1.status).toBe(400)
+    const bad2 = await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 45, intensity: 'brutal' })
+    expect(bad2.status).toBe(400)
+  })
+
+  it('lists sessions in a date range', async () => {
+    await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 45, intensity: 'moderate' })
+    await put('/api/afp/workouts', { date: '2026-08-26', sport: 'ride', duration_min: 60, intensity: 'easy' })
+    const res = await get('/api/afp/workouts?from=2026-08-25&to=2026-08-26')
+    const body = await res.json()
+    expect(body.workouts).toHaveLength(2)
+  })
+
+  it('updates an existing session by id', async () => {
+    const created = await (await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 30, intensity: 'easy' })).json()
+    const res = await put('/api/afp/workouts', { id: created.workout.id, date: '2026-08-25', sport: 'run', duration_min: 60, intensity: 'hard' })
+    const body = await res.json()
+    expect(body.workout.duration_min).toBe(60)
+    expect(body.workout.intensity).toBe('hard')
+  })
+
+  it('404s updating a session id that does not exist', async () => {
+    const res = await put('/api/afp/workouts', { id: 999999, date: '2026-08-25', sport: 'run', duration_min: 30, intensity: 'easy' })
+    expect(res.status).toBe(404)
+  })
+
+  it('deletes a session', async () => {
+    const created = await (await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 30, intensity: 'easy' })).json()
+    const res = await fetch(`${base}/api/afp/workouts/${created.workout.id}`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(204)
+    const list = await (await get('/api/afp/workouts?from=2026-08-25&to=2026-08-25')).json()
+    expect(list.workouts).toEqual([])
+  })
+
+  it('404s deleting a session that does not exist', async () => {
+    const res = await fetch(`${base}/api/afp/workouts/999999`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(res.status).toBe(404)
+  })
+
+  it('supports a race + carb-loading opt-in flag round trip', async () => {
+    const res = await put('/api/afp/workouts', {
+      date: '2026-09-01', sport: 'run', duration_min: 240, intensity: 'hard', distance_km: 42.2,
+      is_key_session: true, is_race: true, carb_loading_opt_in: true,
+    })
+    const body = await res.json()
+    expect(body.workout.is_race).toBe(true)
+    expect(body.workout.carb_loading_opt_in).toBe(true)
+  })
+})
+
+describe('GET /api/afp/plan', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it("with no date query param, defaults to the server's LOCAL day, not the UTC day (timezone day-boundary safety)", async () => {
+    // 2026-08-24T20:00:00Z is already 2026-08-25 in Apia (UTC+13) — same
+    // instant/reasoning as the GET /api/oura/summary default-day test above.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 24, 20, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    const res = await get('/api/afp/plan')
+    const body = await res.json()
+    expect(body.date).toBe('2026-08-25') // local day, not '2026-08-24' (the UTC day)
+    expect(body.today).toBe('2026-08-25')
+  })
+
+  it('returns a meaningful (not an error) empty state when the profile is incomplete', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) }) // local (UTC+13) 2026-08-25
+    const res = await get('/api/afp/plan')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.plan.ok).toBe(false)
+    expect(body.plan.missing.length).toBeGreaterThan(0)
+    expect(body.progress).toBeNull()
+  })
+
+  it('computes a full plan once the profile is complete, and reports fresh progress against logged intake', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    // Falls within local day 2026-08-25 under the suite's Pacific/Apia (UTC+13)
+    // server timezone — local midnight Aug25 is UTC 2026-08-24T11:00:00.000Z.
+    fake.state.entries = [{
+      id: 1, food_id: 1, logged_at: '2026-08-25T01:00:00.000Z', servings_consumed: 1, meal: null,
+      food: { id: 1, name: 'food', calories: 200, protein_g: 40, carbs_g: 10, fat_g: 5, fiber_g: 0, sugar_g: 0, sodium_mg: 0 },
+    }]
+
+    const res = await get('/api/afp/plan?date=2026-08-25')
+    const body = await res.json()
+    expect(body.plan.ok).toBe(true)
+    expect(body.plan.targets.calories).toBeGreaterThan(0)
+    expect(body.recomputed).toBe(true) // today always recomputes
+    expect(body.frozen).toBe(false)
+    expect(body.progress.protein_g.actual).toBeGreaterThan(0)
+  })
+
+  it('adds exercise energy for a planned session that day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    const rest = await (await get('/api/afp/plan?date=2026-08-25')).json()
+    await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 60, intensity: 'moderate' })
+    const withRun = await (await get('/api/afp/plan?date=2026-08-25')).json()
+    expect(withRun.plan.targets.calories).toBeGreaterThan(rest.plan.targets.calories)
+    expect(withRun.plan.trainingLoad.tier).not.toBe('rest_light')
+  })
+
+  it('a past day freezes after its first computation — a later profile change does not retroactively rewrite it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) }) // "today" = 2026-08-25
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    const past = await (await get('/api/afp/plan?date=2026-08-20')).json()
+    expect(past.recomputed).toBe(true) // first-ever view of that day computes once
+    expect(past.frozen).toBe(false)
+
+    // Change body weight substantially — would change the computed targets if recomputed.
+    await put('/api/afp/profile', { weight_kg: 120 })
+    const pastAgain = await (await get('/api/afp/plan?date=2026-08-20')).json()
+    expect(pastAgain.recomputed).toBe(false)
+    expect(pastAgain.frozen).toBe(true)
+    expect(pastAgain.plan.targets.calories).toBe(past.plan.targets.calories) // unchanged — frozen
+
+    // TODAY, by contrast, reflects the new weight immediately.
+    const today = await (await get('/api/afp/plan?date=2026-08-25')).json()
+    expect(today.plan.targets.protein_g).toBeGreaterThan(past.plan.targets.protein_g)
+  })
+
+  it('POST /api/afp/plan/:date/recompute is the explicit escape hatch to un-freeze a past day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    const past = await (await get('/api/afp/plan?date=2026-08-20')).json()
+    await put('/api/afp/profile', { weight_kg: 120 })
+
+    const res = await post('/api/afp/plan/2026-08-20/recompute', {})
+    const body = await res.json()
+    expect(body.plan.plan.targets.protein_g).toBeGreaterThan(past.plan.targets.protein_g) // explicitly recomputed
+  })
+})
+
+describe('PATCH /api/afp/plan/:date/overrides', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('applies a day-specific override to the computed targets', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    await get('/api/afp/plan?date=2026-08-25') // ensure a plan exists
+    const res = await patch('/api/afp/plan/2026-08-25/overrides', { calories: 2500 })
+    const body = await res.json()
+    expect(body.plan.plan.targets.calories).toBe(2500)
+  })
+
+  it('an empty body clears a previously-set override, reverting to the engine\'s own numbers', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    const before = await (await get('/api/afp/plan?date=2026-08-25')).json()
+    await patch('/api/afp/plan/2026-08-25/overrides', { calories: 2500 })
+    const cleared = await (await patch('/api/afp/plan/2026-08-25/overrides', {})).json()
+    expect(cleared.plan.plan.targets.calories).toBe(before.plan.targets.calories)
+  })
+
+  it('does not touch the afp_profile defaults — only that day\'s plan', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    await get('/api/afp/plan?date=2026-08-25')
+    await patch('/api/afp/plan/2026-08-25/overrides', { calories: 2500 })
+    const profile = await (await get('/api/afp/profile')).json()
+    expect(profile.profile.weight_kg).toBe(70) // untouched
   })
 })
