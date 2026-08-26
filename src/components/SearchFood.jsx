@@ -117,12 +117,22 @@ export default function SearchFood({ onPick }) {
                 <div className="truncate font-medium text-ink">{food.name}</div>
                 <div className="truncate text-xs text-muted">
                   {food.brand ? `${food.brand} · ` : ''}
-                  {food.serving_size ? `${fmt(food.serving_size, 0)} ${food.serving_unit}` : food.serving_unit} · {food.source}
+                  {food.serving_size ? `${fmt(food.serving_size, 0)} ${food.serving_unit}` : food.serving_unit}
+                  {food.household_serving ? ` (${food.household_serving})` : ''} · {food.source}
                 </div>
               </div>
               <div className="shrink-0 text-right">
                 <div className="numeral text-lg leading-none text-ink">{fmt(food.calories, 0)}</div>
                 <div className="eyebrow mt-1">kcal</div>
+                {/* A comparable figure across results with different native
+                    serving sizes (30 g vs 170 g vs 100 g) — null (rendered
+                    as nothing) for any unit that can't be safely converted,
+                    e.g. "serving"/"cup"/"can" — see comparablePer100. */}
+                {food.per100 && (
+                  <div className="mt-0.5 text-[11px] text-faint">
+                    ≈{fmt(food.per100.calories, 0)}/100{food.per100.basis}
+                  </div>
+                )}
               </div>
             </button>
           ))}

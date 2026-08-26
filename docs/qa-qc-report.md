@@ -47,7 +47,7 @@ doesn't repeat that ground.
 | — | Today.jsx | Day-nav (‹ ›) was the only frequent control anchored at the top of a tall screen | Merged (2026-08-25, PR #49, added a swipe gesture) |
 | High | Apple integration | `POST /api/apple/token` existed server-side but had no UI path to generate/copy it — the integration wasn't usable end-to-end through the app | Merged (2026-08-25, PR #52, other session) — flagged in the architecture-review pass but missed in this table's earlier reconciliation; corrected in this check-in |
 | — | Oura readiness signal | Every "readiness" value in the app (Today, Plan, Insights) was actually sourced from Oura's activity-score endpoint, not the dedicated readiness endpoint — a bug this session never found, caught and fixed independently | Merged (2026-08-25, PR #51, other session) |
-| Medium | Search (OFF) | Search depends on Open Food Facts' legacy `cgi/search.pl` endpoint, which returned intermittent 503s during this pass (reproduced independently of the app) | Reported (2026-08-25) |
+| — | Search (OFF) | Search depended on Open Food Facts' legacy `cgi/search.pl` endpoint alone (no fallback), with no graceful failure state — an upstream 503 left the UI stuck. Also fixed, same PR: without a configured USDA key, common whole-food queries (zucchini, courgette, a typo) returned zero or irrelevant results | Merged (2026-08-26, PR #73, real retrieval+ranking redesign + working retry state) |
 | Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
 | Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Merged (2026-08-25, PR #55, audit residual-gap cleanup) |
 | Medium | Provider abstraction | README's "adding a provider means adding an adapter" claim doesn't fully hold: `providers.js` has three separate provider-name branches, and Apple has no dedicated `server/integrations/apple.js` (the Insights-specific symptom of this is fixed, PR #41; the general architecture point stands) | Reported (2026-08-25) |
@@ -804,3 +804,82 @@ Live site: confirmed redeployed and at current `main` HEAD via
 directly by this pass beyond the report reconciliation itself — every
 concrete, actionable item found this pass had already been fixed before
 this check-in started.
+
+## 2026-08-26 — Check-in pass (recurring, 04:36 UTC)
+
+Re-invoked via the recurring audit routine, ~4 hours after the previous
+check-in (PR #76). Smaller gap than last time: 4 commits, two merged PRs
+(#73, #78 covering #77). `npm test`: 597/597 (up from 511 — 86 new tests).
+`npm run build`: clean.
+
+**Closes this report's own long-standing "Search (OFF)" item.** PR #73 is
+a genuine rebuild of food search (`server/foodSearch/`), not a patch: a
+6-tier relevance-ranking module, USDA queried as separate
+Foundation/Branded passes so generic results aren't crowded out, a
+synonym table (zucchini↔courgette, etc.), conservative typo correction,
+and parallel multi-provider/multi-variant fan-out. Directly relevant to
+this report — the original finding was "OFF's `cgi/search.pl` returned
+intermittent 503s, reproduced independently of the app"; that endpoint is
+still the same one (verified: `server/lookup.js`'s URL is unchanged, this
+isn't fixable by this app since it's OFF's own reliability), but the
+*symptom* this report actually cared about — the app having no graceful
+failure path — is now genuinely fixed. Verified live in this sandbox
+(which has no egress to OFF/USDA, so every search here is a real upstream
+failure): searching "zucchini" now surfaces "Search is having trouble
+right now — We couldn't reach any food database — this is usually
+temporary" with a working Retry, instead of hanging on "Searching…"
+indefinitely, which is what this report's own last check-in observed and
+had to route around with a manual-entry fallback. Table updated to
+Merged. The commit's own live verification (real browser, no-USDA-key
+environment) additionally confirmed the ranking fixes themselves — every
+required query (zucchini, courgette, the "zuccini" typo, chicken breast,
+banana, oatmeal, Greek yogurt, coke) now returns a correct top result;
+not independently re-verified in this pass since it would duplicate that
+work exactly, and the 91 new tests plus this pass's own retry-state
+verification are sufficient confirmation the fix is real and deployed-
+ready.
+
+**Two smaller fixes, reviewed but not re-tested independently (small,
+well-reasoned, already tested by their own sessions):**
+
+- **Training Load label mismatch** (PR #77) — Insights' "Training load ·
+  Garmin" header was reading today's live-signal provider, not the actual
+  source of the chart data underneath it (which only ever aggregates
+  Apple Health workout history) — a user with both connected saw a
+  Garmin-labeled chart built entirely from Apple data. Fixed by deriving
+  the label from the chart's own data instead of the unrelated live
+  signal.
+- **Adaptive Fuel Plan profile prefill** — AFP's "Set up my profile" form
+  duplicated fields already collected during onboarding but never read
+  them, so a user who'd already entered a baseline hit a blank form and
+  had to retype it — read as the feature being broken rather than
+  separately configured. Now prefills from the existing onboarding
+  profile.
+
+No fixes made directly by this pass — the one relevant open item (search)
+was already closed by the other session before this check-in started.
+Live site: `GET /api/version` confirms it's already redeployed and running
+this exact commit (`c8fc50c`, current `main` HEAD).
+
+## 2026-08-26 — Check-in pass (recurring, 08:36 UTC)
+
+Small, quiet gap: one commit since the last check-in (PR #79, "Render the
+'Intake so far' bar as a light-to-dark cobalt gradient") — a scoped,
+owner-requested visual change to `SegmentBar` (Today's intake bar only;
+its one caller). `npm test`: 601/601 (4 new). `npm run build`: clean. Live
+smoke-tested: signed up fresh, logged a food, confirmed the gradient
+renders correctly on Today with no console/network errors. This is a
+pure design change per an explicit owner design note in the commit itself
+— nothing for this report to fix or defer, since it was never an open
+item here.
+
+No other repo changes to reconcile. All "Reported"/"Deferred" items in
+the Open Items table remain accurately reported — nothing since the last
+check-in touches the Apple-token bearer-credential item, the provider-
+abstraction claim, forgot-password, server logging, `SESSION_SECRET`, or
+either Garmin item. Live site is one commit behind `main` at the moment
+of this check (`c8fc50c` vs. current HEAD `42726f2`, i.e. just the
+gradient PR) — ordinary deploy lag, not flagged as a new Info item given
+how quickly the site has caught up after every previous pass.
+
+Nothing else new or changed. No fixes needed this pass.

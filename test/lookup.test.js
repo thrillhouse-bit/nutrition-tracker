@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeOFF, normalizeUSDA } from '../server/lookup.js'
+import { normalizeOFF, normalizeUSDA, comparablePer100 } from '../server/lookup.js'
 import { rankResults } from '../server/foodSearch/rank.js'
 
 describe('normalizeOFF', () => {
@@ -58,6 +58,72 @@ describe('normalizeOFF', () => {
     const f = normalizeOFF({ product_name: 'X', nutriments: { 'energy-kj_100g': 2092 } })
     expect(f.calories).toBe(500) // 2092 / 4.184
   })
+
+  // Real data captured live 26 Aug 2026 during root-cause tracing (see
+  // docs/serving-sizes.md): a serving_size string with a leading descriptive
+  // word before the parenthetical weight used to make the naive "first
+  // number + letters" regex grab the word instead of the weight.
+  it('extracts the parenthetical gram weight instead of a leading quantity word (real Pringles data)', () => {
+    const f = normalizeOFF({
+      product_name: 'Original Potato Crisps',
+      serving_size: '1 serving (28 g)',
+      serving_quantity: 28,
+      nutriments: { 'energy-kcal_serving': 150 },
+    })
+    expect(f.serving_size).toBe(28)
+    expect(f.serving_unit).toBe('g') // NOT "serving"
+  })
+
+  it('extracts the parenthetical mL volume instead of a leading quantity word (real Diet Coke data)', () => {
+    const f = normalizeOFF({
+      product_name: 'Diet Coke',
+      serving_size: '1 can (354.9 mL)',
+      serving_quantity: 354.9,
+      nutriments: { 'energy-kcal_serving': 0 },
+    })
+    expect(f.serving_size).toBe(354.9)
+    expect(f.serving_unit).toBe('ml') // NOT "can"
+  })
+
+  it('still falls back to the loose match when no recognized mass/volume unit is present anywhere', () => {
+    const f = normalizeOFF({
+      product_name: 'Bulk Bin Item',
+      serving_size: '1 scoop',
+      nutriments: { 'energy-kcal_serving': 80 },
+    })
+    expect(f.serving_size).toBe(1)
+    expect(f.serving_unit).toBe('scoop')
+  })
+})
+
+describe('comparablePer100 (search-result comparison figure)', () => {
+  it('computes calories per 100g for a gram-based serving', () => {
+    expect(comparablePer100({ calories: 28, serving_size: 28, serving_unit: 'g' }))
+      .toEqual({ basis: 'g', calories: 100 })
+  })
+
+  it('computes calories per 100ml for a millilitre-based serving', () => {
+    expect(comparablePer100({ calories: 42, serving_size: 354.9, serving_unit: 'ml' }))
+      .toEqual({ basis: 'ml', calories: Math.round((42 / 354.9) * 100) })
+  })
+
+  it('converts weight ounces to grams (not fluid ounces to mL)', () => {
+    // 1 oz = 28.3495 g; 100 kcal per oz -> ~352.8 kcal/100g
+    const r = comparablePer100({ calories: 100, serving_size: 1, serving_unit: 'oz' })
+    expect(r.basis).toBe('g')
+    expect(r.calories).toBe(Math.round((100 / 28.3495) * 100))
+  })
+
+  it('returns null for a unit with no reliable weight/volume equivalence', () => {
+    expect(comparablePer100({ calories: 150, serving_size: 1, serving_unit: 'serving' })).toBeNull()
+    expect(comparablePer100({ calories: 150, serving_size: 1, serving_unit: 'cup' })).toBeNull()
+  })
+
+  it('returns null when calories or serving size is missing', () => {
+    expect(comparablePer100({ calories: null, serving_size: 100, serving_unit: 'g' })).toBeNull()
+    expect(comparablePer100({ calories: 100, serving_size: 0, serving_unit: 'g' })).toBeNull()
+    expect(comparablePer100({ calories: 100, serving_size: 100, serving_unit: null })).toBeNull()
+  })
 })
 
 describe('normalizeUSDA', () => {
@@ -86,6 +152,20 @@ describe('normalizeUSDA', () => {
     expect(f.sodium_mg).toBe(65)
     expect(f.barcode).toBe('0123')
     expect(f.source).toBe('usda')
+  })
+
+  it('surfaces householdServingFullText as display-only context, defaulting to null', () => {
+    const withText = normalizeUSDA({
+      description: 'Greek Yogurt', servingSize: 170, servingSizeUnit: 'g',
+      householdServingFullText: '1 container', labelNutrients: { calories: { value: 120 } },
+    })
+    expect(withText.household_serving).toBe('1 container')
+
+    const without = normalizeUSDA({
+      description: 'Greek Yogurt', servingSize: 170, servingSizeUnit: 'g',
+      labelNutrients: { calories: { value: 120 } },
+    })
+    expect(without.household_serving).toBeNull()
   })
 
   it('reads Foundation foodNutrients (per 100 g) by nutrient id', () => {

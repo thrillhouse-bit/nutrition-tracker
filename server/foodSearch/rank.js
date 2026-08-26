@@ -86,13 +86,29 @@ function completenessCount(candidate) {
 // named "raw" ranks slightly ahead of one that doesn't when the user asked
 // for "raw"), and prefer a shorter name (fewer extra tokens beyond the
 // query) as a proxy for "the base food, not a compound branded product."
+// A Branded product's OWN description sometimes exactly equals a bare query
+// word while being a completely different food — reproduced live 26 Aug 2026:
+// searching "banana" surfaces a peanut-butter spread literally named
+// "BANANA" (tier 0); "onion" surfaces onion BREAD (foodCategory "Breads &
+// Buns"); "orange" surfaces orange-flavored Jell-O; "tomato" surfaces a taco-
+// seasoning mix. A flat +40 branded penalty can never outweigh the ×1000
+// tier gap, so these wrong exact matches always buried the correct generic
+// answer ("Bananas, raw" etc., typically tier 2 — a prefix match) several
+// places down. BRANDED_PENALTY bridges exactly the tier-0-to-tier-2 gap
+// (2000) with margin, so a near-exact-or-better generic/Foundation
+// candidate (tier <= 2) now outranks an exact-match Branded one — but a
+// Branded exact match still beats a WEAK generic match (tier >= 3, where the
+// gap this penalty doesn't bridge), and two same-tier candidates still
+// resolve by tier first, this penalty second, exactly as before.
+const BRANDED_PENALTY = 2500
+
 export function scoreCandidate(candidate, queryVariants) {
   const variants = queryVariants.map(parseVariant)
   const { tier, variant, nameTokens } = bestTierAcrossVariants(candidate.name, variants)
 
   let score = tier * 1000
 
-  if (candidate.datasetTier === 'branded') score += 40
+  if (candidate.datasetTier === 'branded') score += BRANDED_PENALTY
 
   score += (NUTRIENT_KEYS.length - completenessCount(candidate)) * 5
 

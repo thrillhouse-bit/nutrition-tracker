@@ -231,12 +231,35 @@ export function Meter({ value, target, over, height = 3, className = '' }) {
 
 // Segmented progress — N cells, `filled` of them inked, a fixed-width language
 // for the day's calorie budget.
+// Interpolates between two "#rrggbb" colors at t in [0, 1].
+function mixHex(a, b, t) {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16))
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16))
+  const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * t))
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`
+}
+
+// Design note (owner, 26 Aug 2026): this ONE bar is a deliberate, scoped
+// exception to "cobalt as the single accent" above — each filled segment
+// shades from pale cobalt to full cobalt-ink by its position in the FULL
+// bar (not the filled count), so a given segment's color is stable through
+// the day: early on, only a few pale segments show; by end of day the same
+// positions read progressively darker. A ratio, not a literal color name,
+// still drives every other reading of progress (Meter, etc.) — this is the
+// one place the value itself is also encoded as a gradient.
+const SEGMENT_LIGHT = '#e9ecf9' // --color-cobalt-soft
+const SEGMENT_DARK = '#16289b' // --color-cobalt-ink
+
 export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' }) {
   const n = Math.max(0, Math.min(total, Math.round(filled)))
   return (
     <div className={`flex gap-0.5 ${className}`} style={{ height }}>
       {Array.from({ length: total }, (_, i) => (
-        <div key={i} className={`flex-1 ${i < n ? 'bg-ink' : 'bg-track'}`} />
+        <div
+          key={i}
+          className={i < n ? '' : 'bg-track'}
+          style={i < n ? { flex: 1, backgroundColor: mixHex(SEGMENT_LIGHT, SEGMENT_DARK, total > 1 ? i / (total - 1) : 0) } : { flex: 1 }}
+        />
       ))}
     </div>
   )

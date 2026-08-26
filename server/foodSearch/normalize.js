@@ -65,7 +65,15 @@ export const SYNONYM_GROUPS = [
   ['shrimp', 'shrimps', 'prawn', 'prawns'],
   ['bell pepper', 'bell peppers', 'capsicum', 'capsicums'],
   ['ground beef', 'minced beef', 'beef mince'],
-  ['french fries', 'chips'],
+  // No 'french fries' <-> 'chips' pair: synonymVariants substitutes ANY
+  // single token anywhere in a query, so this pair (a real regional synonym
+  // for bare "chips") ALSO fired on every "___ chips" compound noun where
+  // "chips" means an entirely different food (tortilla chips, potato chips,
+  // kale chips) -- reproduced live 26 Aug 2026: "siete tortilla chips"
+  // spun off "siete tortilla french fries" as an equally-tried variant,
+  // flooding results with unrelated fast-food fries. The per-token
+  // substitution mechanism has no way to scope a pair to bare single-word
+  // queries only, so this one is dropped rather than special-cased.
   ['cookie', 'cookies', 'biscuit', 'biscuits'],
   ['fizzy drink', 'carbonated drink', 'soda'],
 ]
