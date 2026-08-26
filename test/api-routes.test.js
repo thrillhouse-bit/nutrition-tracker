@@ -1019,6 +1019,84 @@ describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
     const got = await get('/api/plan/workout')
     expect((await got.json()).workout).toBeNull()
   })
+
+  describe('intensity + calorie estimate (server/afp/engine.js MET table)', () => {
+    it('defaults intensity to moderate when omitted, and stores it on the saved workout', async () => {
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+      expect(res.status).toBe(200)
+      expect((await res.json()).workout.intensity).toBe('moderate')
+    })
+
+    it('accepts easy/hard explicitly', async () => {
+      const easy = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'easy' })
+      expect((await easy.json()).workout.intensity).toBe('easy')
+      const hard = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'hard' })
+      expect((await hard.json()).workout.intensity).toBe('hard')
+    })
+
+    it('rejects an intensity outside easy/moderate/hard (control)', async () => {
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'brutal' })
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toMatch(/intensity/i)
+    })
+
+    it('estKcal stays null (never fabricated) when no duration was given, even with a real weight on file — the negative control for "nothing to multiply minutes by"', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30' }) // no duration_min
+      const body = await res.json()
+      expect(body.workout.estKcal).toBeNull()
+      expect(body.workout.estKcalReason).toBeNull() // missing duration, not missing weight — a different, unremarkable gap
+    })
+
+    it('estKcal stays null and estKcalReason names why when a duration is given but NO weight is on file anywhere (fresh account) — the required negative case', async () => {
+      // fake.state.weightEntries and fake.state.afpProfile.weight_kg both
+      // start empty/null in this file's afterEach, matching a fresh signup.
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 60, intensity: 'hard' })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.workout.estKcal).toBeNull()
+      expect(body.workout.estKcalReason).toBe('no_weight_on_file')
+    })
+
+    it('computes a real MET-based estimate once a weight-log entry exists — exact arithmetic, run/hard/60min/70kg', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 60, intensity: 'hard' })
+      const body = await res.json()
+      // MET_TABLE.run.hard = 13 (server/afp/engine.js): 13 * 3.5 * 70 / 200 * 60 = 955.5 -> rounds to 956.
+      expect(body.workout.estKcal).toBe(956)
+      expect(body.workout.estKcalReason).toBeNull()
+
+      const got = await get('/api/plan/workout')
+      expect((await got.json()).workout.estKcal).toBe(956) // persisted, not just returned once
+    })
+
+    it('falls back to the intensity default (moderate) for the estimate when intensity is omitted — a second exact-arithmetic check', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30 }) // no intensity
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 70 / 200 * 30 = 294.
+      expect(body.workout.estKcal).toBe(294)
+    })
+
+    it('falls back to the Adaptive Fuel Plan profile weight when no weight-log entry exists', async () => {
+      const setProfile = await put('/api/afp/profile', { weight_kg: 65, activity_level: 'moderate', height_cm: 170, age_years: 30, sex: 'female' })
+      expect(setProfile.status).toBe(200)
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30, intensity: 'moderate' })
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 65 / 200 * 30 = 273.
+      expect(body.workout.estKcal).toBe(273)
+      expect(body.workout.estKcalReason).toBeNull()
+    })
+
+    it('a weight-log entry wins over the AFP profile weight when both exist (most-recent real reading preferred)', async () => {
+      await put('/api/afp/profile', { weight_kg: 65 })
+      await put('/api/weight', { kg: 80 })
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30, intensity: 'moderate' })
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 80 / 200 * 30 = 336 (not 273, which 65kg would give).
+      expect(body.workout.estKcal).toBe(336)
+    })
+  })
 })
 
 describe('DELETE /api/connections/history (Connections "Delete synced history")', () => {
