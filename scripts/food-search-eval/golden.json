@@ -1,0 +1,179 @@
+{
+  "measuredAt": "2026-08-26T15:58:15.021Z",
+  "failures": 0,
+  "total": 7,
+  "results": [
+    {
+      "query": "zucchini",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Squash, zucchini, baby, raw",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 21,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": true,
+      "degraded": false,
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "top5": [
+        "Squash, zucchini, baby, raw (21 kcal)",
+        "Squash, summer, zucchini, includes skin, raw (17 kcal)",
+        "Squash, summer, green, zucchini, includes skin, raw (16 kcal)",
+        "Squash, summer, zucchini, includes skin, frozen, unprepared (17 kcal)",
+        "Squash, summer, zucchini, italian style, canned (29 kcal)"
+      ],
+      "latencyMs": 973
+    },
+    {
+      "query": "banana",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Banana, raw",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 97,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": false,
+      "degraded": false,
+      "failedSources": [],
+      "top5": [
+        "Banana, raw (97 kcal)",
+        "Bananas, raw (89 kcal)",
+        "Bananas, overripe, raw (85 kcal)",
+        "Pepper, banana, raw (27 kcal)",
+        "Peppers, banana, raw (27 kcal)"
+      ],
+      "latencyMs": 398
+    },
+    {
+      "query": "avocado",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Avocado, raw",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 160,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": false,
+      "degraded": false,
+      "failedSources": [],
+      "top5": [
+        "Avocado, raw (160 kcal)",
+        "Avocados, raw, California (167 kcal)",
+        "Avocados, raw, Florida (120 kcal)",
+        "Avocados, raw, all commercial varieties (160 kcal)",
+        "Avocado, Hass, peeled, raw (206 kcal)"
+      ],
+      "latencyMs": 1001
+    },
+    {
+      "query": "chicken breast",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Chicken, breast, meat and skin, raw",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 133,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": false,
+      "degraded": false,
+      "failedSources": [],
+      "top5": [
+        "Chicken, breast, meat and skin, raw (133 kcal)",
+        "Chicken, breast, boneless, skinless, raw (112 kcal)",
+        "Chicken breast, fat-free, mesquite flavor, sliced (80 kcal)",
+        "Chicken breast, rotisserie, skin eaten (175 kcal)",
+        "Chicken breast, sauteed, skin eaten (206 kcal)"
+      ],
+      "latencyMs": 1108
+    },
+    {
+      "query": "oatmeal",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Oatmeal, NFS",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 76,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": true,
+      "degraded": false,
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
+      "top5": [
+        "Oatmeal, NFS (76 kcal)",
+        "Oatmeal, multigrain (56 kcal)",
+        "OATMEAL [Thomas Brothers Ham Company] (378 kcal)",
+        "OATMEAL [Caribbean Foods Limited] (365 kcal)",
+        "Oats [Quaker Oats] (375 kcal)"
+      ],
+      "latencyMs": 848
+    },
+    {
+      "query": "salmon",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Fish, salmon, NFS",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 274,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": false,
+      "degraded": false,
+      "failedSources": [],
+      "top5": [
+        "Fish, salmon, NFS (274 kcal)",
+        "Fish, salmon, raw (188 kcal)",
+        "Fish, salmon, chinook, raw (179 kcal)",
+        "Fish, salmon, chum, raw (120 kcal)",
+        "Fish, salmon, pink, raw (127 kcal)"
+      ],
+      "latencyMs": 689
+    },
+    {
+      "query": "peanut butter",
+      "pass": true,
+      "reasons": [],
+      "rank1": {
+        "name": "Peanut butter",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 598,
+        "source": "usda"
+      },
+      "canonicalCoverage": "ok",
+      "partial": false,
+      "degraded": false,
+      "failedSources": [],
+      "top5": [
+        "Peanut butter (598 kcal)",
+        "Peanut butter, creamy (589 kcal)",
+        "Peanut butter, reduced fat (520 kcal)",
+        "Peanut butter, reduced sodium (590 kcal)",
+        "Peanut butter, chunk style, with salt (589 kcal)"
+      ],
+      "latencyMs": 629
+    }
+  ]
+}
