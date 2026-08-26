@@ -52,7 +52,7 @@ import { computeAdjustedTargets, computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
-import { allProviderStatuses, composeSignals } from './providers.js'
+import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
 import { computeProgress } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
 
@@ -521,9 +521,11 @@ async function backfillOuraHistory(userId, token, days = 30, accountId = null) {
   // activity have always worked without one; workouts are new and this is
   // the one part of them that genuinely needs it).
   let workoutsSaved = 0
+  let workoutsFetched = 0
   if (accountId != null) {
     try {
       const workouts = await ouraWorkoutsRange(token, fromYmd, toYmd)
+      workoutsFetched = workouts.length
       workoutsSaved = await store.saveOuraWorkouts(accountId, workouts)
     } catch (err) {
       // A 403 here (missing scope, once Oura requires one workouts doesn't
@@ -534,7 +536,49 @@ async function backfillOuraHistory(userId, token, days = 30, accountId = null) {
     }
   }
 
-  return { daysSaved, workoutsSaved }
+  // daysFetched/workoutsFetched vs. daysSaved/workoutsSaved is what
+  // trackedOuraBackfill (below) turns into the persisted fetched/accepted/
+  // deduplicated counts a runbook reads back — daysFetched is every day
+  // Oura's readiness-range endpoint returned in the window (rows.length,
+  // before the score:null filter above), not merely the ones this run
+  // actually stored.
+  return { daysSaved, workoutsSaved, daysFetched: rows.length, workoutsFetched }
+}
+
+// Wraps backfillOuraHistory with persisted sync-attempt observability —
+// last_attempted_sync (always), last_synced_at + records fetched/accepted/
+// deduplicated (on success), or the classified failure reason in `error` (on
+// throw) — shared by all three call sites below (OAuth connect, the manual
+// POST /oura/backfill, and the scheduled resync loop) so none of them can
+// drift from the other two. Always re-throws: every existing caller's own
+// error handling (a 500 from the manual route, a per-account skip in the
+// resync loop, a swallow-and-log at connect time) is unchanged — this only
+// adds a persisted trace alongside whatever that caller already does.
+// "deduplicated" here means "Oura returned it this run but it wasn't newly
+// stored" (no score yet for a readiness day, or a workout missing the id/day
+// upsert needs) — not a literal re-fetch/already-seen check, since Oura's API
+// doesn't mark duplicates and a re-run workout upsert (on conflict do update)
+// counts as accepted either way. See docs/oura-sync-runbook.md.
+async function trackedOuraBackfill(userId, token, days, accountId) {
+  let result
+  try {
+    result = await backfillOuraHistory(userId, token, days, accountId)
+  } catch (err) {
+    await recordOuraAttempt(store, userId, { ok: false, reason: classifyOuraRefreshError(err) }).catch((e) => {
+      console.error(`[oura-sync-observability] failed to persist attempt for user ${userId}: ${e.message}`)
+    })
+    throw err
+  }
+  const fetched = result.daysFetched + (accountId != null ? result.workoutsFetched : 0)
+  const accepted = result.daysSaved + result.workoutsSaved
+  await recordOuraAttempt(store, userId, {
+    ok: true,
+    synced: true,
+    counts: { fetched, accepted, deduplicated: Math.max(0, fetched - accepted) },
+  }).catch((e) => {
+    console.error(`[oura-sync-observability] failed to persist attempt for user ${userId}: ${e.message}`)
+  })
+  return result
 }
 
 requireAuthRouter.get('/oura/summary', asyncH(async (req, res) => {
@@ -587,15 +631,21 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
     refresh_token: tokens.refresh_token,
     expires_at: ouraExpiryFrom(tokens.expires_in),
   })
+  markSyncing(userId, 'oura')
   try {
-    await backfillOuraHistory(userId, tokens.access_token, 30, account.id)
+    await trackedOuraBackfill(userId, tokens.access_token, 30, account.id)
   } catch (err) {
     // A successful connect must still read as connected even if the
     // historical pull hiccups — POST /api/oura/backfill can retry it. But
     // silence here must not mean invisible: this exact catch block once
     // swallowed a wrong-endpoint bug (activityRange instead of
     // readinessRange) for hours with zero signal that anything was wrong.
+    // trackedOuraBackfill has already persisted this outcome (last_attempted_
+    // sync + the classified reason in `error`) before re-throwing — this
+    // console.error is only this call site's own trace on top of that.
     console.error(`[oura-connect-backfill] user ${userId} failed: ${err.message}`)
+  } finally {
+    clearSyncing(userId, 'oura')
   }
   res.redirect('/?oura=connected')
 }))
@@ -603,12 +653,30 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
 // Re-run the history backfill for an already-connected account (the normal
 // path only fires this once, at connect time).
 requireAuthRouter.post('/oura/backfill', asyncH(async (req, res) => {
-  const token = await resolveOuraToken(req.userId)
+  let token
+  try {
+    token = await resolveOuraToken(req.userId)
+  } catch (err) {
+    // resolveOuraToken's own refresh (ouraValidAccessToken) can throw before
+    // ever reaching trackedOuraBackfill below — that failure is just as real
+    // a sync attempt as one inside the backfill itself, so it gets the same
+    // persisted trace here rather than only the 500 asyncH turns it into.
+    await recordOuraAttempt(store, req.userId, { ok: false, reason: classifyOuraRefreshError(err) }).catch(() => {})
+    throw err
+  }
   if (!token) return res.status(400).json({ error: 'No Oura account connected.' })
   const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
   const accountId = await resolveOuraAccountId(req.userId)
-  const saved = await backfillOuraHistory(req.userId, token, days, accountId)
-  res.json({ ok: true, days, daysSaved: saved.daysSaved, workoutsSaved: saved.workoutsSaved })
+  markSyncing(req.userId, 'oura')
+  try {
+    const saved = await trackedOuraBackfill(req.userId, token, days, accountId)
+    res.json({
+      ok: true, days, daysSaved: saved.daysSaved, workoutsSaved: saved.workoutsSaved,
+      daysFetched: saved.daysFetched, workoutsFetched: saved.workoutsFetched,
+    })
+  } finally {
+    clearSyncing(req.userId, 'oura')
+  }
 }))
 
 // Connected accounts (tokens stripped) + config state, for the settings UI.
@@ -1351,13 +1419,31 @@ const OURA_RESYNC_WINDOW_DAYS = 3
 async function resyncAllOuraAccounts() {
   const accounts = await store.listAllOuraAccounts()
   for (const account of accounts) {
+    // Token resolution and the backfill itself are tracked as two separate
+    // attempt outcomes rather than one big try/catch: trackedOuraBackfill
+    // already persists its own outcome, so folding a token-refresh failure
+    // into the same catch would either double-record it (harmless but
+    // wasteful) or, worse, get missed if the two were merged carelessly. This
+    // is exactly the scheduled job the reported "readiness/sleep looks stale
+    // for one account" symptom implicates — see docs/oura-sync-runbook.md.
+    let token
     try {
-      const token = await ouraValidAccessToken(account, (t) => store.updateOuraTokens(account.user_id, account.id, t))
-      await backfillOuraHistory(account.user_id, token, OURA_RESYNC_WINDOW_DAYS, account.id)
+      token = await ouraValidAccessToken(account, (t) => store.updateOuraTokens(account.user_id, account.id, t))
     } catch (err) {
-      // One account's failure (an expired/revoked refresh token, a transient
-      // Oura outage) must not stop the rest of the batch from syncing.
+      console.error(`[oura-resync] account ${account.id} (user ${account.user_id}) token refresh failed: ${err.message}`)
+      await recordOuraAttempt(store, account.user_id, { ok: false, reason: classifyOuraRefreshError(err) }).catch(() => {})
+      continue
+    }
+    markSyncing(account.user_id, 'oura')
+    try {
+      await trackedOuraBackfill(account.user_id, token, OURA_RESYNC_WINDOW_DAYS, account.id)
+    } catch (err) {
+      // One account's failure (a transient Oura outage, a data-fetch error)
+      // must not stop the rest of the batch from syncing. trackedOuraBackfill
+      // already persisted this outcome — this is only the loop's own trace.
       console.error(`[oura-resync] account ${account.id} (user ${account.user_id}) failed: ${err.message}`)
+    } finally {
+      clearSyncing(account.user_id, 'oura')
     }
   }
 }
