@@ -64,7 +64,7 @@ const HOURS = (ms) => ms / 3600000
 // — a wrong specific kind (e.g. calling a hike a run) would silently change
 // which plan rule fires; 'workout' never triggers the endurance carb bump,
 // which is the safe default when the mapping is uncertain.
-const OURA_ACTIVITY_TO_KIND = {
+export const OURA_ACTIVITY_TO_KIND = {
   running: 'run', cycling: 'ride', biking: 'ride', swimming: 'swim', rowing: 'row',
   walking: 'walk', hiking: 'hike', strength_training: 'strength', weightlifting: 'strength',
   hiit: 'hiit', core_training: 'strength', cardio: 'cardio', yoga: 'mobility',

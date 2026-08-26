@@ -20,7 +20,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, searchByText } from './lookup.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
-import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema } from './validation.js'
+import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
 import {
   ouraConfigured,
   getToken as ouraToken,
@@ -52,6 +52,8 @@ import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
+import { computeProgress } from './afp/engine.js'
+import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -919,6 +921,86 @@ requireAuthRouter.get('/plan/workout', asyncH(async (req, res) => {
 requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
   const ok = await store.clearManualWorkout(req.userId, localYmd())
   res.status(ok ? 204 : 404).end()
+}))
+
+// --- Adaptive Fuel Plan ----------------------------------------------------
+// A separate, additive feature (server/afp/engine.js + server/afp/plan.js) —
+// its own profile, its own planned-workout list, its own daily-plan
+// snapshots. It never reads or writes daily_targets/daily_plans/profile
+// above, so nothing here can regress the existing Plan tab.
+requireAuthRouter.get('/afp/profile', asyncH(async (req, res) => {
+  res.json({ profile: await store.getAfpProfile(req.userId) })
+}))
+
+requireAuthRouter.put('/afp/profile', validateBody(AfpProfilePatchSchema), asyncH(async (req, res) => {
+  const profile = await store.setAfpProfile(req.userId, req.body)
+  res.json({ profile })
+}))
+
+// Planned training sessions. `from`/`to` default to a two-week-ahead window
+// (today .. today+13) — enough to plan a race taper without an unbounded
+// query; the client can still ask for any explicit range.
+requireAuthRouter.get('/afp/workouts', asyncH(async (req, res) => {
+  const { from, to } = req.query
+  const fromYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(from)) ? from : localYmd()
+  const toYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(to)) ? to : addDaysToYmd(fromYmd, 13)
+  res.json({ workouts: await store.listPlannedWorkouts(req.userId, fromYmd, toYmd) })
+}))
+
+// Upserts: an `id` in the body updates that session (only if it belongs to
+// this user — store.savePlannedWorkout returns null otherwise, reported as
+// 404 rather than silently succeeding on nothing); no `id` creates a new one.
+requireAuthRouter.put('/afp/workouts', validateBody(PlannedWorkoutSchema), asyncH(async (req, res) => {
+  const saved = await store.savePlannedWorkout(req.userId, req.body)
+  if (!saved) return res.status(404).json({ error: 'Session not found.' })
+  res.json({ workout: saved })
+}))
+
+requireAuthRouter.delete('/afp/workouts/:id', asyncH(async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id.' })
+  const ok = await store.deletePlannedWorkout(req.userId, id)
+  res.status(ok ? 204 : 404).end()
+}))
+
+// The computed (or frozen historical) plan for one day, plus fresh progress
+// against today's actual logged intake — progress is never frozen, even for
+// a past day whose TARGETS are (see docs/adaptive-fuel-plan.md).
+requireAuthRouter.get('/afp/plan', asyncH(async (req, res) => {
+  const today = localYmd()
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : today
+  const { row, recomputed } = await getOrComputeAfpPlan(store, req.userId, date, { today })
+  const { from, to } = dayRange(date)
+  const entries = await store.listEntries(req.userId, { from, to })
+  const intake = sumIntake(entries)
+  const progress = row.plan?.ok ? computeProgress(row.plan.targets, intake) : null
+  res.json({ ...row, today, recomputed, frozen: !recomputed && date !== today, progress })
+}))
+
+// The one explicit reconciliation escape hatch: force a past day's frozen
+// plan to recompute from current data (e.g. correcting a data-entry mistake).
+// Never called automatically — see getOrComputeAfpPlan's own freeze rule.
+requireAuthRouter.post('/afp/plan/:date/recompute', asyncH(async (req, res) => {
+  const date = req.params.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' })
+  const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd(), forceRecompute: true })
+  res.json({ plan: row })
+}))
+
+// A day-specific correction, layered on top of the computed plan — never
+// touches afp_profile's defaults. An empty body clears any override back to
+// the engine's own computed numbers. Ensures a plan exists for the day first
+// (the very first view of an old day has nothing to attach an override to
+// yet), then recomputes so the override is immediately reflected in
+// `plan.targets` rather than only sitting in the `overrides` field unapplied.
+requireAuthRouter.patch('/afp/plan/:date/overrides', validateBody(AfpOverridesSchema), asyncH(async (req, res) => {
+  const date = req.params.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' })
+  const hasKeys = Object.keys(req.body || {}).length > 0
+  await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd() })
+  await store.setAfpDailyPlanOverrides(req.userId, date, hasKeys ? req.body : null)
+  const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd(), forceRecompute: true })
+  res.json({ plan: row })
 }))
 
 // Body weight log — one entry per day. `day` defaults to today (same
