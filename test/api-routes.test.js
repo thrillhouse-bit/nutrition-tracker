@@ -255,7 +255,16 @@ const oura = vi.hoisted(() => ({
   workoutsRange: async () => [],
 }))
 
+const foodSearch = vi.hoisted(() => ({
+  searchFoods: async () => ({
+    results: [], degraded: false, usedCorrection: false, sources: [],
+    parsed: { normalized: '', tokens: [], variants: [], corrected: null },
+    totalLatencyMs: 0,
+  }),
+}))
+
 vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'json-file' }))
+vi.mock('../server/foodSearch/index.js', () => ({ searchFoods: (...args) => foodSearch.searchFoods(...args) }))
 vi.mock('../server/integrations/oura.js', async (importOriginal) => {
   const real = await importOriginal()
   return {

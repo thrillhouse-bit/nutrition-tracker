@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeOFF, normalizeUSDA, rankByRelevance } from '../server/lookup.js'
+import { normalizeOFF, normalizeUSDA } from '../server/lookup.js'
+import { rankResults } from '../server/foodSearch/rank.js'
 
 describe('normalizeOFF', () => {
   it('uses per-serving values when a serving is defined', () => {
@@ -110,10 +111,14 @@ describe('normalizeUSDA', () => {
   })
 })
 
-describe('rankByRelevance', () => {
+// Ranking itself now lives in server/foodSearch/rank.js (rankResults) — see
+// test/foodSearchRank.test.js for its full unit coverage. These three cases
+// are kept here (against the new implementation) as a direct regression
+// check against the exact live bug that motivated the original ranking fix:
+// searching "egg" surfaced "Egg Drop Soup"/"Deviled Eggs" ahead of plain
+// "Egg", reported live 25 Aug 2026.
+describe('rankResults (regression: plain "egg" must lead dish names)', () => {
   it('ranks a plain "Egg" first against a realistic mix of dishes and an ingredient-only hit', () => {
-    // The USDA/OFF order these arrive in on the live site — dishes ahead of
-    // the base food — is exactly the bug reported live 25 Aug 2026.
     const rows = [
       { name: 'Egg Drop Soup' },
       { name: 'Deviled Eggs' },
@@ -124,7 +129,7 @@ describe('rankByRelevance', () => {
       { name: 'Egg Salad Sandwich' },
       { name: 'Egg' },
     ]
-    const ranked = rankByRelevance(rows, 'egg')
+    const ranked = rankResults(rows, ['egg'])
     expect(ranked[0].name).toBe('Egg') // exact match must lead
     expect(ranked.map((r) => r.name)).not.toContain(undefined)
     // The ingredient-only hit (no "egg" anywhere in its own name) sinks to
@@ -140,7 +145,7 @@ describe('rankByRelevance', () => {
       { name: 'Eggplant Parmesan' }, // prefix
       { name: 'EGG' }, // exact match, different case
     ]
-    const ranked = rankByRelevance(rows, 'Egg')
+    const ranked = rankResults(rows, ['Egg'])
     expect(ranked.map((r) => r.name)).toEqual([
       'EGG',
       'Eggplant Parmesan',
@@ -151,8 +156,11 @@ describe('rankByRelevance', () => {
   })
 
   it('keeps each source\'s own order as the tiebreak within a tier (stable sort)', () => {
-    const rows = [{ name: 'Egg Salad' }, { name: 'Egg Drop Soup' }, { name: 'Egg Sandwich' }]
-    const ranked = rankByRelevance(rows, 'egg')
-    expect(ranked.map((r) => r.name)).toEqual(['Egg Salad', 'Egg Drop Soup', 'Egg Sandwich'])
+    // Same tier (prefix) AND same token-count (so the "shorter name" secondary
+    // tiebreak — see rank.js — doesn't itself decide the order here), which
+    // isolates the stable-sort property being tested.
+    const rows = [{ name: 'Egg Salad' }, { name: 'Egg Sandwich' }, { name: 'Egg Muffin' }]
+    const ranked = rankResults(rows, ['egg'])
+    expect(ranked.map((r) => r.name)).toEqual(['Egg Salad', 'Egg Sandwich', 'Egg Muffin'])
   })
 })
