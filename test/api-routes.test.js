@@ -449,6 +449,63 @@ describe('POST /api/apple/ingest token gate', () => {
   })
 })
 
+describe('POST /api/apple/health-auto-export (third-party exporter adapter)', () => {
+  const haeBody = {
+    data: {
+      workouts: [{ name: 'Running', start: '2026-08-20 07:00:00 -0700', duration: 1800, activeEnergyBurned: { qty: 300, units: 'kcal' } }],
+      metrics: [{ name: 'step_count', data: [{ date: '2026-08-20 12:00:00 +0000', qty: 6500 }] }],
+    },
+  }
+
+  it('accepts a Bearer token (Health Auto Export cannot send a custom header name)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const res = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ingested).toBe(2) // one workout + one steps sample
+    expect(body.unmapped).toEqual([])
+  })
+
+  it('still accepts the native x-ingest-token header too (same auth mechanism, either header works)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const res = await post('/api/apple/health-auto-export', haeBody, { 'x-ingest-token': 'sekret' })
+    expect(res.status).toBe(200)
+  })
+
+  it('refuses without any token, same as the native ingest route', async () => {
+    const res = await post('/api/apple/health-auto-export', haeBody)
+    expect(res.status).toBe(401)
+    expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
+  })
+
+  it('actually translates the HAE payload into real stored samples (end-to-end, not just auth)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    const stored = fake.state.appleSignals['2026-08-20']
+    expect(stored).toHaveLength(2)
+    const workout = stored.find((s) => s.metric === 'workout')
+    expect(workout.value.kind).toBe('run')
+    expect(workout.value.est_kcal).toBe(300)
+    const steps = stored.find((s) => s.metric === 'steps')
+    expect(steps.value).toBe(6500)
+  })
+
+  it('reports an unrecognized HAE metric name in `unmapped` rather than silently dropping it', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const res = await post('/api/apple/health-auto-export', {
+      data: { metrics: [{ name: 'some_future_apple_metric', data: [{ date: '2026-08-20 08:00:00 +0000', qty: 1 }] }] },
+    }, { authorization: 'Bearer sekret' })
+    expect((await res.json()).unmapped).toEqual(['some_future_apple_metric'])
+  })
+
+  it('refuses the write once the account has disabled Apple Health, even with a valid token (same gate as the native route)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    fake.state.integrations.apple = { provider: 'apple', enabled: false, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+    const res = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(res.status).toBe(403)
+  })
+})
+
 describe('Input validation (zod) on mutating routes', () => {
   it('PUT /api/targets rejects a non-numeric value before it reaches the store', async () => {
     const res = await put('/api/targets', { calories: 'banana' })
