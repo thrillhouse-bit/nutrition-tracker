@@ -251,6 +251,7 @@ const oura = vi.hoisted(() => ({
   dailyReadiness: async () => null,
   readinessRange: async () => [],
   dailySleepHours: async () => null,
+  dailySleepScore: async () => null,
   sleepScoreRange: async () => [],
   workoutsRange: async () => [],
 }))
@@ -276,6 +277,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     dailyReadiness: (...args) => oura.dailyReadiness(...args),
     readinessRange: (...args) => oura.readinessRange(...args),
     dailySleepHours: (...args) => oura.dailySleepHours(...args),
+    dailySleepScore: (...args) => oura.dailySleepScore(...args),
     sleepScoreRange: (...args) => oura.sleepScoreRange(...args),
     workoutsRange: (...args) => oura.workoutsRange(...args),
   }
@@ -890,6 +892,82 @@ describe('POST /api/oura/backfill', () => {
       expect(stored).toHaveLength(1)
       expect(stored[0].oura_id).toBe('w1')
     })
+  })
+})
+
+// End-to-end proof of the demo/real precedence fix (server/providers.js
+// composeSignals), over real HTTP against the real Express app + real
+// composeSignals — not just the unit-level fixtures in test/providers.test.js.
+// Reproduces the reported production shape exactly: Garmin is never
+// configured on this whole test file (no GARMIN_CLIENT_ID/SECRET/REDIRECT_URI
+// anywhere), so it sits in its default demo:true, never-connected state, the
+// same as production's own `garmin: "not-configured"` — while Oura has a
+// real, connected OAuth account with real workout data, matching production's
+// `oura: "oauth"`. PREFERENCE.workout lists Garmin first; before the fix a
+// single preference-ordered pass took Garmin's canned "Evening Run" simply
+// because it sorted first and was non-null, never because it was a better
+// answer than Oura's real, connected data.
+describe('GET /api/today: real Oura data beats Garmin\'s default demo (Task 1 precedence fix, end-to-end)', () => {
+  const OURA_ENV = ['OURA_CLIENT_ID', 'OURA_CLIENT_SECRET', 'OURA_REDIRECT_URI']
+  const saved = {}
+  beforeAll(() => {
+    for (const k of OURA_ENV) saved[k] = process.env[k]
+    process.env.OURA_CLIENT_ID = 'test-client-id'
+    process.env.OURA_CLIENT_SECRET = 'test-client-secret'
+    process.env.OURA_REDIRECT_URI = 'https://example.com/oura/callback'
+  })
+  afterAll(() => {
+    for (const k of OURA_ENV) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  })
+  afterEach(() => {
+    fake.state.ouraAccounts = []
+    fake.state.ouraWorkouts = []
+    oura.dailySummary = async () => null
+    oura.dailyReadiness = async () => null
+    oura.dailySleepHours = async () => null
+    oura.dailySleepScore = async () => null
+  })
+
+  // Mirrors providers.js's own ymd() exactly (local-getter YYYY-MM-DD), using
+  // this process's real TZ (Pacific/Apia, set at the top of this file) and
+  // real current time — no fake timers needed, since /api/today's default
+  // date is also the server's real "now".
+  const today = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  it('a real, connected Oura account\'s workout wins the workout slot over Garmin\'s canned demo', async () => {
+    const day = today()
+    fake.state.ouraAccounts = [{ id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() }]
+    fake.state.ouraWorkouts = [
+      { account_id: 1, oura_id: 'w1', day, activity: 'running', calories: 420, start_datetime: `${day}T06:00:00+00:00`, end_datetime: `${day}T06:45:00+00:00` },
+    ]
+
+    const res = await get('/api/today')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('oura')
+    expect(body.signals.workout.demo).toBe(false)
+    expect(body.signals.workout.value.kind).toBe('run')
+    // The label a real backfilled Oura workout gets is derived from its own
+    // `activity` field ("Running"), never the fixed demo scenario's label —
+    // this is the concrete tell that Garmin's canned data did NOT win.
+    expect(body.signals.workout.value.label).toBe('Running')
+    expect(body.signals.workout.value.label).not.toBe('Evening Run')
+  })
+
+  it('control: with no Oura account connected, Garmin\'s default demo still fills the workout slot unchanged (the fresh-account experience is not regressed)', async () => {
+    fake.state.ouraAccounts = [] // never connected
+    const res = await get('/api/today')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('garmin')
+    expect(body.signals.workout.demo).toBe(true)
+    expect(body.signals.workout.value.label).toBe('Evening Run')
   })
 })
 

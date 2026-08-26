@@ -187,12 +187,16 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     }))
     const store = {
       ...baseStore,
-      // garmin's demo must be switched off here: it was never configured/
-      // connected in this fixture either, and garmin is preferred ahead of
-      // oura for expenditure/steps (see PREFERENCE) — left at its default
-      // demo:true, garmin's seeded demo numbers would silently win the
-      // expenditure/steps slots regardless of what oura's own endpoints did,
-      // which is a real thing this test would otherwise get right by accident.
+      // garmin's demo stays off here — NOT to work around the demo/real
+      // precedence bug (composeSignals now makes any real value outrank any
+      // demo value regardless of PREFERENCE order, so that's no longer a risk
+      // by itself), but because there's genuinely no real expenditure/steps
+      // data anywhere in this fixture (Activity's endpoint is down, Apple has
+      // none today). Left at its default demo:true, Garmin's seeded numbers
+      // would CORRECTLY fill that real gap, which would make expenditure/
+      // steps non-null and defeat this test's own unrelated assertion that
+      // they're null — this test is about readiness/sleep staying honest when
+      // a sibling endpoint fails, not about provider precedence.
       getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
@@ -223,10 +227,18 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     }))
     const store = {
       ...baseStore,
-      // See the previous test: garmin's demo must be off, or its seeded
-      // expenditure/steps would win the PREFERENCE fallback ahead of oura's
-      // real ones regardless of what this test is actually exercising.
-      getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
+      // Garmin is left at its DEFAULT demo:true here (never connected, demo
+      // not disabled) — deliberately, unlike the sibling test above. Garmin
+      // sorts FIRST in PREFERENCE.expenditure/.steps, so this is exactly the
+      // shape of the precedence bug composeSignals used to have: an earlier,
+      // never-connected provider's canned demo values (1820 kcal, 4200
+      // steps) checked before a later, really-connected provider's real ones.
+      // Before the fix, this test would have failed — Garmin's demo would
+      // have won both slots outright, regardless of Oura's real 2380/8700
+      // below. It passes now because composeSignals takes any real value
+      // over any demo value first, and only falls back to PREFERENCE order
+      // within each of those two passes.
+      getIntegration: async (userId, id) => ({ enabled: true, connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
       ],
@@ -248,7 +260,14 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     const calls = []
     const store = {
       ...baseStore,
-      getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
+      // Garmin left at its DEFAULT demo:true (never connected, not disabled)
+      // — this is the precedence bug's exact shape for `workout`, whose
+      // PREFERENCE lists Garmin first. Before the fix, Garmin's canned demo
+      // "Evening Run" would have won this slot outright over Oura's real
+      // backfilled workout below, purely by sorting first, regardless of
+      // Oura being genuinely connected with real data. Passes now because
+      // composeSignals prefers any real value over any demo value first.
+      getIntegration: async (userId, id) => ({ enabled: true, connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
       ],
@@ -272,9 +291,13 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })))
     const store = {
       ...baseStore,
-      // garmin's demo must be off here too — it's preferred ahead of oura
-      // for `workout` (see PREFERENCE) and would otherwise silently win this
-      // slot regardless of oura having genuinely nothing today.
+      // garmin's demo stays off here too, same reasoning as the sibling test
+      // above just above the precedence-fix ones: there's genuinely no real
+      // workout anywhere in this fixture (Oura's own workouts list is empty),
+      // so leaving Garmin's default demo on would CORRECTLY synthesize
+      // "Evening Run" and defeat the point of this test — that Oura's own
+      // empty response resolves to a clean null, not a throw and not a
+      // value silently sourced from elsewhere.
       getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
@@ -294,7 +317,11 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     const day = ymd(now)
     const store = {
       ...baseStore,
-      getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
+      // Garmin left at its DEFAULT demo:true — another instance of the
+      // precedence-fix shape: a real Oura workout survives the walking
+      // filter below, and it must still win the `workout` slot over
+      // Garmin's demo despite Garmin sorting first in PREFERENCE.
+      getIntegration: async (userId, id) => ({ enabled: true, connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
       ],
@@ -317,6 +344,12 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     const day = ymd(now)
     const store = {
       ...baseStore,
+      // garmin's demo stays off — same isolation reasoning as the earlier
+      // "no workout signal (not a throw)" control: with every workout today
+      // filtered out as a walk, there's genuinely no real workout signal
+      // anywhere, so Garmin's default demo would correctly (not buggily)
+      // fill the gap; disabling it here just keeps this test's null
+      // assertion about oura's own filtered-to-nothing result.
       getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
@@ -347,7 +380,11 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     const calls = []
     const store = {
       ...baseStore,
-      getIntegration: async (userId, id) => ({ enabled: true, demo: id !== 'garmin', connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
+      // Garmin left at its DEFAULT demo:true — real Oura data exists for
+      // both `workout` and `expenditure` here, both PREFERENCE lists Garmin
+      // ahead of Oura, so this doubles as a precedence-fix proof: Garmin's
+      // canned demo workout/expenditure must not win despite sorting first.
+      getIntegration: async (userId, id) => ({ enabled: true, connected_at: id === 'apple' ? '2026-08-01T00:00:00.000Z' : null, settings: {} }),
       listOuraAccounts: async () => [
         { id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() },
       ],
@@ -383,5 +420,69 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })))
     await composeSignals(store, now, 1) // no 4th arg
     expect(calls).toEqual([day])
+  })
+})
+
+// --- Task 1: demo must never outrank real data, for every metric PREFERENCE
+// serves (readiness, sleep, workout, expenditure, steps, hrv) -------------
+//
+// Root cause: composeSignals used to walk PREFERENCE[metric] and take the
+// FIRST non-null value, with no real/demo distinction — so a provider that
+// was merely in its own default demo mode (never connected) pre-empted a
+// later-listed, genuinely connected provider's real data whenever the demo
+// provider happened to sort first. Confirmed live: `garmin: "not-configured"`,
+// `oura: "oauth"`, yet Workouts showed the fixed demo scenario, because
+// PREFERENCE.workout = ['garmin', 'apple', 'oura'] checked Garmin's demo
+// before ever looking at Oura's real, connected data.
+//
+// The workout/expenditure/steps shape of this is already proven above (the
+// tests that removed their `demo: id !== 'garmin'` workaround once the fix
+// landed). This block covers the metric the tests above don't reach — sleep,
+// whose PREFERENCE (['oura', 'apple', 'garmin']) puts a DIFFERENT demo-
+// capable provider (Oura) ahead of a real one (Apple) — plus the required
+// "nothing changed for a fresh account" control, run once per metric.
+//
+// Two metrics in PREFERENCE — readiness (['oura', 'garmin']) and hrv
+// (['apple', 'oura']) — cannot actually exhibit this bug today: Garmin has no
+// readiness signal at all (real or demo), and Oura has no real hrv signal at
+// all (see server/providers.js's demoSignals/realSignals), so each of those
+// two metrics only ever has ONE possible real source. The two-pass merge
+// still runs for them — it's generic — but there is no ordering conflict for
+// it to resolve. Recorded here rather than silently untested.
+describe('composeSignals: demo may never outrank real data, regardless of PREFERENCE order (Task 1 fix)', () => {
+  const baseStore = {
+    getIntegration: async () => ({ enabled: true, settings: {} }), // demo left at default (true) for every provider
+    listGarminAccounts: async () => [],
+    getGarminDaily: async () => null,
+    updateOuraTokens: async () => {},
+  }
+
+  it('sleep: a real, connected Apple reading beats Oura\'s default demo, even though Oura sorts first in PREFERENCE.sleep', async () => {
+    const store = {
+      ...baseStore,
+      listOuraAccounts: async () => [], // Oura never connected -> eligible for its own demo sleep (7.4h)
+      listAppleSignals: async (userId, day) => [
+        { metric: 'sleep', value: 6.8, unit: 'h', recorded_at: `${day}T07:00:00`, fetched_at: new Date().toISOString(), extra: {} },
+      ],
+    }
+    const sig = await composeSignals(store, new Date(), 1)
+    expect(sig.sleep).toEqual(expect.objectContaining({ provider: 'apple', demo: false, value: 6.8 }))
+  })
+
+  it('control: with NOTHING connected anywhere, every metric still falls back to its normal demo value, completely unchanged from before the fix', async () => {
+    const store = {
+      ...baseStore,
+      listOuraAccounts: async () => [],
+      listAppleSignals: async () => [],
+    }
+    const sig = await composeSignals(store, new Date(), 1)
+    // Same values demoSignals() seeds — a fresh signup with no wearables
+    // connected at all must see exactly this, not a blank Today.
+    expect(sig.readiness).toEqual(expect.objectContaining({ provider: 'oura', demo: true, value: 82 }))
+    expect(sig.sleep).toEqual(expect.objectContaining({ provider: 'oura', demo: true, value: 7.4 }))
+    expect(sig.workout).toEqual(expect.objectContaining({ provider: 'garmin', demo: true, value: expect.objectContaining({ label: 'Evening Run' }) }))
+    expect(sig.expenditure).toEqual(expect.objectContaining({ provider: 'garmin', demo: true, value: 1820 }))
+    expect(sig.steps).toEqual(expect.objectContaining({ provider: 'garmin', demo: true, value: 4200 }))
+    expect(sig.hrv).toEqual(expect.objectContaining({ provider: 'apple', demo: true, value: 62 }))
   })
 })
