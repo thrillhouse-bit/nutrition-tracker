@@ -79,6 +79,15 @@ function ttfur(kind) {
   }
 }
 
+// A target that is in NEITHER database cannot be ranked to position 1 by any
+// amount of ranking work. Reported as its own figure rather than folded into
+// the headline, because the two are different problems: 45 of the 140 branded
+// corpus items are store house brands (365, Allegro Coffee, Daily Harvest)
+// that USDA and Open Food Facts simply do not carry, while ZERO generic items
+// are missing. Blending them would understate ranking quality and overstate
+// what ranking can fix.
+const retrievable = (subset) => subset.filter((r) => r.rank !== null)
+
 const summary = {
   generatedAt: new Date().toISOString(),
   totalProbes: rows.length,
@@ -88,6 +97,18 @@ const summary = {
     all: metrics(full),
     generic: metrics(full.filter((r) => r.kind === 'generic')),
     branded: metrics(full.filter((r) => r.kind === 'branded')),
+  },
+  // Same complete-query probes, restricted to items whose target either
+  // database actually carries.
+  completeQueryRetrievableOnly: {
+    all: metrics(retrievable(full)),
+    generic: metrics(retrievable(full.filter((r) => r.kind === 'generic'))),
+    branded: metrics(retrievable(full.filter((r) => r.kind === 'branded'))),
+  },
+  targetsNotInEitherDatabase: {
+    all: full.filter((r) => r.rank === null).length,
+    generic: full.filter((r) => r.rank === null && r.kind === 'generic').length,
+    branded: full.filter((r) => r.rank === null && r.kind === 'branded').length,
   },
   byPrefixLength: Object.fromEntries([2, 3, 4, 5].map((len) => [len, {
     all: metrics(atPrefix(len)),
@@ -133,6 +154,10 @@ console.log('COMPLETE QUERY')
 line('all', summary.completeQuery.all)
 line('generic', summary.completeQuery.generic)
 line('branded', summary.completeQuery.branded)
+console.log(`\nCOMPLETE QUERY, excluding the ${summary.targetsNotInEitherDatabase.all} targets neither database carries (${summary.targetsNotInEitherDatabase.generic} generic / ${summary.targetsNotInEitherDatabase.branded} branded)`)
+line('all', summary.completeQueryRetrievableOnly.all)
+line('generic', summary.completeQueryRetrievableOnly.generic)
+line('branded', summary.completeQueryRetrievableOnly.branded)
 for (const len of [2, 3, 4, 5]) {
   console.log(`\nPREFIX ${len} CHARS`)
   line('all', summary.byPrefixLength[len].all)

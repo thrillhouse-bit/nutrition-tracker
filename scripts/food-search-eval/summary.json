@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T16:06:55.101Z",
+  "generatedAt": "2026-08-26T16:12:56.838Z",
   "totalProbes": 993,
   "distinctItems": 200,
   "note": "Every latency figure is the SEARCH round trip. A user additionally waits the 350 ms input debounce before the request starts.",
@@ -40,6 +40,49 @@
       "latencyP50Ms": 640,
       "latencyP95Ms": 1295
     }
+  },
+  "completeQueryRetrievableOnly": {
+    "all": {
+      "probes": 155,
+      "top1Pct": 90.3,
+      "top3Pct": 92.3,
+      "top5Pct": 92.3,
+      "mrr": 0.9188,
+      "zeroResultPct": 0,
+      "partialPct": 13.5,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 640,
+      "latencyP95Ms": 1264
+    },
+    "generic": {
+      "probes": 60,
+      "top1Pct": 98.3,
+      "top3Pct": 100,
+      "top5Pct": 100,
+      "mrr": 0.9917,
+      "zeroResultPct": 0,
+      "partialPct": 15,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 577,
+      "latencyP95Ms": 1119
+    },
+    "branded": {
+      "probes": 95,
+      "top1Pct": 85.3,
+      "top3Pct": 87.4,
+      "top5Pct": 87.4,
+      "mrr": 0.8727,
+      "zeroResultPct": 0,
+      "partialPct": 12.6,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 658,
+      "latencyP95Ms": 1461
+    }
+  },
+  "targetsNotInEitherDatabase": {
+    "all": 45,
+    "generic": 0,
+    "branded": 45
   },
   "byPrefixLength": {
     "2": {
