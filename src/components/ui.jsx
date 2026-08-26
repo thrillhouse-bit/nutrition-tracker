@@ -265,6 +265,46 @@ export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' 
   )
 }
 
+// Compact circular dial — a true circle (allowed under the "no rounded
+// corners" rule), ink track + cobalt arc for a bounded 0..max reading. Added
+// for Today's Daily Signals redesign (26 Aug 2026): the readiness score is
+// the one signal here that's genuinely a bounded 0-100 gauge, so a dial reads
+// as an instrument rather than a decorative flourish — the product ask's
+// "one intentional signature visual treatment... a compact dial," used once,
+// not stamped on all three signals (sleep and workout aren't 0..max scores,
+// so they keep a plain typographic treatment instead of a forced dial).
+// Purely decorative (aria-hidden) — the numeral rendered on top by the
+// caller is what a screen reader gets, same division of labor as Meter/
+// SegmentBar's bars vs. the numerals beside them elsewhere in this file.
+// Raw hex (not var(--color-...)) matches Insights.jsx's own inline SVG charts
+// (#1F35C4/#121210) rather than inventing a new pattern for this one shape.
+// strokeLinecap 'butt' (not 'round') keeps the arc's ends sharp, matching the
+// design's sharp-rectangle ethos even on this one circular exception.
+export function Dial({ value, max = 100, size = 64, thickness = 6, className = '' }) {
+  const r = (size - thickness) / 2
+  const c = 2 * Math.PI * r
+  const pct = max > 0 ? Math.max(0, Math.min(1, num(value) / max)) : 0
+  return (
+    <svg aria-hidden width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={className}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#121210" strokeOpacity="0.16" strokeWidth={thickness} />
+      {pct > 0 && (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="#1F35C4"
+          strokeWidth={thickness}
+          strokeLinecap="butt"
+          strokeDasharray={`${c} ${c}`}
+          strokeDashoffset={c * (1 - pct)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      )}
+    </svg>
+  )
+}
+
 // A small context swatch (recovery = mist, training = sand, neutral = ink).
 // Legacy sage/lavender tones alias to mist/sand.
 export function Swatch({ tone = 'ink', size = 9, className = '' }) {
