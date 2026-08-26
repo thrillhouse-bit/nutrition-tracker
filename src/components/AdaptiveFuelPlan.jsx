@@ -497,6 +497,7 @@ const SAFETY_LABEL = {
 
 export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const [profile, setProfile] = useState(null)
+  const [onboardingProfile, setOnboardingProfile] = useState(null)
   const [plan, setPlan] = useState(null)
   const [workouts, setWorkouts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -509,10 +510,10 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const load = () => {
     let alive = true
     setLoading(true); setError('')
-    Promise.all([api.afpPlan(day), api.listAfpWorkouts(day, day), api.getAfpProfile()])
-      .then(([p, w, prof]) => {
+    Promise.all([api.afpPlan(day), api.listAfpWorkouts(day, day), api.getAfpProfile(), api.getProfile()])
+      .then(([p, w, prof, general]) => {
         if (!alive) return
-        setPlan(p); setWorkouts(w.workouts || []); setProfile(prof.profile)
+        setPlan(p); setWorkouts(w.workouts || []); setProfile(prof.profile); setOnboardingProfile(general.profile)
       })
       .catch((err) => { if (alive) setError(err.message || 'Could not load your Adaptive Fuel Plan.') })
       .finally(() => { if (alive) setLoading(false) })
@@ -534,10 +535,30 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const p = plan?.plan
   const hasProfileYet = profile && (profile.weight_kg != null || profile.height_cm != null || profile.age_years != null)
 
+  // AfpProfileForm's fields largely duplicate Plan's own onboarding profile
+  // (height/weight/age/sex/activity level/units) — a user who already
+  // calculated or typed a baseline there was hitting a BLANK "Set up my
+  // profile" form here and re-typing the exact same metrics a second time,
+  // which read as the Adaptive Fuel Plan not working at all rather than
+  // just not-yet-configured. Field-by-field fallback, never the reverse: an
+  // AFP-specific value the user already saved always wins, so this becomes
+  // a no-op the moment they've saved once. goal/body_fat_pct/weekly_change_kg/
+  // calorie_adjustment/the safety flags have no onboarding equivalent and
+  // still start blank, exactly as before.
+  const profileForForm = profile && onboardingProfile ? {
+    ...profile,
+    units_pref: profile.units_pref ?? onboardingProfile.units_pref,
+    height_cm: profile.height_cm ?? onboardingProfile.height_cm,
+    weight_kg: profile.weight_kg ?? onboardingProfile.weight_kg,
+    age_years: profile.age_years ?? onboardingProfile.age_years,
+    sex: profile.sex ?? onboardingProfile.sex,
+    activity_level: profile.activity_level ?? onboardingProfile.activity_level,
+  } : profile
+
   if (editingProfile) {
     return (
       <div className="mt-5">
-        <AfpProfileForm profile={profile} onCancel={() => setEditingProfile(false)} onSaved={() => { setEditingProfile(false); refresh() }} />
+        <AfpProfileForm profile={profileForForm} onCancel={() => setEditingProfile(false)} onSaved={() => { setEditingProfile(false); refresh() }} />
       </div>
     )
   }

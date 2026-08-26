@@ -255,7 +255,6 @@ export default function Insights({ refreshKey }) {
   }, [refreshKey])
 
   const readinessProviderLabel = PROVIDER_NAMES[signals?.readiness?.provider] || null
-  const workoutProviderLabel = PROVIDER_NAMES[signals?.workout?.provider] || null
 
   const imperial = profile?.units_pref !== 'metric'
   const unitLabel = imperial ? 'lb' : 'kg'
@@ -318,6 +317,15 @@ export default function Insights({ refreshKey }) {
 
   const workoutLoad = data?.workoutLoad || []
   const avgMinutes = workoutLoad.length ? Math.round(workoutLoad.reduce((a, r) => a + num(r.minutes), 0) / workoutLoad.length) : null
+  // Labeled by where THIS CHART's history actually comes from, not by
+  // whichever provider today's live workout signal prefers (server/index.js's
+  // workoutLoad is aggregated exclusively from store.listAppleWorkoutHistory —
+  // it is never Garmin- or Oura-sourced). Deriving this from
+  // signals?.workout?.provider used to read "Garmin" whenever Garmin's demo
+  // or a real Garmin connection won that metric's PREFERENCE order in
+  // server/providers.js, mislabeling an Apple-only chart. Tied to the chart's
+  // own data instead of a same-day preference guess that can disagree with it.
+  const workoutProviderLabel = workoutLoad.length ? PROVIDER_NAMES.apple : null
 
   return (
     <div className="space-y-6">
@@ -575,8 +583,11 @@ export default function Insights({ refreshKey }) {
           {/* TRAINING LOAD — real per-day minutes trained once at least two
               days of retained Apple Health workout history exist, the honest
               dashed placeholder (no invented bars) otherwise — same pattern
-              as Readiness above. Labeled by whichever provider is actually
-              supplying today's workout signal, not a fixed brand. */}
+              as Readiness above. Labeled "Apple Health" whenever there's
+              chart data, because that's the ONLY source workoutLoad ever
+              has (see workoutProviderLabel above) — never derived from
+              today's live workout-signal provider preference, which can
+              legitimately be Garmin while this chart stays Apple-only. */}
           <section>
             <SectionHead
               label={workoutProviderLabel ? `Training load · ${workoutProviderLabel}` : 'Training load'}
