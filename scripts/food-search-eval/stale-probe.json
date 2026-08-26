@@ -1,0 +1,16 @@
+{
+  "measuredAt": "2026-08-26T16:46:19.416Z",
+  "querySwitches": 80,
+  "searchRequests": 46,
+  "domSamples": 4488,
+  "samplesWithRowsRendered": 1497,
+  "staleCommits": 0,
+  "distinctStaleCommits": [],
+  "finalInputValue": "greek yogurt",
+  "finalRows": [
+    "RESULT-FOR[greek yogurt]"
+  ],
+  "finalStateMatchesFinalQuery": true,
+  "probeCouldHaveSeenAViolation": true,
+  "examples": []
+}

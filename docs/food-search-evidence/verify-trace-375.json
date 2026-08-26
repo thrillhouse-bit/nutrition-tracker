@@ -1,0 +1,159 @@
+[
+  {
+    "t": "+  124ms",
+    "ev": "UI",
+    "phase": "+~60ms",
+    "inputValue": "zucchini",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "t": "+  238ms",
+    "ev": "UI",
+    "phase": "+~160ms",
+    "inputValue": "zucchini",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "t": "+  352ms",
+    "ev": "UI",
+    "phase": "+~320ms",
+    "inputValue": "zucchini",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "t": "+ 4365ms",
+    "ev": "UI",
+    "phase": "settled",
+    "inputValue": "zucchini",
+    "visible": [
+      "Squash, zucchini, baby, raw",
+      "Squash, summer, zucchini, includes skin, raw",
+      "Squash, summer, green, zucchini, includes skin, raw"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false,
+    "incomplete": true
+  },
+  {
+    "t": "+ 4029ms",
+    "ev": "UI",
+    "phase": "banana settled",
+    "inputValue": "banana",
+    "visible": [
+      "Banana, raw",
+      "Bananas, raw",
+      "Bananas, overripe, raw"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "t": "+ 4116ms",
+    "ev": "UI",
+    "phase": "+~60ms after switch",
+    "inputValue": "greek yogurt",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "t": "+ 4329ms",
+    "ev": "UI",
+    "phase": "+~260ms after switch",
+    "inputValue": "greek yogurt",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "t": "+ 8394ms",
+    "ev": "UI",
+    "phase": "settled",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "Yogurt, Greek, plain, lowfat",
+      "Yogurt, Greek, plain, nonfat",
+      "Yogurt, Greek, nonfat milk, plain"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false,
+    "incomplete": true
+  },
+  {
+    "t": "+  370ms",
+    "ev": "REQUEST",
+    "q": "zucchini",
+    "deliverAfterMs": 150
+  },
+  {
+    "t": "+  520ms",
+    "ev": "RESPONSE",
+    "q": "zucchini"
+  },
+  {
+    "t": "+  628ms",
+    "ev": "UI",
+    "phase": "after A(zucchini) lands",
+    "inputValue": "banana",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "ev": "VERDICT",
+    "width": 375,
+    "staleCommit": false
+  },
+  {
+    "t": "+  788ms",
+    "ev": "REQUEST",
+    "q": "banana",
+    "deliverAfterMs": 4000
+  },
+  {
+    "t": "+ 4788ms",
+    "ev": "RESPONSE",
+    "q": "banana"
+  },
+  {
+    "t": "+ 5286ms",
+    "ev": "UI",
+    "phase": "after B(banana) lands",
+    "inputValue": "banana",
+    "visible": [
+      "Banana, raw"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false,
+    "incomplete": false
+  },
+  {
+    "ev": "PROVENANCE",
+    "width": 375,
+    "provenance": "Search result · USDASquash",
+    "saysScanned": false
+  }
+]

@@ -1,0 +1,1012 @@
+[
+  {
+    "query": "zucchini",
+    "startedAt": "2026-08-26T14:48:20.782Z",
+    "endedAt": "2026-08-26T14:48:21.538Z",
+    "wallMs": 756,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 12,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "zucchini",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 356,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "zucchini",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 588,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "zucchini",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 454,
+        "error": "HTTP 503",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "courgette",
+        "ok": true,
+        "count": 0,
+        "latencyMs": 440,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "courgette",
+        "ok": true,
+        "count": 4,
+        "latencyMs": 367,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "courgette",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 664,
+        "error": "HTTP 503",
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "ZUCCHINI",
+        "brand": "KMB, LLC",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 21,
+        "barcode": "812997020233"
+      },
+      {
+        "name": "ZUCCHINI BAKE, ZUCCHINI",
+        "brand": "Classic Cooking Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 76,
+        "barcode": "704863017068"
+      },
+      {
+        "name": "ZUCCHINI BREAD, ZUCCHINI",
+        "brand": "Bakehouse Bread Company",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 380,
+        "barcode": "850858007153"
+      },
+      {
+        "name": "ZUCCHINI LOAF, ZUCCHINI",
+        "brand": "Wegmans Food Markets, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 298,
+        "barcode": "077890383360"
+      },
+      {
+        "name": "ZUCCHINI NOODLES, ZUCCHINI",
+        "brand": "Bix Produce Company LLC",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 18,
+        "barcode": "846709006017"
+      }
+    ]
+  },
+  {
+    "query": "banana",
+    "startedAt": "2026-08-26T14:48:21.539Z",
+    "endedAt": "2026-08-26T14:48:21.949Z",
+    "wallMs": 410,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 18,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "banana",
+        "ok": true,
+        "count": 10,
+        "latencyMs": 409,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "banana",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 341,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "banana",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 345,
+        "error": "HTTP 503",
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "Banana, baked",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 161,
+        "barcode": null
+      },
+      {
+        "name": "Banana, raw",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 97,
+        "barcode": null
+      },
+      {
+        "name": "Banana chips",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 519,
+        "barcode": null
+      },
+      {
+        "name": "Banana nectar",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 74,
+        "barcode": null
+      },
+      {
+        "name": "Banana pudding",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 160,
+        "barcode": null
+      }
+    ]
+  },
+  {
+    "query": "greek yogurt",
+    "startedAt": "2026-08-26T14:48:21.950Z",
+    "endedAt": "2026-08-26T14:48:22.616Z",
+    "wallMs": 666,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 20,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "greek yogurt",
+        "ok": true,
+        "count": 10,
+        "latencyMs": 569,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "greek yogurt",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 298,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "greek yogurt",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 174,
+        "error": "HTTP 503",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "greek yoghurt",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 202,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "greek yoghurt",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 431,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "greek yoghurt",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 662,
+        "error": "HTTP 503",
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "GREEK YOGURT",
+        "brand": "Ocean Spray Cranberries, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 467,
+        "barcode": "031200037206"
+      },
+      {
+        "name": "GREEK YOGURT",
+        "brand": "TRADER JOE'S",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 132,
+        "barcode": "00772914"
+      },
+      {
+        "name": "GREEK YOGURT",
+        "brand": "Chobani, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 80,
+        "barcode": "894700010038"
+      },
+      {
+        "name": "GREEK YOGURT",
+        "brand": "Cafe Hon, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 65,
+        "barcode": "680569649836"
+      },
+      {
+        "name": "GREEK YOGURT",
+        "brand": "Chobani, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 93,
+        "barcode": "894700010441"
+      }
+    ]
+  },
+  {
+    "query": "chicken breast",
+    "startedAt": "2026-08-26T14:48:22.616Z",
+    "endedAt": "2026-08-26T14:48:23.053Z",
+    "wallMs": 437,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 8,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "chicken breast",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 286,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "chicken breast",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 436,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "chicken breast",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 230,
+        "error": "HTTP 503",
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "CHICKEN BREAST",
+        "brand": "Giant Eagle, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 165,
+        "barcode": "030034086411"
+      },
+      {
+        "name": "CHICKEN BREAST",
+        "brand": "Tyson Foods, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 143,
+        "barcode": "023700038326"
+      },
+      {
+        "name": "CHICKEN BREAST",
+        "brand": "Jennie-O Turkey Store, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 107,
+        "barcode": "042222329484"
+      },
+      {
+        "name": "CHICKEN BREAST",
+        "brand": "Tony Downs Foods Co",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 107,
+        "barcode": "047117095673"
+      },
+      {
+        "name": "CHICKEN BREAST",
+        "brand": "H E Butt Grocery Company",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 96,
+        "barcode": "041220044856"
+      }
+    ]
+  },
+  {
+    "query": "oatmeal",
+    "startedAt": "2026-08-26T14:48:23.054Z",
+    "endedAt": "2026-08-26T14:48:24.385Z",
+    "wallMs": 1331,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 20,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "oatmeal",
+        "ok": true,
+        "count": 10,
+        "latencyMs": 408,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "oatmeal",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 334,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "oatmeal",
+        "ok": true,
+        "count": 15,
+        "latencyMs": 418,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "oats",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 162,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "oats",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 559,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "oats",
+        "ok": true,
+        "count": 14,
+        "latencyMs": 1326,
+        "error": null,
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "Oatmeal, multigrain",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 56,
+        "barcode": null
+      },
+      {
+        "name": "Oatmeal, NFS",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 76,
+        "barcode": null
+      },
+      {
+        "name": "OATMEAL",
+        "brand": "Thomas Brothers Ham Company",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 378,
+        "barcode": "074854374969"
+      },
+      {
+        "name": "OATMEAL",
+        "brand": "Caribbean Foods Limited",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 365,
+        "barcode": "036423350200"
+      },
+      {
+        "name": "Oatmeal",
+        "brand": "Colruyt Group",
+        "source": "openfoodfacts",
+        "tier": "branded",
+        "calories": 142,
+        "barcode": "5400141235098"
+      }
+    ]
+  },
+  {
+    "query": "avocado",
+    "startedAt": "2026-08-26T14:48:24.385Z",
+    "endedAt": "2026-08-26T14:48:25.040Z",
+    "wallMs": 655,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 20,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "avocado",
+        "ok": true,
+        "count": 10,
+        "latencyMs": 655,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "avocado",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 340,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "avocado",
+        "ok": true,
+        "count": 15,
+        "latencyMs": 643,
+        "error": null,
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "Avocado dressing",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 427,
+        "barcode": null
+      },
+      {
+        "name": "Avocado, raw",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 160,
+        "barcode": null
+      },
+      {
+        "name": "Avocados, raw, California",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 167,
+        "barcode": null
+      },
+      {
+        "name": "Avocados, raw, Florida",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 120,
+        "barcode": null
+      },
+      {
+        "name": "Avocados, raw, all commercial varieties",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 160,
+        "barcode": null
+      }
+    ]
+  },
+  {
+    "query": "salmon",
+    "startedAt": "2026-08-26T14:48:25.040Z",
+    "endedAt": "2026-08-26T14:48:25.358Z",
+    "wallMs": 318,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 8,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "salmon",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 161,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "salmon",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 317,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "salmon",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 127,
+        "error": "HTTP 503",
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "SALMON",
+        "brand": "High Liner Foods (USA) Incorporated",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 139,
+        "barcode": "35493013374"
+      },
+      {
+        "name": "SALMON",
+        "brand": "NOT A BRANDED ITEM",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 232,
+        "barcode": "20865153"
+      },
+      {
+        "name": "SALMON",
+        "brand": "Changing Seas",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 207,
+        "barcode": "898024002502"
+      },
+      {
+        "name": "SALMON",
+        "brand": "Rje Trade International, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 209,
+        "barcode": "748252103413"
+      },
+      {
+        "name": "SALMON JERKY, SALMON",
+        "brand": "New Seasons Market, LLC",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 321,
+        "barcode": "840600112204"
+      }
+    ]
+  },
+  {
+    "query": "peanut butter",
+    "startedAt": "2026-08-26T14:48:25.359Z",
+    "endedAt": "2026-08-26T14:48:26.682Z",
+    "wallMs": 1323,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 20,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "peanut butter",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 466,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "peanut butter",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 330,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "peanut butter",
+        "ok": true,
+        "count": 15,
+        "latencyMs": 1321,
+        "error": null,
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "PEANUT BUTTER",
+        "brand": "Reginald's Homemade Llc",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 600,
+        "barcode": "869759000149"
+      },
+      {
+        "name": "PEANUT BUTTER",
+        "brand": "Kenny's Candy Company Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 500,
+        "barcode": "022224500418"
+      },
+      {
+        "name": "PEANUT BUTTER",
+        "brand": "PIC'S REALLY GOOD",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 567,
+        "barcode": "9421901881160"
+      },
+      {
+        "name": "PEANUT BUTTER",
+        "brand": "First International Health Foods Ltd.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 594,
+        "barcode": "681170300154"
+      },
+      {
+        "name": "PEANUT BUTTER",
+        "brand": "Schnuck Markets, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 562,
+        "barcode": "041318210231"
+      }
+    ]
+  },
+  {
+    "query": "coca-cola",
+    "startedAt": "2026-08-26T14:48:26.682Z",
+    "endedAt": "2026-08-26T14:48:27.466Z",
+    "wallMs": 784,
+    "degraded": false,
+    "usedCorrection": false,
+    "resultCount": 20,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "coca cola",
+        "ok": true,
+        "count": 10,
+        "latencyMs": 781,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "coca cola",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 348,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "coca cola",
+        "ok": true,
+        "count": 14,
+        "latencyMs": 422,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "coke",
+        "ok": true,
+        "count": 10,
+        "latencyMs": 424,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "coke",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 425,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "coke",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 252,
+        "error": "HTTP 503",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "coca-cola",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 318,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "coca-cola",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 345,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "coca-cola",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 362,
+        "error": "HTTP 503",
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "Coca Cola",
+        "brand": "Coca-Cola",
+        "source": "openfoodfacts",
+        "tier": "branded",
+        "calories": 189,
+        "barcode": "42105220"
+      },
+      {
+        "name": "Coca Cola",
+        "brand": "Coca-Cola",
+        "source": "openfoodfacts",
+        "tier": "branded",
+        "calories": 105,
+        "barcode": "5449000000286"
+      },
+      {
+        "name": "Coca Cola",
+        "brand": "Coca-Cola",
+        "source": "openfoodfacts",
+        "tier": "branded",
+        "calories": 105,
+        "barcode": "5449000130389"
+      },
+      {
+        "name": "Coca Cola",
+        "brand": "Coca-Cola",
+        "source": "openfoodfacts",
+        "tier": "branded",
+        "calories": 105,
+        "barcode": "5449000028921"
+      },
+      {
+        "name": "Beverages, The COCA-COLA company, Minute Maid, Lemonade",
+        "brand": null,
+        "source": "usda",
+        "tier": "generic",
+        "calories": 46,
+        "barcode": null
+      }
+    ]
+  },
+  {
+    "query": "zuccini",
+    "startedAt": "2026-08-26T14:48:27.467Z",
+    "endedAt": "2026-08-26T14:48:28.430Z",
+    "wallMs": 963,
+    "degraded": false,
+    "usedCorrection": true,
+    "resultCount": 20,
+    "sources": [
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "zuccini",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 194,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "zuccini",
+        "ok": true,
+        "count": 0,
+        "latencyMs": 164,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "zuccini",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 374,
+        "error": "HTTP 503",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "generic",
+        "query": "zucchini",
+        "ok": false,
+        "count": 0,
+        "latencyMs": 181,
+        "error": "HTTP 400",
+        "skipped": null
+      },
+      {
+        "source": "usda",
+        "dataset": "branded",
+        "query": "zucchini",
+        "ok": true,
+        "count": 8,
+        "latencyMs": 170,
+        "error": null,
+        "skipped": null
+      },
+      {
+        "source": "openfoodfacts",
+        "dataset": "branded",
+        "query": "zucchini",
+        "ok": true,
+        "count": 15,
+        "latencyMs": 587,
+        "error": null,
+        "skipped": null
+      }
+    ],
+    "top5": [
+      {
+        "name": "ZUCCHINI",
+        "brand": "KMB, LLC",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 21,
+        "barcode": "812997020233"
+      },
+      {
+        "name": "Zucchini Bio",
+        "brand": "REWE Bio",
+        "source": "openfoodfacts",
+        "tier": "branded",
+        "calories": 17,
+        "barcode": "4388840027804"
+      },
+      {
+        "name": "ZUCCHINI BAKE, ZUCCHINI",
+        "brand": "Classic Cooking Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 76,
+        "barcode": "704863017068"
+      },
+      {
+        "name": "ZUCCHINI BREAD, ZUCCHINI",
+        "brand": "Bakehouse Bread Company",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 380,
+        "barcode": "850858007153"
+      },
+      {
+        "name": "ZUCCHINI LOAF, ZUCCHINI",
+        "brand": "Wegmans Food Markets, Inc.",
+        "source": "usda",
+        "tier": "branded",
+        "calories": 298,
+        "barcode": "077890383360"
+      }
+    ]
+  }
+]

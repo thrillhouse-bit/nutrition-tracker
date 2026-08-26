@@ -235,12 +235,59 @@ describe('rankResults (regression: plain "egg" must lead dish names)', () => {
     ])
   })
 
-  it('keeps each source\'s own order as the tiebreak within a tier (stable sort)', () => {
-    // Same tier (prefix) AND same token-count (so the "shorter name" secondary
-    // tiebreak — see rank.js — doesn't itself decide the order here), which
-    // isolates the stable-sort property being tested.
+  // REPLACES an assertion that the tiebreak within a tier is each source's own
+  // order (a stable sort). That property was measured to be the cause of
+  // production symptom #3 on 26 Aug 2026: "Banana, baked" and "Banana, raw"
+  // scored EXACTLY 2000.5 and USDA listed baked first, so a bare "banana" put a
+  // 161 kcal baked banana at rank 1. Provider listing order is not a relevance
+  // signal, and depending on it makes rank 1 unreproducible from one call to
+  // the next. The tiebreak is now the name, which is deterministic and
+  // independent of arrival order — see server/foodSearch/rank.js's rankResults
+  // and the shuffled-pool assertions in test/foodSearchRank.test.js.
+  it('breaks a within-tier tie deterministically, NOT by the order the source returned rows in', () => {
+    // Same tier (prefix) and same token count, so nothing but the tiebreak can
+    // decide the order.
     const rows = [{ name: 'Egg Salad' }, { name: 'Egg Sandwich' }, { name: 'Egg Muffin' }]
-    const ranked = rankResults(rows, ['egg'])
-    expect(ranked.map((r) => r.name)).toEqual(['Egg Salad', 'Egg Sandwich', 'Egg Muffin'])
+    const forwards = rankResults(rows, ['egg']).map((r) => r.name)
+    const backwards = rankResults([...rows].reverse(), ['egg']).map((r) => r.name)
+    expect(forwards).toEqual(backwards)
+    expect(forwards).toEqual(['Egg Muffin', 'Egg Salad', 'Egg Sandwich'])
+  })
+})
+
+describe('normalizeUSDA: Foundation energy (nutrient 2047/2048, not 1008)', () => {
+  // Confirmed live 26 Aug 2026 against
+  // /fdc/v1/foods/search?dataType=Foundation&query=chicken%20breast: the row
+  // "Chicken, breast, boneless, skinless, raw" carries NO nutrient 1008 at
+  // all. Its energy is 2047 "Energy (Atwater General Factors)" = 106 kcal and
+  // 2048 "Energy (Atwater Specific Factors)" = 112 kcal. Reading only 1008
+  // returned calories:null for USDA's most canonical dataset, and the UI's
+  // fmt() paints null as a confident "0 kcal".
+  const FOUNDATION_ROW = {
+    description: 'Chicken, breast, boneless, skinless, raw',
+    foodNutrients: [
+      { nutrientId: 1003, nutrientName: 'Protein', unitName: 'G', value: 22.5 },
+      { nutrientId: 2047, nutrientName: 'Energy (Atwater General Factors)', unitName: 'KCAL', value: 106 },
+      { nutrientId: 2048, nutrientName: 'Energy (Atwater Specific Factors)', unitName: 'KCAL', value: 112 },
+    ],
+  }
+
+  it('falls back to the Atwater energy nutrients when 1008 is absent', () => {
+    expect(normalizeUSDA(FOUNDATION_ROW).calories).toBe(112) // specific factors: USDA's more accurate figure
+  })
+
+  it('CONTROL: nutrient 1008 still wins when it IS present', () => {
+    const withPrimary = { ...FOUNDATION_ROW, foodNutrients: [{ nutrientId: 1008, unitName: 'KCAL', value: 165 }, ...FOUNDATION_ROW.foodNutrients] }
+    expect(normalizeUSDA(withPrimary).calories).toBe(165)
+  })
+
+  it('CONTROL: a row with no energy nutrient at all still reports null, never a fabricated 0', () => {
+    const noEnergy = { description: 'Lunchmeat, chicken breast, sliced', foodNutrients: [{ nutrientId: 1003, unitName: 'G', value: 17 }] }
+    expect(normalizeUSDA(noEnergy).calories).toBeNull()
+  })
+
+  it('never reads a kJ figure as if it were kcal', () => {
+    const kj = { description: 'Something', foodNutrients: [{ nutrientId: 1008, nutrientName: 'Energy', unitName: 'kJ', value: 700 }] }
+    expect(normalizeUSDA(kj).calories).toBeNull()
   })
 })

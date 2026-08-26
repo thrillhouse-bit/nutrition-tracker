@@ -1,0 +1,64 @@
+[
+  {
+    "t": "+  370ms",
+    "ev": "REQUEST START",
+    "q": "zucchini",
+    "deliverAfterMs": 150
+  },
+  {
+    "t": "+  521ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "zucchini",
+    "n": 1
+  },
+  {
+    "t": "+  654ms",
+    "ev": "UI STATE",
+    "phase": "after A(zucchini) lands",
+    "inputValue": "banana",
+    "visible": [
+      "ZUCCHINI (stale)"
+    ],
+    "noMatches": false,
+    "searching": false
+  },
+  {
+    "t": "+  739ms",
+    "ev": "VERDICT",
+    "staleCommit": true
+  },
+  {
+    "t": "+  783ms",
+    "ev": "REQUEST START",
+    "q": "banana",
+    "deliverAfterMs": 4000
+  },
+  {
+    "t": "+ 1055ms",
+    "ev": "UI STATE",
+    "phase": "t=880 (B in flight)",
+    "inputValue": "banana",
+    "visible": [
+      "ZUCCHINI (stale)"
+    ],
+    "noMatches": false,
+    "searching": true
+  },
+  {
+    "t": "+ 4783ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "banana",
+    "n": 1
+  },
+  {
+    "t": "+ 5271ms",
+    "ev": "UI STATE",
+    "phase": "after B(banana) lands",
+    "inputValue": "banana",
+    "visible": [
+      "Banana, raw"
+    ],
+    "noMatches": false,
+    "searching": false
+  }
+]

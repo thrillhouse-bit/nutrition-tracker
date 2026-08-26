@@ -1,0 +1,269 @@
+{
+  "generatedAt": "2026-08-26T16:40:45.683Z",
+  "totalProbes": 993,
+  "distinctItems": 200,
+  "note": "Every latency figure is the SEARCH round trip. A user additionally waits the 350 ms input debounce before the request starts.",
+  "completeQuery": {
+    "all": {
+      "probes": 200,
+      "top1Pct": 51,
+      "top3Pct": 55,
+      "top5Pct": 57,
+      "mrr": 0.5566,
+      "zeroResultPct": 0,
+      "partialPct": 0,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 457,
+      "latencyP95Ms": 943
+    },
+    "generic": {
+      "probes": 60,
+      "top1Pct": 98.3,
+      "top3Pct": 100,
+      "top5Pct": 100,
+      "mrr": 0.9917,
+      "zeroResultPct": 0,
+      "partialPct": 0,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 429,
+      "latencyP95Ms": 998
+    },
+    "branded": {
+      "probes": 140,
+      "top1Pct": 30.7,
+      "top3Pct": 35.7,
+      "top5Pct": 38.6,
+      "mrr": 0.3701,
+      "zeroResultPct": 0,
+      "partialPct": 0,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 479,
+      "latencyP95Ms": 899
+    }
+  },
+  "completeQueryRetrievableOnly": {
+    "all": {
+      "probes": 167,
+      "top1Pct": 61.1,
+      "top3Pct": 65.9,
+      "top5Pct": 68.3,
+      "mrr": 0.6665,
+      "zeroResultPct": 0,
+      "partialPct": 0,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 459,
+      "latencyP95Ms": 943
+    },
+    "generic": {
+      "probes": 60,
+      "top1Pct": 98.3,
+      "top3Pct": 100,
+      "top5Pct": 100,
+      "mrr": 0.9917,
+      "zeroResultPct": 0,
+      "partialPct": 0,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 429,
+      "latencyP95Ms": 998
+    },
+    "branded": {
+      "probes": 107,
+      "top1Pct": 40.2,
+      "top3Pct": 46.7,
+      "top5Pct": 50.5,
+      "mrr": 0.4842,
+      "zeroResultPct": 0,
+      "partialPct": 0,
+      "canonicalMissingPct": 0,
+      "latencyP50Ms": 483,
+      "latencyP95Ms": 899
+    }
+  },
+  "targetsNotReturned": {
+    "all": 33,
+    "generic": 0,
+    "branded": 33
+  },
+  "byPrefixLength": {
+    "2": {
+      "all": {
+        "probes": 200,
+        "top1Pct": 0.5,
+        "top3Pct": 1.5,
+        "top5Pct": 2.5,
+        "mrr": 0.0131,
+        "zeroResultPct": 2.5,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 399,
+        "latencyP95Ms": 1001
+      },
+      "generic": {
+        "probes": 60,
+        "top1Pct": 0,
+        "top3Pct": 1.7,
+        "top5Pct": 5,
+        "mrr": 0.0186,
+        "zeroResultPct": 1.7,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 412,
+        "latencyP95Ms": 1001
+      },
+      "branded": {
+        "probes": 140,
+        "top1Pct": 0.7,
+        "top3Pct": 1.4,
+        "top5Pct": 1.4,
+        "mrr": 0.0107,
+        "zeroResultPct": 2.9,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 394,
+        "latencyP95Ms": 1033
+      }
+    },
+    "3": {
+      "all": {
+        "probes": 200,
+        "top1Pct": 3.5,
+        "top3Pct": 7,
+        "top5Pct": 10,
+        "mrr": 0.0615,
+        "zeroResultPct": 6.5,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 356,
+        "latencyP95Ms": 922
+      },
+      "generic": {
+        "probes": 60,
+        "top1Pct": 8.3,
+        "top3Pct": 13.3,
+        "top5Pct": 21.7,
+        "mrr": 0.1297,
+        "zeroResultPct": 3.3,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 358,
+        "latencyP95Ms": 1153
+      },
+      "branded": {
+        "probes": 140,
+        "top1Pct": 1.4,
+        "top3Pct": 4.3,
+        "top5Pct": 5,
+        "mrr": 0.0323,
+        "zeroResultPct": 7.9,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 345,
+        "latencyP95Ms": 821
+      }
+    },
+    "4": {
+      "all": {
+        "probes": 198,
+        "top1Pct": 11.1,
+        "top3Pct": 16.7,
+        "top5Pct": 17.7,
+        "mrr": 0.1449,
+        "zeroResultPct": 14.6,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 358,
+        "latencyP95Ms": 804
+      },
+      "generic": {
+        "probes": 58,
+        "top1Pct": 19,
+        "top3Pct": 27.6,
+        "top5Pct": 29.3,
+        "mrr": 0.2445,
+        "zeroResultPct": 8.6,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 364,
+        "latencyP95Ms": 722
+      },
+      "branded": {
+        "probes": 140,
+        "top1Pct": 7.9,
+        "top3Pct": 12.1,
+        "top5Pct": 12.9,
+        "mrr": 0.1036,
+        "zeroResultPct": 17.1,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 358,
+        "latencyP95Ms": 930
+      }
+    },
+    "5": {
+      "all": {
+        "probes": 195,
+        "top1Pct": 11.3,
+        "top3Pct": 18.5,
+        "top5Pct": 22.1,
+        "mrr": 0.1581,
+        "zeroResultPct": 19.5,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 413,
+        "latencyP95Ms": 871
+      },
+      "generic": {
+        "probes": 55,
+        "top1Pct": 18.2,
+        "top3Pct": 23.6,
+        "top5Pct": 25.5,
+        "mrr": 0.2196,
+        "zeroResultPct": 20,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 400,
+        "latencyP95Ms": 1255
+      },
+      "branded": {
+        "probes": 140,
+        "top1Pct": 8.6,
+        "top3Pct": 16.4,
+        "top5Pct": 20.7,
+        "mrr": 0.1339,
+        "zeroResultPct": 19.3,
+        "partialPct": 0,
+        "canonicalMissingPct": 0,
+        "latencyP50Ms": 413,
+        "latencyP95Ms": 826
+      }
+    }
+  },
+  "timeToFirstUsefulResult": {
+    "all": {
+      "itemsReachingTop5": 128,
+      "searchLatencyP50Ms": 418,
+      "searchLatencyP95Ms": 973,
+      "charactersTypedP50": 5,
+      "charactersTypedP95": 30
+    },
+    "generic": {
+      "itemsReachingTop5": 60,
+      "searchLatencyP50Ms": 382,
+      "searchLatencyP95Ms": 945,
+      "charactersTypedP50": 5,
+      "charactersTypedP95": 16
+    },
+    "branded": {
+      "itemsReachingTop5": 68,
+      "searchLatencyP50Ms": 459,
+      "searchLatencyP95Ms": 977,
+      "charactersTypedP50": 17,
+      "charactersTypedP95": 33
+    }
+  },
+  "itemsNeverReachingTop5": 72,
+  "corpusSplit": {
+    "generic": 60,
+    "branded": 140
+  }
+}

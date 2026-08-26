@@ -1,0 +1,266 @@
+[
+  {
+    "t": "+17302ms",
+    "ev": "REQUEST START",
+    "q": "zucchini",
+    "injectedDelayMs": 1000
+  },
+  {
+    "t": "+18095ms",
+    "ev": "UI STATE",
+    "phase": "typed zucchini, in flight",
+    "inputValue": "zucchini",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+18130ms",
+    "ev": "UI STATE",
+    "phase": "switched to banana",
+    "inputValue": "banana",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+18468ms",
+    "ev": "REQUEST START",
+    "q": "banana",
+    "injectedDelayMs": 2000
+  },
+  {
+    "t": "+18744ms",
+    "ev": "UI STATE",
+    "phase": "after zucchini response lands",
+    "inputValue": "banana",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+19114ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "zucchini",
+    "status": 200,
+    "n": 20,
+    "first": "ZUCCHINI"
+  },
+  {
+    "t": "+21031ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "banana",
+    "status": 200,
+    "n": 18,
+    "first": "Banana, baked"
+  },
+  {
+    "t": "+21429ms",
+    "ev": "UI STATE",
+    "phase": "after banana finally lands",
+    "inputValue": "banana",
+    "visible": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+21880ms",
+    "ev": "UI STATE",
+    "phase": "typed zucchini",
+    "inputValue": "zucchini",
+    "visible": [],
+    "noMatches": true,
+    "searching": false,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+22221ms",
+    "ev": "REQUEST START",
+    "q": "zucchini",
+    "injectedDelayMs": 1000
+  },
+  {
+    "t": "+22313ms",
+    "ev": "UI STATE",
+    "phase": "zucchini request in flight",
+    "inputValue": "zucchini",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+22335ms",
+    "ev": "UI STATE",
+    "phase": "-> banana",
+    "inputValue": "banana",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+22676ms",
+    "ev": "REQUEST START",
+    "q": "banana",
+    "injectedDelayMs": 2000
+  },
+  {
+    "t": "+22768ms",
+    "ev": "UI STATE",
+    "phase": "banana request in flight",
+    "inputValue": "banana",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+22796ms",
+    "ev": "UI STATE",
+    "phase": "-> greek yogurt",
+    "inputValue": "greek yogurt",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+23134ms",
+    "ev": "REQUEST START",
+    "q": "greek yogurt",
+    "injectedDelayMs": 300
+  },
+  {
+    "t": "+23312ms",
+    "ev": "UI STATE",
+    "phase": "t+500ms",
+    "inputValue": "greek yogurt",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+23826ms",
+    "ev": "UI STATE",
+    "phase": "t+1000ms",
+    "inputValue": "greek yogurt",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+23850ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "zucchini",
+    "status": 200,
+    "n": 20,
+    "first": "Zucchini, pickled"
+  },
+  {
+    "t": "+24339ms",
+    "ev": "UI STATE",
+    "phase": "t+1500ms",
+    "inputValue": "greek yogurt",
+    "visible": [],
+    "noMatches": false,
+    "searching": true,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+24385ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "greek yogurt",
+    "status": 200,
+    "n": 20,
+    "first": "GREEK YOGURT"
+  },
+  {
+    "t": "+24863ms",
+    "ev": "UI STATE",
+    "phase": "t+2000ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "GREEK YOGURT",
+      "GREEK YOGURT",
+      "GREEK YOGURT"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+25035ms",
+    "ev": "RESPONSE DELIVERED",
+    "q": "banana",
+    "status": 200,
+    "n": 8,
+    "first": "BANANA"
+  },
+  {
+    "t": "+25375ms",
+    "ev": "UI STATE",
+    "phase": "t+2500ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "GREEK YOGURT",
+      "GREEK YOGURT",
+      "GREEK YOGURT"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+25888ms",
+    "ev": "UI STATE",
+    "phase": "t+3000ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "GREEK YOGURT",
+      "GREEK YOGURT",
+      "GREEK YOGURT"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+26404ms",
+    "ev": "UI STATE",
+    "phase": "t+3500ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "GREEK YOGURT",
+      "GREEK YOGURT",
+      "GREEK YOGURT"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "queryResultMismatch": false
+  },
+  {
+    "t": "+26921ms",
+    "ev": "UI STATE",
+    "phase": "t+4000ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "GREEK YOGURT",
+      "GREEK YOGURT",
+      "GREEK YOGURT"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "queryResultMismatch": false
+  }
+]

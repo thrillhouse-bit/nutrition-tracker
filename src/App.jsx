@@ -264,10 +264,10 @@ export default function App() {
     setFlow('lookup'); setFlowError('')
     try {
       const { food } = await api.lookupBarcode(code)
-      setDraftFood(food); setFlow('confirm')
+      setDraftFood({ ...food, search_method: 'barcode_scan' }); setFlow('confirm')
     } catch (err) {
       if (err.status === 404) {
-        setDraftFood({ barcode: code, name: '', serving_unit: 'g', source: 'manual' })
+        setDraftFood({ barcode: code, name: '', serving_unit: 'g', source: 'manual', search_method: 'barcode_scan' })
         setFlowError(`Barcode ${code} wasn't found. Add its details below.`)
         setFlow('confirm')
       } else {
@@ -276,7 +276,16 @@ export default function App() {
     }
   }
 
-  const toConfirm = (food) => { setDraftFood(food); setFlowError(''); setFlow('confirm') }
+  // How the user reached this food, carried alongside it so FoodConfirm can
+  // SAY it instead of guessing from whether a barcode happens to be present —
+  // a typed search result read "Scanned · USDA" in production because most
+  // branded rows carry a GTIN/UPC (docs/food-search-baseline.md RC-6). Each
+  // call site names its own method; `method` is optional so any future caller
+  // that forgets simply claims nothing rather than claiming a scan.
+  const toConfirm = (food, method) => {
+    setDraftFood(method ? { ...food, search_method: method } : food)
+    setFlowError(''); setFlow('confirm')
+  }
 
   const onLog = async (payload) => {
     setLogging(true)
@@ -481,7 +490,7 @@ export default function App() {
                 <div className="eyebrow mb-2">Recent — tap to re-log</div>
                 <div className="flex max-h-52 flex-col overflow-y-auto border-b border-line">
                   {recents.map((f) => (
-                    <button key={f.id} onClick={() => toConfirm(f)} className="flex items-center justify-between gap-3 border-t border-line px-1 py-2.5 text-left hover:bg-fill">
+                    <button key={f.id} onClick={() => toConfirm(f, 'recent')} className="flex items-center justify-between gap-3 border-t border-line px-1 py-2.5 text-left hover:bg-fill">
                       <div className="min-w-0">
                         <div className="truncate font-medium text-ink">{f.name}</div>
                         <div className="truncate text-xs text-muted">{f.brand ? `${f.brand} · ` : ''}{f.serving_size ? `${fmt(f.serving_size, 0)} ${f.serving_unit}` : f.serving_unit}</div>
@@ -509,9 +518,9 @@ export default function App() {
           </div>
         )}
         {flow === 'lookup' && <Spinner label="Looking up product…" />}
-        {flow === 'label' && <LabelScan onParsed={toConfirm} />}
+        {flow === 'label' && <LabelScan onParsed={(f) => toConfirm(f, 'label_ocr')} />}
         {flow === 'search' && <SearchFood onPick={toConfirm} />}
-        {flow === 'manual' && <ManualEntry onSubmit={toConfirm} />}
+        {flow === 'manual' && <ManualEntry onSubmit={(f) => toConfirm(f, 'manual')} />}
         {flow === 'confirm' && draftFood && (
           <div className="space-y-3">
             <ErrorNote>{flowError}</ErrorNote>

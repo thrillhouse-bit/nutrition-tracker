@@ -1,0 +1,128 @@
+{
+  "measuredAt": "2026-08-26T15:46:08.107Z",
+  "querySwitches": 50,
+  "searchRequests": 31,
+  "domSamples": 3672,
+  "samplesWithRowsRendered": 3620,
+  "staleCommits": 2615,
+  "distinctStaleCommits": [
+    "chicken breast<-broccoli",
+    "greek yogurt<-broccoli",
+    "greek yogurt<-chicken breast",
+    "chicken breast<-greek yogurt",
+    "almond butter<-greek yogurt",
+    "almond butter<-chicken breast",
+    "zucchini<-almond butter",
+    "peanut butter<-zucchini",
+    "cheddar<-zucchini",
+    "cheddar<-peanut butter",
+    "almond butter<-peanut butter",
+    "chicken breast<-peanut butter",
+    "zucchini<-peanut butter",
+    "zucchini<-chicken breast",
+    "salmon<-chicken breast",
+    "broccoli<-salmon",
+    "coca cola<-salmon",
+    "oatmeal<-salmon",
+    "peanut butter<-oatmeal",
+    "salmon<-oatmeal",
+    "cheddar<-oatmeal",
+    "broccoli<-peanut butter",
+    "cheddar<-broccoli",
+    "greek yogurt<-cheddar",
+    "coca cola<-cheddar",
+    "almond butter<-cheddar",
+    "coca cola<-almond butter",
+    "oatmeal<-coca cola",
+    "almond butter<-coca cola",
+    "peanut butter<-coca cola",
+    "peanut butter<-almond butter",
+    "greek yogurt<-almond butter",
+    "avocado<-almond butter",
+    "chicken breast<-almond butter",
+    "banana<-almond butter",
+    "cheddar<-banana",
+    "greek yogurt<-banana",
+    "coca cola<-banana",
+    "greek yogurt<-coca cola",
+    "coca cola<-greek yogurt",
+    "cheddar<-greek yogurt",
+    "cheddar<-coca cola",
+    "avocado<-coca cola",
+    "broccoli<-coca cola",
+    "chicken breast<-coca cola",
+    "chicken breast<-avocado",
+    "salmon<-avocado",
+    "zucchini<-salmon",
+    "greek yogurt<-salmon",
+    "chicken breast<-salmon"
+  ],
+  "finalInputValue": "chicken breast",
+  "finalRows": [
+    "RESULT-FOR[chicken breast]"
+  ],
+  "finalStateMatchesFinalQuery": true,
+  "probeCouldHaveSeenAViolation": true,
+  "examples": [
+    {
+      "at": 1787759124626,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124639,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124651,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124663,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124675,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124687,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124699,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124711,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124723,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    },
+    {
+      "at": 1787759124735,
+      "inputValue": "chicken breast",
+      "rowBelongsTo": "broccoli",
+      "row": "RESULT-FOR[broccoli]"
+    }
+  ]
+}

@@ -181,7 +181,7 @@ export default function LogView({
                   </div>
                 </div>
                 <button
-                  onClick={() => (onRelog ? onRelog(f) : openAdd('menu'))}
+                  onClick={() => (onRelog ? onRelog(f, 'recent') : openAdd('menu'))}
                   aria-label={`Re-log ${f.name}`}
                   className="flex h-11 w-11 shrink-0 items-center justify-center border-[1.5px] border-cobalt text-[21px] leading-none text-cobalt transition hover:bg-cobalt hover:text-oncobalt"
                 >

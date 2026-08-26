@@ -22,6 +22,26 @@ const SOURCE_LABELS = {
   cache: 'Cache',
 }
 
+// HOW the user got here, which is a different fact from WHERE the data came
+// from. This used to be inferred — `draft.barcode ? 'Scanned · X' : 'X'` — on
+// the premise that "a barcode on the record means it came in through the
+// scanner". That premise is false: every USDA Branded row carries `gtinUpc`
+// and every Open Food Facts row carries `code` (server/lookup.js), so most
+// branded TEXT-SEARCH hits have a barcode. Reproduced in a real browser on
+// 26 Aug 2026: typing "zucchini" and picking result #1 rendered
+// "SCANNED · USDA" and the barcode 812997020233 for an item nobody scanned
+// (docs/food-search-baseline.md RC-6).
+//
+// So the method is now carried, not deduced. An untagged record (an older
+// cached food, saved before this field existed) claims nothing — it falls
+// through to the bare source label rather than being asserted to be a scan.
+const METHOD_LABELS = {
+  barcode_scan: 'Scanned',
+  text_search: 'Search result',
+  label_ocr: 'Label scan',
+  recent: 'Recently logged',
+}
+
 // The three macros the totals band breaks out, pulled from the canonical
 // NUTRIENTS list so their labels / units / rounding stay in one place.
 const MACROS = ['protein_g', 'carbs_g', 'fat_g'].map((k) => NUTRIENTS.find((n) => n.key === k))
@@ -81,8 +101,12 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
   /* --- presentation-only derivations (no behavior) --------------------- */
   const srcKey = String(draft.source || 'manual').toLowerCase()
   const sourceLabel = SOURCE_LABELS[srcKey] || (draft.source ? draft.source[0].toUpperCase() + draft.source.slice(1) : 'Manual')
-  // A barcode on the record means it came in through the scanner; say so.
-  const provenance = draft.barcode ? `Scanned · ${sourceLabel}` : sourceLabel
+  const methodLabel = METHOD_LABELS[String(draft.search_method || '').toLowerCase()] || null
+  const provenance = methodLabel ? `${methodLabel} · ${sourceLabel}` : sourceLabel
+  // The barcode is shown whenever the record genuinely carries one — it is
+  // real, useful data. What it must not do is imply a scan; that claim lives
+  // in `provenance` above and comes from search_method alone.
+  const scanned = draft.search_method === 'barcode_scan'
   // brand · serving descriptor · source — only the parts we actually have.
   const subParts = [
     draft.brand,
@@ -113,7 +137,12 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
           {provenance}
         </span>
         {draft.barcode && (
-          <span className="tnum shrink-0 text-[11px] font-medium tracking-[0.12em] text-muted">{draft.barcode}</span>
+          <span
+            className="tnum shrink-0 text-[11px] font-medium tracking-[0.12em] text-muted"
+            aria-label={scanned ? `Scanned barcode ${draft.barcode}` : `Product barcode ${draft.barcode}`}
+          >
+            {draft.barcode}
+          </span>
         )}
       </div>
 

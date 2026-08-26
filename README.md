@@ -322,7 +322,7 @@ Full DDL in [`schema.sql`](./schema.sql).
 |---|---|---|
 | GET | `/health` | backend + which integrations are configured |
 | GET | `/lookup/:barcode` | cache → Open Food Facts → USDA; caches the hit |
-| GET | `/search?q=` | text search (USDA + OFF) for no-barcode foods |
+| GET | `/search?q=` | text search (USDA + OFF) for no-barcode foods. Returns `{results, degraded, partial, canonicalCoverage, usdaConfigured, query, providers}` — three separate honesty facts, not one: `degraded` = everything tried failed, `partial` = some of it did and this answer is incomplete, `canonicalCoverage` = whether any source of canonical whole foods answered. See `docs/food-search.md`. |
 | POST | `/ocr` | `{imageBase64, mediaType}` → parsed food (Claude vision) |
 | POST | `/foods` | persist a food |
 | GET | `/entries?from=&to=` | log entries in a time range |

@@ -18,7 +18,7 @@ import {
 } from './auth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { lookupByBarcode } from './lookup.js'
+import { lookupByBarcode, usdaConfigured } from './lookup.js'
 import { searchFoods } from './foodSearch/index.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
 import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
@@ -128,7 +128,7 @@ app.get('/api/health', asyncH(async (req, res) => {
     ok: true,
     backend, // 'postgres' | 'json-file'
     ocr: ocrConfigured() ? 'configured' : 'not-configured',
-    usda: process.env.FDC_API_KEY ? 'configured' : 'not-configured',
+    usda: usdaConfigured() ? 'configured' : 'not-configured',
     oura: ouraConfigured() ? 'legacy-token' : ouraOAuthConfigured() ? 'oauth' : 'not-configured',
     garmin: garminConfigured() ? 'oauth' : 'not-configured',
     time: new Date().toISOString(),
@@ -250,20 +250,36 @@ function logSearch(outcome) {
     correctedTo: outcome.parsed.corrected && outcome.usedCorrection ? outcome.parsed.corrected : null,
     resultCount: outcome.results.length,
     degraded: outcome.degraded,
+    partial: outcome.partial,
+    canonicalCoverage: outcome.canonicalCoverage,
     totalLatencyMs: outcome.totalLatencyMs,
-    sources: outcome.sources.map((s) => ({ source: s.source, dataset: s.dataset, ok: s.ok, count: s.count, latencyMs: s.latencyMs, skipped: s.skipped })),
+    sources: outcome.sources.map((s) => ({ source: s.source, dataset: s.dataset, ok: s.ok, count: s.count, latencyMs: s.latencyMs, attempts: s.attempts, endpoint: s.endpoint, error: s.error, skipped: s.skipped })),
   }))
 }
 
 requireAuthRouter.get('/search', asyncH(async (req, res) => {
   const q = String(req.query.q || '').trim()
-  if (q.length < 2) return res.json({ results: [], degraded: false })
+  if (q.length < 2) return res.json({ results: [], degraded: false, partial: false, query: q, usdaConfigured: usdaConfigured(), canonicalCoverage: 'ok', providers: [] })
   const outcome = await searchFoods(q)
   logSearch(outcome)
-  // `degraded` tells the client every attempted provider genuinely failed
-  // (a transient outage), distinct from a normal empty result — the client
-  // shows a "search is having trouble, try again" state only for the former.
-  res.json({ results: outcome.results, degraded: outcome.degraded })
+  // Three separate facts, because collapsing them is what let a search that
+  // lost USDA's whole canonical whole-food pass look identical to a healthy
+  // one (docs/food-search-baseline.md RC-9):
+  //   degraded          every attempted provider failed — there is no answer
+  //   partial           some failed — this answer is incomplete, and says so
+  //   canonicalCoverage whether any source of canonical WHOLE FOODS answered
+  // `query` is echoed so the client can verify a response still matches what
+  // is on screen, and `usdaConfigured` so the empty state stops advising
+  // people to install a key production already has.
+  res.json({
+    results: outcome.results,
+    degraded: outcome.degraded,
+    partial: outcome.partial,
+    query: outcome.query,
+    usdaConfigured: outcome.usdaConfigured,
+    canonicalCoverage: outcome.canonicalCoverage,
+    providers: outcome.sources.map((s) => ({ source: s.source, dataset: s.dataset, ok: s.ok, count: s.count, error: s.error })),
+  })
 }))
 
 // Dev-only diagnostic: the full ranking/retrieval breakdown for one query —
