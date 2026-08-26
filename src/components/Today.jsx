@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
-import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
+import { Card, Dial, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
 
 // Manual re-fetch window for the Oura backfill button below — a small
 // trailing window is enough to catch anything the daily resync/connect-time
@@ -18,13 +18,13 @@ function dayLabel(d) {
   return new Date(d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
 }
 
-// The masthead's right-hand date badge, e.g. "SAT 23 AUG" (the eyebrow class
-// uppercases it). Built from parts so the day sits between weekday and month.
-function dateBadge(d) {
-  const dt = new Date(d)
-  const wk = dt.toLocaleDateString(undefined, { weekday: 'short' })
-  const mo = dt.toLocaleDateString(undefined, { month: 'short' })
-  return `${wk} ${dt.getDate()} ${mo}`
+// The header's readable full date — "Wednesday, August 26." Only rendered
+// as a SECOND, secondary piece of text next to "Today"/"Yesterday" (dayLabel
+// above already spells out the weekday/month/day for every other day, so
+// showing this twice for those would be pure repetition — see the header's
+// own render logic below for exactly when each appears).
+function readableFullDate(d) {
+  return new Date(d).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
 // Wall-clock helpers. Sync/updated stamps read naturally (locale, AM/PM);
@@ -57,12 +57,134 @@ function sourceTag(food) {
   return null
 }
 
-// One column of the recovery/training context strip: a semantic swatch + label,
-// the reading itself, and its source/freshness provenance beneath. A missing
+// --- Daily Signals: plain-language bands ------------------------------------
+// Never a medical claim (README: "no medical, diagnostic, injury, or disease
+// claims of any kind") — these are descriptive bands over the wearable's own
+// 0-100 score / the night's own duration, nothing else.
+
+// 70 mirrors server/plan.js's OWN threshold for its readiness rule ("below
+// the ~70 mark that usually means recovery is still catching up") — reusing
+// the exact number means this card's language and the plan engine's actual
+// behavior agree about what "70" means, instead of a second, silently
+// drifting definition of the same cutoff living in two files.
+function readinessBand(value) {
+  const v = num(value)
+  if (v >= 85) return 'Strong recovery'
+  if (v >= 70) return 'Solid recovery'
+  if (v >= 50) return 'Moderate recovery'
+  return 'Low recovery'
+}
+
+// 6.5h is server/plan.js's OWN "short sleep" threshold (its hydration/
+// steady-carb note), not a new number invented for this card — same
+// reasoning as readinessBand above. This is deliberately NOT a "vs. your
+// baseline" comparison: that needs per-user sleep HISTORY, and nothing
+// wired into Today fetches one today (the one existing history endpoint,
+// server/db.js's listOuraHistory, covers readiness only, and only over the
+// window Insights asks for — not this screen). Faking a personal average
+// from data this screen doesn't have would be exactly the fabricated-number
+// failure mode this codebase keeps re-learning from, so the comparison is
+// left undone here rather than invented — see docs/DESIGN.md's open items.
+function sleepBand(hours) {
+  const h = num(hours)
+  if (h > 0 && h < 6.5) return 'Short night'
+  if (h > 9) return 'Long night'
+  return 'Well rested'
+}
+
+const capFirst = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+
+// The subject phrase for a workout signal — shared by the header's day
+// sentence AND the Workout card below, so the same session is never
+// described two different ways on one screen. A manual entry carries
+// `intensity` (easy/moderate/hard — server/index.js's PUT /plan/workout);
+// folded in here because it's real, user-entered data with no equivalent
+// field on a wearable-synced workout.
+function workoutSubject(wo) {
+  const v = wo?.value
+  if (!v) return null
+  if (wo.provider === 'manual' && v.intensity && v.kind) return `${capFirst(v.intensity)} ${v.kind}`
+  return v.label || (v.shortLabel ? capFirst(v.shortLabel) : 'Workout')
+}
+
+// Duration / energy for the Workout card. estKcal is the real field name
+// every real source (synced or manual) writes; est_kcal only ever came from
+// the seeded Garmin demo scenario (server/providers.js) — checked second so
+// a demo session's number still renders too (same fallback Plan.jsx already
+// uses for this exact field). Only the MANUAL path's number is a MET-based
+// ESTIMATE (server/afp/engine.js), so only that path gets the "est." mark —
+// a synced wearable's calories are the device's own measured reading.
+function workoutMeta(wo) {
+  const v = wo?.value
+  if (!v) return null
+  const parts = []
+  if (v.durationMin != null) parts.push(`${Math.round(v.durationMin)} min`)
+  const kcal = v.estKcal ?? v.est_kcal
+  if (kcal != null) parts.push(`~${Math.round(kcal)} kcal${wo.provider === 'manual' ? ' est.' : ''}`)
+  return parts.length ? parts.join(' · ') : null
+}
+
+// One clause for the header's day sentence — "Easy run planned at 5:30 PM."
+// / "Evening Run completed at 6:02 AM." `status` comes straight off the
+// signal (real detection sets 'completed'; manual entry and the demo
+// scenario set 'planned') — never inferred from the clock, which would
+// guess wrong for a synced workout logged after the fact.
+function workoutClause(wo) {
+  const subject = workoutSubject(wo)
+  if (!subject) return null
+  const verb = wo.value.status === 'completed' ? 'completed' : 'planned'
+  return `${subject} ${verb}${wo.value.time ? ` at ${wo.value.time}` : ''}.`
+}
+
+// The header's one-sentence day summary (product ask's own example: "Solid
+// recovery. Easy run planned at 5:30 PM."). Built ONLY from real (non-demo)
+// present signals — the demo/no-connection states get their own honest
+// message instead (see the render below) — and deliberately distinct
+// wording from the Recommendation card beneath it (which is about calories/
+// macros) and from the raw numerals the Daily Signals cards themselves show:
+// this is a plain-language translation, not a restatement.
+function daySentenceParts({ rd, sl, wo, hm }) {
+  const parts = []
+  if (rd && rd.value != null && !rd.demo) parts.push(`${readinessBand(rd.value)}.`)
+  const wc = wo && !wo.demo ? workoutClause(wo) : null
+  if (wc) parts.push(wc)
+  if (parts.length === 0 && sl && sl.value != null && !sl.demo && hm) {
+    parts.push(`Slept ${hm.h}h ${hm.m}m last night.`)
+  }
+  return parts
+}
+
+// A compact explanation of what influenced the readiness score, straight off
+// Oura's own contributor sub-scores (server/integrations/oura.js's
+// normalizeReadiness) — present only for real Oura data; the demo scenario
+// and every other provider carry no `contributors` field, so this stays
+// silent for them rather than fabricating a breakdown that isn't there.
+function contributorLine(rd) {
+  const c = rd?.contributors
+  if (!c) return null
+  const parts = []
+  if (c.hrv_balance != null) parts.push(`HRV ${Math.round(c.hrv_balance)}`)
+  if (c.resting_heart_rate != null) parts.push(`RHR ${Math.round(c.resting_heart_rate)}`)
+  if (c.body_temperature != null) parts.push(`Temp ${Math.round(c.body_temperature)}`)
+  return parts.length ? parts.join(' · ') : null
+}
+
+// One column of the Daily Signals row: a semantic swatch + label, the
+// reading itself, and its source/freshness provenance beneath. A missing
 // reading shows an em-dash and an explicit "No data" mark, never a zero.
-function ContextCell({ tone, label, signal, missing, compact, children }) {
+// Renders as a real <button> (not a styled div) only when `onClick` is
+// given — "make each signal card interactive only if it leads somewhere
+// useful" (the Workout cell, which routes to Plan); Readiness/Sleep have no
+// dedicated detail view yet, so they stay plain, non-clickable-looking
+// panels rather than a link to nowhere. The global :focus-visible rule
+// (index.css) gives the button its outline for free.
+function ContextCell({ tone, label, signal, missing, compact, children, onClick, actionLabel }) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className="min-w-0 px-3 py-3">
+    <Tag
+      {...(onClick ? { type: 'button', onClick, 'aria-label': actionLabel } : {})}
+      className={`min-w-0 px-3 py-3 text-left ${onClick ? 'hover:bg-fill focus-visible:bg-fill' : ''}`}
+    >
       <div className="flex items-center gap-1.5">
         <Swatch tone={tone} size={9} />
         {/* At 320px this row is ~71px wide; "Readiness" alone measured 77px
@@ -79,6 +201,21 @@ function ContextCell({ tone, label, signal, missing, compact, children }) {
       <div className="mt-2">
         {missing ? <StatusTag status="unavailable" /> : <SourceLabel signal={signal} compact={compact} />}
       </div>
+    </Tag>
+  )
+}
+
+// Stable-geometry placeholder for one Daily Signals cell while /api/today is
+// still in flight (`data == null`) — same padding/label row as ContextCell
+// so nothing shifts when the real content arrives, per the product ask's
+// "loading: stable geometry, no layout shift." Static bars, no animation —
+// the simplest way to respect reduced-motion is to never animate this at all.
+function SignalSkeleton({ label }) {
+  return (
+    <div className="min-w-0 px-3 py-3">
+      <div className="eyebrow text-[9px] tracking-[0.09em] text-faint">{label}</div>
+      <div className="mt-2.5 h-8 w-14 bg-fill" />
+      <div className="mt-2 h-2.5 w-16 bg-fill" />
     </div>
   )
 }
@@ -181,11 +318,17 @@ function useDaySwipe(onPrevDay, onNextDay, canGoNext) {
   }
 }
 
-export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onChanged }) {
+export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onGoToPlan, onGoToConnections, onChanged }) {
   const swipeHandlers = useDaySwipe(onPrevDay, onNextDay, !isToday(date))
   const [ouraBusy, setOuraBusy] = useState(false)
   const [ouraError, setOuraError] = useState('')
   const totals = useMemo(() => sumEntries(entries), [entries])
+  // The composite hasn't arrived yet (App.jsx starts `todayData` at null and
+  // only replaces it once /api/today resolves) — distinct from a resolved
+  // composite that genuinely has no signals/recommendation. Only the header
+  // and Daily Signals below read this; the log list already has its own
+  // `loading` (entries) handling further down, unchanged.
+  const todayLoading = data == null
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
   const signals = data?.signals || {}
@@ -209,22 +352,33 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   const stepsMissing = !steps || steps.value == null
   const netBalance = expMissing ? null : calDone - num(exp.value)
 
+  // Context readings — computed up front so the header's sync line and day
+  // sentence below (which read rd/sl/wo) and the Daily Signals cards further
+  // down share exactly one set of values, never two.
+  const rd = signals.readiness
+  const sl = signals.sleep
+  const wo = signals.workout
+  const rdMissing = !rd || rd.value == null
+  const slMissing = !sl || sl.value == null
+  const woLabel = wo?.value?.shortLabel || wo?.value?.label
+  const hm = slMissing ? null : hoursToHm(sl.value)
+
   // Sync line — honest about what actually reported. Show the live providers if
   // any signal is a real (non-demo) reading; otherwise say plainly that these are
   // sample readings or that nothing is connected. Never imply a live sync.
   const present = ['readiness', 'sleep', 'workout'].map((k) => signals[k]).filter(Boolean)
   const liveProviders = [...new Set(present.filter((s) => !s.demo && s.provider).map((s) => s.provider.toUpperCase()))]
 
-  // Wearable refresh / honest per-provider capability, for the context strip
-  // below. Oura is the only one of the three with a real "ask for fresh
-  // data" action — POST /api/oura/backfill (server/index.js) re-pulls
-  // readiness/sleep-score/activity/workouts straight from Oura's live API;
-  // it already existed with no client caller before this. Offered only when
-  // Oura is genuinely the live (non-demo) source for one of these three
-  // signals — never for a disconnected account, and never dressed up for a
-  // demo scenario. Garmin's Health API is push-only here (data arrives
-  // solely via the inbound webhook — no route calls out to ask Garmin for
-  // anything) and Apple has no cloud API at all (a companion app pushes to
+  // Wearable refresh / honest per-provider capability, for the header below.
+  // Oura is the only one of the three with a real "ask for fresh data"
+  // action — POST /api/oura/backfill (server/index.js) re-pulls readiness/
+  // sleep-score/activity/workouts straight from Oura's live API; it already
+  // existed with no client caller before this. Offered only when Oura is
+  // genuinely the live (non-demo) source for one of these three signals —
+  // never for a disconnected account, and never dressed up for a demo
+  // scenario. Garmin's Health API is push-only here (data arrives solely via
+  // the inbound webhook — no route calls out to ask Garmin for anything) and
+  // Apple has no cloud API at all (a companion app pushes to
   // /api/apple/ingest, already re-read fresh on every /api/today load) — so
   // neither gets a button that would fire against nothing; both get plain,
   // true copy about how their data actually arrives, shown only once one of
@@ -249,24 +403,37 @@ export default function Today({ date, data, entries, loading, online, syncing, p
 
   const syncTime = timeShort(data?.generatedAt)
   const syncLive = liveProviders.length > 0
+  // A real (non-demo) reading recorded 18-48h ago (freshnessOf,
+  // server/providers.js) — old enough that plan.js stops trusting it, but a
+  // genuine reading, not an outright missing one. Named here so the header
+  // can say so plainly and offer a real next step, rather than silently
+  // showing the same "SYNCED" copy for a signal that quietly stopped updating.
+  const staleSignal = present.find((s) => !s.demo && s.freshness === 'stale')
   let syncText
+  // The header's one-sentence day summary, or an honest alternate message —
+  // built in the SAME branch that decides syncText (rather than a second,
+  // parallel if/else) so the two can never classify "live vs. demo vs. none"
+  // differently.
+  let daySentence = []
+  let altMessage = null
   if (syncLive) {
-    syncText = `${liveProviders.join(' + ')} · SYNCED${syncTime ? ` ${syncTime}` : ''}`
+    if (staleSignal) {
+      const staleWhen = timeShort(staleSignal.recorded_at)
+      syncText = `${liveProviders.join(' + ')} · STALE${staleWhen ? ` · LAST SYNCED ${staleWhen}` : ''}`
+    } else {
+      syncText = `${liveProviders.join(' + ')} · SYNCED${syncTime ? ` ${syncTime}` : ''}`
+    }
+    daySentence = daySentenceParts({ rd, sl, wo, hm })
   } else if (present.length > 0) {
     syncText = 'SAMPLE SIGNALS · NOT A LIVE SYNC'
+    altMessage = 'Showing sample recovery data — connect a wearable for your own.'
   } else {
     syncText = 'NO WEARABLES CONNECTED'
+    altMessage = 'No wearable connected yet — logging still works great on its own.'
   }
 
-  // Context readings.
-  const rd = signals.readiness
-  const sl = signals.sleep
-  const wo = signals.workout
-  const rdMissing = !rd || rd.value == null
-  const slMissing = !sl || sl.value == null
-  const woLabel = wo?.value?.shortLabel || wo?.value?.label
-  const woTime = wo?.value?.time
-  const hm = slMissing ? null : hoursToHm(sl.value)
+  const contribLine = contributorLine(rd)
+  const workoutInteractive = typeof onGoToPlan === 'function'
 
   // Enriched "Why this?" content for the recommendation card. An audit found
   // the disclosure was just rec.why (server/plan.js) — the reasoning text for
@@ -316,30 +483,104 @@ export default function Today({ date, data, entries, loading, online, syncing, p
 
   return (
     <div className="space-y-5" {...swipeHandlers}>
-      {/* Masthead: Bodoni title, then day nav flanking the date (owner, 25 Aug
-          2026: the date read as an afterthought at eyebrow size — 10px next
-          to the 32px title — while functionally being the one piece of state
-          this whole screen pivots on). The date is now its own line, sized to
-          actually read at a glance (18px, tnum, semibold) rather than
-          matched flat to the 32px title — two 32px elements side by side
-          measured well past 320px's width with the nav buttons included, so
-          "on par" is honored in legibility/prominence, not literal px parity.
-          Prev/next now sit directly beside the date they navigate, not the
-          static "Today"/weekday label, since that's the control they
-          actually act on. */}
+      {/* Day context header (26 Aug 2026 redesign) — replaces the old
+          oversized masthead (a 32px title + an 18px date line + a sync dot,
+          each its own row) with one compact block: date nav + readable date
+          on one line, freshness/sync status (secondary — "support the
+          metric, not dominate it") on the next, then a single concrete
+          day-context sentence built only from real data, or an honest
+          alternate message + action when there's nothing real to summarize.
+          The old oversized "Today" masthead ate real vertical space for
+          almost no information; this carries strictly more (date + sync +
+          a synthesized sentence) in less height. */}
       <div>
-        <h1 className="serif text-[32px] leading-none text-ink">{dayLabel(date)}</h1>
-        <div className="mt-1.5 flex items-center gap-1">
+        <div className="flex items-center gap-1">
           <button onClick={onPrevDay} aria-label="Previous day" className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink">‹</button>
-          <span className="tnum text-[18px] font-semibold tracking-[0.02em] text-ink">{dateBadge(date)}</span>
+          <div className="min-w-0 flex-1">
+            <span className="serif text-[19px] leading-none text-ink">{dayLabel(date)}</span>
+            {(isToday(date) || dayLabel(date) === 'Yesterday') && (
+              <span className="ml-1.5 tnum text-[12px] text-muted">{readableFullDate(date)}</span>
+            )}
+          </div>
           <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-my-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
+          {!isToday(date) && (
+            <TextButton onClick={onToday} className="-mr-2 shrink-0 text-[11px]">Today</TextButton>
+          )}
         </div>
-        {!isToday(date) && (
-          <button onClick={onToday} className="text-xs font-semibold text-cobalt hover:text-cobalt-ink">‹ Back to today</button>
+
+        <div className="mt-1 flex items-center gap-2">
+          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${syncLive && !staleSignal ? 'bg-cobalt' : syncLive ? 'border border-alert bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
+          <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{todayLoading ? 'LOADING…' : syncText}</span>
+        </div>
+
+        {/* "Manage connection" — a real, always-available next step for a
+            stale real signal, whichever provider it came from. Oura also
+            gets its own working "Refresh" (below) because it alone has a
+            real re-fetch action; this link is the honest fallback for
+            Garmin/Apple, which don't, and stays useful alongside Oura's
+            button rather than replacing it. */}
+        {!todayLoading && syncLive && staleSignal && onGoToConnections && (
+          <TextButton chevron onClick={onGoToConnections} className="-ml-2 text-[11px]">Manage connection</TextButton>
         )}
-        <div className="mt-2.5 flex items-center gap-2">
-          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${syncLive ? 'bg-cobalt' : 'border border-line-heavy bg-transparent'}`} />
-          <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{syncText}</span>
+
+        {/* Wearable refresh strip — relocated here (26 Aug 2026 redesign)
+            from its old spot below the context strip, so the header carries
+            its own retry action directly under the sync status it belongs
+            to. Logic/copy unchanged from before: Oura gets a real, working
+            manual refresh; Garmin/Apple get honest, non-actionable copy
+            instead of a button with nothing real to do (see ouraLive/
+            garminLive/appleLive above for exactly why). Nothing renders here
+            at all for a disconnected or all-demo account — an empty strip
+            under an honest demo/unavailable state is correct, not a bug to
+            fill with a fake control. */}
+        {(ouraLive || garminLive || appleLive || ouraError) && (
+          <div className="mt-2 space-y-2">
+            {ouraLive && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10.5px] leading-snug text-muted">
+                  Pull the latest readiness, sleep, and workouts from Oura.
+                </span>
+                <Button
+                  variant="outline"
+                  onClick={refreshOura}
+                  disabled={ouraBusy}
+                  aria-label="Refresh Oura data"
+                  className="shrink-0"
+                >
+                  {ouraBusy ? <Spinner /> : 'Refresh'}
+                </Button>
+              </div>
+            )}
+            {garminLive && (
+              <p className="text-[10.5px] leading-snug text-faint">
+                Garmin syncs automatically when connected — there's no manual refresh to trigger.
+              </p>
+            )}
+            {appleLive && (
+              <p className="text-[10.5px] leading-snug text-faint">
+                Open the companion app on your phone or watch to sync new Apple Health data.
+              </p>
+            )}
+            {ouraError && <ErrorNote>{ouraError}</ErrorNote>}
+          </div>
+        )}
+
+        {/* The day-context sentence — the header's one concrete, concise
+            line. Loading keeps the same block height (a muted bar, no text)
+            so nothing shifts once /api/today resolves. */}
+        <div className="mt-2.5">
+          {todayLoading ? (
+            <div className="h-[18px] w-3/4 bg-fill" />
+          ) : syncLive ? (
+            daySentence.length > 0 && <p className="text-[14.5px] leading-snug text-ink">{daySentence.join(' ')}</p>
+          ) : (
+            <>
+              <p className="text-[14.5px] leading-snug text-muted">{altMessage}</p>
+              {onGoToConnections && (
+                <TextButton chevron onClick={onGoToConnections} className="-ml-2 text-[13px]">Connect a wearable</TextButton>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -354,90 +595,116 @@ export default function Today({ date, data, entries, loading, online, syncing, p
         </div>
       )}
 
-      {/* Context strip — recovery / training, three columns split by hairlines */}
-      <div className="grid grid-cols-3 divide-x divide-line border-y border-line-strong">
-        <ContextCell tone="sage" label="Readiness" signal={rd} missing={rdMissing} compact={!syncLive}>
-          {rdMissing ? (
-            <div className="numeral text-[30px] leading-none text-faint">—</div>
-          ) : (
-            <div className="numeral text-[30px] leading-none text-ink">{Math.round(num(rd.value))}</div>
-          )}
-        </ContextCell>
-
-        <ContextCell tone="sage" label="Sleep" signal={sl} missing={slMissing} compact={!syncLive}>
-          {slMissing ? (
-            <div className="numeral text-[30px] leading-none text-faint">—</div>
+      {/* Daily signals — Readiness, Sleep, and Workout read as ONE connected
+          system (a shared hairline-divided strip, the same swatch/eyebrow/
+          source-provenance scaffolding as before) rather than three
+          unrelated decorative cards: Readiness gets the row's one signature
+          visual (a compact dial — see ui.jsx's Dial, added for this), Sleep
+          reads its duration against the same fixed threshold the plan engine
+          already uses, and Workout is the one cell that's a real link
+          (routes to Plan, where the fuller pre/post-fuel timeline for this
+          exact session lives) because it's the one with somewhere useful to
+          go. min-[560px]:grid-cols-[1fr_1fr_1.3fr]: below that width (every
+          phone this app is tested at) the three stay mechanically equal —
+          there's no room to do otherwise — but once the row has space,
+          Workout (the one with the most to say: type, time, status,
+          duration/energy) gets it, per the product ask's own "if the
+          workout context needs more room." */}
+      <div>
+        <h3 className="eyebrow px-3">Daily signals</h3>
+        <div className="mt-2 grid grid-cols-3 divide-x divide-line border-y border-line-strong min-[560px]:grid-cols-[1fr_1fr_1.3fr]">
+          {todayLoading ? (
+            <>
+              <SignalSkeleton label="Readiness" />
+              <SignalSkeleton label="Sleep" />
+              <SignalSkeleton label="Workout" />
+            </>
           ) : (
             <>
-              <div className="numeral text-[30px] leading-none text-ink">
-                {hm.h}<span className="font-sans text-[15px] font-normal">h</span> {hm.m}<span className="font-sans text-[15px] font-normal">m</span>
-              </div>
-              {/* daily_sleep's own 0-100 quality score — a different Oura
-                  endpoint from the duration above, so it's genuinely absent
-                  (not just unfetched) whenever a provider only ever supplies
-                  duration. The demo scenario already anticipated this field
-                  (sig(7.4, {score: 78, ...})) since before any real fetch
-                  populated it. */}
-              {sl.score != null && (
-                <div className="mt-0.5 text-[10.5px] font-medium text-muted">Score {Math.round(num(sl.score))}</div>
-              )}
+              <ContextCell tone="mist" label="Readiness" signal={rd} missing={rdMissing} compact={!syncLive}>
+                {rdMissing ? (
+                  <div className="numeral text-[30px] leading-none text-faint">—</div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="relative shrink-0">
+                      <Dial value={rd.value} max={100} size={48} thickness={5} />
+                      <div className="numeral absolute inset-0 flex items-center justify-center text-[14px] leading-none text-ink">
+                        {Math.round(num(rd.value))}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11.5px] font-semibold leading-tight text-ink">{readinessBand(rd.value)}</div>
+                      {contribLine && <div className="mt-0.5 text-[9px] leading-tight text-muted">{contribLine}</div>}
+                    </div>
+                  </div>
+                )}
+              </ContextCell>
+
+              <ContextCell tone="mist" label="Sleep" signal={sl} missing={slMissing} compact={!syncLive}>
+                {slMissing ? (
+                  <div className="numeral text-[30px] leading-none text-faint">—</div>
+                ) : (
+                  <>
+                    <div className="numeral text-[26px] leading-none text-ink">
+                      {hm.h}<span className="font-sans text-[13px] font-normal">h</span> {hm.m}<span className="font-sans text-[13px] font-normal">m</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-[10.5px] font-medium text-muted">
+                      <span>{sleepBand(sl.value)}</span>
+                      {/* daily_sleep's own 0-100 quality score — a different
+                          Oura endpoint from the duration above, so it's
+                          genuinely absent (not just unfetched) whenever a
+                          provider only ever supplies duration. */}
+                      {sl.score != null && <span>· Score {Math.round(num(sl.score))}</span>}
+                    </div>
+                  </>
+                )}
+              </ContextCell>
+
+              <ContextCell
+                tone="sand"
+                label="Workout"
+                signal={wo}
+                missing={!wo}
+                compact={!syncLive}
+                onClick={workoutInteractive ? onGoToPlan : undefined}
+                actionLabel={wo ? `View ${workoutSubject(wo) || 'workout'} details in Plan` : 'Set a workout in Plan'}
+              >
+                {!wo ? (
+                  <div>
+                    <div className="numeral text-[16px] leading-[1.2] text-faint">No workout set</div>
+                    {workoutInteractive && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-cobalt">
+                        Set workout <span aria-hidden>›</span>
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="min-w-0">
+                    <div className="numeral truncate text-[16px] leading-[1.2] text-ink">{woLabel ? workoutSubject(wo) : 'Rest'}</div>
+                    {woLabel && (
+                      <div className="mt-1 text-[10px] font-medium leading-snug text-muted tnum">
+                        <div className="truncate">
+                          {wo.value.status === 'completed' ? 'Completed' : 'Planned'}{wo.value.time ? ` · ${wo.value.time}` : ''}
+                        </div>
+                        {workoutMeta(wo) && <div className="truncate">{workoutMeta(wo)}</div>}
+                        {/* Honest "can't estimate" note — the same shape as
+                            Plan.jsx's noWeightForEstimate: a duration was
+                            given (so the server tried) but no body weight is
+                            on file to turn MET × duration into a number.
+                            Never a fabricated calorie guess. */}
+                        {wo.provider === 'manual' && wo.value.durationMin != null
+                          && (wo.value.estKcal ?? wo.value.est_kcal) == null && (
+                          <div className="truncate text-faint">Add your weight for a calorie estimate</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </ContextCell>
             </>
           )}
-        </ContextCell>
-
-        <ContextCell tone="lavender" label="Workouts" signal={wo} missing={!wo} compact={!syncLive}>
-          {!wo ? (
-            <div className="numeral text-[17px] leading-[1.15] text-faint">—</div>
-          ) : woLabel ? (
-            <div className="numeral text-[17px] leading-[1.15] text-ink">
-              {woLabel}
-              {woTime && <><br /><span className="tnum">{woTime}</span></>}
-            </div>
-          ) : (
-            <div className="numeral text-[17px] leading-[1.15] text-faint">Rest</div>
-          )}
-        </ContextCell>
-      </div>
-
-      {/* Wearable refresh strip, directly under the context cells above —
-          same hairline panel language, no new white/cobalt "special" surface.
-          Oura gets a real, working manual refresh; Garmin/Apple get honest,
-          non-actionable copy instead of a button with nothing real to do
-          (see ouraLive/garminLive/appleLive above for exactly why). Nothing
-          renders here at all for a disconnected or all-demo account — an
-          empty strip under an honest demo/unavailable context strip is the
-          correct state, not a bug to fill with a fake control. */}
-      {(ouraLive || garminLive || appleLive || ouraError) && (
-        <div className="space-y-2 border-b border-line-strong px-3 py-2.5">
-          {ouraLive && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[10.5px] leading-snug text-muted">
-                Pull the latest readiness, sleep, and workouts from Oura.
-              </span>
-              <Button
-                variant="outline"
-                onClick={refreshOura}
-                disabled={ouraBusy}
-                aria-label="Refresh Oura data"
-                className="shrink-0"
-              >
-                {ouraBusy ? <Spinner /> : 'Refresh'}
-              </Button>
-            </div>
-          )}
-          {garminLive && (
-            <p className="text-[10.5px] leading-snug text-faint">
-              Garmin syncs automatically when connected — there's no manual refresh to trigger.
-            </p>
-          )}
-          {appleLive && (
-            <p className="text-[10.5px] leading-snug text-faint">
-              Open the companion app on your phone or watch to sync new Apple Health data.
-            </p>
-          )}
-          {ouraError && <ErrorNote>{ouraError}</ErrorNote>}
         </div>
-      )}
+      </div>
 
       {/* The "next action" sheet — the focal moment. An audit measured three
           near-equal-weight serif moments above the fold (masthead 32px,

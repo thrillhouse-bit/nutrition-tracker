@@ -421,6 +421,12 @@ run `npm run db:init` once against Neon first. Each route is written to stay
 portable to serverless functions (e.g. Vercel `/api/*`) if you'd rather split
 them later.
 
+## Design
+
+Visual/UX design rationale (what changed, why, and the tokens/components it
+uses) lives in [`docs/DESIGN.md`](./docs/DESIGN.md) — start there before a
+UI-facing change; add a new dated section rather than a second file.
+
 ## Notes
 
 - Counts reflect what's on labels / in the databases; Open Food Facts is

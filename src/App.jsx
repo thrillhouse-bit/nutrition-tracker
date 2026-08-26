@@ -449,6 +449,8 @@ export default function App() {
             onNextDay={() => shiftDay(1)}
             onToday={() => setDate(new Date())}
             onViewLog={() => setTab('log')}
+            onGoToPlan={() => setTab('plan')}
+            onGoToConnections={() => setTab('connections')}
             onChanged={bump}
           />
         )}
