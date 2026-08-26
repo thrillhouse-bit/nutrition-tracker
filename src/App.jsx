@@ -121,6 +121,13 @@ export default function App() {
   const [entries, setEntries] = useState([])
   const [loadingEntries, setLoadingEntries] = useState(true)
   const [todayData, setTodayData] = useState(null) // /api/today composite (plan + signals + recommendation)
+  // Distinct from `todayData == null`, which is ALSO true forever after a
+  // failed fetch (the catch below sets it to null too) — Today.jsx used that
+  // alone as its loading flag, so a genuine fetch failure rendered as a
+  // permanent loading skeleton instead of an honest error state. This is the
+  // one bit that actually says "the request finished and failed," independent
+  // of whether data happens to be null for an unrelated (still-loading) reason.
+  const [todayError, setTodayError] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [toast, setToast] = useState(null)
 
@@ -161,7 +168,10 @@ export default function App() {
   // timezone).
   useEffect(() => {
     let alive = true
-    api.today(ymd(date), dayBounds(date)).then((r) => alive && setTodayData(r)).catch(() => alive && setTodayData(null))
+    setTodayError(false) // a fresh attempt for this date/refresh is starting — never show the PREVIOUS attempt's error while this one is still in flight
+    api.today(ymd(date), dayBounds(date))
+      .then((r) => { if (alive) { setTodayData(r); setTodayError(false) } })
+      .catch(() => { if (alive) { setTodayData(null); setTodayError(true) } })
     return () => { alive = false }
   }, [date, refreshKey])
 
@@ -448,6 +458,7 @@ export default function App() {
           <Today
             {...shared}
             data={todayData}
+            dataError={todayError}
             entries={dayEntries}
             loading={loadingEntries}
             online={online}

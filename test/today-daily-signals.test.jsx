@@ -271,6 +271,18 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
     expect(onGoToPlan).toHaveBeenCalledTimes(1)
   })
 
+  it('keyboard-only: the workout link is a native <button> reachable by Tab, not a div/span with a fake click handler', async () => {
+    const onGoToPlan = vi.fn()
+    const el = await renderToday(WORKOUT_DATA, { onGoToPlan })
+    const btn = [...el.querySelectorAll('button')].find((b) => /Evening Run/.test(b.getAttribute('aria-label') || ''))
+    expect(btn).toBeTruthy()
+    expect(btn.tagName).toBe('BUTTON') // native button: Enter/Space activation and Tab reachability are guaranteed by the element itself, not something to re-implement
+    expect(btn.disabled).toBe(false)
+    expect(btn.tabIndex).not.toBe(-1) // not deliberately removed from tab order
+    btn.focus()
+    expect(document.activeElement).toBe(btn) // genuinely focusable, not just visually styled to look like a control
+  })
+
   it('CONTROL: without onGoToPlan, the same workout renders as a plain (non-button) panel — never a fake clickable affordance', async () => {
     const el = await renderToday(WORKOUT_DATA)
     const btn = [...el.querySelectorAll('button')].find((b) => /Evening Run/i.test(b.getAttribute('aria-label') || ''))
@@ -347,5 +359,102 @@ describe('Today: no implicit/hardcoded demo data anywhere in the redesign', () =
     expect(el.textContent).toMatch(/No workout set/)
     const emDashes = [...el.querySelectorAll('.text-faint')].filter((n) => n.textContent.trim() === '—')
     expect(emDashes.length).toBeGreaterThanOrEqual(2) // readiness + sleep
+  })
+})
+
+// Gap found during a follow-up review (26 Aug 2026): PUT /api/plan/workout
+// stores a manual entry with status:'planned' permanently — nothing in this
+// app ever flips it to 'completed' after the fact. Viewing a PAST day with
+// one would otherwise read "planned at 5:30 PM" forever, a live claim about
+// a day already over. "Completed" is a true statement on any day, so only
+// the not-yet-completed case needed a past-safe word once the VIEWED day
+// (not the workout's own status) has moved into the past.
+describe('Historical-day workout tense — never claims a past day is still "planned"', () => {
+  const YESTERDAY = new Date(Date.now() - 24 * 3600 * 1000)
+
+  it('a historical day with a not-yet-completed workout reads "logged", never "planned", in the header sentence', async () => {
+    const el = await renderToday({
+      ...BASE,
+      signals: {
+        readiness: { value: 82, provider: 'oura', freshness: 'fresh', demo: false },
+        workout: { value: { label: 'Evening Run', shortLabel: 'run', status: 'planned', time: '5:30 PM' }, provider: 'garmin', freshness: 'fresh', demo: false },
+      },
+    }, { date: YESTERDAY })
+    expect(el.textContent).toMatch(/Evening Run logged at 5:30 PM\./)
+    expect(el.textContent).not.toMatch(/planned/i)
+  })
+
+  it('CONTROL: the same not-yet-completed workout on TODAY still reads "planned" — the fix is scoped to historical days only', async () => {
+    const el = await renderToday({
+      ...BASE,
+      signals: {
+        readiness: { value: 82, provider: 'oura', freshness: 'fresh', demo: false },
+        workout: { value: { label: 'Evening Run', shortLabel: 'run', status: 'planned', time: '5:30 PM' }, provider: 'garmin', freshness: 'fresh', demo: false },
+      },
+    }, { date: new Date() })
+    expect(el.textContent).toMatch(/Evening Run planned at 5:30 PM\./)
+  })
+
+  it('a historical day with a COMPLETED workout still reads "completed" — that stays true regardless of when it\'s read', async () => {
+    const el = await renderToday({
+      ...BASE,
+      signals: {
+        workout: { value: { label: 'Morning Ride', shortLabel: 'ride', status: 'completed', time: '6:02 AM' }, provider: 'garmin', freshness: 'fresh', demo: false },
+      },
+    }, { date: YESTERDAY })
+    expect(el.textContent).toMatch(/Morning Ride completed at 6:02 AM\./)
+    expect(el.textContent).toMatch(/Completed · 6:02 AM/) // the Workout card's own status label, unaffected by the historical-day fix
+    expect(el.textContent).not.toMatch(/Logged · 6:02 AM/)
+  })
+
+  it('the Workout card\'s own status label also reads "Logged · 5:30 PM" (not "Planned") for a historical day', async () => {
+    const el = await renderToday({
+      ...BASE,
+      signals: { workout: { value: { label: 'Evening Run', shortLabel: 'run', status: 'planned', time: '5:30 PM' }, provider: 'garmin', freshness: 'fresh', demo: false } },
+    }, { date: YESTERDAY })
+    expect(el.textContent).toMatch(/Logged · 5:30 PM/)
+    expect(el.textContent).not.toMatch(/Planned · 5:30 PM/)
+  })
+
+  it('CONTROL: the Workout card reads "Planned · 5:30 PM" for the same not-yet-completed workout on TODAY', async () => {
+    const el = await renderToday({
+      ...BASE,
+      signals: { workout: { value: { label: 'Evening Run', shortLabel: 'run', status: 'planned', time: '5:30 PM' }, provider: 'garmin', freshness: 'fresh', demo: false } },
+    }, { date: new Date() })
+    expect(el.textContent).toMatch(/Planned · 5:30 PM/)
+  })
+})
+
+// Gap found during the same review: `data == null` was the ONLY signal Today
+// used to mean "loading" — but App.jsx also leaves `data` null forever after
+// a failed /api/today fetch, so a genuine, permanent failure rendered as an
+// eternal loading skeleton with no way to tell the user anything went wrong,
+// and no retry action. `dataError` is a new, separate prop precisely so
+// "still loading" and "finished and failed" are never the same rendered state.
+describe('A genuine /api/today fetch failure gets an honest message and a retry action, never an eternal loading skeleton', () => {
+  it('shows an error message and a working retry action when dataError is true', async () => {
+    const onChanged = vi.fn()
+    const el = await renderToday(null, { dataError: true, onChanged })
+    expect(el.textContent).toMatch(/Couldn't load today's data/)
+    expect(el.textContent).toMatch(/Try again/)
+    const retryBtn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Try again'))
+    expect(retryBtn).toBeTruthy()
+    await act(async () => { retryBtn.click() })
+    expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('CONTROL: still loading (data null, no error yet) shows the plain loading skeleton, never the error message', async () => {
+    const el = await renderToday(null, { dataError: false })
+    expect(el.textContent).not.toMatch(/Couldn't load/)
+    expect(el.textContent).not.toMatch(/Try again/)
+    expect(el.textContent).toMatch(/LOADING/)
+  })
+
+  it('CONTROL: a successful load (data present) never shows the error message even if dataError was left stale as true', async () => {
+    const el = await renderToday({ ...BASE, signals: {} }, { dataError: true })
+    // Real data arriving takes precedence — App.jsx always clears dataError
+    // alongside a successful setTodayData, so this is a defense-in-depth
+    // control against the two ever disagreeing, not a reachable app state.
+    expect(el.textContent).not.toMatch(/Couldn't load/i)
   })
 })
