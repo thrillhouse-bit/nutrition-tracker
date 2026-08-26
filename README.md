@@ -37,7 +37,7 @@ Five tabs:
 | **Log** | The four ways to add food — scan barcode, scan label, search, manual — plus one-tap re-log of recents, grouped by meal. |
 | **Plan** | Baseline vs. adjusted daily targets with a plain-language rationale for **every** adjustment. The baseline is editable and is **never** changed silently by the engine. |
 | **Insights** | Nutrition trends over 7 / 14 / 30 days with an explicit insufficient-data state. Recovery/training correlations are shown cautiously — never causal, never medical. |
-| **Connections** | Provider rows (Oura, Garmin, Apple Health) with live status (connected / stale / demo / disconnected / error), last-sync, categories, connect / reconnect / disconnect, per-provider **enable** + **demo** toggles, and toggles for what may influence the plan (readiness / sleep / workouts). Includes a privacy note. |
+| **Connections** | Provider rows (Oura, Garmin, Apple Health) with live status (connected / actively syncing / stale / demo / not-configured / disconnected / error), last-sync, categories, connect / reconnect / disconnect, per-provider **enable** + **demo** toggles, and toggles for what may influence the plan (readiness / sleep / workouts). Includes a privacy note. Oura additionally persists last-attempted-sync, the most recent backfill's fetched/accepted/deduplicated record counts, and a classified token-refresh/backfill failure reason — see `docs/oura-sync-runbook.md`. |
 
 ## Stack
 

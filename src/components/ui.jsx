@@ -331,13 +331,17 @@ function MarkGlyph({ status }) {
     return <span aria-hidden className="shrink-0 border border-ink bg-paper" style={box} />
   if (status === 'demo')
     return <span aria-hidden className="flex shrink-0 items-center justify-center border border-ink bg-paper" style={box}><span className="bg-ink" style={{ width: 3, height: 3 }} /></span>
-  // disconnected
+  // disconnected AND not-configured share this dashed "nothing active" shape
+  // (same family as stale/unavailable sharing one hollow glyph above) — the
+  // WORD is what tells them apart: "Not connected" (this user hasn't linked
+  // an account) vs. "Not configured" (the server itself has no OAuth client
+  // set up, so no user on this box could connect one).
   return <span aria-hidden className="shrink-0 border border-dashed border-line-heavy" style={box} />
 }
 
 const WORDS = {
   connected: 'Connected', syncing: 'Syncing', stale: 'Stale', disconnected: 'Not connected',
-  error: 'Error', demo: 'Demo data', fresh: 'Fresh', unavailable: 'No data',
+  'not-configured': 'Not configured', error: 'Error', demo: 'Demo data', fresh: 'Fresh', unavailable: 'No data',
 }
 
 // Shape + word status mark. Word carries the meaning so color is never the only

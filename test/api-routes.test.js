@@ -1035,18 +1035,110 @@ describe('POST /api/oura/backfill', () => {
   })
 })
 
-// End-to-end proof of the demo/real precedence fix (server/providers.js
-// composeSignals), over real HTTP against the real Express app + real
-// composeSignals — not just the unit-level fixtures in test/providers.test.js.
-// Reproduces the reported production shape exactly: Garmin is never
-// configured on this whole test file (no GARMIN_CLIENT_ID/SECRET/REDIRECT_URI
-// anywhere), so it sits in its default demo:true, never-connected state, the
-// same as production's own `garmin: "not-configured"` — while Oura has a
-// real, connected OAuth account with real workout data, matching production's
-// `oura: "oauth"`. PREFERENCE.workout lists Garmin first; before the fix a
-// single preference-ordered pass took Garmin's canned "Evening Run" simply
-// because it sorted first and was non-null, never because it was a better
-// answer than Oura's real, connected data.
+describe('Oura sync observability (last_attempted_sync / last_sync_counts / sync_error, GET /api/connections)', () => {
+  afterEach(() => {
+    oura.activityRange = async () => []
+    oura.readinessRange = async () => []
+    oura.sleepScoreRange = async () => []
+    oura.workoutsRange = async () => []
+    fake.state.ouraWorkouts = []
+  })
+
+  const ouraOf = (body) => body.providers.find((p) => p.id === 'oura')
+
+  it('reports not-configured, not demo, when Oura has no credentials at all on the server', async () => {
+    oura.legacy = false
+    fake.state.ouraAccounts = []
+    const body = await (await get('/api/connections')).json()
+    expect(ouraOf(body).status).toBe('not-configured')
+  })
+
+  it('a connected account with no backfill yet reports stale, with every observability field null', async () => {
+    oura.legacy = true
+    fake.state.ouraAccounts = []
+    const body = await (await get('/api/connections')).json()
+    const o = ouraOf(body)
+    expect(o.status).toBe('stale') // an account/token existing is not the same as ever having synced
+    expect(o.last_synced_at).toBeNull()
+    expect(o.last_attempted_sync).toBeNull()
+    expect(o.last_sync_counts).toBeNull()
+    expect(o.sync_error).toBeNull()
+  })
+
+  it('a successful backfill sets last_synced_at/last_attempted_sync, records fetched/accepted/deduplicated, and clears any prior error', async () => {
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    fake.state.integrations.oura = { enabled: true, demo: true, error: 'refresh_token_expired', settings: {} } // simulate a previously-recorded failure
+    oura.activityRange = async () => []
+    // 3 days returned, only 2 carry a score — daysSaved=2, so fetched(3) -
+    // accepted(2) = 1 deduplicated (the one Oura sent back with no score yet).
+    oura.readinessRange = async () => [
+      { day: '2026-08-01', score: 70 },
+      { day: '2026-08-02', score: 75 },
+      { day: '2026-08-03', score: null },
+    ]
+    const backfillRes = await post('/api/oura/backfill?days=10', {})
+    expect(backfillRes.status).toBe(200)
+    const backfillBody = await backfillRes.json()
+    expect(backfillBody.daysFetched).toBe(3)
+    expect(backfillBody.daysSaved).toBe(2)
+
+    const body = await (await get('/api/connections')).json()
+    const o = ouraOf(body)
+    expect(o.status).toBe('connected')
+    expect(o.last_synced_at).toBeTruthy()
+    expect(o.last_attempted_sync).toBeTruthy()
+    expect(o.last_sync_counts).toMatchObject({ fetched: 3, accepted: 2, deduplicated: 1 })
+    expect(o.sync_error).toBeNull() // the earlier simulated failure is cleared by this success
+  })
+
+  it('a failed backfill records last_attempted_sync and the failure reason, and never touches last_synced_at', async () => {
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    oura.activityRange = async () => { throw Object.assign(new Error('oura activity fetch failed'), { status: 503 }) }
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+    const res = await post('/api/oura/backfill?days=10', {})
+    // asyncH forwards a thrown error's own .status (503 here, mirroring a
+    // real Oura upstream error) rather than flattening every failure to 500 —
+    // pre-existing behavior, not something this change alters; the point of
+    // this test is the persisted trace below, not this status code.
+    expect(res.status).toBe(503)
+
+    const body = await (await get('/api/connections')).json()
+    const o = ouraOf(body)
+    expect(o.status).toBe('stale') // never synced, so this is not "connected"
+    expect(o.last_synced_at).toBeNull() // the failed attempt stored nothing
+    expect(o.last_attempted_sync).toBeTruthy() // but the ATTEMPT is on record
+    expect(o.sync_error).toBe('oura_api_error_503')
+  })
+
+  it('reports syncing while a backfill is still in flight, then resolves once it completes (control: not stuck)', async () => {
+    oura.legacy = true
+    fake.state.ouraHistory = []
+    let releaseActivity
+    // Deliberately never resolves until the test releases it, so the request
+    // is provably still in-flight when the concurrent GET below fires —
+    // without this, a fetch-fake that resolves instantly could race the GET
+    // either way and make this test flaky in either direction.
+    oura.activityRange = () => new Promise((resolve) => { releaseActivity = () => resolve([]) })
+    oura.readinessRange = async () => [{ day: '2026-08-01', score: 70 }]
+
+    const backfillPromise = post('/api/oura/backfill?days=10', {})
+    // Give the request a moment to actually reach the awaited activityRange
+    // call before checking — Node interleaves at await points, not instantly.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const midBody = await (await get('/api/connections')).json()
+    expect(ouraOf(midBody).status).toBe('syncing')
+
+    releaseActivity()
+    const backfillRes = await backfillPromise
+    expect(backfillRes.status).toBe(200)
+
+    const afterBody = await (await get('/api/connections')).json()
+    expect(ouraOf(afterBody).status).toBe('connected') // never stuck syncing once the request actually finishes
+  })
+})
+
 describe('GET /api/today: real Oura data beats Garmin\'s default demo (Task 1 precedence fix, end-to-end)', () => {
   const OURA_ENV = ['OURA_CLIENT_ID', 'OURA_CLIENT_SECRET', 'OURA_REDIRECT_URI']
   const saved = {}
