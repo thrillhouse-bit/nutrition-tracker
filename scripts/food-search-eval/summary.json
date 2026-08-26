@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-08-26T16:12:56.838Z",
+  "generatedAt": "2026-08-26T16:40:38.875Z",
   "totalProbes": 993,
   "distinctItems": 200,
   "note": "Every latency figure is the SEARCH round trip. A user additionally waits the 350 ms input debounce before the request starts.",
   "completeQuery": {
     "all": {
       "probes": 200,
-      "top1Pct": 70,
-      "top3Pct": 71.5,
-      "top5Pct": 71.5,
-      "mrr": 0.712,
+      "top1Pct": 72,
+      "top3Pct": 73,
+      "top5Pct": 73,
+      "mrr": 0.7292,
       "zeroResultPct": 0,
       "partialPct": 12.5,
       "canonicalMissingPct": 0,
-      "latencyP50Ms": 623,
-      "latencyP95Ms": 1241
+      "latencyP50Ms": 687,
+      "latencyP95Ms": 1247
     },
     "generic": {
       "probes": 60,
@@ -23,36 +23,36 @@
       "top5Pct": 100,
       "mrr": 0.9917,
       "zeroResultPct": 0,
-      "partialPct": 15,
+      "partialPct": 13.3,
       "canonicalMissingPct": 0,
-      "latencyP50Ms": 577,
-      "latencyP95Ms": 1119
+      "latencyP50Ms": 606,
+      "latencyP95Ms": 1346
     },
     "branded": {
       "probes": 140,
-      "top1Pct": 57.9,
-      "top3Pct": 59.3,
-      "top5Pct": 59.3,
-      "mrr": 0.5922,
+      "top1Pct": 60.7,
+      "top3Pct": 61.4,
+      "top5Pct": 61.4,
+      "mrr": 0.6167,
       "zeroResultPct": 0,
-      "partialPct": 11.4,
+      "partialPct": 12.1,
       "canonicalMissingPct": 0,
-      "latencyP50Ms": 640,
-      "latencyP95Ms": 1295
+      "latencyP50Ms": 695,
+      "latencyP95Ms": 1183
     }
   },
   "completeQueryRetrievableOnly": {
     "all": {
-      "probes": 155,
-      "top1Pct": 90.3,
-      "top3Pct": 92.3,
-      "top5Pct": 92.3,
-      "mrr": 0.9188,
+      "probes": 157,
+      "top1Pct": 91.7,
+      "top3Pct": 93,
+      "top5Pct": 93,
+      "mrr": 0.9289,
       "zeroResultPct": 0,
-      "partialPct": 13.5,
+      "partialPct": 12.7,
       "canonicalMissingPct": 0,
-      "latencyP50Ms": 640,
-      "latencyP95Ms": 1264
+      "latencyP50Ms": 687,
+      "latencyP95Ms": 1259
     },
     "generic": {
       "probes": 60,
@@ -61,54 +61,54 @@
       "top5Pct": 100,
       "mrr": 0.9917,
       "zeroResultPct": 0,
-      "partialPct": 15,
+      "partialPct": 13.3,
       "canonicalMissingPct": 0,
-      "latencyP50Ms": 577,
-      "latencyP95Ms": 1119
+      "latencyP50Ms": 606,
+      "latencyP95Ms": 1346
     },
     "branded": {
-      "probes": 95,
-      "top1Pct": 85.3,
-      "top3Pct": 87.4,
-      "top5Pct": 87.4,
-      "mrr": 0.8727,
+      "probes": 97,
+      "top1Pct": 87.6,
+      "top3Pct": 88.7,
+      "top5Pct": 88.7,
+      "mrr": 0.8901,
       "zeroResultPct": 0,
-      "partialPct": 12.6,
+      "partialPct": 12.4,
       "canonicalMissingPct": 0,
-      "latencyP50Ms": 658,
-      "latencyP95Ms": 1461
+      "latencyP50Ms": 700,
+      "latencyP95Ms": 1171
     }
   },
-  "targetsNotInEitherDatabase": {
-    "all": 45,
+  "targetsNotReturned": {
+    "all": 43,
     "generic": 0,
-    "branded": 45
+    "branded": 43
   },
   "byPrefixLength": {
     "2": {
       "all": {
         "probes": 200,
-        "top1Pct": 1,
-        "top3Pct": 2,
-        "top5Pct": 2,
-        "mrr": 0.0166,
+        "top1Pct": 0.5,
+        "top3Pct": 1.5,
+        "top5Pct": 1.5,
+        "mrr": 0.0124,
         "zeroResultPct": 0,
-        "partialPct": 11.5,
+        "partialPct": 9.5,
         "canonicalMissingPct": 0,
         "latencyP50Ms": 438,
-        "latencyP95Ms": 1013
+        "latencyP95Ms": 915
       },
       "generic": {
         "probes": 60,
-        "top1Pct": 1.7,
-        "top3Pct": 3.3,
-        "top5Pct": 3.3,
-        "mrr": 0.0332,
+        "top1Pct": 0,
+        "top3Pct": 1.7,
+        "top5Pct": 1.7,
+        "mrr": 0.0191,
         "zeroResultPct": 0,
-        "partialPct": 13.3,
+        "partialPct": 10,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 441,
-        "latencyP95Ms": 1292
+        "latencyP50Ms": 414,
+        "latencyP95Ms": 919
       },
       "branded": {
         "probes": 140,
@@ -117,151 +117,151 @@
         "top5Pct": 1.4,
         "mrr": 0.0095,
         "zeroResultPct": 0,
-        "partialPct": 10.7,
+        "partialPct": 9.3,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 435,
-        "latencyP95Ms": 992
+        "latencyP50Ms": 439,
+        "latencyP95Ms": 915
       }
     },
     "3": {
       "all": {
         "probes": 200,
         "top1Pct": 2.5,
-        "top3Pct": 6,
+        "top3Pct": 5.5,
         "top5Pct": 8.5,
-        "mrr": 0.0528,
+        "mrr": 0.0539,
         "zeroResultPct": 4.5,
-        "partialPct": 14.5,
+        "partialPct": 8,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 438,
-        "latencyP95Ms": 999
+        "latencyP50Ms": 433,
+        "latencyP95Ms": 946
       },
       "generic": {
         "probes": 60,
         "top1Pct": 5,
         "top3Pct": 11.7,
         "top5Pct": 20,
-        "mrr": 0.1123,
+        "mrr": 0.1192,
         "zeroResultPct": 1.7,
-        "partialPct": 20,
+        "partialPct": 5,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 451,
-        "latencyP95Ms": 1185
+        "latencyP50Ms": 439,
+        "latencyP95Ms": 1189
       },
       "branded": {
         "probes": 140,
         "top1Pct": 1.4,
-        "top3Pct": 3.6,
+        "top3Pct": 2.9,
         "top5Pct": 3.6,
-        "mrr": 0.0273,
+        "mrr": 0.026,
         "zeroResultPct": 5.7,
-        "partialPct": 12.1,
+        "partialPct": 9.3,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 435,
-        "latencyP95Ms": 989
+        "latencyP50Ms": 433,
+        "latencyP95Ms": 932
       }
     },
     "4": {
       "all": {
         "probes": 198,
-        "top1Pct": 8.6,
-        "top3Pct": 13.6,
-        "top5Pct": 17.7,
-        "mrr": 0.1272,
+        "top1Pct": 8.1,
+        "top3Pct": 14.1,
+        "top5Pct": 17.2,
+        "mrr": 0.1261,
         "zeroResultPct": 13.1,
-        "partialPct": 12.1,
+        "partialPct": 16.2,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 451,
-        "latencyP95Ms": 1037
+        "latencyP50Ms": 447,
+        "latencyP95Ms": 1184
       },
       "generic": {
         "probes": 58,
         "top1Pct": 15.5,
-        "top3Pct": 22.4,
+        "top3Pct": 25.9,
         "top5Pct": 27.6,
-        "mrr": 0.2065,
+        "mrr": 0.2168,
         "zeroResultPct": 5.2,
-        "partialPct": 13.8,
+        "partialPct": 20.7,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 461,
-        "latencyP95Ms": 1159
+        "latencyP50Ms": 471,
+        "latencyP95Ms": 1234
       },
       "branded": {
         "probes": 140,
-        "top1Pct": 5.7,
-        "top3Pct": 10,
-        "top5Pct": 13.6,
-        "mrr": 0.0943,
+        "top1Pct": 5,
+        "top3Pct": 9.3,
+        "top5Pct": 12.9,
+        "mrr": 0.0886,
         "zeroResultPct": 16.4,
-        "partialPct": 11.4,
+        "partialPct": 14.3,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 446,
-        "latencyP95Ms": 990
+        "latencyP50Ms": 440,
+        "latencyP95Ms": 1099
       }
     },
     "5": {
       "all": {
         "probes": 195,
-        "top1Pct": 13.3,
-        "top3Pct": 22.6,
-        "top5Pct": 26.2,
-        "mrr": 0.1848,
+        "top1Pct": 10.8,
+        "top3Pct": 21,
+        "top5Pct": 24.6,
+        "mrr": 0.1671,
         "zeroResultPct": 11.8,
-        "partialPct": 13.8,
+        "partialPct": 10.8,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 487,
-        "latencyP95Ms": 1093
+        "latencyP50Ms": 463,
+        "latencyP95Ms": 1084
       },
       "generic": {
         "probes": 55,
-        "top1Pct": 29.1,
+        "top1Pct": 21.8,
         "top3Pct": 34.5,
         "top5Pct": 34.5,
-        "mrr": 0.32,
+        "mrr": 0.2827,
         "zeroResultPct": 10.9,
-        "partialPct": 16.4,
+        "partialPct": 9.1,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 538,
-        "latencyP95Ms": 1152
+        "latencyP50Ms": 504,
+        "latencyP95Ms": 1471
       },
       "branded": {
         "probes": 140,
-        "top1Pct": 7.1,
-        "top3Pct": 17.9,
-        "top5Pct": 22.9,
-        "mrr": 0.1317,
+        "top1Pct": 6.4,
+        "top3Pct": 15.7,
+        "top5Pct": 20.7,
+        "mrr": 0.1217,
         "zeroResultPct": 12.1,
-        "partialPct": 12.9,
+        "partialPct": 11.4,
         "canonicalMissingPct": 0,
-        "latencyP50Ms": 469,
-        "latencyP95Ms": 1075
+        "latencyP50Ms": 458,
+        "latencyP95Ms": 1008
       }
     }
   },
   "timeToFirstUsefulResult": {
     "all": {
-      "itemsReachingTop5": 155,
-      "searchLatencyP50Ms": 542,
-      "searchLatencyP95Ms": 1243,
+      "itemsReachingTop5": 156,
+      "searchLatencyP50Ms": 601,
+      "searchLatencyP95Ms": 1140,
       "charactersTypedP50": 12,
       "charactersTypedP95": 34
     },
     "generic": {
       "itemsReachingTop5": 60,
-      "searchLatencyP50Ms": 534,
-      "searchLatencyP95Ms": 1152,
+      "searchLatencyP50Ms": 516,
+      "searchLatencyP95Ms": 1234,
       "charactersTypedP50": 5,
       "charactersTypedP95": 16
     },
     "branded": {
-      "itemsReachingTop5": 95,
-      "searchLatencyP50Ms": 565,
-      "searchLatencyP95Ms": 1295,
+      "itemsReachingTop5": 96,
+      "searchLatencyP50Ms": 664,
+      "searchLatencyP95Ms": 1127,
       "charactersTypedP50": 22,
       "charactersTypedP95": 35
     }
   },
-  "itemsNeverReachingTop5": 45,
+  "itemsNeverReachingTop5": 44,
   "corpusSplit": {
     "generic": 60,
     "branded": 140

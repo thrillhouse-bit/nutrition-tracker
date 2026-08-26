@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-08-26T16:18:26.677Z",
+  "measuredAt": "2026-08-26T16:42:00.372Z",
   "failures": 0,
   "total": 7,
   "results": [
@@ -25,7 +25,7 @@
         "Zucchini, pickled (35 kcal)",
         "Squash, summer, zucchini, includes skin, frozen, unprepared (17 kcal)"
       ],
-      "latencyMs": 721
+      "latencyMs": 1225
     },
     {
       "query": "banana",
@@ -49,31 +49,33 @@
         "Pepper, banana, raw (27 kcal)",
         "Peppers, banana, raw (27 kcal)"
       ],
-      "latencyMs": 777
+      "latencyMs": 597
     },
     {
       "query": "avocado",
       "pass": true,
       "reasons": [],
       "rank1": {
-        "name": "Avocado, raw",
+        "name": "Avocados, raw, California",
         "brand": null,
         "datasetTier": "generic",
-        "calories": 160,
+        "calories": 167,
         "source": "usda"
       },
       "canonicalCoverage": "ok",
-      "partial": false,
+      "partial": true,
       "degraded": false,
-      "failedSources": [],
+      "failedSources": [
+        "usda/survey:HTTP 400"
+      ],
       "top5": [
-        "Avocado, raw (160 kcal)",
         "Avocados, raw, California (167 kcal)",
         "Avocados, raw, Florida (120 kcal)",
         "Avocados, raw, all commercial varieties (160 kcal)",
-        "Avocado, Hass, peeled, raw (206 kcal)"
+        "Avocado, Hass, peeled, raw (206 kcal)",
+        "Avocado [Tesco] (198 kcal)"
       ],
-      "latencyMs": 1140
+      "latencyMs": 814
     },
     {
       "query": "chicken breast",
@@ -97,7 +99,7 @@
         "Chicken breast, rotisserie, skin eaten (175 kcal)",
         "Chicken breast, sauteed, skin eaten (206 kcal)"
       ],
-      "latencyMs": 629
+      "latencyMs": 498
     },
     {
       "query": "oatmeal",
@@ -111,19 +113,17 @@
         "source": "usda"
       },
       "canonicalCoverage": "ok",
-      "partial": true,
+      "partial": false,
       "degraded": false,
-      "failedSources": [
-        "usda/survey:HTTP 400"
-      ],
+      "failedSources": [],
       "top5": [
         "Oatmeal, NFS (76 kcal)",
+        "Oats, raw (379 kcal)",
         "Oatmeal, multigrain (56 kcal)",
         "OATMEAL [Thomas Brothers Ham Company] (378 kcal)",
-        "OATMEAL [Caribbean Foods Limited] (365 kcal)",
-        "Oats [Quaker Oats] (375 kcal)"
+        "OATMEAL [Caribbean Foods Limited] (365 kcal)"
       ],
-      "latencyMs": 1397
+      "latencyMs": 849
     },
     {
       "query": "salmon",
@@ -147,7 +147,7 @@
         "Fish, salmon, chum, raw (120 kcal)",
         "Fish, salmon, pink, raw (127 kcal)"
       ],
-      "latencyMs": 1092
+      "latencyMs": 492
     },
     {
       "query": "peanut butter",
@@ -171,7 +171,7 @@
         "Peanut butter, reduced sodium (590 kcal)",
         "Peanut butter, chunk style, with salt (589 kcal)"
       ],
-      "latencyMs": 1083
+      "latencyMs": 480
     }
   ]
 }

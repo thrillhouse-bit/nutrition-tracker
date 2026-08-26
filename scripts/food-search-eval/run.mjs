@@ -46,9 +46,19 @@ const LOG_PATH = path.join(__dirname, 'run.log')
 const PREFIXES = [2, 3, 4, 5]
 
 // USDA's advertised free tier is 1000/hour; this key's own
-// `x-ratelimit-limit` header reads 3600/hour (measured directly by the prior
-// audit and unchanged here). Budgeted under the MEASURED ceiling with margin.
-const USDA_HOURLY_BUDGET = 3000
+// `x-ratelimit-limit` header reads 3600/hour. The prior audit budgeted 3000
+// against that figure and this script inherited it — but the header is not a
+// trailing-hour counter: `x-ratelimit-remaining` read 3599 immediately after
+// roughly 5,000 calls, so it resets on a far shorter window than an hour.
+//
+// The measurement that actually matters: across 1,759 probes in two full
+// corpus runs (before and after), ZERO rate-limit responses were observed —
+// every provider failure was the Survey dataType's HTTP 400 or an Open Food
+// Facts 503. The 3000/hour ceiling was costing ~50 minutes of sleep per run to
+// respect a limit that was never hit. Raised, with the limiter KEPT as a
+// backstop rather than removed: if the real ceiling ever bites, a run should
+// slow down rather than fail.
+const USDA_HOURLY_BUDGET = 9000
 // Three USDA passes per query (foundation, survey, branded); retries can add
 // more, so this is a floor and the limiter is deliberately conservative.
 const USDA_CALLS_PER_QUERY = 3

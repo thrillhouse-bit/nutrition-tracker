@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T16:20:23.190Z",
+  "generatedAt": "2026-08-26T16:40:45.683Z",
   "totalProbes": 993,
   "distinctItems": 200,
   "note": "Every latency figure is the SEARCH round trip. A user additionally waits the 350 ms input debounce before the request starts.",
@@ -79,7 +79,7 @@
       "latencyP95Ms": 899
     }
   },
-  "targetsNotInEitherDatabase": {
+  "targetsNotReturned": {
     "all": 33,
     "generic": 0,
     "branded": 33
