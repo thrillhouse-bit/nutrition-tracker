@@ -104,6 +104,45 @@ describe('PgStore.listAppleWorkoutHistory', () => {
   })
 })
 
+// Same stub-only limits as PgStore.listAppleWorkoutHistory above: proves the
+// method issues a delete-then-insert sequence (never an upsert-by-metric,
+// never skipping the delete on a repeat call) — not that the SQL text itself
+// is well-formed against a real database. This is what makes a replayed HAE
+// automation POST for the same day naturally idempotent at the store layer
+// (see test/api-routes.test.js's HAE idempotency test, and JsonStore's twin
+// of this test in test/store-json.test.js — both backends must agree).
+describe('PgStore.replaceAppleSignals — replace, not append (replay idempotency)', () => {
+  it('issues one delete followed by one insert per row', async () => {
+    const store = new PgStore('postgres://unused')
+    const calls = []
+    store.sql = (strings) => { calls.push(String(strings[0]).trim().toLowerCase()); return [] }
+    const n = await store.replaceAppleSignals(1, '2026-08-20', [
+      { metric: 'steps', value: 5000 },
+      { metric: 'expenditure', value: 400 },
+    ])
+    expect(n).toBe(2)
+    expect(calls[0].startsWith('delete')).toBe(true)
+    expect(calls.slice(1).every((c) => c.startsWith('insert'))).toBe(true)
+    expect(calls).toHaveLength(3) // 1 delete + 2 inserts, not 2 upserts
+  })
+
+  it('a second call for the same day issues its OWN delete first, every time — never skipped on a repeat', async () => {
+    const store = new PgStore('postgres://unused')
+    let deletes = 0
+    let inserts = 0
+    store.sql = (strings) => {
+      const head = String(strings[0]).trim().toLowerCase()
+      if (head.startsWith('delete')) deletes++
+      else if (head.startsWith('insert')) inserts++
+      return []
+    }
+    await store.replaceAppleSignals(1, '2026-08-20', [{ metric: 'steps', value: 5000 }])
+    await store.replaceAppleSignals(1, '2026-08-20', [{ metric: 'steps', value: 5000 }])
+    expect(deletes).toBe(2) // one delete per call, so the day is cleared before the replay's row lands
+    expect(inserts).toBe(2) // 1 row inserted each call, never 1 then 2 (accumulating)
+  })
+})
+
 describe('PgStore Adaptive Fuel Plan profile', () => {
   it('merge-saves by reading the current row before the upsert (getAfpProfile + setAfpProfile in one call)', async () => {
     const store = new PgStore('postgres://unused')
