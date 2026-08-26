@@ -1,6 +1,6 @@
 [
   {
-    "t": "+  116ms",
+    "t": "+  124ms",
     "ev": "UI",
     "phase": "+~60ms",
     "inputValue": "zucchini",
@@ -11,7 +11,7 @@
     "incomplete": false
   },
   {
-    "t": "+  229ms",
+    "t": "+  238ms",
     "ev": "UI",
     "phase": "+~160ms",
     "inputValue": "zucchini",
@@ -22,7 +22,7 @@
     "incomplete": false
   },
   {
-    "t": "+  342ms",
+    "t": "+  352ms",
     "ev": "UI",
     "phase": "+~320ms",
     "inputValue": "zucchini",
@@ -33,7 +33,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 4359ms",
+    "t": "+ 4365ms",
     "ev": "UI",
     "phase": "settled",
     "inputValue": "zucchini",
@@ -45,10 +45,10 @@
     "noMatches": false,
     "searching": false,
     "usdaKeyCopy": false,
-    "incomplete": false
+    "incomplete": true
   },
   {
-    "t": "+ 4035ms",
+    "t": "+ 4029ms",
     "ev": "UI",
     "phase": "banana settled",
     "inputValue": "banana",
@@ -63,7 +63,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 4129ms",
+    "t": "+ 4116ms",
     "ev": "UI",
     "phase": "+~60ms after switch",
     "inputValue": "greek yogurt",
@@ -74,7 +74,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 4343ms",
+    "t": "+ 4329ms",
     "ev": "UI",
     "phase": "+~260ms after switch",
     "inputValue": "greek yogurt",
@@ -85,7 +85,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 8390ms",
+    "t": "+ 8394ms",
     "ev": "UI",
     "phase": "settled",
     "inputValue": "greek yogurt",
@@ -97,21 +97,21 @@
     "noMatches": false,
     "searching": false,
     "usdaKeyCopy": false,
-    "incomplete": false
+    "incomplete": true
   },
   {
-    "t": "+  368ms",
+    "t": "+  370ms",
     "ev": "REQUEST",
     "q": "zucchini",
     "deliverAfterMs": 150
   },
   {
-    "t": "+  519ms",
+    "t": "+  520ms",
     "ev": "RESPONSE",
     "q": "zucchini"
   },
   {
-    "t": "+  622ms",
+    "t": "+  628ms",
     "ev": "UI",
     "phase": "after A(zucchini) lands",
     "inputValue": "banana",
@@ -127,18 +127,18 @@
     "staleCommit": false
   },
   {
-    "t": "+  782ms",
+    "t": "+  788ms",
     "ev": "REQUEST",
     "q": "banana",
     "deliverAfterMs": 4000
   },
   {
-    "t": "+ 4783ms",
+    "t": "+ 4788ms",
     "ev": "RESPONSE",
     "q": "banana"
   },
   {
-    "t": "+ 5283ms",
+    "t": "+ 5286ms",
     "ev": "UI",
     "phase": "after B(banana) lands",
     "inputValue": "banana",

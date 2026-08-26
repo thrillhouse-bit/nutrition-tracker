@@ -1,14 +1,14 @@
 {
-  "measuredAt": "2026-08-26T15:48:00.175Z",
+  "measuredAt": "2026-08-26T16:46:19.416Z",
   "querySwitches": 80,
-  "searchRequests": 43,
-  "domSamples": 5834,
-  "samplesWithRowsRendered": 2730,
+  "searchRequests": 46,
+  "domSamples": 4488,
+  "samplesWithRowsRendered": 1497,
   "staleCommits": 0,
   "distinctStaleCommits": [],
-  "finalInputValue": "chicken breast",
+  "finalInputValue": "greek yogurt",
   "finalRows": [
-    "RESULT-FOR[chicken breast]"
+    "RESULT-FOR[greek yogurt]"
   ],
   "finalStateMatchesFinalQuery": true,
   "probeCouldHaveSeenAViolation": true,

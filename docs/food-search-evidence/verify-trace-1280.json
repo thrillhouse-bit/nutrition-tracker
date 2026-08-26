@@ -1,6 +1,6 @@
 [
   {
-    "t": "+  126ms",
+    "t": "+  121ms",
     "ev": "UI",
     "phase": "+~60ms",
     "inputValue": "zucchini",
@@ -11,7 +11,7 @@
     "incomplete": false
   },
   {
-    "t": "+  238ms",
+    "t": "+  236ms",
     "ev": "UI",
     "phase": "+~160ms",
     "inputValue": "zucchini",
@@ -48,7 +48,7 @@
     "incomplete": true
   },
   {
-    "t": "+ 4030ms",
+    "t": "+ 4028ms",
     "ev": "UI",
     "phase": "banana settled",
     "inputValue": "banana",
@@ -63,7 +63,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 4122ms",
+    "t": "+ 4118ms",
     "ev": "UI",
     "phase": "+~60ms after switch",
     "inputValue": "greek yogurt",
@@ -74,7 +74,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 4337ms",
+    "t": "+ 4334ms",
     "ev": "UI",
     "phase": "+~260ms after switch",
     "inputValue": "greek yogurt",
@@ -85,7 +85,7 @@
     "incomplete": false
   },
   {
-    "t": "+ 8435ms",
+    "t": "+ 8428ms",
     "ev": "UI",
     "phase": "settled",
     "inputValue": "greek yogurt",
@@ -100,7 +100,7 @@
     "incomplete": false
   },
   {
-    "t": "+  366ms",
+    "t": "+  367ms",
     "ev": "REQUEST",
     "q": "zucchini",
     "deliverAfterMs": 150
@@ -111,7 +111,7 @@
     "q": "zucchini"
   },
   {
-    "t": "+  642ms",
+    "t": "+  628ms",
     "ev": "UI",
     "phase": "after A(zucchini) lands",
     "inputValue": "banana",
@@ -127,18 +127,18 @@
     "staleCommit": false
   },
   {
-    "t": "+  782ms",
+    "t": "+  785ms",
     "ev": "REQUEST",
     "q": "banana",
     "deliverAfterMs": 4000
   },
   {
-    "t": "+ 4783ms",
+    "t": "+ 4786ms",
     "ev": "RESPONSE",
     "q": "banana"
   },
   {
-    "t": "+ 5368ms",
+    "t": "+ 5328ms",
     "ev": "UI",
     "phase": "after B(banana) lands",
     "inputValue": "banana",
