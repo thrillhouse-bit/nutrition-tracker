@@ -11,16 +11,21 @@ const provLabel = (p) => (p === 'manual' ? 'you' : p ? p[0].toUpperCase() + p.sl
 // Matches server/index.js's WORKOUT_KINDS whitelist exactly — the server is
 // the source of truth for what's valid, this is just its picker.
 const WORKOUT_KINDS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+// Matches server/index.js's WORKOUT_INTENSITIES exactly, same reason.
+const WORKOUT_INTENSITIES = ['easy', 'moderate', 'hard']
 
 // Today's planned-workout input — the "smart planning without a wearable"
 // path: kind + a local start time + an optional duration, sent straight to
 // PUT /api/plan/workout. No client-side label/time-string building — the
 // server computes those (see index.js's partOfDay/formatHour12) so a
 // manually-entered workout reads identically to a device-detected one.
-function WorkoutForm({ initial, onCancel, onSaved }) {
+// Exported (like EditTargets above) so test/planWorkoutUI.test.jsx can drive
+// it directly rather than through the full Plan tree.
+export function WorkoutForm({ initial, onCancel, onSaved }) {
   const [kind, setKind] = useState(initial?.kind || 'run')
   const [time, setTime] = useState(initial?.startHour != null ? hourToInputTime(initial.startHour) : '')
   const [durationMin, setDurationMin] = useState(initial?.durationMin ? String(initial.durationMin) : '')
+  const [intensity, setIntensity] = useState(initial?.intensity || 'moderate')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,7 +35,7 @@ function WorkoutForm({ initial, onCancel, onSaved }) {
     setSaving(true)
     setError('')
     try {
-      await api.setWorkout({ kind, time, duration_min: durationMin ? num(durationMin) : undefined })
+      await api.setWorkout({ kind, time, duration_min: durationMin ? num(durationMin) : undefined, intensity })
       onSaved()
     } catch (err) {
       setError(err.message || 'Could not save the workout.')
@@ -54,6 +59,13 @@ function WorkoutForm({ initial, onCancel, onSaved }) {
       </Field>
       <Field label="Duration" hint="Optional — minutes.">
         <input type="number" min="1" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={inputCls} placeholder="45" />
+      </Field>
+      <Field label="Intensity" hint="Used to estimate calories burned — defaults to moderate.">
+        <select value={intensity} onChange={(e) => setIntensity(e.target.value)} className={inputCls}>
+          {WORKOUT_INTENSITIES.map((k) => (
+            <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)}</option>
+          ))}
+        </select>
       </Field>
       <div className="flex gap-2 pt-1">
         <Button type="button" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
@@ -234,6 +246,14 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const PROVIDER_NAMES = { oura: 'Oura', garmin: 'Garmin', apple: 'Apple Health' }
   const workoutProviderLabel = PROVIDER_NAMES[wSig?.provider] || 'your wearable'
   const isManualWorkout = wSig?.provider === 'manual'
+  // A duration was given (so the server actually tried to estimate) but
+  // estKcal came back null — server/index.js's estimateManualWorkoutKcal
+  // only leaves it null in that shape when no weight is on file. Named
+  // explicitly rather than left as a silently-omitted field — this app's
+  // house rule (see server/index.js's own comment) is an honest "no
+  // estimate, log your weight" beats a fabricated number.
+  const noWeightForEstimate = isManualWorkout && workoutOK && wv?.durationMin != null
+    && (wv.estKcal ?? wv.est_kcal) == null
 
   const clearWorkout = async () => {
     setClearingWorkout(true)
@@ -310,11 +330,21 @@ export default function Plan({ date, refreshKey, onChanged }) {
           sub: `TARGET ${preProtein} g P · ${preCarb} g C`,
         })
       }
+      // estKcal is the real field name every real source (a synced Oura/
+      // Garmin workout, or the manual path below) writes; est_kcal only ever
+      // came from the seeded Garmin demo scenario (providers.js) — checked
+      // second so this line still reads a demo session's number too. Only
+      // the manual path's number is a MET-based ESTIMATE (this file's own
+      // WorkoutForm, via server/afp/engine.js's estimateSessionEnergyKcal) —
+      // a synced wearable's calories are the device's own measured reading,
+      // so only the manual case gets the "(EST.)" qualifier here.
+      const kcal = wv.estKcal ?? wv.est_kcal
+      const kcalLabel = kcal != null ? `${fmt(kcal)} KCAL${isManualWorkout ? ' (EST.)' : ''}` : null
       nodes.push({
         tone: 'lavender',
         name: wv.label || wv.shortLabel || 'Planned session',
         meta: [wTime, prov].filter(Boolean).join(' · '),
-        sub: ['PLANNED', wv.est_kcal ? `${fmt(wv.est_kcal)} KCAL` : null, wv.kind ? String(wv.kind).toUpperCase() : null]
+        sub: ['PLANNED', kcalLabel, wv.kind ? String(wv.kind).toUpperCase() : null]
           .filter(Boolean).join(' · '),
       })
       nodes.push({ tone: 'neutral', name: 'Recovery fuel', meta: 'AFTER SESSION', sub: dayTarget })
@@ -322,7 +352,7 @@ export default function Plan({ date, refreshKey, onChanged }) {
       nodes.push({ tone: 'neutral', name: 'Baseline meals', meta: 'ALL DAY', sub: dayTarget })
     }
     return nodes
-  }, [workoutOK, endurance, wv, wSig, adjusted])
+  }, [workoutOK, endurance, wv, wSig, adjusted, isManualWorkout])
 
   const setWorkoutsInfluence = async (v) => {
     setSavingInf(true)
@@ -470,6 +500,9 @@ export default function Plan({ date, refreshKey, onChanged }) {
                 <TimelineNode key={i} node={node} last={i === timeline.length - 1} />
               ))}
             </div>
+            {noWeightForEstimate && (
+              <p className="mt-2 text-[11px] text-faint">No calorie estimate — log your weight to see this.</p>
+            )}
             {/* Only a manually-typed workout can be cleared — a wearable-detected
                 one has nothing here to revert; the device is still the source. */}
             {isManualWorkout && (
