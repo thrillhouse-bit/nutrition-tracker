@@ -260,6 +260,7 @@ const oura = vi.hoisted(() => ({
   dailyReadiness: async () => null,
   readinessRange: async () => [],
   dailySleepHours: async () => null,
+  dailySleepScore: async () => null,
   sleepScoreRange: async () => [],
   workoutsRange: async () => [],
 }))
@@ -285,6 +286,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     dailyReadiness: (...args) => oura.dailyReadiness(...args),
     readinessRange: (...args) => oura.readinessRange(...args),
     dailySleepHours: (...args) => oura.dailySleepHours(...args),
+    dailySleepScore: (...args) => oura.dailySleepScore(...args),
     sleepScoreRange: (...args) => oura.sleepScoreRange(...args),
     workoutsRange: (...args) => oura.workoutsRange(...args),
   }
@@ -1033,6 +1035,82 @@ describe('POST /api/oura/backfill', () => {
   })
 })
 
+// End-to-end proof of the demo/real precedence fix (server/providers.js
+// composeSignals), over real HTTP against the real Express app + real
+// composeSignals — not just the unit-level fixtures in test/providers.test.js.
+// Reproduces the reported production shape exactly: Garmin is never
+// configured on this whole test file (no GARMIN_CLIENT_ID/SECRET/REDIRECT_URI
+// anywhere), so it sits in its default demo:true, never-connected state, the
+// same as production's own `garmin: "not-configured"` — while Oura has a
+// real, connected OAuth account with real workout data, matching production's
+// `oura: "oauth"`. PREFERENCE.workout lists Garmin first; before the fix a
+// single preference-ordered pass took Garmin's canned "Evening Run" simply
+// because it sorted first and was non-null, never because it was a better
+// answer than Oura's real, connected data.
+describe('GET /api/today: real Oura data beats Garmin\'s default demo (Task 1 precedence fix, end-to-end)', () => {
+  const OURA_ENV = ['OURA_CLIENT_ID', 'OURA_CLIENT_SECRET', 'OURA_REDIRECT_URI']
+  const saved = {}
+  beforeAll(() => {
+    for (const k of OURA_ENV) saved[k] = process.env[k]
+    process.env.OURA_CLIENT_ID = 'test-client-id'
+    process.env.OURA_CLIENT_SECRET = 'test-client-secret'
+    process.env.OURA_REDIRECT_URI = 'https://example.com/oura/callback'
+  })
+  afterAll(() => {
+    for (const k of OURA_ENV) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  })
+  afterEach(() => {
+    fake.state.ouraAccounts = []
+    fake.state.ouraWorkouts = []
+    oura.dailySummary = async () => null
+    oura.dailyReadiness = async () => null
+    oura.dailySleepHours = async () => null
+    oura.dailySleepScore = async () => null
+  })
+
+  // Mirrors providers.js's own ymd() exactly (local-getter YYYY-MM-DD), using
+  // this process's real TZ (Pacific/Apia, set at the top of this file) and
+  // real current time — no fake timers needed, since /api/today's default
+  // date is also the server's real "now".
+  const today = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  it('a real, connected Oura account\'s workout wins the workout slot over Garmin\'s canned demo', async () => {
+    const day = today()
+    fake.state.ouraAccounts = [{ id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() }]
+    fake.state.ouraWorkouts = [
+      { account_id: 1, oura_id: 'w1', day, activity: 'running', calories: 420, start_datetime: `${day}T06:00:00+00:00`, end_datetime: `${day}T06:45:00+00:00` },
+    ]
+
+    const res = await get('/api/today')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('oura')
+    expect(body.signals.workout.demo).toBe(false)
+    expect(body.signals.workout.value.kind).toBe('run')
+    // The label a real backfilled Oura workout gets is derived from its own
+    // `activity` field ("Running"), never the fixed demo scenario's label —
+    // this is the concrete tell that Garmin's canned data did NOT win.
+    expect(body.signals.workout.value.label).toBe('Running')
+    expect(body.signals.workout.value.label).not.toBe('Evening Run')
+  })
+
+  it('control: with no Oura account connected, Garmin\'s default demo still fills the workout slot unchanged (the fresh-account experience is not regressed)', async () => {
+    fake.state.ouraAccounts = [] // never connected
+    const res = await get('/api/today')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('garmin')
+    expect(body.signals.workout.demo).toBe(true)
+    expect(body.signals.workout.value.label).toBe('Evening Run')
+  })
+})
+
 describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
   afterEach(() => { fake.state.manualWorkouts = {} })
 
@@ -1080,6 +1158,84 @@ describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
 
     const got = await get('/api/plan/workout')
     expect((await got.json()).workout).toBeNull()
+  })
+
+  describe('intensity + calorie estimate (server/afp/engine.js MET table)', () => {
+    it('defaults intensity to moderate when omitted, and stores it on the saved workout', async () => {
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+      expect(res.status).toBe(200)
+      expect((await res.json()).workout.intensity).toBe('moderate')
+    })
+
+    it('accepts easy/hard explicitly', async () => {
+      const easy = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'easy' })
+      expect((await easy.json()).workout.intensity).toBe('easy')
+      const hard = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'hard' })
+      expect((await hard.json()).workout.intensity).toBe('hard')
+    })
+
+    it('rejects an intensity outside easy/moderate/hard (control)', async () => {
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'brutal' })
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toMatch(/intensity/i)
+    })
+
+    it('estKcal stays null (never fabricated) when no duration was given, even with a real weight on file — the negative control for "nothing to multiply minutes by"', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30' }) // no duration_min
+      const body = await res.json()
+      expect(body.workout.estKcal).toBeNull()
+      expect(body.workout.estKcalReason).toBeNull() // missing duration, not missing weight — a different, unremarkable gap
+    })
+
+    it('estKcal stays null and estKcalReason names why when a duration is given but NO weight is on file anywhere (fresh account) — the required negative case', async () => {
+      // fake.state.weightEntries and fake.state.afpProfile.weight_kg both
+      // start empty/null in this file's afterEach, matching a fresh signup.
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 60, intensity: 'hard' })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.workout.estKcal).toBeNull()
+      expect(body.workout.estKcalReason).toBe('no_weight_on_file')
+    })
+
+    it('computes a real MET-based estimate once a weight-log entry exists — exact arithmetic, run/hard/60min/70kg', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 60, intensity: 'hard' })
+      const body = await res.json()
+      // MET_TABLE.run.hard = 13 (server/afp/engine.js): 13 * 3.5 * 70 / 200 * 60 = 955.5 -> rounds to 956.
+      expect(body.workout.estKcal).toBe(956)
+      expect(body.workout.estKcalReason).toBeNull()
+
+      const got = await get('/api/plan/workout')
+      expect((await got.json()).workout.estKcal).toBe(956) // persisted, not just returned once
+    })
+
+    it('falls back to the intensity default (moderate) for the estimate when intensity is omitted — a second exact-arithmetic check', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30 }) // no intensity
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 70 / 200 * 30 = 294.
+      expect(body.workout.estKcal).toBe(294)
+    })
+
+    it('falls back to the Adaptive Fuel Plan profile weight when no weight-log entry exists', async () => {
+      const setProfile = await put('/api/afp/profile', { weight_kg: 65, activity_level: 'moderate', height_cm: 170, age_years: 30, sex: 'female' })
+      expect(setProfile.status).toBe(200)
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30, intensity: 'moderate' })
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 65 / 200 * 30 = 273.
+      expect(body.workout.estKcal).toBe(273)
+      expect(body.workout.estKcalReason).toBeNull()
+    })
+
+    it('a weight-log entry wins over the AFP profile weight when both exist (most-recent real reading preferred)', async () => {
+      await put('/api/afp/profile', { weight_kg: 65 })
+      await put('/api/weight', { kg: 80 })
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30, intensity: 'moderate' })
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 80 / 200 * 30 = 336 (not 273, which 65kg would give).
+      expect(body.workout.estKcal).toBe(336)
+    })
   })
 })
 

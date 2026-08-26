@@ -53,7 +53,7 @@ import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
-import { computeProgress } from './afp/engine.js'
+import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
 import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 
@@ -925,6 +925,47 @@ requireAuthRouter.get('/plan/today', asyncH(async (req, res) => {
 // the user state their own plan directly; providers.js's composeSignals
 // treats it as an unconditional override for the `workout` metric.
 const WORKOUT_KINDS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
+// Matches MET_TABLE's own tiers (server/afp/engine.js) and the AFP planned-
+// workout editor's intensity picker one-to-one — same three bands, same
+// default ('moderate'), so a typed-in session and an AFP-planned session
+// read the same word for the same effort.
+const WORKOUT_INTENSITIES = ['easy', 'moderate', 'hard']
+
+// The user's current body weight, kg — the one real input
+// estimateSessionEnergyKcal (server/afp/engine.js) needs beyond kind/
+// intensity/duration to turn a MET value into a calorie estimate. Two
+// existing sources, checked in order, never a third invented one: (1) the
+// dedicated weight-log feature (PUT /api/weight, store.listWeightEntries) —
+// the user's own "this is my weight today" reading, most likely to be
+// current; (2) the Adaptive Fuel Plan's own profile weight — the engine
+// already trusts afp_profile.weight_kg for this exact same MET-based
+// estimate (see engine.js's fillSessionEnergy), so a user who has already
+// set that up shouldn't be told "no weight on file" just because they never
+// separately used the weight-log feature. Both are real, user-entered
+// numbers; neither is fabricated. Returns null (never a guessed default
+// bodyweight) when neither exists — see estimateManualWorkoutKcal below.
+async function currentWeightKgForUser(userId) {
+  const entries = (await store.listWeightEntries?.(userId, '0001-01-01', localYmd())) || []
+  const latest = entries.length ? entries[entries.length - 1] : null // ascending by day
+  const fromLog = latest?.kg != null ? Number(latest.kg) : null
+  if (Number.isFinite(fromLog)) return fromLog
+  const afpProfile = await store.getAfpProfile?.(userId)
+  const fromAfp = afpProfile?.weight_kg != null ? Number(afpProfile.weight_kg) : null
+  return Number.isFinite(fromAfp) ? fromAfp : null
+}
+
+// estKcal stays null — honestly, not a fabricated guess — whenever there's
+// nothing real to compute it from: no duration (nothing to multiply MET ×
+// weight by) or no weight on file. estKcalReason distinguishes the second
+// case for the UI (see Plan.jsx's WorkoutForm/TimelineNode) so it can say
+// exactly why, rather than a bare missing field the user has to interpret.
+async function estimateManualWorkoutKcal(userId, kind, intensity, durationMin) {
+  if (!durationMin) return { estKcal: null, estKcalReason: null }
+  const weightKg = await currentWeightKgForUser(userId)
+  if (weightKg == null) return { estKcal: null, estKcalReason: 'no_weight_on_file' }
+  const kcal = estimateSessionEnergyKcal({ sport: kind, intensity, durationMin }, weightKg)
+  return { estKcal: Math.round(kcal), estKcalReason: null }
+}
 
 // Matches the iOS companion's own time-of-day label convention
 // (HealthKitManager.label(startHour:kind:)) so a workout reads the same —
@@ -944,23 +985,31 @@ function formatHour12(hourFloat) {
 }
 
 requireAuthRouter.put('/plan/workout', asyncH(async (req, res) => {
-  const { kind, time, duration_min } = req.body || {}
+  const { kind, time, duration_min, intensity: rawIntensity } = req.body || {}
   if (!WORKOUT_KINDS.includes(kind)) return res.status(400).json({ error: `kind must be one of: ${WORKOUT_KINDS.join(', ')}` })
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time))) return res.status(400).json({ error: 'time must be HH:MM, 24h, local.' })
+  // Omitted -> 'moderate' (matches how estimateSessionEnergyKcal itself
+  // defaults via `table.intensity ?? table.moderate`); anything present but
+  // not one of the three bands is rejected rather than silently coerced.
+  const intensity = rawIntensity == null ? 'moderate' : rawIntensity
+  if (!WORKOUT_INTENSITIES.includes(intensity)) return res.status(400).json({ error: `intensity must be one of: ${WORKOUT_INTENSITIES.join(', ')}` })
   const [hh, mm] = String(time).split(':').map(Number)
   const startHour = hh + mm / 60
   const duration = Number(duration_min)
   const hasDuration = Number.isFinite(duration) && duration > 0
   const kindLabel = kind[0].toUpperCase() + kind.slice(1)
+  const { estKcal, estKcalReason } = await estimateManualWorkoutKcal(req.userId, kind, intensity, hasDuration ? duration : null)
   const workout = {
     label: `${partOfDay(startHour)} ${kindLabel}`,
     shortLabel: kind,
     kind,
+    intensity,
     time: formatHour12(startHour),
     startHour,
     endHour: hasDuration ? startHour + duration / 60 : null,
     durationMin: hasDuration ? duration : null,
-    estKcal: null,
+    estKcal,
+    estKcalReason,
     status: 'planned',
   }
   const saved = await store.setManualWorkout(req.userId, localYmd(), workout)

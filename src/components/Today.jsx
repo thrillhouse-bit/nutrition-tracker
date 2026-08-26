@@ -1,6 +1,13 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { api } from '../api/client.js'
 import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
-import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState } from './ui.jsx'
+import { Card, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
+
+// Manual re-fetch window for the Oura backfill button below — a small
+// trailing window is enough to catch anything the daily resync/connect-time
+// pull missed; the endpoint itself accepts up to 90 but that's a connect-time
+// concern, not a "did today's workout show up yet" one.
+const OURA_REFRESH_DAYS = 5
 
 const isToday = (d) => ymd(d) === ymd(new Date())
 
@@ -174,8 +181,10 @@ function useDaySwipe(onPrevDay, onNextDay, canGoNext) {
   }
 }
 
-export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog }) {
+export default function Today({ date, data, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onChanged }) {
   const swipeHandlers = useDaySwipe(onPrevDay, onNextDay, !isToday(date))
+  const [ouraBusy, setOuraBusy] = useState(false)
+  const [ouraError, setOuraError] = useState('')
   const totals = useMemo(() => sumEntries(entries), [entries])
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
@@ -205,6 +214,39 @@ export default function Today({ date, data, entries, loading, online, syncing, p
   // sample readings or that nothing is connected. Never imply a live sync.
   const present = ['readiness', 'sleep', 'workout'].map((k) => signals[k]).filter(Boolean)
   const liveProviders = [...new Set(present.filter((s) => !s.demo && s.provider).map((s) => s.provider.toUpperCase()))]
+
+  // Wearable refresh / honest per-provider capability, for the context strip
+  // below. Oura is the only one of the three with a real "ask for fresh
+  // data" action — POST /api/oura/backfill (server/index.js) re-pulls
+  // readiness/sleep-score/activity/workouts straight from Oura's live API;
+  // it already existed with no client caller before this. Offered only when
+  // Oura is genuinely the live (non-demo) source for one of these three
+  // signals — never for a disconnected account, and never dressed up for a
+  // demo scenario. Garmin's Health API is push-only here (data arrives
+  // solely via the inbound webhook — no route calls out to ask Garmin for
+  // anything) and Apple has no cloud API at all (a companion app pushes to
+  // /api/apple/ingest, already re-read fresh on every /api/today load) — so
+  // neither gets a button that would fire against nothing; both get plain,
+  // true copy about how their data actually arrives, shown only once one of
+  // them is genuinely (non-demo) the source for a card, same reasoning as
+  // Oura's gate.
+  const ouraLive = present.some((s) => s.provider === 'oura' && !s.demo)
+  const garminLive = present.some((s) => s.provider === 'garmin' && !s.demo)
+  const appleLive = present.some((s) => s.provider === 'apple' && !s.demo)
+
+  const refreshOura = async () => {
+    setOuraBusy(true)
+    setOuraError('')
+    try {
+      await api.ouraBackfill(OURA_REFRESH_DAYS)
+      onChanged?.()
+    } catch (err) {
+      setOuraError(err.message || 'Could not refresh from Oura — try again.')
+    } finally {
+      setOuraBusy(false)
+    }
+  }
+
   const syncTime = timeShort(data?.generatedAt)
   const syncLive = liveProviders.length > 0
   let syncText
@@ -356,6 +398,46 @@ export default function Today({ date, data, entries, loading, online, syncing, p
           )}
         </ContextCell>
       </div>
+
+      {/* Wearable refresh strip, directly under the context cells above —
+          same hairline panel language, no new white/cobalt "special" surface.
+          Oura gets a real, working manual refresh; Garmin/Apple get honest,
+          non-actionable copy instead of a button with nothing real to do
+          (see ouraLive/garminLive/appleLive above for exactly why). Nothing
+          renders here at all for a disconnected or all-demo account — an
+          empty strip under an honest demo/unavailable context strip is the
+          correct state, not a bug to fill with a fake control. */}
+      {(ouraLive || garminLive || appleLive || ouraError) && (
+        <div className="space-y-2 border-b border-line-strong px-3 py-2.5">
+          {ouraLive && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10.5px] leading-snug text-muted">
+                Pull the latest readiness, sleep, and workouts from Oura.
+              </span>
+              <Button
+                variant="outline"
+                onClick={refreshOura}
+                disabled={ouraBusy}
+                aria-label="Refresh Oura data"
+                className="shrink-0"
+              >
+                {ouraBusy ? <Spinner /> : 'Refresh'}
+              </Button>
+            </div>
+          )}
+          {garminLive && (
+            <p className="text-[10.5px] leading-snug text-faint">
+              Garmin syncs automatically when connected — there's no manual refresh to trigger.
+            </p>
+          )}
+          {appleLive && (
+            <p className="text-[10.5px] leading-snug text-faint">
+              Open the companion app on your phone or watch to sync new Apple Health data.
+            </p>
+          )}
+          {ouraError && <ErrorNote>{ouraError}</ErrorNote>}
+        </div>
+      )}
 
       {/* The "next action" sheet — the focal moment. An audit measured three
           near-equal-weight serif moments above the fold (masthead 32px,
