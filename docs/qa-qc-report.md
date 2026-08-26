@@ -883,3 +883,46 @@ gradient PR) — ordinary deploy lag, not flagged as a new Info item given
 how quickly the site has caught up after every previous pass.
 
 Nothing else new or changed. No fixes needed this pass.
+
+## 2026-08-26 — Check-in pass (recurring, 12:45 UTC)
+
+Two commits since the last check-in (PR #82), both continued hardening of
+the food-search rebuild this report already tracked as Merged:
+
+- **OFF serving-size parsing fix + `per100`/`household_serving` display
+  fields.** The old regex grabbed OFF's leading quantity word ("1 serving",
+  "1 can") instead of the real weight whenever `serving_size` reads "1
+  serving (28 g)" — reproduced live against real Pringles/Diet Coke data.
+  Now prefers a strict unit match inside parentheses. Also adds two
+  additive, display-only fields (a calories-per-100g/ml comparison figure,
+  and USDA's household-serving text) — neither persisted nor used in macro
+  math, so no risk to logged-entry correctness.
+- **Three bugs from a live QA sweep against real USDA/OFF data** (55
+  queries, not the mocked fixture suite — the commit is explicit that none
+  of these three were catchable by mocks): a flat branded-result ranking
+  penalty too small to stop an exact-name branded product (a peanut-butter
+  spread literally named "BANANA") from outranking the correct generic
+  "Bananas, raw"; an overly broad chips↔french-fries synonym substitution
+  firing on any query containing "chips" (not just a bare "chips" query),
+  flooding "siete tortilla chips" results with fast-food fries; and
+  provider-failure diagnostics that collapsed every real error to
+  `error:null`, defeating the point of having them. All three read as
+  genuine bugs with clear reproductions, not judgment calls.
+
+Both commits are backend ranking/parsing/diagnostics changes with no new
+UI surface — the search failure/retry UI this report verified live last
+check-in is untouched by either. `npm test`: 616/616 (up from 601 — 15 new
+tests, all backend-focused: `lookup.test.js`, `foodSearchRank.test.js`,
+`foodSearchNormalize.test.js`, `foodSearchProviders.test.js`). `npm run
+build`: clean. Not independently re-verified live against real APIs — this
+sandbox has no egress to USDA/OFF (same constraint noted every prior
+pass), and the other session's own live sweep is exactly the kind of
+verification this report shouldn't duplicate.
+
+No other repo changes to reconcile; all remaining "Reported"/"Deferred"
+items unchanged. Live site: `GET /api/version` reports `c8fc50c` — three
+commits behind current `main` HEAD (the gradient PR plus both of today's
+search commits), for at least two consecutive check-ins now (this pass and
+the last). Noted, not escalated to a new Info item yet: deploy cadence is
+the owner's call and every previous lag has resolved within a pass or two;
+worth a closer look only if it's still stuck here next check-in.
