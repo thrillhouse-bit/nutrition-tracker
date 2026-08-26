@@ -1,0 +1,142 @@
+[
+  {
+    "t": "14:55:43.696",
+    "ev": "request",
+    "q": "banana",
+    "injectedDelayMs": 200
+  },
+  {
+    "t": "14:55:44.609",
+    "ev": "response",
+    "q": "banana",
+    "status": 200,
+    "n": 18,
+    "first": "Banana, baked"
+  },
+  {
+    "t": "14:55:45.890",
+    "ev": "state",
+    "phase": "2a-banana-settled",
+    "inputValue": "banana",
+    "visible": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:55:46.015",
+    "ev": "state",
+    "phase": "2a+60ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:55:46.233",
+    "ev": "state",
+    "phase": "2a+250ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:55:46.322",
+    "ev": "request",
+    "q": "greek yogurt",
+    "injectedDelayMs": 200
+  },
+  {
+    "t": "14:55:46.545",
+    "ev": "state",
+    "phase": "2a+600ms",
+    "inputValue": "greek yogurt",
+    "visible": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips"
+    ],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:55:47.631",
+    "ev": "response",
+    "q": "greek yogurt",
+    "status": 200,
+    "n": 20,
+    "first": "GREEK YOGURT"
+  },
+  {
+    "t": "14:55:50.006",
+    "ev": "request",
+    "q": "zucchini",
+    "injectedDelayMs": 4000
+  },
+  {
+    "t": "14:55:50.640",
+    "ev": "request",
+    "q": "banana",
+    "injectedDelayMs": 200
+  },
+  {
+    "t": "14:55:51.506",
+    "ev": "state",
+    "phase": "2b-banana-committed",
+    "inputValue": "banana",
+    "visible": [
+      "GREEK YOGURT",
+      "GREEK YOGURT",
+      "GREEK YOGURT"
+    ],
+    "noMatches": false,
+    "searching": true,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:55:51.715",
+    "ev": "response",
+    "q": "banana",
+    "status": 200,
+    "n": 20,
+    "first": "Banana, baked"
+  },
+  {
+    "t": "14:55:54.582",
+    "ev": "response",
+    "q": "zucchini",
+    "status": 200,
+    "n": 20,
+    "first": "Zucchini, pickled"
+  },
+  {
+    "t": "14:55:55.628",
+    "ev": "state",
+    "phase": "2b-after-stale-arrives",
+    "inputValue": "banana",
+    "visible": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "usdaKeyCopy": false
+  }
+]

@@ -1,0 +1,129 @@
+[
+  {
+    "t": "14:53:51.599",
+    "ev": "screenshot",
+    "name": "00-signed-in"
+  },
+  {
+    "t": "14:53:53.069",
+    "ev": "state",
+    "phase": "symptom1+50ms",
+    "inputValue": "zucchini",
+    "visibleNames": [],
+    "noMatches": true,
+    "searching": false,
+    "trouble": false,
+    "usdaKeyCopy": true
+  },
+  {
+    "t": "14:53:53.212",
+    "ev": "state",
+    "phase": "symptom1+150ms",
+    "inputValue": "zucchini",
+    "visibleNames": [],
+    "noMatches": true,
+    "searching": false,
+    "trouble": false,
+    "usdaKeyCopy": true
+  },
+  {
+    "t": "14:53:53.300",
+    "ev": "screenshot",
+    "name": "01-premature-no-matches"
+  },
+  {
+    "t": "14:53:53.302",
+    "ev": "request",
+    "q": "zucchini"
+  },
+  {
+    "t": "14:53:53.567",
+    "ev": "state",
+    "phase": "symptom1+300ms",
+    "inputValue": "zucchini",
+    "visibleNames": [],
+    "noMatches": false,
+    "searching": true,
+    "trouble": false,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:53:54.265",
+    "ev": "response",
+    "q": "zucchini",
+    "status": 200,
+    "ms": 963
+  },
+  {
+    "t": "14:53:56.585",
+    "ev": "state",
+    "phase": "symptom1-settled",
+    "inputValue": "zucchini",
+    "visibleNames": [
+      "ZUCCHINI",
+      "ZUCCHINI BAKE, ZUCCHINI",
+      "ZUCCHINI BREAD, ZUCCHINI",
+      "ZUCCHINI LOAF, ZUCCHINI",
+      "ZUCCHINI NOODLES, ZUCCHINI"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "trouble": false,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:53:56.676",
+    "ev": "screenshot",
+    "name": "02-zucchini-settled"
+  },
+  {
+    "t": "14:53:56.961",
+    "ev": "state",
+    "phase": "symptom2-after-switch",
+    "inputValue": "banana",
+    "visibleNames": [],
+    "noMatches": true,
+    "searching": false,
+    "trouble": false,
+    "usdaKeyCopy": true
+  },
+  {
+    "t": "14:53:57.046",
+    "ev": "screenshot",
+    "name": "03-stale-zucchini-under-banana"
+  },
+  {
+    "t": "14:53:57.160",
+    "ev": "request",
+    "q": "banana"
+  },
+  {
+    "t": "14:53:57.782",
+    "ev": "response",
+    "q": "banana",
+    "status": 200,
+    "ms": 622
+  },
+  {
+    "t": "14:54:00.048",
+    "ev": "state",
+    "phase": "symptom2-settled",
+    "inputValue": "banana",
+    "visibleNames": [
+      "Banana, baked",
+      "Banana, raw",
+      "Banana chips",
+      "Banana nectar",
+      "Banana pudding"
+    ],
+    "noMatches": false,
+    "searching": false,
+    "trouble": false,
+    "usdaKeyCopy": false
+  },
+  {
+    "t": "14:54:00.148",
+    "ev": "screenshot",
+    "name": "04-banana-settled"
+  }
+]
