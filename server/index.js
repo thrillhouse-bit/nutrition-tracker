@@ -55,6 +55,7 @@ import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals } from './providers.js'
 import { computeProgress } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
+import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -1158,8 +1159,21 @@ function timingSafeStringEqual(a, b) {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)
 }
 
+// Accepts either the native companion's own header (x-ingest-token) or a
+// plain Bearer token — the latter so a third-party exporter that can only
+// send `Authorization: Bearer <token>` (no custom header names), like Health
+// Auto Export below, can use the exact same per-user token a person
+// generates from Connections without this app inventing a second secret.
+function presentedIngestToken(req) {
+  const custom = req.get('x-ingest-token')
+  if (custom) return custom
+  const auth = req.get('authorization') || ''
+  const m = auth.match(/^Bearer\s+(.+)$/i)
+  return m ? m[1] : null
+}
+
 async function resolveAppleIngestUser(req) {
-  const presented = req.get('x-ingest-token')
+  const presented = presentedIngestToken(req)
   if (!presented) return null
   const legacy = process.env.APPLE_INGEST_TOKEN
   if (legacy && timingSafeStringEqual(presented, legacy)) {
@@ -1170,6 +1184,33 @@ async function resolveAppleIngestUser(req) {
     return store.getSoleUserId()
   }
   return store.findUserIdByAppleIngestToken(presented)
+}
+
+// Shared by both ingest entry points below (the native companion's own
+// shape, and the Health Auto Export adapter's translated shape) — one
+// persistence path, so permissions/last-synced bookkeeping never drifts
+// between the two.
+async function ingestAppleSamples(userId, day, rawSamples, rawPermissions) {
+  const nowIso = new Date().toISOString()
+  const rows = (Array.isArray(rawSamples) ? rawSamples : [])
+    .filter((s) => s && typeof s.metric === 'string' && s.metric)
+    .map((s) => ({
+      metric: s.metric,
+      value: s.value ?? null,
+      unit: s.unit || null,
+      recorded_at: s.recorded_at || nowIso,
+      fetched_at: s.fetched_at || nowIso,
+      extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
+    }))
+  const n = await store.replaceAppleSignals(userId, day, rows)
+  const cur = await store.getIntegration(userId, 'apple')
+  const perms = normalizeApplePermissions(rawPermissions, rows)
+  await store.setIntegration(userId, 'apple', {
+    connected_at: cur.connected_at || nowIso,
+    last_synced_at: nowIso,
+    settings: { ...(cur.settings || {}), permissions: perms },
+  })
+  return { ingested: n, day, permissions: perms }
 }
 
 app.post('/api/apple/ingest', asyncH(async (req, res) => {
@@ -1186,26 +1227,31 @@ app.post('/api/apple/ingest', asyncH(async (req, res) => {
   }
   const { date, samples, permissions } = req.body || {}
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date : localYmd()
-  const nowIso = new Date().toISOString()
-  const rows = (Array.isArray(samples) ? samples : [])
-    .filter((s) => s && typeof s.metric === 'string' && s.metric)
-    .map((s) => ({
-      metric: s.metric,
-      value: s.value ?? null,
-      unit: s.unit || null,
-      recorded_at: s.recorded_at || nowIso,
-      fetched_at: s.fetched_at || nowIso,
-      extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
-    }))
-  const n = await store.replaceAppleSignals(userId, day, rows)
-  const cur = await store.getIntegration(userId, 'apple')
-  const perms = normalizeApplePermissions(permissions, rows)
-  await store.setIntegration(userId, 'apple', {
-    connected_at: cur.connected_at || nowIso,
-    last_synced_at: nowIso,
-    settings: { ...(cur.settings || {}), permissions: perms },
-  })
-  res.json({ ingested: n, day, permissions: perms })
+  const result = await ingestAppleSamples(userId, day, samples, permissions)
+  res.json(result)
+}))
+
+// Alternative Apple Health ingest path for the "Health Auto Export" App
+// Store app (no code to write or build — just point its REST API automation
+// at this URL with `Authorization: Bearer <token>` from Connections). Same
+// destination/effect as /api/apple/ingest above, different source format —
+// see server/appleHealthAutoExport.js for the translation and why it's
+// built from HAE's published schema docs rather than a captured payload.
+app.post('/api/apple/health-auto-export', asyncH(async (req, res) => {
+  const userId = await resolveAppleIngestUser(req)
+  if (userId == null) {
+    return res.status(401).json({ error: 'Invalid ingest token.' })
+  }
+  const integration = await store.getIntegration(userId, 'apple')
+  if (integration.enabled === false) {
+    return res.status(403).json({ error: 'Apple Health is disabled for this account.' })
+  }
+  const { date, samples, unmapped } = mapHealthAutoExportPayload(req.body, localYmd())
+  const result = await ingestAppleSamples(userId, date, samples)
+  if (unmapped.length) {
+    console.log('[apple-health-auto-export]', JSON.stringify({ userId, unmapped }))
+  }
+  res.json({ ...result, unmapped })
 }))
 
 // Insights: nutrition trends over a window; signal correlations flagged as
