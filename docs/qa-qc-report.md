@@ -860,3 +860,26 @@ No fixes made directly by this pass — the one relevant open item (search)
 was already closed by the other session before this check-in started.
 Live site: `GET /api/version` confirms it's already redeployed and running
 this exact commit (`c8fc50c`, current `main` HEAD).
+
+## 2026-08-26 — Check-in pass (recurring, 08:36 UTC)
+
+Small, quiet gap: one commit since the last check-in (PR #79, "Render the
+'Intake so far' bar as a light-to-dark cobalt gradient") — a scoped,
+owner-requested visual change to `SegmentBar` (Today's intake bar only;
+its one caller). `npm test`: 601/601 (4 new). `npm run build`: clean. Live
+smoke-tested: signed up fresh, logged a food, confirmed the gradient
+renders correctly on Today with no console/network errors. This is a
+pure design change per an explicit owner design note in the commit itself
+— nothing for this report to fix or defer, since it was never an open
+item here.
+
+No other repo changes to reconcile. All "Reported"/"Deferred" items in
+the Open Items table remain accurately reported — nothing since the last
+check-in touches the Apple-token bearer-credential item, the provider-
+abstraction claim, forgot-password, server logging, `SESSION_SECRET`, or
+either Garmin item. Live site is one commit behind `main` at the moment
+of this check (`c8fc50c` vs. current HEAD `42726f2`, i.e. just the
+gradient PR) — ordinary deploy lag, not flagged as a new Info item given
+how quickly the site has caught up after every previous pass.
+
+Nothing else new or changed. No fixes needed this pass.
