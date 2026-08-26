@@ -83,6 +83,13 @@ export const api = {
   ouraAccounts: () => req('/oura/accounts'),
   disconnectOura: (id) => req(`/oura/accounts/${id}`, { method: 'DELETE' }),
 
+  // Manually re-run the Oura history backfill (readiness/sleep score/
+  // activity/workouts) for a small trailing window — the server route
+  // already existed (server/index.js's POST /api/oura/backfill) with no
+  // client caller before Today's "Refresh" action. `days` defaults small;
+  // the endpoint itself clamps to 1-90 server-side regardless.
+  ouraBackfill: (days = 5) => req(`/oura/backfill?days=${encodeURIComponent(days)}`, { method: 'POST' }),
+
   // Unified energy "out" for a day (Oura preferred, Garmin fallback).
   energySummary: (ymd) => req(`/energy/summary?date=${encodeURIComponent(ymd)}`),
 

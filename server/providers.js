@@ -471,13 +471,36 @@ export async function composeSignals(store, nowDate = new Date(), userId, queryD
     else perProvider[id] = {}
   }
 
+  // Merge per metric: ANY provider's real (non-demo) value outranks ANY
+  // provider's demo value, regardless of PREFERENCE order — only fall back to
+  // demo when no provider in the list has real data for that metric. This is
+  // two passes rather than one so PREFERENCE order still breaks ties WITHIN
+  // each pass (two demo providers, or — hypothetically — two real ones,
+  // still resolve by the existing preference order).
+  //
+  // Before this, a single pass took the first non-null value in PREFERENCE
+  // order with no real/demo distinction, so a provider listed earlier that
+  // was merely in default demo mode (never connected) pre-empted a
+  // correctly-connected, later-listed provider's real data outright — e.g.
+  // `workout: ['garmin', 'apple', 'oura']` let Garmin's canned "Evening Run"
+  // win over a real, connected Oura account's actual workout every single
+  // time, purely because Garmin sorts first, never because Garmin's demo was
+  // in any sense a better answer. Confirmed live: `garmin: "not-configured"`,
+  // `oura: "oauth"`, yet Workouts showed the fixed demo scenario.
   const out = {}
   for (const [metric, order] of Object.entries(PREFERENCE)) {
+    let chosen = null
     for (const id of order) {
       const s = perProvider[id]?.[metric]
-      if (s && s.value != null) { out[metric] = s; break }
+      if (s && s.value != null && s.demo !== true) { chosen = s; break }
     }
-    if (!out[metric]) out[metric] = null
+    if (!chosen) {
+      for (const id of order) {
+        const s = perProvider[id]?.[metric]
+        if (s && s.value != null) { chosen = s; break }
+      }
+    }
+    out[metric] = chosen
   }
 
   // A manually-entered workout (server/db.js's getManualWorkout — no

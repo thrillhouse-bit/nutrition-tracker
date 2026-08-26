@@ -385,6 +385,11 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
                   The iOS/watch companion has no login of its own — it authenticates with a pairing token generated
                   here. Generate one, then enter it in the companion's Settings.
                 </p>
+                <p className="text-[11px] text-faint">
+                  No Mac to build the native companion? The same token also works with the App Store app{' '}
+                  <span className="font-semibold text-muted">Health Auto Export</span> — no code required. See{' '}
+                  <code className="bg-fill px-1">docs/health-auto-export-setup.md</code> for exact setup steps.
+                </p>
                 {appleToken ? (
                   <div className="mt-2 space-y-1.5">
                     <div className="flex items-center gap-2">

@@ -258,6 +258,47 @@ describe('JsonStore Apple workout history (real training-load rows)', () => {
   })
 })
 
+describe('JsonStore.replaceAppleSignals — replace, not append (replay idempotency)', () => {
+  // This is what makes a replayed HAE/native-companion POST for the same day
+  // naturally idempotent (see test/api-routes.test.js's HAE idempotency
+  // test) — the name says "replace", but only a test proves it actually
+  // deletes the day's old rows first rather than accumulating them.
+  it('calling it twice for the same day with the same rows does not double the stored count', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const rows = [
+      { metric: 'steps', value: 5000 },
+      { metric: 'expenditure', value: 400 },
+    ]
+    const n1 = await s.replaceAppleSignals(USER, '2026-08-20', rows)
+    expect(n1).toBe(2)
+    const n2 = await s.replaceAppleSignals(USER, '2026-08-20', rows)
+    expect(n2).toBe(2)
+    expect(await s.listAppleSignals(USER, '2026-08-20')).toHaveLength(2) // still 2, not 4
+  })
+
+  it('replacing a smaller set for a day actually shrinks it, not just adds to it (control proving delete, not upsert-by-metric)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.replaceAppleSignals(USER, '2026-08-20', [
+      { metric: 'steps', value: 5000 },
+      { metric: 'expenditure', value: 400 },
+      { metric: 'hrv', value: 55 },
+    ])
+    await s.replaceAppleSignals(USER, '2026-08-20', [{ metric: 'steps', value: 6000 }])
+    const stored = await s.listAppleSignals(USER, '2026-08-20')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].value).toBe(6000)
+  })
+
+  it('never touches another day\'s rows for the same user (control)', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await s.replaceAppleSignals(USER, '2026-08-19', [{ metric: 'steps', value: 1111 }])
+    await s.replaceAppleSignals(USER, '2026-08-20', [{ metric: 'steps', value: 2222 }])
+    await s.replaceAppleSignals(USER, '2026-08-20', [{ metric: 'steps', value: 3333 }])
+    expect((await s.listAppleSignals(USER, '2026-08-19'))[0].value).toBe(1111)
+    expect((await s.listAppleSignals(USER, '2026-08-20'))[0].value).toBe(3333)
+  })
+})
+
 describe('JsonStore manual workout input', () => {
   it('returns null when nothing has been set for that day (never throws)', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))

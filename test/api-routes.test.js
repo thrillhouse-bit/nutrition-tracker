@@ -75,9 +75,18 @@ const fake = vi.hoisted(() => {
       return state.targets
     },
     hasTargets: async (userId) => state.targetsEverSet,
-    getIntegration: async (userId, p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
+    getIntegration: async (userId, p) => state.integrations[p] || { user_id: userId, provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
+    // Real stores (PgStore/JsonStore) both persist user_id on every
+    // integration row regardless of whether the caller's patch mentions it —
+    // it comes from the method's own userId argument, not from `patch`. This
+    // fake used to drop it (patch alone never carries user_id), which made
+    // findUserIdByAppleIngestToken below unable to resolve a token generated
+    // through the real POST /api/apple/token route (only the legacy
+    // shared-APPLE_INGEST_TOKEN path, which never consults user_id at all,
+    // happened to paper over it in every test written before the per-user
+    // token-rotation test).
     setIntegration: async (userId, p, patch) => {
-      const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, provider: p }
+      const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, user_id: userId, provider: p }
       state.integrations[p] = m
       return m
     },
@@ -251,6 +260,7 @@ const oura = vi.hoisted(() => ({
   dailyReadiness: async () => null,
   readinessRange: async () => [],
   dailySleepHours: async () => null,
+  dailySleepScore: async () => null,
   sleepScoreRange: async () => [],
   workoutsRange: async () => [],
 }))
@@ -276,6 +286,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     dailyReadiness: (...args) => oura.dailyReadiness(...args),
     readinessRange: (...args) => oura.readinessRange(...args),
     dailySleepHours: (...args) => oura.dailySleepHours(...args),
+    dailySleepScore: (...args) => oura.dailySleepScore(...args),
     sleepScoreRange: (...args) => oura.sleepScoreRange(...args),
     workoutsRange: (...args) => oura.workoutsRange(...args),
   }
@@ -394,6 +405,48 @@ describe('GET /api/version', () => {
   })
 })
 
+describe('POST /api/apple/token (per-user pairing token rotation)', () => {
+  // Connections.jsx's own comment claims "regenerating invalidates the
+  // previous one" (src/components/Connections.jsx) and README's API table
+  // claims the same ("generate (and invalidate the previous) per-account
+  // pairing token") — neither had a test proving it. The route
+  // (server/index.js POST /api/apple/token) stores the WHOLE new settings
+  // object with the new token as the only `ingest_token` key, so the old
+  // token isn't merely superseded, it no longer exists anywhere to match
+  // against — this test proves that end to end, not just that the route
+  // returns a fresh-looking string.
+  it('generating a new token immediately invalidates the previous one, for both ingest routes', async () => {
+    const first = await post('/api/apple/token', {})
+    expect(first.status).toBe(200)
+    const token1 = (await first.json()).token
+    expect(typeof token1).toBe('string')
+    expect(token1.length).toBeGreaterThan(0)
+
+    const second = await post('/api/apple/token', {})
+    expect(second.status).toBe(200)
+    const token2 = (await second.json()).token
+    expect(token2).not.toBe(token1) // a real rotation, not the same value handed back
+
+    const sample = { date: '2026-08-21', samples: [{ metric: 'steps', value: 1000 }] }
+
+    // The OLD token is now nobody's token — refused, not just "someone else's".
+    const withOld = await post('/api/apple/ingest', sample, { 'x-ingest-token': token1 })
+    expect(withOld.status).toBe(401)
+    expect(fake.state.appleSignals['2026-08-21']).toBeUndefined()
+
+    // The NEW token works, on both ingest entry points (native + HAE).
+    const withNew = await post('/api/apple/ingest', sample, { 'x-ingest-token': token2 })
+    expect(withNew.status).toBe(200)
+    expect(fake.state.appleSignals['2026-08-21']).toHaveLength(1)
+
+    const haeSample = { data: { metrics: [{ name: 'step_count', data: [{ date: '2026-08-21 08:00:00 +0000', qty: 2000 }] }] } }
+    const oldOnHae = await post('/api/apple/health-auto-export', haeSample, { authorization: `Bearer ${token1}` })
+    expect(oldOnHae.status).toBe(401)
+    const newOnHae = await post('/api/apple/health-auto-export', haeSample, { authorization: `Bearer ${token2}` })
+    expect(newOnHae.status).toBe(200)
+  })
+})
+
 describe('POST /api/apple/ingest token gate', () => {
   const sample = { date: '2026-08-20', samples: [{ metric: 'sleep', value: 7.2, unit: 'h' }] }
 
@@ -446,6 +499,152 @@ describe('POST /api/apple/ingest token gate', () => {
     const res = await post('/api/apple/ingest', sample, { 'x-ingest-token': 'sekret' })
     expect(res.status).toBe(403)
     expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
+  })
+})
+
+describe('POST /api/apple/health-auto-export (third-party exporter adapter)', () => {
+  const haeBody = {
+    data: {
+      workouts: [{ name: 'Running', start: '2026-08-20 07:00:00 -0700', duration: 1800, activeEnergyBurned: { qty: 300, units: 'kcal' } }],
+      metrics: [{ name: 'step_count', data: [{ date: '2026-08-20 12:00:00 +0000', qty: 6500 }] }],
+    },
+  }
+
+  it('accepts a Bearer token (Health Auto Export cannot send a custom header name)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const res = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ingested).toBe(2) // one workout + one steps sample
+    expect(body.unmapped).toEqual([])
+  })
+
+  it('still accepts the native x-ingest-token header too (same auth mechanism, either header works)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const res = await post('/api/apple/health-auto-export', haeBody, { 'x-ingest-token': 'sekret' })
+    expect(res.status).toBe(200)
+  })
+
+  it('refuses without any token, same as the native ingest route', async () => {
+    const res = await post('/api/apple/health-auto-export', haeBody)
+    expect(res.status).toBe(401)
+    expect(fake.state.appleSignals['2026-08-20']).toBeUndefined()
+  })
+
+  it('actually translates the HAE payload into real stored samples (end-to-end, not just auth)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    const stored = fake.state.appleSignals['2026-08-20']
+    expect(stored).toHaveLength(2)
+    const workout = stored.find((s) => s.metric === 'workout')
+    expect(workout.value.kind).toBe('run')
+    expect(workout.value.est_kcal).toBe(300)
+    const steps = stored.find((s) => s.metric === 'steps')
+    expect(steps.value).toBe(6500)
+  })
+
+  it('reports an unrecognized HAE metric name in `unmapped` rather than silently dropping it', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const res = await post('/api/apple/health-auto-export', {
+      data: { metrics: [{ name: 'some_future_apple_metric', data: [{ date: '2026-08-20 08:00:00 +0000', qty: 1 }] }] },
+    }, { authorization: 'Bearer sekret' })
+    expect((await res.json()).unmapped).toEqual(['some_future_apple_metric'])
+  })
+
+  it('refuses the write once the account has disabled Apple Health, even with a valid token (same gate as the native route)', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    fake.state.integrations.apple = { provider: 'apple', enabled: false, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+    const res = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(res.status).toBe(403)
+  })
+
+  // POSTing the exact same automation payload twice is the normal case, not
+  // an edge one — Health Auto Export's own on-device automations can and do
+  // re-fire (a retried background-refresh trigger, a manual re-run). This
+  // proves ingestAppleSamples -> store.replaceAppleSignals really REPLACES a
+  // day's rows rather than appending to them, so a replay can never silently
+  // double a day's samples.
+  it('is idempotent: POSTing the identical payload twice does not double the stored sample count', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const first = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(first.status).toBe(200)
+    expect(fake.state.appleSignals['2026-08-20']).toHaveLength(2)
+
+    const second = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(second.status).toBe(200)
+    expect(fake.state.appleSignals['2026-08-20']).toHaveLength(2) // still 2, not 4
+  })
+
+  // Route-level malformed-input handling — the pure mapper function
+  // (test/appleHealthAutoExport.test.js) already proves mapHealthAutoExportPayload
+  // itself never throws on a missing `data` key or non-array fields; these
+  // prove the ROUTE stays well-behaved for input shapes that never even reach
+  // that function, because express.json() rejects them first.
+  describe('malformed payload behavior at the route level', () => {
+    it('an empty body is accepted and ingests nothing, rather than erroring (control: express.json() special-cases a zero-length body as {})', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: 'Bearer sekret' },
+        body: '',
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ingested).toBe(0)
+      expect(body.unmapped).toEqual([])
+    })
+
+    it('a non-JSON body gets a clean 400 with a generic JSON error, never a 500 or a raw parser stack trace', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: 'Bearer sekret' },
+        body: 'not json at all {{{',
+      })
+      expect(res.status).toBe(400)
+      expect(res.headers.get('content-type')).toMatch(/application\/json/)
+      const body = await res.json()
+      expect(body.error).toBe('Invalid request body.')
+      expect(JSON.stringify(body)).not.toMatch(/SyntaxError|at JSON\.parse|node_modules/) // no leaked internals
+      expect(fake.state.appleSignals['2026-08-20']).toBeUndefined() // never reached the store
+    })
+
+    it('a wrong Content-Type leaves the body unparsed (ingests nothing) rather than erroring — the auth gate still runs first', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain', authorization: 'Bearer sekret' },
+        body: JSON.stringify(haeBody),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ingested).toBe(0) // express.json() never parsed it — body is empty, not haeBody
+      expect(body.unmapped).toEqual([])
+    })
+
+    it('a body missing the `data` key entirely ingests nothing rather than erroring (control)', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await post('/api/apple/health-auto-export', { foo: 'bar' }, { authorization: 'Bearer sekret' })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ingested).toBe(0)
+      expect(body.unmapped).toEqual([])
+    })
+
+    it('a malformed body with no token at all still gets the same clean 400 (body-parser runs before any route or token gate)', async () => {
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json {{{',
+      })
+      // express.json() sits ahead of every route, including the token gate,
+      // so a parse failure is reported the same way regardless of whether a
+      // token was ever presented — deterministically 400, never a 401 (which
+      // would wrongly imply the route got far enough to check auth) and
+      // never a 500.
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Invalid request body.')
+    })
   })
 })
 
@@ -836,11 +1035,6 @@ describe('POST /api/oura/backfill', () => {
   })
 })
 
-// End-to-end persistence proof for server/index.js's trackedOuraBackfill +
-// GET /api/connections (server/providers.js's providerStatus) — the unit
-// tests in test/oura-sync-observability.test.js cover the same contract
-// against fixtures; this proves it through the real routes, the real
-// backfillOuraHistory, and the real store shape.
 describe('Oura sync observability (last_attempted_sync / last_sync_counts / sync_error, GET /api/connections)', () => {
   afterEach(() => {
     oura.activityRange = async () => []
@@ -945,6 +1139,70 @@ describe('Oura sync observability (last_attempted_sync / last_sync_counts / sync
   })
 })
 
+describe('GET /api/today: real Oura data beats Garmin\'s default demo (Task 1 precedence fix, end-to-end)', () => {
+  const OURA_ENV = ['OURA_CLIENT_ID', 'OURA_CLIENT_SECRET', 'OURA_REDIRECT_URI']
+  const saved = {}
+  beforeAll(() => {
+    for (const k of OURA_ENV) saved[k] = process.env[k]
+    process.env.OURA_CLIENT_ID = 'test-client-id'
+    process.env.OURA_CLIENT_SECRET = 'test-client-secret'
+    process.env.OURA_REDIRECT_URI = 'https://example.com/oura/callback'
+  })
+  afterAll(() => {
+    for (const k of OURA_ENV) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  })
+  afterEach(() => {
+    fake.state.ouraAccounts = []
+    fake.state.ouraWorkouts = []
+    oura.dailySummary = async () => null
+    oura.dailyReadiness = async () => null
+    oura.dailySleepHours = async () => null
+    oura.dailySleepScore = async () => null
+  })
+
+  // Mirrors providers.js's own ymd() exactly (local-getter YYYY-MM-DD), using
+  // this process's real TZ (Pacific/Apia, set at the top of this file) and
+  // real current time — no fake timers needed, since /api/today's default
+  // date is also the server's real "now".
+  const today = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  it('a real, connected Oura account\'s workout wins the workout slot over Garmin\'s canned demo', async () => {
+    const day = today()
+    fake.state.ouraAccounts = [{ id: 1, access_token: 'tok', refresh_token: 'ref', expires_at: new Date(Date.now() + 3600000).toISOString() }]
+    fake.state.ouraWorkouts = [
+      { account_id: 1, oura_id: 'w1', day, activity: 'running', calories: 420, start_datetime: `${day}T06:00:00+00:00`, end_datetime: `${day}T06:45:00+00:00` },
+    ]
+
+    const res = await get('/api/today')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('oura')
+    expect(body.signals.workout.demo).toBe(false)
+    expect(body.signals.workout.value.kind).toBe('run')
+    // The label a real backfilled Oura workout gets is derived from its own
+    // `activity` field ("Running"), never the fixed demo scenario's label —
+    // this is the concrete tell that Garmin's canned data did NOT win.
+    expect(body.signals.workout.value.label).toBe('Running')
+    expect(body.signals.workout.value.label).not.toBe('Evening Run')
+  })
+
+  it('control: with no Oura account connected, Garmin\'s default demo still fills the workout slot unchanged (the fresh-account experience is not regressed)', async () => {
+    fake.state.ouraAccounts = [] // never connected
+    const res = await get('/api/today')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.signals.workout.provider).toBe('garmin')
+    expect(body.signals.workout.demo).toBe(true)
+    expect(body.signals.workout.value.label).toBe('Evening Run')
+  })
+})
+
 describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
   afterEach(() => { fake.state.manualWorkouts = {} })
 
@@ -992,6 +1250,84 @@ describe('PUT/GET/DELETE /api/plan/workout (manual workout input)', () => {
 
     const got = await get('/api/plan/workout')
     expect((await got.json()).workout).toBeNull()
+  })
+
+  describe('intensity + calorie estimate (server/afp/engine.js MET table)', () => {
+    it('defaults intensity to moderate when omitted, and stores it on the saved workout', async () => {
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30' })
+      expect(res.status).toBe(200)
+      expect((await res.json()).workout.intensity).toBe('moderate')
+    })
+
+    it('accepts easy/hard explicitly', async () => {
+      const easy = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'easy' })
+      expect((await easy.json()).workout.intensity).toBe('easy')
+      const hard = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'hard' })
+      expect((await hard.json()).workout.intensity).toBe('hard')
+    })
+
+    it('rejects an intensity outside easy/moderate/hard (control)', async () => {
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', intensity: 'brutal' })
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toMatch(/intensity/i)
+    })
+
+    it('estKcal stays null (never fabricated) when no duration was given, even with a real weight on file — the negative control for "nothing to multiply minutes by"', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30' }) // no duration_min
+      const body = await res.json()
+      expect(body.workout.estKcal).toBeNull()
+      expect(body.workout.estKcalReason).toBeNull() // missing duration, not missing weight — a different, unremarkable gap
+    })
+
+    it('estKcal stays null and estKcalReason names why when a duration is given but NO weight is on file anywhere (fresh account) — the required negative case', async () => {
+      // fake.state.weightEntries and fake.state.afpProfile.weight_kg both
+      // start empty/null in this file's afterEach, matching a fresh signup.
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 60, intensity: 'hard' })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.workout.estKcal).toBeNull()
+      expect(body.workout.estKcalReason).toBe('no_weight_on_file')
+    })
+
+    it('computes a real MET-based estimate once a weight-log entry exists — exact arithmetic, run/hard/60min/70kg', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'run', time: '17:30', duration_min: 60, intensity: 'hard' })
+      const body = await res.json()
+      // MET_TABLE.run.hard = 13 (server/afp/engine.js): 13 * 3.5 * 70 / 200 * 60 = 955.5 -> rounds to 956.
+      expect(body.workout.estKcal).toBe(956)
+      expect(body.workout.estKcalReason).toBeNull()
+
+      const got = await get('/api/plan/workout')
+      expect((await got.json()).workout.estKcal).toBe(956) // persisted, not just returned once
+    })
+
+    it('falls back to the intensity default (moderate) for the estimate when intensity is omitted — a second exact-arithmetic check', async () => {
+      await put('/api/weight', { kg: 70 })
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30 }) // no intensity
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 70 / 200 * 30 = 294.
+      expect(body.workout.estKcal).toBe(294)
+    })
+
+    it('falls back to the Adaptive Fuel Plan profile weight when no weight-log entry exists', async () => {
+      const setProfile = await put('/api/afp/profile', { weight_kg: 65, activity_level: 'moderate', height_cm: 170, age_years: 30, sex: 'female' })
+      expect(setProfile.status).toBe(200)
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30, intensity: 'moderate' })
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 65 / 200 * 30 = 273.
+      expect(body.workout.estKcal).toBe(273)
+      expect(body.workout.estKcalReason).toBeNull()
+    })
+
+    it('a weight-log entry wins over the AFP profile weight when both exist (most-recent real reading preferred)', async () => {
+      await put('/api/afp/profile', { weight_kg: 65 })
+      await put('/api/weight', { kg: 80 })
+      const res = await put('/api/plan/workout', { kind: 'ride', time: '17:30', duration_min: 30, intensity: 'moderate' })
+      const body = await res.json()
+      // MET_TABLE.ride.moderate = 8: 8 * 3.5 * 80 / 200 * 30 = 336 (not 273, which 65kg would give).
+      expect(body.workout.estKcal).toBe(336)
+    })
   })
 })
 
