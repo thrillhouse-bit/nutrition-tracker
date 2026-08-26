@@ -60,6 +60,25 @@ import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 const app = express()
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
+// A malformed JSON body (or one over the 15mb limit above) throws INSIDE
+// express.json() — before any route, requireAuth, or asyncH runs, since this
+// error surfaces from body-parser's own stream read, not from a handler
+// asyncH ever sees. With no error-handling middleware registered, Express's
+// built-in default answers with a raw stack trace as HTML (server file paths
+// included) — the exact "leaked internals" asyncH's own 500 branch below
+// exists to prevent for every route's OWN errors, just not reached in time
+// for this one. This matters most for a caller that can't see server logs to
+// debug a cryptic HTML page — e.g. Health Auto Export's on-device automation
+// runner misconfigured with the wrong body/header. Scoped narrowly to
+// body-parser's two known error `type`s so any other error (there shouldn't
+// be one this early) still falls through to Express's default handling
+// rather than being silently reclassified as a 400.
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
+    return res.status(err.status || 400).json({ error: 'Invalid request body.' })
+  }
+  next(err)
+})
 // credentials:true so the session cookie survives a cross-origin dev setup
 // (Vite on :5173 -> API on :3001). origin:true (reflecting any request's
 // Origin) was "harmless in prod, where it's same-origin anyway" BEFORE there

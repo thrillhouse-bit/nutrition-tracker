@@ -75,9 +75,18 @@ const fake = vi.hoisted(() => {
       return state.targets
     },
     hasTargets: async (userId) => state.targetsEverSet,
-    getIntegration: async (userId, p) => state.integrations[p] || { provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
+    getIntegration: async (userId, p) => state.integrations[p] || { user_id: userId, provider: p, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} },
+    // Real stores (PgStore/JsonStore) both persist user_id on every
+    // integration row regardless of whether the caller's patch mentions it —
+    // it comes from the method's own userId argument, not from `patch`. This
+    // fake used to drop it (patch alone never carries user_id), which made
+    // findUserIdByAppleIngestToken below unable to resolve a token generated
+    // through the real POST /api/apple/token route (only the legacy
+    // shared-APPLE_INGEST_TOKEN path, which never consults user_id at all,
+    // happened to paper over it in every test written before the per-user
+    // token-rotation test).
     setIntegration: async (userId, p, patch) => {
-      const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, provider: p }
+      const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, user_id: userId, provider: p }
       state.integrations[p] = m
       return m
     },
@@ -394,6 +403,48 @@ describe('GET /api/version', () => {
   })
 })
 
+describe('POST /api/apple/token (per-user pairing token rotation)', () => {
+  // Connections.jsx's own comment claims "regenerating invalidates the
+  // previous one" (src/components/Connections.jsx) and README's API table
+  // claims the same ("generate (and invalidate the previous) per-account
+  // pairing token") — neither had a test proving it. The route
+  // (server/index.js POST /api/apple/token) stores the WHOLE new settings
+  // object with the new token as the only `ingest_token` key, so the old
+  // token isn't merely superseded, it no longer exists anywhere to match
+  // against — this test proves that end to end, not just that the route
+  // returns a fresh-looking string.
+  it('generating a new token immediately invalidates the previous one, for both ingest routes', async () => {
+    const first = await post('/api/apple/token', {})
+    expect(first.status).toBe(200)
+    const token1 = (await first.json()).token
+    expect(typeof token1).toBe('string')
+    expect(token1.length).toBeGreaterThan(0)
+
+    const second = await post('/api/apple/token', {})
+    expect(second.status).toBe(200)
+    const token2 = (await second.json()).token
+    expect(token2).not.toBe(token1) // a real rotation, not the same value handed back
+
+    const sample = { date: '2026-08-21', samples: [{ metric: 'steps', value: 1000 }] }
+
+    // The OLD token is now nobody's token — refused, not just "someone else's".
+    const withOld = await post('/api/apple/ingest', sample, { 'x-ingest-token': token1 })
+    expect(withOld.status).toBe(401)
+    expect(fake.state.appleSignals['2026-08-21']).toBeUndefined()
+
+    // The NEW token works, on both ingest entry points (native + HAE).
+    const withNew = await post('/api/apple/ingest', sample, { 'x-ingest-token': token2 })
+    expect(withNew.status).toBe(200)
+    expect(fake.state.appleSignals['2026-08-21']).toHaveLength(1)
+
+    const haeSample = { data: { metrics: [{ name: 'step_count', data: [{ date: '2026-08-21 08:00:00 +0000', qty: 2000 }] }] } }
+    const oldOnHae = await post('/api/apple/health-auto-export', haeSample, { authorization: `Bearer ${token1}` })
+    expect(oldOnHae.status).toBe(401)
+    const newOnHae = await post('/api/apple/health-auto-export', haeSample, { authorization: `Bearer ${token2}` })
+    expect(newOnHae.status).toBe(200)
+  })
+})
+
 describe('POST /api/apple/ingest token gate', () => {
   const sample = { date: '2026-08-20', samples: [{ metric: 'sleep', value: 7.2, unit: 'h' }] }
 
@@ -503,6 +554,95 @@ describe('POST /api/apple/health-auto-export (third-party exporter adapter)', ()
     fake.state.integrations.apple = { provider: 'apple', enabled: false, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
     const res = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
     expect(res.status).toBe(403)
+  })
+
+  // POSTing the exact same automation payload twice is the normal case, not
+  // an edge one — Health Auto Export's own on-device automations can and do
+  // re-fire (a retried background-refresh trigger, a manual re-run). This
+  // proves ingestAppleSamples -> store.replaceAppleSignals really REPLACES a
+  // day's rows rather than appending to them, so a replay can never silently
+  // double a day's samples.
+  it('is idempotent: POSTing the identical payload twice does not double the stored sample count', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const first = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(first.status).toBe(200)
+    expect(fake.state.appleSignals['2026-08-20']).toHaveLength(2)
+
+    const second = await post('/api/apple/health-auto-export', haeBody, { authorization: 'Bearer sekret' })
+    expect(second.status).toBe(200)
+    expect(fake.state.appleSignals['2026-08-20']).toHaveLength(2) // still 2, not 4
+  })
+
+  // Route-level malformed-input handling — the pure mapper function
+  // (test/appleHealthAutoExport.test.js) already proves mapHealthAutoExportPayload
+  // itself never throws on a missing `data` key or non-array fields; these
+  // prove the ROUTE stays well-behaved for input shapes that never even reach
+  // that function, because express.json() rejects them first.
+  describe('malformed payload behavior at the route level', () => {
+    it('an empty body is accepted and ingests nothing, rather than erroring (control: express.json() special-cases a zero-length body as {})', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: 'Bearer sekret' },
+        body: '',
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ingested).toBe(0)
+      expect(body.unmapped).toEqual([])
+    })
+
+    it('a non-JSON body gets a clean 400 with a generic JSON error, never a 500 or a raw parser stack trace', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: 'Bearer sekret' },
+        body: 'not json at all {{{',
+      })
+      expect(res.status).toBe(400)
+      expect(res.headers.get('content-type')).toMatch(/application\/json/)
+      const body = await res.json()
+      expect(body.error).toBe('Invalid request body.')
+      expect(JSON.stringify(body)).not.toMatch(/SyntaxError|at JSON\.parse|node_modules/) // no leaked internals
+      expect(fake.state.appleSignals['2026-08-20']).toBeUndefined() // never reached the store
+    })
+
+    it('a wrong Content-Type leaves the body unparsed (ingests nothing) rather than erroring — the auth gate still runs first', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain', authorization: 'Bearer sekret' },
+        body: JSON.stringify(haeBody),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ingested).toBe(0) // express.json() never parsed it — body is empty, not haeBody
+      expect(body.unmapped).toEqual([])
+    })
+
+    it('a body missing the `data` key entirely ingests nothing rather than erroring (control)', async () => {
+      process.env.APPLE_INGEST_TOKEN = 'sekret'
+      const res = await post('/api/apple/health-auto-export', { foo: 'bar' }, { authorization: 'Bearer sekret' })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ingested).toBe(0)
+      expect(body.unmapped).toEqual([])
+    })
+
+    it('a malformed body with no token at all still gets the same clean 400 (body-parser runs before any route or token gate)', async () => {
+      const res = await fetch(`${base}/api/apple/health-auto-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json {{{',
+      })
+      // express.json() sits ahead of every route, including the token gate,
+      // so a parse failure is reported the same way regardless of whether a
+      // token was ever presented — deterministically 400, never a 401 (which
+      // would wrongly imply the route got far enough to check auth) and
+      // never a 500.
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Invalid request body.')
+    })
   })
 })
 
