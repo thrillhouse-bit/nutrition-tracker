@@ -7,9 +7,15 @@
 const OFF_UA = 'NutritionTracker/0.1 (personal use; https://github.com/thrillhouse-bit/nutrition-tracker)'
 const TIMEOUT_MS = 6000
 
-async function getJSON(url, headers = {}) {
+async function getJSON(url, headers = {}, { timeoutMs = TIMEOUT_MS, signal } = {}) {
   const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+  const t = setTimeout(() => ctrl.abort(), timeoutMs)
+  // A caller-supplied signal (the search layer's own deadline) has to compose
+  // with the per-request one, not replace it — otherwise a provider that hangs
+  // past its own ceiling is only interrupted if the caller happened to set a
+  // shorter deadline.
+  const onOuterAbort = () => ctrl.abort()
+  signal?.addEventListener('abort', onOuterAbort)
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers })
     if (!res.ok) return { ok: false, status: res.status, data: null }
@@ -18,6 +24,7 @@ async function getJSON(url, headers = {}) {
     return { ok: false, status: 0, data: null, error: String(err) }
   } finally {
     clearTimeout(t)
+    signal?.removeEventListener('abort', onOuterAbort)
   }
 }
 
@@ -134,11 +141,36 @@ async function lookupOFF(barcode) {
 // Nutrient IDs in the FDC dataset.
 const FDC = { kcal: 1008, protein: 1003, fat: 1004, carbs: 1005, fiber: 1079, sugar: 2000, sugarNLEA: 1063, sodium: 1093 }
 
+// Foundation rows very often carry NO nutrient 1008 at all. They report energy
+// as 2048 "Energy (Atwater Specific Factors)" and 2047 "Energy (Atwater General
+// Factors)" instead — confirmed live 26 Aug 2026 against
+// /fdc/v1/foods/search?dataType=Foundation for "chicken breast", where
+// "Chicken, breast, boneless, skinless, raw" has 2047=106 and 2048=112 kcal and
+// no 1008. Reading only 1008 meant USDA's single most canonical dataset came
+// back with calories:null, which the UI's fmt() then paints as a confident
+// "0 kcal" — a fabricated number, the same failure hasUsableNutrition exists to
+// prevent, one field further down. Specific factors are USDA's more accurate
+// figure, so they are preferred over the general ones when 1008 is absent.
+const FDC_ENERGY_FALLBACKS = [2048, 2047]
+
 function fdcAmount(food, id) {
   const row = (food.foodNutrients || []).find(
     (x) => x.nutrientId === id || x.nutrient?.id === id,
   )
   return row ? n(row.value ?? row.amount) : null
+}
+
+// kcal only — never a kJ figure silently treated as kcal.
+function fdcEnergyKcal(food) {
+  const rows = food.foodNutrients || []
+  const isKcal = (r) => String(r.unitName ?? r.nutrient?.unitName ?? 'KCAL').toUpperCase() === 'KCAL'
+  const primary = rows.find((x) => (x.nutrientId === FDC.kcal || x.nutrient?.id === FDC.kcal) && isKcal(x))
+  if (primary) return n(primary.value ?? primary.amount)
+  for (const id of FDC_ENERGY_FALLBACKS) {
+    const row = rows.find((x) => (x.nutrientId === id || x.nutrient?.id === id) && isKcal(x))
+    if (row) return n(row.value ?? row.amount)
+  }
+  return null
 }
 
 export function normalizeUSDA(food, requestedBarcode = null) {
@@ -174,7 +206,7 @@ export function normalizeUSDA(food, requestedBarcode = null) {
     brand: (food.brandOwner || food.brandName || '').trim() || null,
     serving_size: 100,
     serving_unit: 'g',
-    calories: round(fdcAmount(food, FDC.kcal), 1),
+    calories: round(fdcEnergyKcal(food), 1),
     protein_g: round(fdcAmount(food, FDC.protein), 2),
     carbs_g: round(fdcAmount(food, FDC.carbs), 2),
     fat_g: round(fdcAmount(food, FDC.fat), 2),
@@ -191,16 +223,25 @@ export function normalizeUSDA(food, requestedBarcode = null) {
 // Branded separately) without duplicating the URL-building/fetch logic here.
 // `dataType` may be a single string or an array (USDA's API accepts either;
 // URLSearchParams needs it pre-joined for an array).
-export async function usdaSearch(query, { dataType, pageSize = 15 } = {}) {
+export async function usdaSearch(query, { dataType, pageSize = 15, timeoutMs, signal } = {}) {
   const key = process.env.FDC_API_KEY
   if (!key) return { configured: false, foods: [] }
   const params = new URLSearchParams({ api_key: key, query, pageSize: String(pageSize) })
   if (dataType) params.set('dataType', Array.isArray(dataType) ? dataType.join(',') : dataType)
   const url = `https://api.nal.usda.gov/fdc/v1/foods/search?${params}`
-  const { ok, status, data, error } = await getJSON(url)
+  const { ok, status, data, error } = await getJSON(url, {}, { timeoutMs, signal })
   if (!ok) return { configured: true, foods: [], error: error || `HTTP ${status}` }
   if (!data?.foods) return { configured: true, foods: [] }
   return { configured: true, foods: data.foods }
+}
+
+// Whether an FDC key is present at all. The search layer needs this to tell a
+// normal unconfigured state apart from a failure, and the UI needs it so the
+// empty state stops advising people to install a key they already have —
+// production reported usda:"configured" while the app said otherwise (see
+// docs/food-search-baseline.md RC-7).
+export function usdaConfigured() {
+  return Boolean(process.env.FDC_API_KEY)
 }
 
 async function lookupUSDA(barcode) {
@@ -221,16 +262,43 @@ export async function lookupByBarcode(barcode) {
   return null
 }
 
-// Open Food Facts free-text search — extracted so server/foodSearch/
-// providers.js can call it directly (with its own per-query diagnostics)
-// rather than duplicating the URL/fetch. The legacy CGI search actually
-// ranks by the query terms; the v2 /search endpoint is field-filter
-// oriented and returns near-random hits for a bare term, so this uses
-// cgi/search.pl. Returns the raw ok/data pair (not yet normalized or
-// filtered) so the caller decides how to report a failure vs. zero hits.
-export async function offTextSearch(query, { pageSize = 15 } = {}) {
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${pageSize}&fields=code,product_name,brands,serving_size,serving_quantity,nutriments`
-  return getJSON(url, { 'User-Agent': OFF_UA })
+// Open Food Facts free-text search. Two endpoints, because the legacy one is
+// measurably unreliable and the modern one is measurably not (20 identical
+// queries, 700ms apart, 26 Aug 2026 — docs/food-search-baseline.md RC-10):
+//
+//   world.openfoodfacts.org/cgi/search.pl   9/20 HTTP 503   p50 549ms
+//   search.openfoodfacts.org/search         0/20            p50 166ms
+//
+// The 503s are not a pacing problem (a single call after 20s idle still 503'd)
+// and a burst of three — which one user search issues, primary plus two
+// synonym variants — measured 3/3 503. `api/v2/search` also 503s and is
+// field-filter oriented rather than term-ranked, so it is not a candidate.
+//
+// `endpoint: 'search'` (default) is search-a-licious; 'cgi' is the legacy one,
+// kept as a fallback rather than deleted — two independent endpoints failing
+// together is much rarer than either failing alone, and the fallback costs
+// nothing on the ~100% of calls where the primary answers.
+//
+// Returns the raw ok/data pair (not yet normalized or filtered) so the caller
+// decides how to report a failure vs. zero hits. The two endpoints disagree on
+// the response envelope (`hits` vs `products`) and on the `brands` type (array
+// vs comma-joined string); both are reconciled here so normalizeOFF — shared
+// with the barcode path — keeps seeing exactly one product shape.
+const OFF_FIELDS = 'code,product_name,brands,serving_size,serving_quantity,nutriments'
+
+export async function offTextSearch(query, { pageSize = 15, endpoint = 'search', timeoutMs, signal } = {}) {
+  const url = endpoint === 'cgi'
+    ? `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${pageSize}&fields=${OFF_FIELDS}`
+    : `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=${pageSize}&fields=${OFF_FIELDS}`
+  const res = await getJSON(url, { 'User-Agent': OFF_UA }, { timeoutMs, signal })
+  if (!res.ok) return res
+  return { ...res, data: { products: offProducts(res.data) } }
+}
+
+// Normalizes either envelope into the `products` array normalizeOFF expects.
+export function offProducts(data) {
+  const rows = Array.isArray(data?.products) ? data.products : Array.isArray(data?.hits) ? data.hits : []
+  return rows.map((p) => (Array.isArray(p?.brands) ? { ...p, brands: p.brands.join(', ') } : p))
 }
 
 // searchByText (free-text food search — produce, bulk bins, no barcode) now

@@ -37,7 +37,10 @@ export const api = {
   lookupBarcode: (barcode) => req(`/lookup/${encodeURIComponent(barcode)}`),
 
   // Text search (produce / bulk bins / no barcode) against USDA + OFF.
-  searchFoods: (q) => req(`/search?q=${encodeURIComponent(q)}`),
+  // Takes a `signal` so a superseded search is genuinely cancelled rather than
+  // left to run and have its answer thrown away — see
+  // src/lib/debouncedSearch.js for the race this closes.
+  searchFoods: (q, { signal } = {}) => req(`/search?q=${encodeURIComponent(q)}`, { signal }),
 
   // Parse a photographed nutrition-facts panel via Claude vision.
   parseLabel: (imageBase64, mediaType) =>

@@ -126,7 +126,10 @@ describe('SearchFood: upstream/provider-failure state', () => {
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
 
     expect(api.searchFoods).toHaveBeenCalledTimes(2)
-    expect(api.searchFoods).toHaveBeenLastCalledWith('zucchini')
+    // The second argument is the AbortController signal the searcher now wires
+    // through so a superseded search is genuinely cancelled — see
+    // src/lib/debouncedSearch.js.
+    expect(api.searchFoods).toHaveBeenLastCalledWith('zucchini', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(el.textContent).toMatch(/Zucchini, raw/)
   })
 

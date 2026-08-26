@@ -27,7 +27,11 @@ describe('createDebouncedSearch', () => {
 
     await vi.advanceTimersByTimeAsync(350) // let the trailing debounce fire
     expect(fetchFn).toHaveBeenCalledTimes(1)
-    expect(fetchFn).toHaveBeenCalledWith('chicken') // and it's for the FINAL query, not an intermediate one
+    // ...and it's for the FINAL query, not an intermediate one. The second
+    // argument is the AbortController signal the searcher now wires through so
+    // a superseded request is genuinely cancelled, not merely ignored — see
+    // src/lib/debouncedSearch.js and test/foodSearchStaleGuard.test.js.
+    expect(fetchFn).toHaveBeenCalledWith('chicken', expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
   it('drops a stale response that resolves after a newer one (out-of-order race)', async () => {
@@ -49,13 +53,13 @@ describe('createDebouncedSearch', () => {
     // "chicken" resolves first (100ms after it fired)...
     await vi.advanceTimersByTimeAsync(100)
     expect(onResult).toHaveBeenCalledTimes(1)
-    expect(onResult).toHaveBeenLastCalledWith(['result for chicken'])
+    expect(onResult).toHaveBeenLastCalledWith(['result for chicken'], 'chicken') // every callback names its own query
 
     // ...then "chick" finally resolves. Without the guard this overwrites
     // the correct, already-rendered "chicken" results.
     await vi.advanceTimersByTimeAsync(2000)
     expect(onResult).toHaveBeenCalledTimes(1) // still just the one call — the stale response was dropped
-    expect(onResult).toHaveBeenLastCalledWith(['result for chicken'])
+    expect(onResult).toHaveBeenLastCalledWith(['result for chicken'], 'chicken')
   })
 
   it('still calls onResult for a single, un-raced search (control: the guard does not fire when it should not)', async () => {
@@ -68,7 +72,7 @@ describe('createDebouncedSearch', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(onResult).toHaveBeenCalledTimes(1)
-    expect(onResult).toHaveBeenCalledWith(['result for egg'])
+    expect(onResult).toHaveBeenCalledWith(['result for egg'], 'egg')
   })
 
   it('calls onSettled exactly once per non-stale request, success or failure, so a busy flag cannot get stuck', async () => {

@@ -1,16 +1,29 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../server/lookup.js', () => ({
   usdaSearch: vi.fn(),
   offTextSearch: vi.fn(),
+  // The real reconciler, not a stub: it is what makes queryOFF endpoint-shape
+  // agnostic, so mocking it away would test a pipeline the app never runs.
+  offProducts: (data) => (Array.isArray(data?.products) ? data.products : Array.isArray(data?.hits) ? data.hits : [])
+    .map((p) => (Array.isArray(p?.brands) ? { ...p, brands: p.brands.join(', ') } : p)),
   normalizeUSDA: (f) => ({ name: f.description, calories: f.cal ?? null, protein_g: null, carbs_g: null, fat_g: null, source: 'usda' }),
   normalizeOFF: (p) => ({ name: p.product_name || 'Unknown product', calories: p.cal ?? null, protein_g: null, carbs_g: null, fat_g: null, source: 'openfoodfacts', barcode: p.code || null }),
 }))
 
 const { usdaSearch, offTextSearch } = await import('../server/lookup.js')
-const { queryUsdaGeneric, queryUsdaBranded, queryOFF } = await import('../server/foodSearch/providers.js')
+const providers = await import('../server/foodSearch/providers.js')
+const { queryUsdaFoundation, queryUsdaSurvey, queryUsdaBranded, queryOFF } = providers
 
-describe('queryUsdaGeneric', () => {
+// Call counts are load-bearing here (retry/fallback behaviour), so the mocks
+// must not carry state between tests.
+beforeEach(() => { vi.clearAllMocks() })
+
+// The generic USDA pass is now TWO calls; these shape assertions apply to
+// both, so they run against each in turn rather than against a single
+// combined-dataType call that measured a ~50% failure rate.
+describe.each([['queryUsdaFoundation'], ['queryUsdaSurvey']])('%s (generic pass)', (name) => {
+  const queryUsdaGeneric = (...args) => providers[name](...args)
   it('tags every item datasetTier:"generic" and reports ok:true with a count', async () => {
     usdaSearch.mockResolvedValue({ configured: true, foods: [{ description: 'Zucchini, raw', cal: 17 }] })
     const r = await queryUsdaGeneric('zucchini')
@@ -18,13 +31,16 @@ describe('queryUsdaGeneric', () => {
     expect(r.count).toBe(1)
     expect(r.items[0].datasetTier).toBe('generic')
     expect(r.source).toBe('usda')
-    expect(r.dataset).toBe('generic')
+    expect(r.tier).toBe('generic')
     expect(typeof r.latencyMs).toBe('number')
   })
-  it('queries the Foundation/SR Legacy/Survey dataType, never Branded', async () => {
+  it('queries a non-Branded whole-food dataType only', async () => {
     usdaSearch.mockResolvedValue({ configured: true, foods: [] })
     await queryUsdaGeneric('zucchini')
-    expect(usdaSearch).toHaveBeenCalledWith('zucchini', expect.objectContaining({ dataType: ['Foundation', 'SR Legacy', 'Survey (FNDDS)'] }))
+    const [, opts] = usdaSearch.mock.calls.at(-1)
+    const dt = Array.isArray(opts.dataType) ? opts.dataType.join(',') : String(opts.dataType)
+    expect(dt).not.toMatch(/Branded/)
+    expect(dt).toMatch(/Foundation|SR Legacy|Survey/)
   })
   it('reports ok:null with skipped:"not_configured" when no FDC key is set (never a failure)', async () => {
     usdaSearch.mockResolvedValue({ configured: false, foods: [] })
@@ -108,7 +124,7 @@ describe('queryOFF', () => {
 // candidate pool. Survey cannot simply be dropped: it is the only dataset with
 // a usable `Oatmeal, NFS`, `Avocado, raw` or bare `Peanut butter`.
 // ---------------------------------------------------------------------------
-const { queryUsdaFoundation, queryUsdaSurvey } = await import('../server/foodSearch/providers.js')
+
 
 describe('the generic USDA pass is split so one dataset\'s failure cannot take the others down', () => {
   it('queryUsdaFoundation asks for Foundation + SR Legacy and NOTHING else', async () => {
