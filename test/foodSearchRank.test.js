@@ -39,6 +39,10 @@ describe('bestTierAcrossVariants', () => {
     const r = bestTierAcrossVariants('Courgettes en rondelles', variants)
     expect(r.tier).toBeLessThanOrEqual(3) // matches well under the "courgette" variant
   })
+  it('"organic" alone is NOT enough for a tier <= 4 match — it is a qualifier, not an identity token (see rank.js scoreCandidate test for the live-reproduced bug this guards)', () => {
+    const r = bestTierAcrossVariants('Infant formula, organic, ready-to-feed', [parseVariant('365 organic marinara')])
+    expect(r.tier).toBe(5)
+  })
 })
 
 describe('scoreCandidate', () => {
@@ -91,6 +95,22 @@ describe('scoreCandidate', () => {
     const exactBranded = { ...base, name: 'Banana', datasetTier: 'branded' }
     const weakGeneric = { ...base, name: 'Fruit medley with banana pieces', datasetTier: 'generic' } // tier 3 (phrase), not a prefix
     expect(scoreCandidate(exactBranded, ['banana'])).toBeLessThan(scoreCandidate(weakGeneric, ['banana']))
+  })
+
+  // Real, reproduced bug (26 Aug 2026, found during the keystroke-efficiency
+  // audit — see docs/keystroke-efficiency-audit.md): searching "365 organic
+  // marinara" (Whole Foods' own house brand) against live USDA data never
+  // surfaced an actual marinara sauce usably. Before 'organic' joined
+  // QUALIFIER_WORDS, it counted as a core identity token, so "Infant
+  // formula, organic, ready-to-feed" tied at tier 4 with "Sauce, pasta,
+  // spaghetti/marinara, ready-to-serve" purely on sharing that one common
+  // word — and the tie then broke on shorter-name, scoring the infant
+  // formula (4001.5) ahead of the actual marinara sauce (4002). These are
+  // the exact two rows captured live.
+  it('"organic" alone does not manufacture a tie with an unrelated product (365 organic marinara)', () => {
+    const unrelated = { ...base, name: 'Infant formula, organic, ready-to-feed', datasetTier: 'generic', calories: 60, protein_g: 1, carbs_g: 8, fat_g: 3 }
+    const correct = { ...base, name: 'Sauce, pasta, spaghetti/marinara, ready-to-serve', datasetTier: 'generic', calories: 45, protein_g: 1.5, carbs_g: 7, fat_g: 1.5 }
+    expect(scoreCandidate(correct, ['365 organic marinara'])).toBeLessThan(scoreCandidate(unrelated, ['365 organic marinara']))
   })
 })
 

@@ -54,6 +54,16 @@ describe('splitQualifiers', () => {
       expect(qualifiers).toEqual([w])
     }
   })
+  // Real, reproduced bug (see foodSearchRank.test.js's "365 organic
+  // marinara" case, and docs/keystroke-efficiency-audit.md): 'organic' is a
+  // near-universal descriptor across USDA/OFF entries, not a food-identity
+  // word — with it treated as a core token, an unrelated candidate that
+  // merely also says "organic" could tie for relevance with the real match.
+  it('"organic" is a qualifier, not a food-identity word', () => {
+    const { base, qualifiers } = splitQualifiers(['365', 'organic', 'marinara'])
+    expect(base).toEqual(['365', 'marinara'])
+    expect(qualifiers).toEqual(['organic'])
+  })
 })
 
 describe('synonymVariants', () => {

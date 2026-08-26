@@ -28,9 +28,25 @@ export function tokenize(normalized) {
 // qualifier boosts rank when a candidate agrees with it — see rank.js — it
 // never GATES a match), and so they don't get treated as part of the food's
 // name when computing token-set equality.
+// 'organic' added after a live reproduction during the keystroke-efficiency
+// audit (see docs/keystroke-efficiency-audit.md): searching "365 organic
+// marinara" (Whole Foods' own house brand) against real USDA data never
+// surfaced the actual marinara sauce usably — "Infant formula, organic,
+// ready-to-feed" outranked "Sauce, pasta, spaghetti/marinara, ready-to-
+// serve" (score 4001.5 vs 4002), because with 'organic' treated as a core
+// identity token, BOTH tied at tier 4 purely on sharing that one common
+// word, and the tie then broke on shorter-name — rewarding the coincidental
+// match over the specific one. Reproduced directly against rank.js with
+// those exact two USDA rows before this fix. Same mechanism as the existing
+// FORM qualifiers below: 'organic' is a near-universal descriptor across
+// USDA/OFF entries (there's no such thing as "organic" identity — a food is
+// still itself with or without it), so it belongs in the small
+// qualifier-agreement bonus, not in the tokens that decide whether two
+// foods are the same food.
 export const QUALIFIER_WORDS = new Set([
   'raw', 'cooked', 'fresh', 'frozen', 'grilled', 'canned', 'baked', 'roasted',
   'boiled', 'steamed', 'dried', 'diced', 'sliced', 'whole', 'plain', 'ripe',
+  'organic',
 ])
 
 export function splitQualifiers(tokens) {
