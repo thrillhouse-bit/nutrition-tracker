@@ -87,20 +87,38 @@ function dateStamp(date) {
     .toUpperCase()
 }
 
-// The design's Target / Baseline / Today row: name in Bodoni, baseline muted,
+// The design's Baseline / Target / Today row: name in Bodoni, baseline muted,
 // adjusted emphasised with a signed cobalt delta chip — or HELD when unchanged.
 // Never a silent change: baseline and today sit side by side, always.
-function TargetRow({ n, label, base, adj }) {
+//
+// `target` is the Adaptive Fuel Plan's own computed energy goal, shown here
+// only for the Energy row, for context between this system's own baseline
+// and today figures — it is a different system's number, never fabricated
+// from this row's own baseline/adjusted math. Three states, kept distinct:
+//   undefined -> no "target" concept applies to this row at all (every
+//                non-Energy nutrient) -> the cell renders genuinely empty,
+//                not an em-dash, since there was never a number to miss.
+//   null      -> the concept applies (Energy) but no value is available yet
+//                (no Adaptive Fuel Plan profile set up, or the read failed)
+//                -> em-dash, faint, same "no data, never a silent number"
+//                convention as Today.jsx's Energy balance panel.
+//   a number  -> the real, already-computed target.
+function TargetRow({ n, label, base, adj, target }) {
   const b = num(base)
   const a = num(adj)
   const changed = Math.abs(a - b) >= (n.decimals ? 0.05 : 0.5)
   const delta = a - b
   const unit = n.key === 'calories' ? '' : n.unit
+  const hasTargetCol = target !== undefined
+  const targetMissing = hasTargetCol && target == null
   return (
     <div className="flex items-center border-t border-line py-2">
       <span className="flex-1 serif text-[17px] leading-none text-ink">{label}</span>
       <span className="w-[72px] text-right tnum text-sm text-muted">
         {fmt(b, n.decimals)}{unit && ` ${unit}`}
+      </span>
+      <span className={`w-[72px] text-right tnum text-sm ${targetMissing ? 'text-faint' : 'text-muted'}`}>
+        {hasTargetCol && (targetMissing ? '—' : fmt(target, n.decimals) + (unit ? ` ${unit}` : ''))}
       </span>
       <span className="w-[132px] whitespace-nowrap text-right leading-none">
         <span className="numeral text-[22px] tnum text-ink">{fmt(a, n.decimals)}</span>
@@ -208,13 +226,30 @@ export default function Plan({ date, refreshKey, onChanged }) {
   const [savingInf, setSavingInf] = useState(false)
   const [workoutFormOpen, setWorkoutFormOpen] = useState(false)
   const [clearingWorkout, setClearingWorkout] = useState(false)
+  // The Adaptive Fuel Plan's own computed energy target — read again here
+  // (it's already fetched by <AdaptiveFuelPlan> below) purely so the legacy
+  // Quick Targets table can show it for context on the Energy row, between
+  // this system's own Baseline and Today figures. Deliberately read-only:
+  // this never touches server/afp/engine.js, and a failure here (no profile
+  // set up yet, or the request itself failing) must never take down the
+  // legacy baseline/adjusted numbers this section has always shown — they
+  // are two independent systems (see AdaptiveFuelPlan.jsx and server/plan.js),
+  // so `null` here just means "no Adaptive Fuel Plan target yet," rendered as
+  // an honest em-dash, never a silent zero or a copy of the adjusted figure.
+  const [afpEnergyTarget, setAfpEnergyTarget] = useState(null)
 
   useEffect(() => {
     let alive = true
     setLoading(true)
-    api.planToday(ymd(date))
-      .then((r) => alive && setPlan(r))
-      .catch(() => alive && setPlan(null))
+    Promise.all([
+      api.planToday(ymd(date)).catch(() => null),
+      api.afpPlan(ymd(date)).catch(() => null),
+    ])
+      .then(([r, afp]) => {
+        if (!alive) return
+        setPlan(r)
+        setAfpEnergyTarget(afp?.plan?.ok && afp.plan.targets?.calories != null ? num(afp.plan.targets.calories) : null)
+      })
       .finally(() => alive && setLoading(false))
     return () => { alive = false }
   }, [date, refreshKey])
@@ -366,7 +401,8 @@ export default function Plan({ date, refreshKey, onChanged }) {
         <h2 className="serif text-[22px] leading-none text-ink">Quick targets</h2>
         <p className="mt-1.5 text-xs text-faint">
           A simpler, static baseline — set it by hand or with a one-time calculator. The Adaptive Fuel Plan above
-          recalculates every day from your training; this does not.
+          recalculates every day from your training; this does not. Energy's Target figure below is that plan's
+          current goal, shown here for comparison.
         </p>
       </div>
 
@@ -422,16 +458,27 @@ export default function Plan({ date, refreshKey, onChanged }) {
             )}
           </div>
 
-          {/* Target / Baseline / Today */}
+          {/* Baseline / Target / Today — the Target column carries a real
+              value only on the Energy row (see TargetRow's own comment); the
+              first cell is the row's own name (Energy, Carbohydrate, …), so
+              it heads no column of its own. */}
           <section className="mt-1 border-t border-line pt-3.5">
             <div className="flex pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-              <span className="flex-1">Target</span>
+              <span className="flex-1" />
               <span className="w-[72px] text-right">Baseline</span>
+              <span className="w-[72px] text-right">Target</span>
               <span className="w-[132px] text-right">Today</span>
             </div>
             <div className="border-b border-line">
               {rowDefs.map((d) => (
-                <TargetRow key={d.key} n={meta[d.key]} label={d.label} base={baseline[d.key]} adj={adjusted[d.key]} />
+                <TargetRow
+                  key={d.key}
+                  n={meta[d.key]}
+                  label={d.label}
+                  base={baseline[d.key]}
+                  adj={adjusted[d.key]}
+                  target={d.key === 'calories' ? afpEnergyTarget : undefined}
+                />
               ))}
             </div>
 
