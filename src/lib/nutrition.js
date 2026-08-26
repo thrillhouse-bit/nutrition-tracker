@@ -111,3 +111,16 @@ export function ymd(date = new Date()) {
 export const KG_PER_LB = 0.453592
 export const lbToKg = (lb) => num(lb) * KG_PER_LB
 export const kgToLb = (kg) => num(kg) / KG_PER_LB
+
+// cm is the canonical stored unit everywhere (profile) — same reasoning as
+// kg/lb above. Shared between SmartPlanForm and the Adaptive Fuel Plan
+// profile form so the two never compute this differently.
+export const CM_PER_IN = 2.54
+export const ftInToCm = (ft, inch) => (num(ft) * 12 + num(inch)) * CM_PER_IN
+export function cmToFtIn(cm) {
+  const totalIn = num(cm) / CM_PER_IN
+  let ft = Math.floor(totalIn / 12)
+  let inch = Math.round(totalIn - ft * 12)
+  if (inch === 12) { ft += 1; inch = 0 } // rounding can push inches to a full foot
+  return { ft, inch }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { entryNutrient, entryIncomplete, sumEntries, dayBounds, num, fmt, restoreEntryPayload } from '../src/lib/nutrition.js'
+import { entryNutrient, entryIncomplete, sumEntries, dayBounds, num, fmt, restoreEntryPayload, lbToKg, kgToLb, ftInToCm, cmToFtIn } from '../src/lib/nutrition.js'
 
 describe('nutrition math', () => {
   const food = { calories: 100, protein_g: 5, carbs_g: 20, fat_g: 3, fiber_g: 2, sugar_g: 8, sodium_mg: 150 }
@@ -99,6 +99,40 @@ describe('dayBounds', () => {
     const ms = new Date(to) - new Date(from)
     expect(ms).toBe(24 * 60 * 60 * 1000)
     expect(new Date(from).getHours()).toBe(0)
+  })
+})
+
+// These conversions were previously local to SmartPlanForm.jsx (no dedicated
+// test) and were extracted to lib/nutrition.js so the Adaptive Fuel Plan
+// profile form (and any future consumer) shares exactly one implementation.
+describe('unit conversions (metric/US)', () => {
+  it('lbToKg / kgToLb are inverses at the documented constant', () => {
+    expect(lbToKg(154.324)).toBeCloseTo(70, 1)
+    expect(kgToLb(70)).toBeCloseTo(154.324, 1)
+  })
+  it('lbToKg(0) is 0, not NaN (control)', () => {
+    expect(lbToKg(0)).toBe(0)
+  })
+
+  it('ftInToCm converts feet+inches to centimeters', () => {
+    // 5'9" = 69in * 2.54 = 175.26cm
+    expect(ftInToCm(5, 9)).toBeCloseTo(175.26, 1)
+  })
+  it('ftInToCm treats missing inches as 0 (control)', () => {
+    expect(ftInToCm(6, '')).toBeCloseTo(182.88, 1) // 6ft exactly
+  })
+
+  it('cmToFtIn converts centimeters back to feet+inches', () => {
+    expect(cmToFtIn(175.26)).toEqual({ ft: 5, inch: 9 })
+  })
+  it('cmToFtIn rolls a rounded 12 inches over into the next foot', () => {
+    // 71.6 inches rounds to 72in = exactly 6ft 0in, not "5ft 12in"
+    const cm = 71.6 * 2.54
+    expect(cmToFtIn(cm)).toEqual({ ft: 6, inch: 0 })
+  })
+  it('ftInToCm and cmToFtIn round-trip a whole-inch value', () => {
+    const cm = ftInToCm(5, 10)
+    expect(cmToFtIn(cm)).toEqual({ ft: 5, inch: 10 })
   })
 })
 

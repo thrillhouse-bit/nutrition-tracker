@@ -3,6 +3,7 @@ import { NUTRIENTS, fmt, num, ymd } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
 import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
 import SmartPlanForm from './SmartPlanForm.jsx'
+import AdaptiveFuelPlan from './AdaptiveFuelPlan.jsx'
 
 const meta = Object.fromEntries(NUTRIENTS.map((n) => [n.key, n]))
 const provLabel = (p) => (p === 'manual' ? 'you' : p ? p[0].toUpperCase() + p.slice(1) : 'Signal')
@@ -358,6 +359,16 @@ export default function Plan({ date, refreshKey, onChanged }) {
           )}
         </span>
       </header>
+
+      <AdaptiveFuelPlan date={date} refreshKey={refreshKey} onChanged={onChanged} />
+
+      <div className="mt-8 border-t-[3px] border-line pt-6">
+        <h2 className="serif text-[22px] leading-none text-ink">Quick targets</h2>
+        <p className="mt-1.5 text-xs text-faint">
+          A simpler, static baseline — set it by hand or with a one-time calculator. The Adaptive Fuel Plan above
+          recalculates every day from your training; this does not.
+        </p>
+      </div>
 
       {editing ? (
         <div className="mt-5">

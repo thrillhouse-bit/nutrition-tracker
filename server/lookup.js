@@ -155,14 +155,20 @@ export function normalizeUSDA(food, requestedBarcode = null) {
   }
 }
 
-async function usdaSearch(query, { dataType, pageSize = 15 } = {}) {
+// Exported (unlike before) so server/foodSearch/providers.js can issue its
+// own dataType-scoped queries (Foundation/SR Legacy for generic whole foods,
+// Branded separately) without duplicating the URL-building/fetch logic here.
+// `dataType` may be a single string or an array (USDA's API accepts either;
+// URLSearchParams needs it pre-joined for an array).
+export async function usdaSearch(query, { dataType, pageSize = 15 } = {}) {
   const key = process.env.FDC_API_KEY
   if (!key) return { configured: false, foods: [] }
   const params = new URLSearchParams({ api_key: key, query, pageSize: String(pageSize) })
-  if (dataType) params.set('dataType', dataType)
+  if (dataType) params.set('dataType', Array.isArray(dataType) ? dataType.join(',') : dataType)
   const url = `https://api.nal.usda.gov/fdc/v1/foods/search?${params}`
-  const { ok, data } = await getJSON(url)
-  if (!ok || !data?.foods) return { configured: true, foods: [] }
+  const { ok, status, data, error } = await getJSON(url)
+  if (!ok) return { configured: true, foods: [], error: error || `HTTP ${status}` }
+  if (!data?.foods) return { configured: true, foods: [] }
   return { configured: true, foods: data.foods }
 }
 
@@ -172,38 +178,6 @@ async function lookupUSDA(barcode) {
   // Prefer an exact UPC/GTIN match; UPCs are sometimes zero-padded differently.
   const exact = foods.find((f) => f.gtinUpc && f.gtinUpc.replace(/^0+/, '') === barcode.replace(/^0+/, ''))
   return normalizeUSDA(exact || foods[0], barcode)
-}
-
-// ---- Relevance ranking -----------------------------------------------------
-
-// USDA and Open Food Facts each hand back results in their own relevance
-// order, tuned for recall across every field they index (description,
-// ingredients, brand, category) — not for "this IS the food I typed."
-// Reported live 25 Aug 2026: searching "egg" surfaced "Egg Salad", "Deviled
-// Eggs", "Egg Drop Soup" ahead of plain "Egg", because those dish names also
-// contain the term and neither API is told the base food should outrank a
-// dish that merely uses it. Score by how the query relates to the food's own
-// NAME — exact, then prefix, then a whole word elsewhere in the name, then
-// any other substring — and put anything that only matched via a field OTHER
-// THAN the name (OFF searches ingredients/brand/category too, so a hit's name
-// can contain none of the query at all) at the very back.
-const ESCAPE_REGEX = /[.*+?^${}()|[\]\\]/g
-function nameMatchTier(name, query) {
-  const n = (name || '').toLowerCase().trim()
-  const q = query.toLowerCase().trim()
-  if (!q) return 4
-  if (n === q) return 0
-  if (n.startsWith(q)) return 1
-  if (new RegExp(`\\b${q.replace(ESCAPE_REGEX, '\\$&')}`).test(n)) return 2
-  if (n.includes(q)) return 3
-  return 4
-}
-
-// Exported for testing. Array#sort is stable (guaranteed since ES2019), so
-// ties keep each source's own relative order as the tiebreak within a tier —
-// that ordering is still the best signal available once tier is equal.
-export function rankByRelevance(results, query) {
-  return [...results].sort((a, b) => nameMatchTier(a.name, query) - nameMatchTier(b.name, query))
 }
 
 // ---- Public API ----------------------------------------------------------
@@ -216,30 +190,27 @@ export async function lookupByBarcode(barcode) {
   return null
 }
 
-export async function searchByText(query) {
-  const results = []
-  const { configured, foods } = await usdaSearch(query, { pageSize: 15 })
-  if (configured) {
-    for (const f of foods) results.push(normalizeUSDA(f))
-  }
-  if (results.length < 5) {
-    // Supplement with Open Food Facts text search (branded items live here). The
-    // legacy CGI search actually ranks by the query terms; the v2 /search
-    // endpoint is field-filter oriented and returns near-random hits for a bare
-    // term, so we use cgi/search.pl here.
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=code,product_name,brands,serving_size,serving_quantity,nutriments`
-    const { ok, data } = await getJSON(url, { 'User-Agent': OFF_UA })
-    if (ok && Array.isArray(data?.products)) {
-      for (const p of data.products) {
-        const food = normalizeOFF(p, p.code || null)
-        if (food.name && food.name !== 'Unknown product') results.push(food)
-      }
-    }
-  }
-  // Re-rank before truncating: the base food a plain query names must not be
-  // cut off at 20 by a flood of dish/branded matches ahead of it.
-  return rankByRelevance(results, query).slice(0, 20)
+// Open Food Facts free-text search — extracted so server/foodSearch/
+// providers.js can call it directly (with its own per-query diagnostics)
+// rather than duplicating the URL/fetch. The legacy CGI search actually
+// ranks by the query terms; the v2 /search endpoint is field-filter
+// oriented and returns near-random hits for a bare term, so this uses
+// cgi/search.pl. Returns the raw ok/data pair (not yet normalized or
+// filtered) so the caller decides how to report a failure vs. zero hits.
+export async function offTextSearch(query, { pageSize = 15 } = {}) {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${pageSize}&fields=code,product_name,brands,serving_size,serving_quantity,nutriments`
+  return getJSON(url, { 'User-Agent': OFF_UA })
 }
+
+// searchByText (free-text food search — produce, bulk bins, no barcode) now
+// lives in server/foodSearch/index.js: normalization, a synonym layer, typo
+// tolerance, dataType-aware USDA querying, and relevance ranking that
+// actually keeps a generic food ahead of branded/obscure noise. See
+// docs/food-search.md for the full redesign and the "zucchini" root-cause
+// evidence that drove it. normalizeOFF/normalizeUSDA/usdaSearch/
+// offTextSearch above are the shared building blocks both that module and
+// the barcode-lookup path here use — there is one nutrient-mapping
+// implementation, not two.
 
 function round(v, decimals = 2) {
   if (v == null) return null
