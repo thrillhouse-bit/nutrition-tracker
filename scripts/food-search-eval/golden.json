@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-08-26T15:58:15.021Z",
+  "measuredAt": "2026-08-26T16:18:26.677Z",
   "failures": 0,
   "total": 7,
   "results": [
@@ -15,19 +15,17 @@
         "source": "usda"
       },
       "canonicalCoverage": "ok",
-      "partial": true,
+      "partial": false,
       "degraded": false,
-      "failedSources": [
-        "usda/survey:HTTP 400"
-      ],
+      "failedSources": [],
       "top5": [
         "Squash, zucchini, baby, raw (21 kcal)",
         "Squash, summer, zucchini, includes skin, raw (17 kcal)",
         "Squash, summer, green, zucchini, includes skin, raw (16 kcal)",
-        "Squash, summer, zucchini, includes skin, frozen, unprepared (17 kcal)",
-        "Squash, summer, zucchini, italian style, canned (29 kcal)"
+        "Zucchini, pickled (35 kcal)",
+        "Squash, summer, zucchini, includes skin, frozen, unprepared (17 kcal)"
       ],
-      "latencyMs": 973
+      "latencyMs": 721
     },
     {
       "query": "banana",
@@ -51,7 +49,7 @@
         "Pepper, banana, raw (27 kcal)",
         "Peppers, banana, raw (27 kcal)"
       ],
-      "latencyMs": 398
+      "latencyMs": 777
     },
     {
       "query": "avocado",
@@ -75,7 +73,7 @@
         "Avocados, raw, all commercial varieties (160 kcal)",
         "Avocado, Hass, peeled, raw (206 kcal)"
       ],
-      "latencyMs": 1001
+      "latencyMs": 1140
     },
     {
       "query": "chicken breast",
@@ -99,7 +97,7 @@
         "Chicken breast, rotisserie, skin eaten (175 kcal)",
         "Chicken breast, sauteed, skin eaten (206 kcal)"
       ],
-      "latencyMs": 1108
+      "latencyMs": 629
     },
     {
       "query": "oatmeal",
@@ -125,7 +123,7 @@
         "OATMEAL [Caribbean Foods Limited] (365 kcal)",
         "Oats [Quaker Oats] (375 kcal)"
       ],
-      "latencyMs": 848
+      "latencyMs": 1397
     },
     {
       "query": "salmon",
@@ -149,7 +147,7 @@
         "Fish, salmon, chum, raw (120 kcal)",
         "Fish, salmon, pink, raw (127 kcal)"
       ],
-      "latencyMs": 689
+      "latencyMs": 1092
     },
     {
       "query": "peanut butter",
@@ -173,7 +171,7 @@
         "Peanut butter, reduced sodium (590 kcal)",
         "Peanut butter, chunk style, with salt (589 kcal)"
       ],
-      "latencyMs": 629
+      "latencyMs": 1083
     }
   ]
 }

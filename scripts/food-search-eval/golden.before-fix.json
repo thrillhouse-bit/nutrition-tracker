@@ -1,0 +1,195 @@
+{
+  "measuredAt": "2026-08-26T16:20:34.981Z",
+  "failures": 7,
+  "total": 7,
+  "results": [
+    {
+      "query": "zucchini",
+      "pass": false,
+      "reasons": [
+        "rank 1 is a branded product",
+        "rank 1 is not the base form"
+      ],
+      "rank1": {
+        "name": "ZUCCHINI",
+        "brand": "KMB, LLC",
+        "datasetTier": "branded",
+        "calories": 21,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [
+        "usda/generic:HTTP 400",
+        "openfoodfacts/branded:HTTP 503",
+        "usda/generic:HTTP 400",
+        "openfoodfacts/branded:HTTP 503"
+      ],
+      "top5": [
+        "ZUCCHINI [KMB, LLC] (21 kcal)",
+        "ZUCCHINI BAKE, ZUCCHINI [Classic Cooking Inc.] (76 kcal)",
+        "ZUCCHINI BREAD, ZUCCHINI [Bakehouse Bread Company] (380 kcal)",
+        "ZUCCHINI LOAF, ZUCCHINI [Wegmans Food Markets, Inc.] (298 kcal)",
+        "ZUCCHINI NOODLES, ZUCCHINI [Bix Produce Company LLC] (18 kcal)"
+      ],
+      "latencyMs": 655
+    },
+    {
+      "query": "banana",
+      "pass": false,
+      "reasons": [
+        "rank 1 is not the base form"
+      ],
+      "rank1": {
+        "name": "Banana, baked",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 161,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [],
+      "top5": [
+        "Banana, baked (161 kcal)",
+        "Banana, raw (97 kcal)",
+        "Banana chips (519 kcal)",
+        "Banana nectar (74 kcal)",
+        "Banana pudding (160 kcal)"
+      ],
+      "latencyMs": 1116
+    },
+    {
+      "query": "avocado",
+      "pass": false,
+      "reasons": [
+        "rank 1 is not the base form",
+        "rank 1 is a prepared/derived food"
+      ],
+      "rank1": {
+        "name": "Avocado dressing",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 427,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [
+        "openfoodfacts/branded:HTTP 503"
+      ],
+      "top5": [
+        "Avocado dressing (427 kcal)",
+        "Avocado, raw (160 kcal)",
+        "Avocados, raw, California (167 kcal)",
+        "Avocados, raw, Florida (120 kcal)",
+        "Avocados, raw, all commercial varieties (160 kcal)"
+      ],
+      "latencyMs": 467
+    },
+    {
+      "query": "chicken breast",
+      "pass": false,
+      "reasons": [
+        "rank 1 is not the base form"
+      ],
+      "rank1": {
+        "name": "Chicken breast tenders, breaded, uncooked",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 263,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [
+        "openfoodfacts/branded:HTTP 503"
+      ],
+      "top5": [
+        "Chicken breast tenders, breaded, uncooked (263 kcal)",
+        "Chicken breast, roll, oven-roasted (134 kcal)",
+        "Chicken breast, rotisserie, skin eaten (175 kcal)",
+        "Chicken breast, sauteed, skin eaten (206 kcal)",
+        "Chicken breast, stewed, skin eaten (181 kcal)"
+      ],
+      "latencyMs": 790
+    },
+    {
+      "query": "oatmeal",
+      "pass": false,
+      "reasons": [
+        "rank 1 is not the base form"
+      ],
+      "rank1": {
+        "name": "Oatmeal, multigrain",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 56,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [
+        "openfoodfacts/branded:HTTP 503",
+        "usda/generic:HTTP 400"
+      ],
+      "top5": [
+        "Oatmeal, multigrain (56 kcal)",
+        "Oatmeal, NFS (76 kcal)",
+        "OATMEAL [Thomas Brothers Ham Company] (378 kcal)",
+        "OATMEAL [Caribbean Foods Limited] (365 kcal)",
+        "OATS [The Moran Group Incorporated] (375 kcal)"
+      ],
+      "latencyMs": 610
+    },
+    {
+      "query": "salmon",
+      "pass": false,
+      "reasons": [
+        "rank 1 is not the base form",
+        "rank 1 is a prepared/derived food"
+      ],
+      "rank1": {
+        "name": "Salmon salad",
+        "brand": null,
+        "datasetTier": "generic",
+        "calories": 213,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [
+        "openfoodfacts/branded:HTTP 503"
+      ],
+      "top5": [
+        "Salmon salad (213 kcal)",
+        "SALMON [High Liner Foods (USA) Incorporated] (139 kcal)",
+        "SALMON [NOT A BRANDED ITEM] (232 kcal)",
+        "SALMON [Changing Seas] (207 kcal)",
+        "SALMON [Rje Trade International, Inc.] (209 kcal)"
+      ],
+      "latencyMs": 421
+    },
+    {
+      "query": "peanut butter",
+      "pass": false,
+      "reasons": [
+        "rank 1 is a branded product"
+      ],
+      "rank1": {
+        "name": "PEANUT BUTTER",
+        "brand": "Reginald's Homemade Llc",
+        "datasetTier": "branded",
+        "calories": 600,
+        "source": "usda"
+      },
+      "degraded": false,
+      "failedSources": [
+        "usda/generic:HTTP 400",
+        "openfoodfacts/branded:HTTP 503"
+      ],
+      "top5": [
+        "PEANUT BUTTER [Reginald's Homemade Llc] (600 kcal)",
+        "PEANUT BUTTER [Kenny's Candy Company Inc.] (500 kcal)",
+        "PEANUT BUTTER [PIC'S REALLY GOOD] (567 kcal)",
+        "PEANUT BUTTER [First International Health Foods Ltd.] (594 kcal)",
+        "PEANUT BUTTER [Schnuck Markets, Inc.] (562 kcal)"
+      ],
+      "latencyMs": 370
+    }
+  ]
+}

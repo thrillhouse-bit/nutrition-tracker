@@ -2173,3 +2173,72 @@ describe('PATCH /api/afp/plan/:date/overrides', () => {
     expect(profile.profile.weight_kg).toBe(70) // untouched
   })
 })
+
+// ---------------------------------------------------------------------------
+// GET /api/search response contract, 26 Aug 2026. The client renders five
+// distinct states off this body, and before the overhaul it carried only
+// {results, degraded} — so a search that lost USDA's entire canonical
+// whole-food pass and answered from branded rows alone was structurally
+// indistinguishable from a healthy one, and the empty state advised adding a
+// USDA key that production already had (docs/food-search-baseline.md RC-7,
+// RC-9). The contract is asserted at the route because that is where the two
+// sides meet.
+// ---------------------------------------------------------------------------
+describe('GET /api/search: the response contract the UI renders from', () => {
+  const outcome = (over = {}) => ({
+    results: [], degraded: false, partial: false, usedCorrection: false,
+    usdaConfigured: true, canonicalCoverage: 'ok', query: 'zucchini',
+    sources: [], parsed: { normalized: 'zucchini', tokens: ['zucchini'], variants: [], corrected: null },
+    totalLatencyMs: 12, ...over,
+  })
+
+  it('carries partial, canonicalCoverage, usdaConfigured, the echoed query, and per-provider status', async () => {
+    foodSearch.searchFoods = async () => outcome({
+      results: [{ name: 'ZUCCHINI', brand: 'KMB, LLC', calories: 21, search_method: 'text_search' }],
+      partial: true, canonicalCoverage: 'missing',
+      sources: [
+        { source: 'usda', dataset: 'foundation', tier: 'generic', ok: false, count: 0, error: 'HTTP 400' },
+        { source: 'openfoodfacts', dataset: 'branded', tier: 'branded', ok: true, count: 15, error: null },
+      ],
+    })
+    const body = await (await get('/api/search?q=zucchini')).json()
+
+    expect(body.partial).toBe(true)
+    expect(body.degraded).toBe(false) // partial is NOT degraded — some sources answered
+    expect(body.canonicalCoverage).toBe('missing')
+    expect(body.usdaConfigured).toBe(true)
+    expect(body.query).toBe('zucchini') // so the client can verify a response still matches the screen
+    expect(body.providers).toEqual([
+      { source: 'usda', dataset: 'foundation', ok: false, count: 0, error: 'HTTP 400' },
+      { source: 'openfoodfacts', dataset: 'branded', ok: true, count: 15, error: null },
+    ])
+    expect(body.results[0].search_method).toBe('text_search')
+  })
+
+  it('CONTROL: a healthy complete search reports partial:false and canonicalCoverage:"ok"', async () => {
+    foodSearch.searchFoods = async () => outcome({
+      results: [{ name: 'Zucchini, raw', calories: 17 }],
+      sources: [{ source: 'usda', dataset: 'foundation', tier: 'generic', ok: true, count: 10, error: null }],
+    })
+    const body = await (await get('/api/search?q=zucchini')).json()
+    expect(body.partial).toBe(false)
+    expect(body.canonicalCoverage).toBe('ok')
+  })
+
+  it('an unconfigured USDA key is reported as such and is never a failure', async () => {
+    foodSearch.searchFoods = async () => outcome({ usdaConfigured: false, canonicalCoverage: 'unconfigured' })
+    const body = await (await get('/api/search?q=zucchini')).json()
+    expect(body.usdaConfigured).toBe(false)
+    expect(body.canonicalCoverage).toBe('unconfigured')
+    expect(body.degraded).toBe(false)
+    expect(body.partial).toBe(false)
+  })
+
+  it('a too-short query short-circuits with the SAME shape, so the client never branches on a missing field', async () => {
+    const body = await (await get('/api/search?q=z')).json()
+    for (const key of ['results', 'degraded', 'partial', 'query', 'usdaConfigured', 'canonicalCoverage', 'providers']) {
+      expect(body, `missing "${key}"`).toHaveProperty(key)
+    }
+    expect(body.results).toEqual([])
+  })
+})

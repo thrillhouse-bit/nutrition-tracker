@@ -280,6 +280,28 @@ export function brandedQuerySignal(candidates, variants) {
 // 3, tier 3) yet lost to a generic row matching fewer (tier 4) once the flat
 // branded penalty was added. A brand-only word in the query is proof that the
 // generic answer is not the thing that was asked for, and it needs no list.
+// Where a brand can legitimately appear on a candidate: its `brand` field, or
+// the LEADING words of its name. Store house brands live in the name — USDA
+// files "365 EVERYDAY VALUE, ORGANIC ROLLED OATS" with brandOwner "Whole Foods
+// Market, Inc.", so "365", the thing a shopper actually types, appears nowhere
+// but the description — and they lead it, the way "Oatly Barista" and
+// "Sara Lee" do.
+//
+// The leading-words limit is not cosmetic. Reading the WHOLE name made every
+// ordinary descriptive word that no canonical food happened to use look like a
+// brand: with a pool of generic oats rows that never say "rolled", a bare
+// "rolled oats" query treated "rolled" as brand-only and promoted the 365
+// packet over generic oats. A control test caught it.
+const BRAND_NAME_LEAD_TOKENS = 2
+
+function brandTokenSet(candidate) {
+  const out = new Set()
+  for (const t of tokenize(normalizeText(candidate.brand || ''))) out.add(stem(t))
+  const nameTokens = tokenize(normalizeText(candidate.name || ''))
+  for (const t of nameTokens.slice(0, BRAND_NAME_LEAD_TOKENS)) out.add(stem(t))
+  return out
+}
+
 export function brandOnlyQueryTokens(candidates, variants) {
   const genericStems = new Set()
   for (const c of candidates) {
@@ -289,9 +311,11 @@ export function brandOnlyQueryTokens(candidates, variants) {
   const queryStems = new Set(variants.flatMap((v) => v.baseTokens).map(stem))
   const out = new Set()
   for (const c of candidates) {
-    if (!c.brand) continue
-    for (const t of tokenize(normalizeText(c.brand))) {
-      const st = stem(t)
+    if (c.datasetTier !== 'branded') continue
+    for (const st of brandTokenSet(c)) {
+      // The exclusion is what keeps this from swallowing ordinary food words:
+      // "banana" appears in branded names too, but it also appears in
+      // "Bananas, raw", so it is a food word and grants nothing.
       if (queryStems.has(st) && !genericStems.has(st)) out.add(st)
     }
   }
@@ -299,8 +323,9 @@ export function brandOnlyQueryTokens(candidates, variants) {
 }
 
 const brandCarriesAny = (candidate, stems) => {
-  if (!candidate.brand || !stems.size) return false
-  return tokenize(normalizeText(candidate.brand)).some((t) => stems.has(stem(t)))
+  if (!stems.size) return false
+  for (const st of brandTokenSet(candidate)) if (stems.has(st)) return true
+  return false
 }
 
 export function scoreCandidate(candidate, queryVariants, { isBrandQuery = false, brandOnlyStems = new Set() } = {}) {
@@ -314,9 +339,9 @@ export function scoreCandidate(candidate, queryVariants, { isBrandQuery = false,
   // missing query words, the user named this brand — rank it as the product it
   // is rather than penalizing it for being one.
   let brandedPenalty = candidate.datasetTier === 'branded' ? BRANDED_PENALTY : 0
-  if (candidate.brand && candidate.datasetTier === 'branded') {
-    const withBrand = bestTierAcrossVariants(`${candidate.brand} ${candidate.name}`, variants)
-    const brandStems = new Set(tokenize(normalizeText(candidate.brand)).map(stem))
+  if (candidate.datasetTier === 'branded') {
+    const withBrand = bestTierAcrossVariants(`${candidate.brand || ''} ${candidate.name}`, variants)
+    const brandStems = new Set(tokenize(normalizeText(candidate.brand || '')).map(stem))
     const nameStems = new Set(nameTokens.map(stem))
     const brandSuppliedAWord = withBrand.variant.tokens.some((t) => brandStems.has(stem(t)) && !nameStems.has(stem(t)))
     if (withBrand.tier < tier && brandSuppliedAWord) {

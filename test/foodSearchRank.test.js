@@ -439,3 +439,35 @@ describe('rankResults: "is the query a brand name?" needs more than one branded 
     expect(top.name).not.toMatch(/powerade/i)
   })
 })
+
+describe('rankResults: a store house brand lives in the NAME, not the brand field', () => {
+  // Measured on the 200-item corpus: 23 branded targets that the pre-fix
+  // pipeline returned (mostly at ranks 8-19) fell past the 20-result cap once
+  // canonical generic foods started ranking properly. They were still in the
+  // candidate pool — "365 organic rolled oats" sat at rank 61 of 79 — so this
+  // is the generic fix crowding them out, not a retrieval loss.
+  //
+  // The brand-only relief could not help them because it keyed on the `brand`
+  // field alone: USDA files "365 EVERYDAY VALUE, ORGANIC INSTANT OATMEAL" with
+  // brandOwner "Whole Foods Market, Inc.", so "365" — the thing a shopper
+  // actually types — appears nowhere but the description.
+  const POOL = [
+    { name: 'Oats, raw', datasetTier: 'generic', calories: 379, protein_g: 13, carbs_g: 68, fat_g: 6.5 },
+    { name: 'Oatmeal, NFS', datasetTier: 'generic', calories: 76, protein_g: 3, carbs_g: 12, fat_g: 1.5 },
+    { name: 'Cereals, QUAKER, Instant Oatmeal Organic, Regular', datasetTier: 'generic', calories: 371, protein_g: 13, carbs_g: 68, fat_g: 7 },
+    { name: '365 EVERYDAY VALUE, ORGANIC ROLLED OATS', brand: 'Whole Foods Market, Inc.', datasetTier: 'branded', calories: 375, protein_g: 13, carbs_g: 67, fat_g: 6 },
+  ]
+
+  it('"365 organic rolled oats" surfaces the 365 product, not generic oats', () => {
+    const top = rankResults(POOL, ['365 organic rolled oats'])[0]
+    expect(`${top.name} ${top.brand || ''}`).toMatch(/365/)
+  })
+
+  it('CONTROL: "rolled oats" with no house-brand word still ranks a canonical generic first', () => {
+    expect(rankResults(POOL, ['rolled oats'])[0].datasetTier).toBe('generic')
+  })
+
+  it('CONTROL: "oatmeal" is unaffected — the canonical base form still leads', () => {
+    expect(rankResults(POOL, ['oatmeal'])[0].name).toBe('Oatmeal, NFS')
+  })
+})
