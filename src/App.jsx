@@ -449,6 +449,7 @@ export default function App() {
             onNextDay={() => shiftDay(1)}
             onToday={() => setDate(new Date())}
             onViewLog={() => setTab('log')}
+            onChanged={bump}
           />
         )}
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}
