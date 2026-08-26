@@ -16,6 +16,7 @@ vi.mock('../src/api/client.js', () => ({
     afpPlan: vi.fn(),
     listAfpWorkouts: vi.fn(() => Promise.resolve({ workouts: [] })),
     getAfpProfile: vi.fn(() => Promise.resolve({ profile: { units_pref: 'imperial', weight_kg: null, height_cm: null, age_years: null } })),
+    getProfile: vi.fn(() => Promise.resolve({ profile: null })),
     setAfpProfile: vi.fn(() => Promise.resolve({ profile: {} })),
     saveAfpWorkout: vi.fn(),
     deleteAfpWorkout: vi.fn(),
