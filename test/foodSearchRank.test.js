@@ -74,6 +74,24 @@ describe('scoreCandidate', () => {
     const long = { ...base, name: 'Zucchini Organic Fresh Value Pack' }
     expect(scoreCandidate(short, ['zucchini'])).toBeLessThan(scoreCandidate(long, ['zucchini']))
   })
+
+  // Real, reproduced bug (26 Aug 2026): a Branded product's OWN description
+  // sometimes exactly equals a bare query word while being a totally
+  // different food (a peanut-butter spread literally named "BANANA", onion
+  // BREAD, orange Jell-O, a taco-seasoning "TOMATO"). A tier-0 exact match
+  // used to always win regardless of dataset, burying the correct generic
+  // answer (typically tier 2, a prefix match) several places down.
+  it('a near-exact generic match outranks an exact-match branded product that is a different food', () => {
+    const wrongExactBranded = { ...base, name: 'Banana', datasetTier: 'branded', calories: 312 } // real: a peanut-butter spread
+    const correctGeneric = { ...base, name: 'Bananas, raw', datasetTier: 'generic', calories: 89 }
+    expect(scoreCandidate(correctGeneric, ['banana'])).toBeLessThan(scoreCandidate(wrongExactBranded, ['banana']))
+  })
+
+  it('an exact-match branded product still beats a WEAK (non-prefix) generic match', () => {
+    const exactBranded = { ...base, name: 'Banana', datasetTier: 'branded' }
+    const weakGeneric = { ...base, name: 'Fruit medley with banana pieces', datasetTier: 'generic' } // tier 3 (phrase), not a prefix
+    expect(scoreCandidate(exactBranded, ['banana'])).toBeLessThan(scoreCandidate(weakGeneric, ['banana']))
+  })
 })
 
 describe('rankResults', () => {

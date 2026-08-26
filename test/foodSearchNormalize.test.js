@@ -74,6 +74,22 @@ describe('synonymVariants', () => {
   it('returns an empty array for a term with no known synonym (control)', () => {
     expect(synonymVariants('quinoa')).toEqual([])
   })
+
+  // Real, reproduced bug (26 Aug 2026): a 'chips' <-> 'french fries' pair
+  // fired on ANY query containing the token 'chips', not just a bare
+  // "chips" query -- "siete tortilla chips" spun off "siete tortilla
+  // french fries" as an equally-tried variant, flooding results with
+  // unrelated fast-food fries. Compound "___ chips" snack foods (tortilla,
+  // potato, kale) must never turn into a "french fries" search.
+  it('does not turn a compound "___ chips" snack-food query into a french-fries query', () => {
+    expect(synonymVariants('siete tortilla chips')).not.toContain('siete tortilla french fries')
+    expect(synonymVariants('potato chips')).not.toContain('potato french fries')
+    expect(synonymVariants('kale chips')).not.toContain('kale french fries')
+  })
+  it('a bare "chips" query no longer maps to "french fries" at all (pair removed, not scoped)', () => {
+    expect(synonymVariants('chips')).not.toContain('french fries')
+    expect(synonymVariants('french fries')).not.toContain('chips')
+  })
 })
 
 describe('editDistance', () => {

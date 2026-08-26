@@ -33,10 +33,14 @@ describe('queryUsdaGeneric', () => {
     expect(r.skipped).toBe('not_configured')
     expect(r.count).toBe(0)
   })
-  it('reports a genuine provider error as ok:false, distinct from zero configured/zero results', async () => {
+  it('reports a genuine provider error as ok:false, distinct from zero configured/zero results, and FORWARDS the real error message', async () => {
     usdaSearch.mockResolvedValue({ configured: true, foods: [], error: 'HTTP 500' })
     const r = await queryUsdaGeneric('zucchini')
     expect(r.ok).toBe(false)
+    // Real bug (26 Aug 2026): every failure collapsed to error:null regardless
+    // of what usdaSearch actually reported, making a rate-limit indistinguishable
+    // from a timeout from a genuine outage in the diagnostics.
+    expect(r.error).toBe('HTTP 500')
   })
   it('reports ok:false (not an unhandled rejection) when the underlying call throws', async () => {
     usdaSearch.mockRejectedValue(new Error('network exploded'))
@@ -68,6 +72,16 @@ describe('queryOFF', () => {
     const r = await queryOFF('zucchini')
     expect(r.ok).toBe(false)
     expect(r.count).toBe(0)
+  })
+  it('forwards the real error message when OFF reports one, distinct from a plain HTTP status', async () => {
+    offTextSearch.mockResolvedValue({ ok: false, status: 0, data: null, error: 'AbortError: timeout' })
+    const r = await queryOFF('zucchini')
+    expect(r.error).toBe('AbortError: timeout')
+  })
+  it('synthesizes an HTTP-status error when OFF fails with no error message (e.g. a plain 503)', async () => {
+    offTextSearch.mockResolvedValue({ ok: false, status: 503, data: null })
+    const r = await queryOFF('zucchini')
+    expect(r.error).toBe('HTTP 503')
   })
   it('handles a malformed (non-array products) response without throwing (control)', async () => {
     offTextSearch.mockResolvedValue({ ok: true, data: {} })
