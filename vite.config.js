@@ -9,21 +9,17 @@ import { VitePWA } from 'vite-plugin-pwa'
 // server, per the project brief.
 const API_TARGET = process.env.API_TARGET || 'http://localhost:3001'
 
+// NOTE for anyone running scripts/food-search-eval/ and a browser probe at the
+// same time: the eval appends to results.jsonl continuously, the dev server
+// treats each append as a change and issues a full page reload, and Playwright's
+// `networkidle` then never settles — the app never finishes mounting and every
+// probe times out on a blank page. A `server.watch.ignored` entry was tried
+// here in two forms (a glob, then a predicate) and NEITHER suppressed the
+// reloads when checked against the dev-server log during a live run, so both
+// were removed rather than left in place looking like they worked. The verified
+// workaround is procedural: do not run a browser probe while an eval run is
+// writing. Worth a proper fix if this becomes routine.
 export default defineConfig({
-  server: {
-    // Evaluation runs (scripts/food-search-eval/) append to results.jsonl
-    // continuously and the browser-driven probes navigate the dev server at
-    // the same time — without this, every append triggered an HMR page reload
-    // and Playwright's `networkidle` never settled, so the measurement
-    // harness broke the thing it was measuring. Nothing under scripts/ or
-    // docs/ is part of the client bundle.
-    // A PREDICATE, not globs: Vite 6 ships chokidar v4, which dropped glob
-    // support in `ignored` — the glob form is accepted silently and matches
-    // nothing, which is how this was first written and why the reload storm
-    // came back. Verified by watching the dev server log while an eval run
-    // appends, not by reading the config back.
-    watch: { ignored: (filePath) => /[\\/](scripts|docs|\.scratch)[\\/]/.test(filePath) },
-  },
   plugins: [
     react(),
     tailwindcss(),
