@@ -60,6 +60,7 @@ doesn't repeat that ground.
 | Info | Live deploy | Live site hasn't redeployed since before this session's first pass — now well behind `main` | Resolved (2026-08-26 — `GET /api/version` confirms the live site matches `origin/main` HEAD exactly) |
 | Low | Server logging | Several `console.error(err)` calls log the *raw* error object server-side (client-facing 500s are already sanitized, PR #45) — a DB constraint-violation error can embed a user-submitted value (e.g. an email) in its message. Flagged by the other session's production-verification audit as a real but low-severity, unconfirmed-in-practice pattern, not a client-facing leak | Reported (2026-08-26, from `docs/PRODUCTION-VERIFICATION-AUDIT.md`) |
 | Info | Deploy config | `SESSION_SECRET`'s production state is unconfirmed (unset in every dev environment checked so far) — if unset in production, any restart for any reason mass-logs-out every signed-in user, independent of any other change | Needs an owner verification, not a code fix (flagged by the same audit) |
+| Info | Live deploy | Live site stuck at commit `45bbf76` (PR #95, the food-search overhaul) for 3 consecutive check-ins — ~19.5 hours behind `main` as of 2026-08-27 12:42 UTC, having missed PR #96's already-reviewed, low-risk `MAX_RESULTS` tuning change | Needs an owner deploy action, not a code fix |
 
 ## 2026-08-25 — First pass
 
@@ -1092,3 +1093,19 @@ than silently repeating "ordinary lag": not urgent (PR #96 is a low-risk
 tuning change already reviewed, not a fix users are blocked on), but if
 it's still stuck at the next check-in, that's worth surfacing as its own
 Info item rather than a passing mention. No fixes needed this pass.
+
+## 2026-08-27 — Check-in pass (recurring, 12:42 UTC)
+
+Third consecutive check-in with nothing new in the repo — `origin/main`
+still unchanged. Live site is now the actual finding this pass: still
+stuck at `45bbf76` across all three checks, `Last-Modified: Wed, 26 Aug
+2026 17:22:58 GMT` — roughly 19.5 hours behind `main` as of this check.
+Per this report's own stated threshold last pass ("worth surfacing as its
+own Info item" if still stuck), added as a new tracked Info item above
+rather than a passing mention again. Consistent with this report's
+standing exception for live-deploy items: this needs an owner deploy
+action, not a code fix, so nothing was attempted beyond tracking it.
+Still low-severity — the missed commit (PR #96) is a minor, already-
+reviewed tuning change, not a fix any user is blocked on — but the
+duration is now notable enough to name explicitly rather than absorb into
+"ordinary lag." No fixes needed this pass.
