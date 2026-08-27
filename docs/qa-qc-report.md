@@ -1047,3 +1047,27 @@ note this further overhaul.
 Live site: `GET /api/version` confirms it's redeployed and running this
 exact commit (`45bbf76`, current `main` HEAD). No fixes made directly by
 this pass. All remaining "Reported"/"Deferred" items unchanged.
+
+## 2026-08-27 — Check-in pass (recurring, 00:36 UTC)
+
+Quiet pass: one small commit since the last check-in (PR #96, "Raise
+search MAX_RESULTS from 20 to 40") — an owner-requested, low-risk tuning
+change addressing part of the known crowding-out limitation the search
+overhaul's own Phase 5 report (previous check-in) had already named as an
+unresolved trade-off. Free change per its own reasoning: each provider's
+page size still bounds what's fetched; this only changes how much of the
+already-ranked pool is returned, and the results panel already scrolls.
+Explicitly does not claim to fully fix the underlying issue (some targets
+sit far deeper than any reasonable cap and need a real brand-signal fix,
+not a bigger number) — consistent with this branch's practice of not
+rounding away what a change doesn't solve.
+
+`npm test`: 874/874 (no new tests — a one-constant change). `npm run
+build`: clean. Not re-verified live beyond the test suite, given the
+change is a single bounded constant already covered by the overhaul's own
+existing test coverage. Live site is one commit behind current `main`
+(`45bbf76`, the search overhaul's merge point) — ordinary short lag, not
+escalated.
+
+Nothing else new or changed. All remaining "Reported"/"Deferred" items
+unchanged. No fixes needed this pass.
