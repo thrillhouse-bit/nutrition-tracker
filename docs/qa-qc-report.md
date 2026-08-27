@@ -1080,3 +1080,15 @@ in this window. Live site is 3 commits behind (still at `45bbf76`, the
 search-overhaul merge point; the only real app-code commit since is the
 already-reviewed PR #96 result-cap tuning) — ordinary short lag, not
 escalated. No fixes needed.
+
+## 2026-08-27 — Check-in pass (recurring, 08:36 UTC)
+
+Nothing new in the repo again — `origin/main` unchanged since the last
+check-in. Live site is still at `45bbf76`, unmoved across two consecutive
+checks now (at least ~8 hours since the already-reviewed PR #96 merged
+without a deploy following it) — this is the point this report's own last
+pass said would be worth a closer look, so noting it explicitly rather
+than silently repeating "ordinary lag": not urgent (PR #96 is a low-risk
+tuning change already reviewed, not a fix users are blocked on), but if
+it's still stuck at the next check-in, that's worth surfacing as its own
+Info item rather than a passing mention. No fixes needed this pass.
