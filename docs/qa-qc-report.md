@@ -1071,3 +1071,12 @@ escalated.
 
 Nothing else new or changed. All remaining "Reported"/"Deferred" items
 unchanged. No fixes needed this pass.
+
+## 2026-08-27 — Check-in pass (recurring, 04:36 UTC)
+
+Nothing new since the last check-in — `origin/main` is exactly this
+report's own last merge (`05274cd`). No commits from the other session
+in this window. Live site is 3 commits behind (still at `45bbf76`, the
+search-overhaul merge point; the only real app-code commit since is the
+already-reviewed PR #96 result-cap tuning) — ordinary short lag, not
+escalated. No fixes needed.
