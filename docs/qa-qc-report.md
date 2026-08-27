@@ -1117,3 +1117,11 @@ still exactly this report's own last merge. The live-deploy lag flagged
 last pass has resolved on its own: `GET /api/version` now reports
 `431e2b0`, matching current `main` HEAD exactly. Marked that Info item
 Resolved above. No fixes needed this pass.
+
+## 2026-08-27 — Check-in pass (recurring, 20:36 UTC)
+
+Fifth consecutive check-in with nothing new in the repo — `origin/main`
+still exactly this report's own last merge. Live site one commit behind
+(`431e2b0` vs. current HEAD), but that gap is only this report's own prior
+docs commit — zero app-code difference, so not tracked. No fixes needed
+this pass.
