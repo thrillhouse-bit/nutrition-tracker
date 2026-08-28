@@ -1142,3 +1142,20 @@ the last pass. No fixes needed.
 
 Eighth consecutive quiet check-in — repo and live site unchanged. No
 fixes needed.
+
+## 2026-08-28 — Check-in pass (recurring, 12:38 UTC)
+
+Ninth consecutive quiet check-in in the repo — `origin/main` unchanged.
+One real, live-only change this pass, not visible from `git log` since
+it's a production environment variable, not a commit: `GET /api/health`
+now reports `usda: "configured"` — every health check this report has
+made across every prior pass (dozens, going back to this session's first
+pass) reported `"not-configured"`. The food-search overhaul (PR #95) and
+its follow-ups repeatedly named a missing USDA key as a real quality
+ceiling — the search ranking work was real and independently verified,
+but production itself was still running OFF-only for whole-food/generic
+results until now. Not independently re-tested live (would mean creating
+real data on the production site rather than this sandbox, which has no
+USDA egress either way to compare against) — noted as a positive
+operational change, worth a live spot-check on a future pass if a fresh
+account is convenient. No fixes needed this pass.
