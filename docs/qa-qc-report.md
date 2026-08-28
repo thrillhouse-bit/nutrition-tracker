@@ -1137,3 +1137,8 @@ needed this pass.
 
 Seventh consecutive quiet check-in — repo and live site unchanged from
 the last pass. No fixes needed.
+
+## 2026-08-28 — Check-in pass (recurring, 08:36 UTC)
+
+Eighth consecutive quiet check-in — repo and live site unchanged. No
+fixes needed.
