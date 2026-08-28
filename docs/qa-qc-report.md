@@ -1159,3 +1159,9 @@ real data on the production site rather than this sandbox, which has no
 USDA egress either way to compare against) — noted as a positive
 operational change, worth a live spot-check on a future pass if a fresh
 account is convenient. No fixes needed this pass.
+
+## 2026-08-28 — Check-in pass (recurring, 16:36 UTC)
+
+Tenth consecutive quiet check-in — repo unchanged. Live site state
+unchanged from last pass (`usda: "configured"` holding steady). No fixes
+needed.
