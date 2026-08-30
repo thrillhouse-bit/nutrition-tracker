@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createSpawner, stepSpawner, spawnInterval, FIELD_RADIUS, mulberry32 } from '../src/spawner.js'
-import { stepFrame, threatAt } from '../src/loop.js'
+import { stepFrame, threatAt, nearestThreatToTower } from '../src/loop.js'
 import { createInitialState, pause } from '../src/game/index.js'
 import { threatsForWave } from '../src/game/waves.js'
 
@@ -75,6 +75,31 @@ describe('loop', () => {
     for (let i = 0; i < 20000 && g.status === 'running'; i++) g = stepFrame(g, spawner, 1)
     expect(g.status).toBe('failed')
     expect(g.integrity).toBe(0)
+  })
+
+  it('nearestThreatToTower picks the closest to the CONFIGURED tower', () => {
+    const g = {
+      config: { towerX: 100, towerY: 0 },
+      threats: [
+        { id: 'a', x: 0, y: 0 },   // 100 from the tower, 0 from the origin
+        { id: 'b', x: 130, y: 0 }, // 30 from the tower
+      ],
+    }
+    // An origin-relative implementation would answer 'a'.
+    expect(nearestThreatToTower(g).id).toBe('b')
+  })
+
+  it('control: an empty field has no nearest threat', () => {
+    expect(nearestThreatToTower({ config: { towerX: 0, towerY: 0 }, threats: [] })).toBeNull()
+  })
+
+  it('nearestThreatToTower breaks ties deterministically, not by order', () => {
+    const mk = (ids) => ({
+      config: { towerX: 0, towerY: 0 },
+      threats: ids.map((id) => ({ id, x: 50, y: 0 })),
+    })
+    expect(nearestThreatToTower(mk(['z', 'a'])).id).toBe('a')
+    expect(nearestThreatToTower(mk(['a', 'z'])).id).toBe('a')
   })
 
   it('threatAt hit-tests with slop and picks the nearest', () => {

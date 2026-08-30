@@ -17,7 +17,7 @@ import {
   isHighScore,
 } from './game/index.js'
 import { createSpawner, FIELD_RADIUS } from './spawner.js'
-import { stepFrame, threatAt, LOGIC_HZ } from './loop.js'
+import { stepFrame, threatAt, nearestThreatToTower, LOGIC_HZ } from './loop.js'
 
 const ABILITY_ORDER = ['shield', 'pulseClear', 'speedBurst', 'scoreMultiplier', 'repair']
 const ABILITY_LABEL = {
@@ -47,6 +47,25 @@ function hudKey(g) {
   return `${g.status}:${g.score}:${g.wave}:${g.integrity}:${cds}`
 }
 
+// Backing store in DEVICE pixels, drawing in logical ones. The canvas shipped
+// with a fixed 560px buffer stretched over `w-full`, so on a 390px phone at
+// DPR 3 it painted 560 pixels into 1170 — every edge soft. Capped at 3: past
+// that the fill cost climbs with the square and nothing visibly improves.
+export function backingSize(cssPx, dpr) {
+  const r = Math.min(Math.max(Number(dpr) || 1, 1), 3)
+  return Math.max(1, Math.round(cssPx * r))
+}
+
+// Exported so both answers are testable: a media query read inline in a ref
+// initialiser is a decision no test can see, and "reduced motion is honoured"
+// is exactly the kind of claim that passes by never being exercised.
+export function prefersReducedMotion(win) {
+  return Boolean(
+    win && typeof win.matchMedia === 'function' &&
+      win.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
+}
+
 function draw(canvas, g, fx) {
   const ctx = canvas.getContext && canvas.getContext('2d')
   if (!ctx) return // jsdom / lost context: the HUD still carries the state
@@ -67,7 +86,10 @@ function draw(canvas, g, fx) {
   }
 
   // Pulse flash: an expanding hairline circle for a few ticks after firing.
-  if (fx.pulseAt != null && g.tick - fx.pulseAt < 15) {
+  // The pulse flash is decoration; the threats' motion IS the game and cannot
+  // be reduced without removing it. So reduced-motion drops this and nothing
+  // else — an honest partial, not a claim the page holds still.
+  if (!fx.reduceMotion && fx.pulseAt != null && g.tick - fx.pulseAt < 15) {
     const p = (g.tick - fx.pulseAt) / 15
     ctx.strokeStyle = `rgba(31,53,196,${1 - p})`
     ctx.lineWidth = 2 / scale
@@ -118,7 +140,10 @@ export default function ControlTowerShift() {
   if (gameRef.current === null) gameRef.current = createInitialState()
   const spawnerRef = useRef(null)
   if (spawnerRef.current === null) spawnerRef.current = createSpawner(Date.now() >>> 0)
-  const fxRef = useRef({ pulseAt: null })
+  const fxRef = useRef({
+    pulseAt: null,
+    reduceMotion: prefersReducedMotion(typeof window === 'undefined' ? null : window),
+  })
   const savedRef = useRef(false)
   const canvasRef = useRef(null)
   const keyRef = useRef('')
@@ -171,6 +196,56 @@ export default function ControlTowerShift() {
     }
     handle = raf(frame)
     return () => caf(handle)
+  }, [sync])
+
+  // Match the backing store to the box the browser actually gives the canvas.
+  // ResizeObserver rather than a resize listener: `w-full` changes with the
+  // COLUMN, which a window resize is only one cause of.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const fit = () => {
+      const css = canvas.getBoundingClientRect().width
+      if (!css) return // display:none or not laid out yet (jsdom): leave the buffer alone
+      const px = backingSize(css, window.devicePixelRatio)
+      if (canvas.width !== px) {
+        canvas.width = px
+        canvas.height = px
+      }
+    }
+    fit()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(fit)
+    ro.observe(canvas)
+    return () => ro.disconnect()
+  }, [])
+
+  // Keyboard play. The field was pointer-only, so the game was unplayable
+  // without a mouse or a touchscreen while every surrounding control was
+  // reachable by tab — the worst version of that gap, since it looks operable.
+  // Enter/Space clears the threat NEAREST THE TOWER (the one that matters, and
+  // the one a player would reach for), P pauses and resumes.
+  useEffect(() => {
+    const onKey = (e) => {
+      const g = gameRef.current
+      if (e.key === 'p' || e.key === 'P') {
+        gameRef.current = g.status === 'paused' ? resume(g) : pause(g)
+        sync()
+        e.preventDefault()
+        return
+      }
+      if (e.key !== 'Enter' && e.key !== ' ') return
+      if (g.status !== 'running') return
+      const target = nearestThreatToTower(g)
+      if (!target) return
+      gameRef.current = clearThreat(g, target.id)
+      sync()
+      e.preventDefault()
+    }
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.addEventListener('keydown', onKey)
+    return () => canvas.removeEventListener('keydown', onKey)
   }, [sync])
 
   const onPointerDown = (e) => {
@@ -233,9 +308,11 @@ export default function ControlTowerShift() {
           ref={canvasRef}
           width={560}
           height={560}
-          className="block w-full touch-none"
+          tabIndex={0}
+          role="application"
+          className="block w-full touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2"
           onPointerDown={running ? onPointerDown : undefined}
-          aria-label="Play field — tap a threat to clear it"
+          aria-label="Play field. Tap a threat to clear it, or press Enter to clear the threat nearest the tower. Press P to pause."
         />
         {!running && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper/90 p-6 text-center">
@@ -259,7 +336,7 @@ export default function ControlTowerShift() {
             )}
             {g.status === 'paused' ? (
               <button
-                className="bg-cobalt px-5 py-3 text-xs font-bold uppercase tracking-[0.13em] text-oncobalt hover:bg-cobalt-ink"
+                className="min-h-11 bg-cobalt px-5 py-3 text-xs font-bold uppercase tracking-[0.13em] text-oncobalt hover:bg-cobalt-ink"
                 onClick={() => {
                   gameRef.current = resume(gameRef.current)
                   sync()
@@ -269,7 +346,7 @@ export default function ControlTowerShift() {
               </button>
             ) : (
               <button
-                className="bg-cobalt px-5 py-3 text-xs font-bold uppercase tracking-[0.13em] text-oncobalt hover:bg-cobalt-ink"
+                className="min-h-11 bg-cobalt px-5 py-3 text-xs font-bold uppercase tracking-[0.13em] text-oncobalt hover:bg-cobalt-ink"
                 onClick={() => {
                   gameRef.current = restart(gameRef.current)
                   spawnerRef.current = createSpawner(Date.now() >>> 0)
@@ -321,6 +398,11 @@ export default function ControlTowerShift() {
         >
           Pause
         </button>
+        {/* Discoverable, or the keyboard path is a secret: a capability nobody
+            can find is not far from one that isn't there. */}
+        <span className="self-center text-[10px] uppercase tracking-[0.08em] text-muted">
+          Enter clears · P pauses
+        </span>
         <a
           href="#"
           className="inline-flex min-h-11 items-center text-xs font-bold uppercase tracking-[0.13em] text-cobalt hover:text-cobalt-ink"
