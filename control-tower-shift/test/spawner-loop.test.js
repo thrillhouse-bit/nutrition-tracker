@@ -66,7 +66,18 @@ describe('spawner', () => {
 describe('loop', () => {
   it('stepFrame is deterministic for a fixed seed', () => {
     const run = () => stepFrame(createInitialState(), createSpawner(11), 900)
-    expect(run()).toEqual(run())
+    const a = run()
+    // PROVE THE RUN IS NON-TRIVIAL FIRST. Two identical no-ops compare equal,
+    // so `run() === run()` alone would still pass if stepFrame returned its
+    // input untouched — a determinism test that cannot tell determinism from
+    // doing nothing. Assert the simulation actually moved before comparing.
+    // (Not "the wave budget went down": by tick 900 the run is on wave 2,
+    // whose budget is LARGER than wave 1's. Measured, after the first draft of
+    // this guard asserted exactly that and failed.)
+    expect(a.tick).toBe(900)
+    expect(a.wave).toBeGreaterThan(1) // a wave was cleared
+    expect(a.integrity).toBeLessThan(a.config.maxIntegrity) // threats landed
+    expect(a).toEqual(run())
   })
 
   it('a full unattended shift fails deterministically (threats reach the tower)', () => {

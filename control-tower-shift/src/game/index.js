@@ -3,7 +3,6 @@ export {
   createInitialState,
   spawnThreat,
   advanceTick,
-  checkEndState,
   pause,
   resume,
   restart,
