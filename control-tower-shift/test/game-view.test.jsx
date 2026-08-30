@@ -129,6 +129,29 @@ describe('ControlTowerShift HUD', () => {
     await act(async () => repairBtn.click())
     expect(container.querySelector('[data-testid="integrity"]').textContent).toContain('100 / 100')
   })
+
+})
+
+describe('How to play panel', () => {
+  it('is closed by default and opens/closes on the "?" toggle', async () => {
+    await mount(<ControlTowerShift />)
+    const toggle = container.querySelector('button[aria-expanded]')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('#ctshift-help')).toBeNull()
+
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const panel = container.querySelector('#ctshift-help')
+    expect(panel).toBeTruthy()
+    // Every ability gets a plain-language line — not just its glyph/label.
+    for (const label of ['Shield', 'Pulse', 'Burst', 'Score', 'Repair']) {
+      expect(panel.textContent).toContain(label)
+    }
+
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('#ctshift-help')).toBeNull()
+  })
 })
 
 // Accessibility pass, 30 Aug 2026. These four gaps were raised by the

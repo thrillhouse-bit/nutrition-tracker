@@ -28,11 +28,23 @@ shift fails.
   app untouched. No tab added (the five-tab nav is the owner's design).
   Lazy-loaded: the game is its own ~12 kB Vite chunk; the main bundle is
   unchanged. Game-only Tailwind classes verified present in the built CSS.
-
 - [x] **M4 — adversarial review and its findings**: six review lenses, each
   finding then put to three independent skeptics. Five confirmed defects
   fixed (#124), then the accessibility gaps the review raised but could not
   adjudicate (#126), then dead code and a vacuous test (#127).
+- [x] **M5 — how-to-play panel**: opened as a keyboard-accessibility PR
+  before M4 had landed; by the time it could merge, #126 (part of M4) had
+  independently closed the exact same keyboard gap, more completely
+  (Enter/Space clears, P pauses, DPR-aware canvas backing store,
+  `prefers-reduced-motion` handling, 44px touch targets). Rather than ship
+  a second implementation of the same thing, this PR's own keyboard code
+  was dropped entirely on merge in favor of #126's. What survived and is
+  new here: a dismissible "?" panel in the header explaining the tap/
+  keyboard clear mechanic and each ability in plain language — the one
+  gap M4 didn't cover. The merge itself caught a real regression before
+  it reached `main`: the "?" toggle was a fixed 24px box, under the 44px
+  floor M4's own suite checks on every button — fixed to `min-h-11
+  min-w-11`, matching every other control on the page.
 
 ## Visible progress protocol
 
@@ -58,6 +70,11 @@ shift fails.
   drift so every spawn intersects the tower footprint, plus an
   `escapeRadius` cull in the core so any off-field threat still resolves
   its wave. Play at `/#control-tower`.
+- 2026-08-30 — M2+M3 merged to `main` (PR #121) and independently
+  re-verified live in a separate QA check-in pass (`docs/qa-qc-report.md`):
+  Playwright-tested at `#control-tower`, confirmed the game doesn't leak
+  into or break the main app's sign-in route, and confirmed the game still
+  ships as its own lazy chunk.
 - 2026-08-30 — M4, three passes. **(1) Adversarial review** (#124): five
   confirmed defects, each mutation-checked. The shield read the POST-step
   tick while the speed scale one line above read the pre-step one, so a hit
@@ -93,3 +110,19 @@ shift fails.
   the OmniFuel sign-in with no game canvas, and returning from the hash
   restores it. Zero page errors. **Screenshot anything visual before calling
   it done** — the suite cannot see the page.
+- 2026-08-30 — M5 (this entry) opened as a keyboard-accessibility PR before
+  the above M4 had landed, so it duplicated #126's fix independently.
+  Resolved on merge by dropping this PR's own keyboard code entirely
+  (`nearestThreat()`, its `onKeyDown` handler, its own `tabIndex`/
+  `aria-label`) in favor of #126's `nearestThreatToTower()` and P-pause
+  support — keeping both would have meant two keydown handlers on the same
+  canvas, silently double-clearing on every Enter press. Same for the
+  now-redundant unit and render-layer tests. What survived: the "?"
+  how-to-play panel, and a real regression the merge caught rather than
+  shipped — the panel's toggle button was a fixed 24px box, under the
+  44px floor M4's own suite checks on every button, fixed to `min-h-11
+  min-w-11`. 80 game tests (all of M4's plus this PR's), full repo suite
+  green, production build verified. **Read the target branch's actual
+  current state before merging, not just the state you branched from** —
+  main moved four PRs, including one doing the identical work, in the
+  time this one sat open as a draft.
