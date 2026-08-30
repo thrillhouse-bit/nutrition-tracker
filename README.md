@@ -352,6 +352,46 @@ Full DDL in [`schema.sql`](./schema.sql).
 | PUT | `/connections/:provider` | set a provider's `enabled` / `demo` flags |
 | GET | `/today/summary?date=` | nutrition totals vs. targets for a day (used by the Connect IQ watch app) |
 
+## Agent surface (A2A)
+
+A narrow, **read-only** surface so another agent can ask OmniFuel how fueling
+is going — shaped after the [A2A protocol](https://a2a-protocol.org) (agent
+card + JSON-RPC), with the same **non-medical** framing as everything else
+here: it reports what was logged and what the plan said, never advice or
+diagnosis. Nothing on this surface writes.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/.well-known/agent-card.json` | A2A agent card: name, version, two skills (`operational-status`, `fueling-status`), and the bearer security scheme. Contains no secrets. |
+| GET | `/api/agent/status` | The status read — two tiers, one route (below) |
+| POST | `/a2a` | Minimal JSON-RPC 2.0 endpoint: `message/send` returns a completed Task whose artifact is the same status JSON the caller's tier earns. Stateless — `tasks/get` answers `-32001` (tasks are not persisted). |
+
+**Two tiers, one route.** Anonymous callers get **operational facts only** —
+the same config-level fields as `GET /api/health` (backend, which
+integrations are configured) plus `fueling: { available: false }`. Presenting
+`Authorization: Bearer <OMNIFUEL_A2A_TOKEN>` unlocks the **fueling tier**:
+today's kcal logged, entry count, minutes since the last log, baseline vs.
+plan-adjusted targets with the day's adjustment factors, per-provider status +
+freshness, and a top-level `demo` flag whenever any contributing adjustment
+came from demo data (a canned demo adjustment must never read as real). A
+**wrong** token gets exactly the anonymous body — same shape, same reason,
+same timing-safe compare as the Apple ingest token — never a distinct error
+to probe against.
+
+Honest refusals, in the same spirit as the rest of the app:
+
+- `OMNIFUEL_A2A_TOKEN` unset → `fueling: { available: false, reason: "not configured" }`, even with a token presented.
+- Not exactly one account → `reason: "no sole account"` — the same rule as the
+  legacy Apple ingest token: a single shared secret can only be attributed
+  while there is exactly one person it could mean.
+- Targets never set → `targets: { set: false }` — the fabricated 2000 kcal
+  default is never reported as the user's target.
+
+| Env var | Meaning |
+|---|---|
+| `OMNIFUEL_A2A_TOKEN` | Bearer token for the fueling tier. Unset = the tier is off, permanently and visibly. |
+| `OMNIFUEL_PUBLIC_URL` | Public origin written into the agent card's `url` (default `https://omnifuelapp.tech`). |
+
 ## MVP feature scope
 
 - [x] Barcode scan → lookup → log

@@ -56,6 +56,7 @@ import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRef
 import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
 import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
+import { registerAgentRoutes } from './agent.js'
 
 const app = express()
 // Label photos are base64 — allow a generous body size.
@@ -203,6 +204,18 @@ app.get('/api/auth/me', asyncH(async (req, res) => {
   const user = await store.getUserById(req.userId)
   res.json({ user: user ? { id: user.id, email: user.email } : null })
 }))
+
+// --- agent-to-agent (A2A) read surface — public, read-only ------------------
+// Registered here, BEFORE the requireAuth mount below (the agent card and the
+// status route's anonymous tier must answer with no session) and therefore
+// also before the SPA fallback at the bottom of this file (which would
+// otherwise serve index.html for GET /.well-known/agent-card.json whenever a
+// build exists). The injected helpers are this file's own implementations —
+// day math, the intake reducer, the timing-safe token compare — passed in
+// rather than duplicated so the agent surface can never drift from what the
+// app itself computes (function declarations hoist, so the later definitions
+// below are live here). See server/agent.js for the surface itself.
+registerAgentRoutes(app, { asyncH, localYmd, dayRange, sumIntake, timingSafeStringEqual })
 
 // Everything below this line requires a signed-in user, EXCEPT the handful of
 // routes registered again individually further down with their own auth
