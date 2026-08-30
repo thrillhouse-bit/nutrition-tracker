@@ -1225,3 +1225,62 @@ unchanged. No fixes needed.
 
 Twenty-second consecutive quiet check-in — repo and live site both
 unchanged. No fixes needed.
+
+## 2026-08-30 — Check-in pass (recurring, 20:36 UTC)
+
+First non-quiet pass in a while: two new PRs from the other session
+merged to `main` since the last check-in, both live-verified in this
+sandbox rather than taken on faith from their commit messages.
+
+**PR #121 — Control Tower Shift** (new `control-tower-shift/` game
+module, lazy-loaded via a `GameGate` behind the `#control-tower` URL
+hash, no changes to the main app's navigation). Verified with Playwright:
+the game renders cleanly at `#control-tower` (radar playfield, wave/
+score/integrity header, ability buttons, zero `pageerror`/5xx events),
+and — the more important check — the main app at the root path still
+renders its normal sign-in screen unaffected, confirming the new route
+gating doesn't leak into or break the existing SPA fallback. `npm run
+build` also confirms the game ships as its own separate lazy chunk
+(`ControlTowerShift-*.js`, ~12KB gzip ~4.5KB), not bundled into the main
+app's initial load. The module's own architecture (pure deterministic
+core with injected RNG/time, seed-based replay) is a clean pattern but
+not independently re-reviewed line-by-line here — this pass's scope was
+integration safety (does it break the real app), not a full code review
+of a self-contained game.
+
+**PR #122 — Agent-to-agent (A2A) read surface** (`server/agent.js`,
+registered before both the `requireAuth` mount and the SPA fallback):
+`GET /.well-known/agent-card.json`, two-tier `GET /api/agent/status`
+(anonymous vs. bearer-gated via `OMNIFUEL_A2A_TOKEN`), and `POST /a2a`
+(JSON-RPC 2.0 `message/send`). Live-curled all three in this sandbox:
+the card matches the JSON-RPC 2.0/A2A v0.3.0 shape it documents, the
+anonymous status tier returns honest unconfigured state
+(`fueling.available: false, reason: "not configured"` — no
+`OMNIFUEL_A2A_TOKEN` set here) rather than fabricated data, and the
+`/a2a` round-trip returns a well-formed `Task`/`artifacts` envelope. The
+bearer check reuses the existing timing-safe comparison helper rather
+than introducing a new one.
+
+`npm test` initially showed 1 failure (`test/agent-surface.test.js`'s
+negative-control test expecting `/.well-known/agent.json` — the old,
+deliberately-unserved path — to 404; it returned 200 instead). Traced
+this to a stale `dist/` directory left over in this local checkout from
+an earlier pass's `npm run build` days ago: `server/index.js` only
+registers its SPA-fallback wildcard route `if
+(fs.existsSync(distDir))`, and that fallback was serving `index.html`
+for the unmatched path instead of letting it 404. This is **not a defect
+in PR #121 or #122** — it's an artifact of this session's own leftover
+local build output, confirmed by `rm -rf dist/` immediately fixing it
+(19/19 in that file, 947/947 across the full suite of 48 files
+afterward). Worth noting positively: this is exactly the failure mode
+the test's own comment says the negative control exists to catch (a SPA
+fallback silently masking a should-be-404), and it did — the test design
+holds up under a real (if self-inflicted) instance of the thing it
+guards against.
+
+No Open Items table changes — neither PR maps to a previously tracked
+finding; both are new, additive features. Live site is two commits
+behind `main` (`GET /api/version` still reports `431e2b0`, the pre-#121
+commit) — ordinary short lag for two feature merges, not escalated. No
+fixes needed or attempted this pass; nothing here met the bar for a
+direct change.
