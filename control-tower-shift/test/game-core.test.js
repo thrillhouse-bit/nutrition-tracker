@@ -135,6 +135,23 @@ describe('wave progression', () => {
     expect(s.threats).toHaveLength(1)
   })
 
+  // The cull measured from the ORIGIN while collision.js and pulseClear measure
+  // from config.towerX/towerY, so with a displaced tower a threat closing on it
+  // was deleted as "escaped": no damage, no score, wave budget spent.
+  it('the escape cull measures from the configured tower, not the origin', () => {
+    let s = smallState({ towerX: 380, baseThreatsPerWave: 4 })
+    s = spawnThreat(s, { id: 'inbound', x: 420, y: 0, vx: -2, vy: 0 })
+    s = advanceTick(s)
+    expect(s.threats.map((t) => t.id)).toEqual(['inbound']) // 40 units out, not escaped
+  })
+
+  it('control: a threat far from the DISPLACED tower is still culled', () => {
+    let s = smallState({ towerX: 380, baseThreatsPerWave: 4 })
+    s = spawnThreat(s, { id: 'gone', x: -100, y: 0, vx: -2, vy: 0 })
+    s = advanceTick(s)
+    expect(s.threats).toHaveLength(0)
+  })
+
   it('threats move faster in later waves (acceleration is real)', () => {
     const mk = (wave) => {
       let s = smallState()
@@ -181,6 +198,20 @@ describe('abilities', () => {
     s = advanceTick(s)
     expect(s.integrity).toBe(s.config.maxIntegrity)
     expect(s.threats).toHaveLength(0) // the threat is still consumed
+  })
+
+  // The boundary the shield got wrong: it read the POST-step tick, so a hit on
+  // the step out of the last active tick dealt full damage while the HUD (which
+  // reads the rest tick) still said "Shield up". This is the firing sibling of
+  // the expired-shield control below — together they pin both sides of the edge.
+  it('a shield still absorbs on the step out of its LAST active tick', () => {
+    let s = smallState()
+    s = activateAbility(s, 'shield')
+    s = { ...s, tick: s.abilities.shield.activeUntil - 1 }
+    expect(abilityActive(s, 'shield')).toBe(true) // what the HUD renders
+    s = spawnThreat(s, { id: 't1', x: s.config.towerRadius + 11, y: 0, vx: -2, vy: 0 })
+    s = advanceTick(s)
+    expect(s.integrity).toBe(s.config.maxIntegrity)
   })
 
   it('control: an expired shield does NOT absorb damage', () => {
@@ -305,16 +336,74 @@ describe('determinism and purity', () => {
   })
 
   it('functions never mutate their input state', () => {
-    let s = smallState()
+    let s = smallState({ baseThreatsPerWave: 3 })
     s = spawnThreat(s, { id: 't1', x: 200, y: 0, vx: -3, vy: 0 })
+    s = spawnThreat(s, { id: 'near', x: 40, y: 0, vx: 0, vy: 0 })
     deepFreeze(s)
     // Throws in strict mode (ES modules) if anything mutates the frozen input.
+    // Covers the write-heaviest paths too: spawnThreat appends, restart rebuilds
+    // config, and pulseClear rewrites threats + score + the wave budget at once.
     expect(() => {
       advanceTick(s)
       clearThreat(s, 't1')
       activateAbility(s, 'shield')
+      activateAbility(s, 'pulseClear')
+      spawnThreat(s, { id: 't2', x: 10, y: 10, vx: 0, vy: 0 })
       pause(s)
+      resume(pause(s))
+      restart(s)
     }).not.toThrow()
+  })
+
+  // The CONTROL for the gate above. Without it the purity test asserts only the
+  // absence of an exception: if deepFreeze regressed to a no-op, mutations would
+  // succeed silently and the test would still pass. This proves the harness can
+  // actually see a mutation — at the top level AND inside a nested object, since
+  // Object.freeze is shallow and a half-reaching freeze fails the same way.
+  it('control: the freeze harness itself detects a mutation', () => {
+    let s = smallState()
+    s = spawnThreat(s, { id: 't1', x: 200, y: 0, vx: -3, vy: 0 })
+    deepFreeze(s)
+    expect(() => {
+      s.tick = 999
+    }).toThrow(TypeError)
+    expect(() => {
+      s.threats[0].x = 0
+    }).toThrow(TypeError)
+    expect(() => {
+      s.config.towerRadius = 999
+    }).toThrow(TypeError)
+  })
+})
+
+describe('config overrides', () => {
+  // A partial ability override used to REPLACE the whole spec, so `cooldown`
+  // vanished, activateAbility wrote cooldownUntil: NaN, and every later
+  // `tick >= NaN` read false — the ability fired once and was dead for the rest
+  // of the shift with nothing thrown anywhere.
+  it('a partial ability override keeps the unspecified default fields', () => {
+    const s = createInitialState({ abilities: { shield: { duration: 60 } } })
+    expect(s.config.abilities.shield).toEqual({ duration: 60, cooldown: 600 })
+  })
+
+  it('a partial override still leaves the ability re-activatable after cooldown', () => {
+    let s = createInitialState({ abilities: { shield: { duration: 60 } } })
+    s = activateAbility(s, 'shield')
+    expect(Number.isFinite(s.abilities.shield.cooldownUntil)).toBe(true)
+    s = { ...s, tick: s.abilities.shield.cooldownUntil }
+    expect(abilityReady(s, 'shield')).toBe(true)
+  })
+
+  it('control: an unspecified ability keeps its defaults untouched', () => {
+    const s = createInitialState({ abilities: { shield: { duration: 60 } } })
+    expect(s.config.abilities.pulseClear).toEqual(
+      createInitialState().config.abilities.pulseClear,
+    )
+  })
+
+  it('restart round-trips a config without degrading its ability specs', () => {
+    const s = createInitialState({ abilities: { shield: { duration: 60 } } })
+    expect(restart(s).config.abilities).toEqual(s.config.abilities)
   })
 })
 
