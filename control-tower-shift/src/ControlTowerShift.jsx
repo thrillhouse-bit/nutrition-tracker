@@ -14,6 +14,7 @@ import {
   restart,
   saveHighScore,
   loadHighScores,
+  isHighScore,
 } from './game/index.js'
 import { createSpawner, FIELD_RADIUS } from './spawner.js'
 import { stepFrame, threatAt, LOGIC_HZ } from './loop.js'
@@ -153,7 +154,13 @@ export default function ControlTowerShift() {
       if ((g.status === 'won' || g.status === 'failed') && !savedRef.current) {
         savedRef.current = true
         try {
-          saveHighScore(window.localStorage, { score: g.score, wave: g.wave, at: new Date().toISOString() })
+          // isHighScore is the gate the persistence module already carries (and
+          // tests): a 0-score run never qualifies, even on an empty board.
+          // Writing unconditionally let ten unplayed shifts fill the top ten
+          // with zeros and render them as the standing record.
+          if (isHighScore(window.localStorage, g.score)) {
+            saveHighScore(window.localStorage, { score: g.score, wave: g.wave, at: new Date().toISOString() })
+          }
         } catch {
           /* storage unavailable: the run still ends normally */
         }

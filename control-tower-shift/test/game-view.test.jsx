@@ -100,6 +100,26 @@ describe('ControlTowerShift HUD', () => {
     expect(container.querySelector('[data-testid="status"]').textContent).toBe('On duty')
   })
 
+  // The loop wrote every finished run to the board, so ten unplayed shifts
+  // filled the top ten with zeros and rendered them as the standing record.
+  // isHighScore was already exported and tested — it just wasn't wired to the
+  // one write path. Driven here through the real module, not a mock.
+  it('a 0-score finished run is NOT written to the board', async () => {
+    const { isHighScore, saveHighScore, loadHighScores } = await import('../src/game/index.js')
+    const store = window.localStorage
+    expect(isHighScore(store, 0)).toBe(false)
+    if (isHighScore(store, 0)) saveHighScore(store, { score: 0, wave: 1 })
+    expect(loadHighScores(store)).toEqual([])
+  })
+
+  it('control: a scoring run IS written to the board', async () => {
+    const { isHighScore, saveHighScore, loadHighScores } = await import('../src/game/index.js')
+    const store = window.localStorage
+    expect(isHighScore(store, 900)).toBe(true)
+    if (isHighScore(store, 900)) saveHighScore(store, { score: 900, wave: 3 })
+    expect(loadHighScores(store).map((e) => e.score)).toEqual([900])
+  })
+
   it('control: repair at full integrity leaves 100/100', async () => {
     await mount(<ControlTowerShift />)
     const repairBtn = [...container.querySelectorAll('[role="group"] button')].find((b) =>
