@@ -47,6 +47,18 @@ export function advanceTick(state, dt = 1) {
 
   let next = { ...state, tick: state.tick + dt, threats: moved }
 
+  const escaped = next.threats.filter(
+    (t) => Math.hypot(t.x, t.y) > next.config.escapeRadius,
+  )
+  if (escaped.length > 0) {
+    const goneIds = new Set(escaped.map((t) => t.id))
+    next = {
+      ...next,
+      threats: next.threats.filter((t) => !goneIds.has(t.id)),
+      threatsRemainingInWave: Math.max(0, next.threatsRemainingInWave - escaped.length),
+    }
+  }
+
   const hits = threatsHittingTower(next)
   if (hits.length > 0) {
     const hitIds = new Set(hits.map((t) => t.id))

@@ -5,6 +5,11 @@ export const DEFAULT_CONFIG = {
   towerRadius: 24,
   maxIntegrity: 100,
   collisionDamage: 20,
+  // A threat farther than this from the tower has left the field: it is
+  // culled and still counts against the wave budget (no damage, no score).
+  // Without this a grazing miss flies forever and the wave can never end —
+  // caught by the unattended-shift loop test, not by inspection.
+  escapeRadius: 400,
 
   // Waves
   finalWave: 10, // null = endless shift

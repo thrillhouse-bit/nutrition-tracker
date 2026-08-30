@@ -67,9 +67,9 @@ describe('collision thresholds', () => {
     expect(s.threats).toHaveLength(0)
   })
 
-  it('control: a distant threat does NOT damage the tower', () => {
+  it('control: a distant threat (inside the field) does NOT damage the tower', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: 500, y: 500, vx: -1, vy: 0 })
+    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: -1, vy: 0 })
     s = advanceTick(s)
     expect(s.integrity).toBe(s.config.maxIntegrity)
     expect(s.threats).toHaveLength(1)
@@ -115,6 +115,24 @@ describe('wave progression', () => {
     s = clearThreat(s, 't1')
     s = advanceTick(s)
     expect(s.status).toBe('won')
+  })
+
+  it('a threat leaving the field is culled and counts against the wave', () => {
+    let s = smallState({ baseThreatsPerWave: 2 }) // budget 2 so the wave itself doesn't turn over
+    s = spawnThreat(s, { id: 'runaway', x: s.config.escapeRadius - 1, y: 0, vx: 5, vy: 0 })
+    s = advanceTick(s)
+    expect(s.threats).toHaveLength(0)
+    expect(s.threatsRemainingInWave).toBe(1)
+    expect(s.wave).toBe(1)
+    expect(s.integrity).toBe(s.config.maxIntegrity) // no damage for a miss
+    expect(s.score).toBe(0) // and no points either
+  })
+
+  it('control: a threat inside the field is NOT culled', () => {
+    let s = smallState()
+    s = spawnThreat(s, { id: 'inbound', x: s.config.escapeRadius - 10, y: 0, vx: -1, vy: 0 })
+    s = advanceTick(s)
+    expect(s.threats).toHaveLength(1)
   })
 
   it('threats move faster in later waves (acceleration is real)', () => {
