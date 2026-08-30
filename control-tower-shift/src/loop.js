@@ -28,3 +28,20 @@ export function threatAt(state, x, y, slop = 18) {
   }
   return best
 }
+
+// Closest threat to the tower, or null. No slop cutoff, unlike threatAt:
+// this is the keyboard fallback for tap-to-clear, and "nearest to the tower"
+// is well-defined at any range — the player isn't pointing at a location.
+export function nearestThreat(state) {
+  let best = null
+  let bestD = Infinity
+  const { towerX, towerY } = state.config
+  for (const t of state.threats) {
+    const d = Math.hypot(t.x - towerX, t.y - towerY)
+    if (d < bestD) {
+      best = t
+      bestD = d
+    }
+  }
+  return best
+}

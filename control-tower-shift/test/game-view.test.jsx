@@ -4,7 +4,7 @@
 // raw react-dom idiom. The canvas draws nothing under jsdom (getContext is
 // null) — by design the HUD carries every state assertion. House rule: each
 // gate gets a firing AND a non-firing test.
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -107,5 +107,72 @@ describe('ControlTowerShift HUD', () => {
     )
     await act(async () => repairBtn.click())
     expect(container.querySelector('[data-testid="integrity"]').textContent).toContain('100 / 100')
+  })
+
+  it('the play field is keyboard-focusable while running, not while over', async () => {
+    await mount(<ControlTowerShift />)
+    expect(container.querySelector('canvas').tabIndex).toBe(0)
+    const pauseBtn = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Pause')
+    await act(async () => pauseBtn.click())
+    expect(container.querySelector('canvas').tabIndex).toBe(-1)
+  })
+
+  it('control: Enter on the play field before any threat has spawned is a no-op', async () => {
+    await mount(<ControlTowerShift />)
+    const scoreBefore = container.querySelector('[data-testid="score"]').textContent
+    const canvas = container.querySelector('canvas')
+    await act(async () => {
+      canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    })
+    expect(container.querySelector('[data-testid="score"]').textContent).toBe(scoreBefore)
+  })
+
+  it('keyboard: Enter on the play field clears the nearest threat and scores', async () => {
+    // jsdom's native requestAnimationFrame doesn't track fake-timer-advanced
+    // time (its callback `now` barely moves under vi.advanceTimersByTime),
+    // so force the component's setTimeout fallback — which reads
+    // performance.now(), and DOES track fake time once faked explicitly.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    const origRaf = window.requestAnimationFrame
+    window.requestAnimationFrame = undefined
+    try {
+      await mount(<ControlTowerShift />)
+      // First spawn always lands at tick 20 (spawner.js: untilNext starts at
+      // 20, unaffected by the RNG seed) — 1s of frames is well past that.
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+      })
+      const scoreBefore = Number(container.querySelector('[data-testid="score"]').textContent)
+      const canvas = container.querySelector('canvas')
+      await act(async () => {
+        canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      })
+      expect(Number(container.querySelector('[data-testid="score"]').textContent)).toBeGreaterThan(scoreBefore)
+    } finally {
+      window.requestAnimationFrame = origRaf
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('How to play panel', () => {
+  it('is closed by default and opens/closes on the "?" toggle', async () => {
+    await mount(<ControlTowerShift />)
+    const toggle = container.querySelector('button[aria-expanded]')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('#ctshift-help')).toBeNull()
+
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const panel = container.querySelector('#ctshift-help')
+    expect(panel).toBeTruthy()
+    // Every ability gets a plain-language line — not just its glyph/label.
+    for (const label of ['Shield', 'Pulse', 'Burst', '×2 Score', 'Repair']) {
+      expect(panel.textContent).toContain(label)
+    }
+
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('#ctshift-help')).toBeNull()
   })
 })

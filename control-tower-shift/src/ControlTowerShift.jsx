@@ -16,7 +16,7 @@ import {
   loadHighScores,
 } from './game/index.js'
 import { createSpawner, FIELD_RADIUS } from './spawner.js'
-import { stepFrame, threatAt, LOGIC_HZ } from './loop.js'
+import { stepFrame, threatAt, nearestThreat, LOGIC_HZ } from './loop.js'
 
 const ABILITY_ORDER = ['shield', 'pulseClear', 'speedBurst', 'scoreMultiplier', 'repair']
 const ABILITY_LABEL = {
@@ -33,6 +33,16 @@ const ABILITY_MARK = {
   speedBurst: '»',
   scoreMultiplier: '×2',
   repair: '+',
+}
+// Plain-language effect, for the how-to-play panel — the glyphs above are
+// unexplained anywhere else, so a first-time player has no other way to
+// learn what they do short of trial and error mid-shift.
+const ABILITY_HELP = {
+  shield: 'Blocks tower damage for a short time.',
+  pulseClear: 'Instantly clears every threat in range, at half points.',
+  speedBurst: 'Slows every threat for a short time.',
+  scoreMultiplier: 'Doubles points from clears for a short time.',
+  repair: 'Restores tower integrity immediately.',
 }
 
 const VIEW = FIELD_RADIUS + 20 // logical half-extent drawn on the canvas
@@ -122,6 +132,7 @@ export default function ControlTowerShift() {
   const canvasRef = useRef(null)
   const keyRef = useRef('')
   const [hud, setHud] = useState(() => ({ g: gameRef.current }))
+  const [showHelp, setShowHelp] = useState(false)
 
   const sync = useCallback(() => {
     const k = hudKey(gameRef.current)
@@ -186,6 +197,20 @@ export default function ControlTowerShift() {
     sync()
   }
 
+  // Keyboard path onto the play field: pointer position has no keyboard
+  // equivalent, so Enter/Space clears the nearest threat to the tower
+  // instead — the same clearThreat() the pointer path calls, just a
+  // different way of choosing which threat.
+  const onCanvasKeyDown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    const hit = nearestThreat(gameRef.current)
+    if (hit) {
+      gameRef.current = clearThreat(gameRef.current, hit.id)
+      sync()
+    }
+  }
+
   const g = hud.g
   const running = g.status === 'running'
   const over = g.status === 'won' || g.status === 'failed'
@@ -205,11 +230,45 @@ export default function ControlTowerShift() {
           <div className="text-[11px] font-bold uppercase tracking-[0.13em] text-muted">Control Tower</div>
           <h1 className="serif text-2xl leading-none">Shift</h1>
         </div>
-        <div className="text-right">
-          <div className="text-[11px] font-bold uppercase tracking-[0.13em] text-muted">Score</div>
-          <div className="serif text-3xl leading-none tabular-nums" data-testid="score">{g.score}</div>
+        <div className="flex items-start gap-3">
+          <div className="text-right">
+            <div className="text-[11px] font-bold uppercase tracking-[0.13em] text-muted">Score</div>
+            <div className="serif text-3xl leading-none tabular-nums" data-testid="score">{g.score}</div>
+          </div>
+          <button
+            type="button"
+            aria-expanded={showHelp}
+            aria-controls="ctshift-help"
+            onClick={() => setShowHelp((v) => !v)}
+            className="flex h-6 w-6 shrink-0 items-center justify-center border-[1.5px] border-ink text-xs font-bold text-ink hover:bg-fill"
+          >
+            <span aria-hidden>?</span>
+            <span className="sr-only">How to play</span>
+          </button>
         </div>
       </header>
+
+      {showHelp && (
+        <div
+          id="ctshift-help"
+          className="border-[1.5px] border-ink bg-card p-4 text-xs leading-relaxed text-ink"
+        >
+          <p className="mb-2">
+            Tap a threat to clear it — or focus the play field and press{' '}
+            <span className="font-bold">Enter</span> or <span className="font-bold">Space</span> to clear
+            the threat nearest the tower. Survive every wave to hold the shift; lose all integrity and the
+            shift fails.
+          </p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {ABILITY_ORDER.map((name) => (
+              <div key={name} className="contents">
+                <dt className="font-bold">{ABILITY_LABEL[name]}</dt>
+                <dd className="text-muted">{ABILITY_HELP[name]}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
 
       <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.08em]">
         <span data-testid="wave">Wave {g.wave}{g.config.finalWave ? ` / ${g.config.finalWave}` : ''}</span>
@@ -228,7 +287,9 @@ export default function ControlTowerShift() {
           height={560}
           className="block w-full touch-none"
           onPointerDown={running ? onPointerDown : undefined}
-          aria-label="Play field — tap a threat to clear it"
+          onKeyDown={running ? onCanvasKeyDown : undefined}
+          tabIndex={running ? 0 : -1}
+          aria-label="Play field — tap a threat to clear it, or press Enter or Space to clear the nearest threat"
         />
         {!running && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper/90 p-6 text-center">

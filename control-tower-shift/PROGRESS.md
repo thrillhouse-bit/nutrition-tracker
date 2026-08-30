@@ -28,6 +28,19 @@ shift fails.
   app untouched. No tab added (the five-tab nav is the owner's design).
   Lazy-loaded: the game is its own ~12 kB Vite chunk; the main bundle is
   unchanged. Game-only Tailwind classes verified present in the built CSS.
+- [x] **M4 — accessibility + onboarding**: the play field was pointer/touch
+  only, with no keyboard path and no in-game explanation of the ability
+  glyphs (▢ ◎ » ×2 +) — a real gap against the design system's own rule
+  ("every control gets a visible focus ring and a real label"). Fixed
+  without touching the deterministic core: `loop.js` gains `nearestThreat()`
+  (closest threat to the tower, no slop cutoff — distinct from `threatAt()`,
+  which is a pointer hit-test); the canvas is now keyboard-focusable while
+  running (picks up the design system's existing global `:focus-visible`
+  ring for free) and Enter/Space clears the nearest threat. A dismissible
+  "?" panel in the header explains the clear mechanic and each ability in
+  plain language. 7 new tests (3 `nearestThreat` unit tests, 4 render-layer:
+  keyboard focusability, a no-threat no-op control, an actual keyboard
+  clear-and-score under fake timers, and the help panel's open/close).
 
 ## Visible progress protocol
 
@@ -48,3 +61,14 @@ shift fails.
   drift so every spawn intersects the tower footprint, plus an
   `escapeRadius` cull in the core so any off-field threat still resolves
   its wave. Play at `/#control-tower`.
+- 2026-08-30 — M2+M3 merged to `main` (PR #121) and independently
+  re-verified live in a separate QA check-in pass (`docs/qa-qc-report.md`):
+  Playwright-tested at `#control-tower`, confirmed the game doesn't leak
+  into or break the main app's sign-in route, and confirmed the game still
+  ships as its own lazy chunk. M4 (this entry) closes a real completeness
+  gap found by reading the merged code rather than assumed: no keyboard
+  path onto the play field, and no in-game explanation of what the five
+  ability glyphs do. 61 game tests, full repo suite green, production
+  build verified. Mutation-tested both new behaviors (keyboard clear,
+  help-panel toggle) — each covering test fails against a reverted/no-op
+  version and passes restored, byte-identical.

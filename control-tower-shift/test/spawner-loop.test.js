@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createSpawner, stepSpawner, spawnInterval, FIELD_RADIUS, mulberry32 } from '../src/spawner.js'
-import { stepFrame, threatAt } from '../src/loop.js'
+import { stepFrame, threatAt, nearestThreat } from '../src/loop.js'
 import { createInitialState, pause } from '../src/game/index.js'
 import { threatsForWave } from '../src/game/waves.js'
 
@@ -87,5 +87,32 @@ describe('loop', () => {
     expect(threatAt(g, 6, 0).id).toBe('near')
     expect(threatAt(g, 40, 0, 18)).toBeNull() // 35 from 'near': outside radius+slop (28)
     expect(threatAt(g, 0, 37, 18)).toBeNull() // 37 from 'far': outside 28 too
+  })
+
+  it('nearestThreat picks the closest to the tower, at any range', () => {
+    const g = {
+      config: { towerX: 0, towerY: 0 },
+      threats: [
+        { id: 'far', x: 300, y: 0, radius: 10 },
+        { id: 'near', x: 40, y: 0, radius: 10 },
+      ],
+    }
+    expect(nearestThreat(g).id).toBe('near')
+  })
+
+  it('control: nearestThreat is null with no threats on the field', () => {
+    const g = { config: { towerX: 0, towerY: 0 }, threats: [] }
+    expect(nearestThreat(g)).toBeNull()
+  })
+
+  it('nearestThreat is relative to a non-origin tower', () => {
+    const g = {
+      config: { towerX: 50, towerY: 50 },
+      threats: [
+        { id: 'a', x: 0, y: 0, radius: 10 },
+        { id: 'b', x: 55, y: 55, radius: 10 },
+      ],
+    }
+    expect(nearestThreat(g).id).toBe('b')
   })
 })
