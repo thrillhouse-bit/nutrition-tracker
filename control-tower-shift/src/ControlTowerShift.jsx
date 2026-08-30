@@ -24,7 +24,10 @@ const ABILITY_LABEL = {
   shield: 'Shield',
   pulseClear: 'Pulse',
   speedBurst: 'Burst',
-  scoreMultiplier: '×2 Score',
+  // "Score", not "×2 Score": the mark below already carries the ×2, and the
+  // button stacks mark over label — it rendered "×2 / ×2 SCORE" on the built
+  // page. Every other button is a glyph over a noun; this one now matches.
+  scoreMultiplier: 'Score',
   repair: 'Repair',
 }
 // Geometric marks per the asset audit — no sprite art exists in this repo.

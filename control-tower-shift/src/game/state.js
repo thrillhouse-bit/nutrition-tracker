@@ -106,19 +106,6 @@ export function advanceTick(state, dt = 1) {
   return advanceWave(next)
 }
 
-export function checkEndState(state) {
-  if (state.integrity <= 0) return 'failed'
-  if (
-    state.config.finalWave !== null &&
-    state.wave >= state.config.finalWave &&
-    state.threatsRemainingInWave === 0 &&
-    state.threats.length === 0
-  ) {
-    return 'won'
-  }
-  return null
-}
-
 export function pause(state) {
   return state.status === 'running' ? { ...state, status: 'paused' } : state
 }

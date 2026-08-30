@@ -196,6 +196,27 @@ describe('accessibility', () => {
     expect(container.querySelector('[data-testid="status"]').textContent).toBe('On duty')
   })
 
+  // Found by SCREENSHOTTING the built page, not by a test: the score-multiplier
+  // button stacked its mark over its label and rendered "×2 / ×2 SCORE". Every
+  // assertion passed the whole time — nothing compared the two strings.
+  it('no ability button repeats its mark inside its own label', async () => {
+    await mount(<ControlTowerShift />)
+    for (const b of container.querySelectorAll('[role="group"] button')) {
+      const [mark, label] = [...b.querySelectorAll('span')].map((s) => s.textContent.trim())
+      expect(label.includes(mark), `"${mark}" is repeated in its label "${label}"`).toBe(false)
+    }
+  })
+
+  it('control: the marks are still rendered (deleting them would pass the test above)', async () => {
+    await mount(<ControlTowerShift />)
+    const marks = [...container.querySelectorAll('[role="group"] button')].map(
+      (b) => b.querySelector('span').textContent.trim(),
+    )
+    expect(marks).toHaveLength(5)
+    for (const m of marks) expect(m.length).toBeGreaterThan(0)
+    expect(new Set(marks).size).toBe(5) // and each is distinct
+  })
+
   it('every control clears the 44px touch floor', async () => {
     await mount(<ControlTowerShift />)
     // The overlay's buttons are the ones that were short: text-xs (16px line)
