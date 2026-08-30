@@ -31,16 +31,23 @@ shift fails.
 - [x] **M4 — accessibility + onboarding**: the play field was pointer/touch
   only, with no keyboard path and no in-game explanation of the ability
   glyphs (▢ ◎ » ×2 +) — a real gap against the design system's own rule
-  ("every control gets a visible focus ring and a real label"). Fixed
-  without touching the deterministic core: `loop.js` gains `nearestThreat()`
-  (closest threat to the tower, no slop cutoff — distinct from `threatAt()`,
-  which is a pointer hit-test); the canvas is now keyboard-focusable while
-  running (picks up the design system's existing global `:focus-visible`
-  ring for free) and Enter/Space clears the nearest threat. A dismissible
-  "?" panel in the header explains the clear mechanic and each ability in
-  plain language. 7 new tests (3 `nearestThreat` unit tests, 4 render-layer:
-  keyboard focusability, a no-threat no-op control, an actual keyboard
-  clear-and-score under fake timers, and the help panel's open/close).
+  ("every control gets a visible focus ring and a real label"). Two lanes
+  worked this concurrently and landed within minutes of each other: PR
+  #126 shipped the keyboard path itself (`loop.js`'s
+  `nearestThreatToTower()`, Enter/Space clears, P pauses, DPR-aware canvas
+  backing store, `prefers-reduced-motion` handling, 44px touch targets) —
+  more complete than this PR's own first draft, which duplicated the same
+  idea as `nearestThreat()` and was DROPPED in favor of theirs on merge,
+  rather than kept alongside it as dead/duplicate code. What this PR
+  actually contributes on top: the dismissible "?" panel in the header
+  explaining the tap/keyboard clear mechanic and each ability in plain
+  language — a gap #126 didn't cover. Also folded in while merging: PR
+  #124's five bug fixes (partial ability-config-override merge, the
+  escape-cull measuring from the origin instead of the configured tower,
+  a shield-boundary damage bug, a zero-score high-score-board write bug,
+  and a purity-freeze control test) and PR #127's score-button label fix
+  (the mark and label both read "×2" — fixed to "Score" under the `×2`
+  glyph) and a duplicate `checkEndState` cleanup.
 
 ## Visible progress protocol
 
@@ -65,10 +72,31 @@ shift fails.
   re-verified live in a separate QA check-in pass (`docs/qa-qc-report.md`):
   Playwright-tested at `#control-tower`, confirmed the game doesn't leak
   into or break the main app's sign-in route, and confirmed the game still
-  ships as its own lazy chunk. M4 (this entry) closes a real completeness
-  gap found by reading the merged code rather than assumed: no keyboard
-  path onto the play field, and no in-game explanation of what the five
-  ability glyphs do. 61 game tests, full repo suite green, production
-  build verified. Mutation-tested both new behaviors (keyboard clear,
-  help-panel toggle) — each covering test fails against a reverted/no-op
-  version and passes restored, byte-identical.
+  ships as its own lazy chunk.
+- 2026-08-30 — M4 opened as a PR (keyboard accessibility + a how-to-play
+  panel), built against a real completeness gap found by reading the
+  merged code rather than assumed. Before it merged, three more PRs
+  landed on `main` from a concurrent lane: #124 (five adversarially-found
+  bug fixes: partial ability-config-override merge dropping `cooldown`,
+  the escape-cull measuring from the origin instead of the configured
+  tower, a shield-boundary damage bug, a zero-score board-write bug, a
+  purity-freeze control test), #126 (the SAME keyboard-accessibility gap,
+  independently — and more completely: Enter/Space clears plus P pauses,
+  DPR-aware canvas backing store, `prefers-reduced-motion` handling,
+  44px touch targets), and #127 (the score-multiplier button's mark
+  repeating its own label, plus a duplicate `checkEndState`). Resolved by
+  merging `main` in and dropping this PR's own keyboard implementation
+  entirely in favor of #126's more complete one, rather than keeping two
+  functions doing the same job — this PR's surviving, non-duplicated
+  contribution is the how-to-play panel. That merge caught a real, live
+  bug in this PR's own code: the "?" toggle button was a fixed 24px box,
+  under the 44px touch floor #126's own suite tests EVERY button against
+  — the merged suite failed on the first run, not a pre-existing test
+  this PR had to write. Fixed by sizing it the same way every other
+  control on the page already is (`min-h-11 min-w-11`). 80 game tests
+  (all four PRs' suites combined, none dropped), full repo suite green,
+  production build verified. The lesson: **read the target branch's
+  actual current state before merging, not just the state you branched
+  from** — the base moved three PRs in the time this one was open, and
+  the merge is exactly the moment a real regression like this surfaces
+  instead of shipping quietly.

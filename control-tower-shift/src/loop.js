@@ -14,6 +14,24 @@ export function stepFrame(game, spawner, steps = 1) {
   return g
 }
 
+// The threat closest to the tower — the most urgent one on the field, and the
+// keyboard's target. Ties break on id so the choice is deterministic: a
+// keyboard player pressing Enter twice in one tick must not get a coin flip.
+export function nearestThreatToTower(state) {
+  const tx = state.config.towerX
+  const ty = state.config.towerY
+  let best = null
+  let bestD = Infinity
+  for (const t of state.threats) {
+    const d = Math.hypot(t.x - tx, t.y - ty)
+    if (d < bestD || (d === bestD && best && t.id < best.id)) {
+      best = t
+      bestD = d
+    }
+  }
+  return best
+}
+
 // Nearest threat within its radius plus touch slop, or null. Slop makes small
 // fast triangles tappable on a phone without changing collision truth.
 export function threatAt(state, x, y, slop = 18) {
@@ -22,23 +40,6 @@ export function threatAt(state, x, y, slop = 18) {
   for (const t of state.threats) {
     const d = Math.hypot(t.x - x, t.y - y)
     if (d <= t.radius + slop && d < bestD) {
-      best = t
-      bestD = d
-    }
-  }
-  return best
-}
-
-// Closest threat to the tower, or null. No slop cutoff, unlike threatAt:
-// this is the keyboard fallback for tap-to-clear, and "nearest to the tower"
-// is well-defined at any range — the player isn't pointing at a location.
-export function nearestThreat(state) {
-  let best = null
-  let bestD = Infinity
-  const { towerX, towerY } = state.config
-  for (const t of state.threats) {
-    const d = Math.hypot(t.x - towerX, t.y - towerY)
-    if (d < bestD) {
       best = t
       bestD = d
     }
