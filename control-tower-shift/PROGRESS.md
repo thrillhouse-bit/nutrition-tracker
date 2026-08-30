@@ -28,26 +28,23 @@ shift fails.
   app untouched. No tab added (the five-tab nav is the owner's design).
   Lazy-loaded: the game is its own ~12 kB Vite chunk; the main bundle is
   unchanged. Game-only Tailwind classes verified present in the built CSS.
-- [x] **M4 — accessibility + onboarding**: the play field was pointer/touch
-  only, with no keyboard path and no in-game explanation of the ability
-  glyphs (▢ ◎ » ×2 +) — a real gap against the design system's own rule
-  ("every control gets a visible focus ring and a real label"). Two lanes
-  worked this concurrently and landed within minutes of each other: PR
-  #126 shipped the keyboard path itself (`loop.js`'s
-  `nearestThreatToTower()`, Enter/Space clears, P pauses, DPR-aware canvas
-  backing store, `prefers-reduced-motion` handling, 44px touch targets) —
-  more complete than this PR's own first draft, which duplicated the same
-  idea as `nearestThreat()` and was DROPPED in favor of theirs on merge,
-  rather than kept alongside it as dead/duplicate code. What this PR
-  actually contributes on top: the dismissible "?" panel in the header
-  explaining the tap/keyboard clear mechanic and each ability in plain
-  language — a gap #126 didn't cover. Also folded in while merging: PR
-  #124's five bug fixes (partial ability-config-override merge, the
-  escape-cull measuring from the origin instead of the configured tower,
-  a shield-boundary damage bug, a zero-score high-score-board write bug,
-  and a purity-freeze control test) and PR #127's score-button label fix
-  (the mark and label both read "×2" — fixed to "Score" under the `×2`
-  glyph) and a duplicate `checkEndState` cleanup.
+- [x] **M4 — adversarial review and its findings**: six review lenses, each
+  finding then put to three independent skeptics. Five confirmed defects
+  fixed (#124), then the accessibility gaps the review raised but could not
+  adjudicate (#126), then dead code and a vacuous test (#127).
+- [x] **M5 — how-to-play panel**: opened as a keyboard-accessibility PR
+  before M4 had landed; by the time it could merge, #126 (part of M4) had
+  independently closed the exact same keyboard gap, more completely
+  (Enter/Space clears, P pauses, DPR-aware canvas backing store,
+  `prefers-reduced-motion` handling, 44px touch targets). Rather than ship
+  a second implementation of the same thing, this PR's own keyboard code
+  was dropped entirely on merge in favor of #126's. What survived and is
+  new here: a dismissible "?" panel in the header explaining the tap/
+  keyboard clear mechanic and each ability in plain language — the one
+  gap M4 didn't cover. The merge itself caught a real regression before
+  it reached `main`: the "?" toggle was a fixed 24px box, under the 44px
+  floor M4's own suite checks on every button — fixed to `min-h-11
+  min-w-11`, matching every other control on the page.
 
 ## Visible progress protocol
 
@@ -55,6 +52,11 @@ shift fails.
 - Each milestone lands as its own commit(s) on this branch; this file's
   checklist is updated in the same commit that completes a milestone.
 - Tests are the acceptance record: `npx vitest run control-tower-shift`.
+- **A green suite is not the acceptance record on its own.** Every claim
+  about how this game behaves is backed by one of: a test that fails when
+  the behaviour is mutated away, or a measurement taken from the built page
+  in a real browser. Both, for anything visual — see the 30 Aug entry below
+  for why.
 
 ## Status log
 
@@ -73,30 +75,54 @@ shift fails.
   Playwright-tested at `#control-tower`, confirmed the game doesn't leak
   into or break the main app's sign-in route, and confirmed the game still
   ships as its own lazy chunk.
-- 2026-08-30 — M4 opened as a PR (keyboard accessibility + a how-to-play
-  panel), built against a real completeness gap found by reading the
-  merged code rather than assumed. Before it merged, three more PRs
-  landed on `main` from a concurrent lane: #124 (five adversarially-found
-  bug fixes: partial ability-config-override merge dropping `cooldown`,
-  the escape-cull measuring from the origin instead of the configured
-  tower, a shield-boundary damage bug, a zero-score board-write bug, a
-  purity-freeze control test), #126 (the SAME keyboard-accessibility gap,
-  independently — and more completely: Enter/Space clears plus P pauses,
-  DPR-aware canvas backing store, `prefers-reduced-motion` handling,
-  44px touch targets), and #127 (the score-multiplier button's mark
-  repeating its own label, plus a duplicate `checkEndState`). Resolved by
-  merging `main` in and dropping this PR's own keyboard implementation
-  entirely in favor of #126's more complete one, rather than keeping two
-  functions doing the same job — this PR's surviving, non-duplicated
-  contribution is the how-to-play panel. That merge caught a real, live
-  bug in this PR's own code: the "?" toggle button was a fixed 24px box,
-  under the 44px touch floor #126's own suite tests EVERY button against
-  — the merged suite failed on the first run, not a pre-existing test
-  this PR had to write. Fixed by sizing it the same way every other
-  control on the page already is (`min-h-11 min-w-11`). 80 game tests
-  (all four PRs' suites combined, none dropped), full repo suite green,
-  production build verified. The lesson: **read the target branch's
-  actual current state before merging, not just the state you branched
-  from** — the base moved three PRs in the time this one was open, and
-  the merge is exactly the moment a real regression like this surfaces
-  instead of shipping quietly.
+- 2026-08-30 — M4, three passes. **(1) Adversarial review** (#124): five
+  confirmed defects, each mutation-checked. The shield read the POST-step
+  tick while the speed scale one line above read the pre-step one, so a hit
+  on the step out of the shield's last active tick dealt full damage while
+  the HUD still said "Shield up". The escape cull measured from the origin
+  while collision and pulseClear honour `towerX/towerY`. A partial ability
+  override dropped `cooldown`, so `cooldownUntil` went NaN and the ability
+  fired once then was dead for the shift with nothing thrown. Every finished
+  run was written to the high-score board, so ten unplayed shifts would fill
+  the top ten with zeros — `isHighScore` already encoded the rule and was
+  already tested, it just was not wired to the one write path. And the purity
+  gate asserted only the absence of an exception, so a `deepFreeze` regression
+  would have passed vacuously. **(2) Accessibility** (#126): the field was
+  pointer-only while every control around it was tab-reachable — the game
+  looked operable and was not playable. Enter clears the threat nearest the
+  tower, P pauses; the canvas takes focus and says how to play. Also a fixed
+  560px backing store stretched over 1170 device pixels on a phone, two
+  buttons at 40px against this repo's own measured 44px floor, and no
+  reduced-motion handling. **(3) Cleanup** (#127): `checkEndState` was
+  exported, called by nothing, and inlined a copy of `waveComplete` — one
+  idea in three places, the copy being the one no test would catch drifting.
+  The `stepFrame` determinism test compared two runs of the same seed, which
+  passes equally for a deterministic simulation and one that does nothing.
+- 2026-08-30 — **The game was verified in a real browser for the first time,
+  and that is what found the last bug.** 79 tests were green and the score
+  button still rendered `×2` above `×2 SCORE` — the mark duplicated inside
+  its own label, against every sibling's glyph-over-noun. Nothing compared
+  the two strings, so nothing could have caught it. Measured on the built
+  bundle at 430×900 DPR 2: HUD reads Wave 1/10 and Integrity 100/100; the
+  canvas is genuinely painted (1110 inked pixels, luminance 18–244, not an
+  empty buffer); the DPR fix resolves to a 792px backing store behind a 396px
+  box; Enter-to-clear scores 0 → 200 against real spawns; `/` still renders
+  the OmniFuel sign-in with no game canvas, and returning from the hash
+  restores it. Zero page errors. **Screenshot anything visual before calling
+  it done** — the suite cannot see the page.
+- 2026-08-30 — M5 (this entry) opened as a keyboard-accessibility PR before
+  the above M4 had landed, so it duplicated #126's fix independently.
+  Resolved on merge by dropping this PR's own keyboard code entirely
+  (`nearestThreat()`, its `onKeyDown` handler, its own `tabIndex`/
+  `aria-label`) in favor of #126's `nearestThreatToTower()` and P-pause
+  support — keeping both would have meant two keydown handlers on the same
+  canvas, silently double-clearing on every Enter press. Same for the
+  now-redundant unit and render-layer tests. What survived: the "?"
+  how-to-play panel, and a real regression the merge caught rather than
+  shipped — the panel's toggle button was a fixed 24px box, under the
+  44px floor M4's own suite checks on every button, fixed to `min-h-11
+  min-w-11`. 80 game tests (all of M4's plus this PR's), full repo suite
+  green, production build verified. **Read the target branch's actual
+  current state before merging, not just the state you branched from** —
+  main moved four PRs, including one doing the identical work, in the
+  time this one sat open as a draft.
