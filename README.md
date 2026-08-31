@@ -461,6 +461,42 @@ run `npm run db:init` once against Neon first. Each route is written to stay
 portable to serverless functions (e.g. Vercel `/api/*`) if you'd rather split
 them later.
 
+## Control Tower Shift (mini-game)
+
+A self-contained arcade survival mini-game living in `control-tower-shift/`.
+You operate a command tower through an escalating shift: waves of threats close
+in, you clear them for points, and five abilities (shield, pulse clear, speed
+burst, score multiplier, repair) manage the pressure. Survive all waves to win;
+lose all tower integrity and the shift fails.
+
+Navigate to `/#control-tower` to play. No tab is added to the five-tab nav — the
+game lives behind a hash route and lazy-loads its own chunk so the main app is
+unaffected until you land on it.
+
+**How to play:** Tap a threat to clear it, or focus the play field and press
+Enter/Space to clear the threat nearest the tower. Press **P** to pause. Five
+ability buttons manage the pressure. Full instructions are in the "How to play"
+panel, opened with the "?" toggle in the header.
+
+The game follows the repo's visual system: paper ground, ink lines, cobalt
+accent, Bodoni/Archivo typography, status shown by shape + word, 44px touch
+targets, and `prefers-reduced-motion` handling. It uses original geometric
+shapes only — no third-party assets.
+
+```bash
+# Play in the dev server
+npm run dev    # then navigate to /#control-tower
+
+# Test (80 tests across the deterministic core, spawner/loop, and render layer)
+npx vitest run control-tower-shift
+
+# Build (game ships as its own ~12KB lazy chunk)
+npm run build
+```
+
+See `control-tower-shift/PROGRESS.md` for the full milestone log and
+`control-tower-shift/ASSET-AUDIT.md` for the design rationale.
+
 ## Design
 
 Visual/UX design rationale (what changed, why, and the tokens/components it
