@@ -1284,3 +1284,56 @@ behind `main` (`GET /api/version` still reports `431e2b0`, the pre-#121
 commit) — ordinary short lag for two feature merges, not escalated. No
 fixes needed or attempted this pass; nothing here met the bar for a
 direct change.
+
+## 2026-08-31 — Check-in pass (recurring, 00:36 UTC)
+
+Five new commits since the last check-in (PRs #124–#128), all further
+work on Control Tower Shift by the other session — none of them
+overlap anything this report tracks, so this pass's job was
+verification, not reconciliation. `npm test`: 973/973 clean (no stale
+`dist/` this time — the false positive from last pass's own leftover
+build artifact didn't recur). `npm run build`: clean, game chunk still
+ships lazily (`ControlTowerShift-*.js`, ~15.5KB gzip ~5.5KB).
+
+**PR #124** fixes five defects an adversarial review caught in the
+just-merged game (shield-expiry off-by-one, an escape check that
+measured from the world origin instead of the tower's actual position,
+a partial ability-override object that clobbered the rest of the spec
+instead of merging into it, an unwired high-score guard that let every
+unplayed run overwrite the board with zeros, and a purity-gate test
+that only checked for a thrown exception rather than an actual
+mutation). **PR #126** closes a real accessibility gap — the game was
+previously playable only by pointer; this adds Enter-to-clear-nearest-
+threat and P-to-pause, a focusable canvas with an aria-label, a
+DPR-aware canvas backing store for sharp rendering on high-density
+phone screens, and brings two overlay buttons up to the repo's own
+44px touch-target floor. **PR #127** removes a second, unwired
+definition of "the shift has ended" (dead code that had drifted from
+the one that actually runs), and fixes a real visual bug caught by
+screenshotting the built page rather than by any test: the score-
+multiplier ability button rendered its "×2" mark twice (once as the
+icon, once repeated inside its own label), the only one of five
+ability buttons with this problem. **PR #128** is a documentation-only
+update reconciling `PROGRESS.md` with the three intervening passes.
+**PR #125** adds a dismissible how-to-play panel.
+
+Live-verified the two user-facing fixes directly in this sandbox with
+Playwright rather than trusting the commit messages: the ability
+button row now reads `×2 / Score / ready` (not the duplicated
+`×2 / ×2 SCORE / ready` the commit describes fixing); the play-field
+canvas has `tabindex="0"` and an aria-label describing the tap/Enter/P
+controls; focusing the canvas and pressing Enter repeatedly cleared
+threats with no pointer input at all; P toggled a paused state; the
+new "?" panel opens on click and its content plainly explains each
+ability. Zero `pageerror`/5xx events throughout. Also re-confirmed the
+main app still renders correctly at the root path, unaffected by any
+of this — same check this report has run every pass a game-module PR
+has landed.
+
+No Open Items table changes — this is all self-contained work inside
+`control-tower-shift/`, not a fix to anything previously tracked here.
+Live site is now seven commits behind `main` (still `431e2b0` from
+before PR #121), which is a longer gap than usual for a feature
+this contained, but the game is opt-in behind a URL hash with zero
+effect on the main app's own users — not escalating past a note. No
+fixes needed or attempted this pass.
