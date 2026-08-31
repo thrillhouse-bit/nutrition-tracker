@@ -4,7 +4,7 @@
 // raw react-dom idiom. The canvas draws nothing under jsdom (getContext is
 // null) — by design the HUD carries every state assertion. House rule: each
 // gate gets a firing AND a non-firing test.
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -14,6 +14,54 @@ const { default: ControlTowerShift, backingSize, prefersReducedMotion } =
   await import('../src/ControlTowerShift.jsx')
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
+
+// The tests own the clock.
+//
+// The game loop runs on requestAnimationFrame. Left on the real one, it
+// advances at whatever rate the machine happens to deliver frames, which made
+// this file's timing a function of CPU load rather than of the game: the
+// keyboard test below waited on wall-clock spawns and spent 3.0-4.8s of its
+// 5s budget under a full `npm test` (measured 30 Aug 2026 over six runs), and
+// it timed out outright on a loaded machine. That failure was never contained
+// either — a timeout abandons an in-flight act(), after which every later
+// render in the FILE produces nothing, so one slow spawn failed five sibling
+// tests with it.
+//
+// So rAF is replaced by a pump that delivers frames only when asked, with the
+// timestamps we choose. The component, its loop, its spawner and its handlers
+// are all the real ones; the only thing the test takes over is WHEN a frame
+// happens. Twenty logic ticks now cost 0ms of wall clock instead of 667ms,
+// and nothing in here can be starved by a busy machine.
+const FRAME_MS = 16 // ~60Hz, what a browser hands the loop
+let pump
+let restoreRaf
+
+const installFramePump = () => {
+  const realRaf = window.requestAnimationFrame
+  const realCaf = window.cancelAnimationFrame
+  let pending = new Map()
+  let handle = 0
+  let now = 0
+  window.requestAnimationFrame = (cb) => {
+    pending.set(++handle, cb)
+    return handle
+  }
+  window.cancelAnimationFrame = (h) => pending.delete(h)
+  restoreRaf = () => {
+    window.requestAnimationFrame = realRaf
+    window.cancelAnimationFrame = realCaf
+  }
+  // Deliver `frames` frames. Callbacks registered DURING a frame run on the
+  // next one, exactly as a browser schedules a self-rescheduling loop.
+  return (frames = 1) => {
+    for (let i = 0; i < frames; i++) {
+      const due = [...pending.values()]
+      pending.clear()
+      now += FRAME_MS
+      for (const cb of due) cb(now)
+    }
+  }
+}
 
 let container
 let root
@@ -25,10 +73,15 @@ const mount = async (el) => {
   await act(async () => root.render(el))
 }
 
+beforeEach(() => {
+  pump = installFramePump()
+})
+
 afterEach(async () => {
   if (root) await act(async () => root.unmount())
   if (container) document.body.removeChild(container)
   container = root = null
+  restoreRaf() // after unmount, so the loop's cancelAnimationFrame is still ours
   window.location.hash = ''
   window.localStorage.clear()
 })
@@ -173,15 +226,22 @@ describe('accessibility', () => {
     const canvas = container.querySelector('canvas')
     const score = () => Number(container.querySelector('[data-testid="score"]').textContent)
     expect(score()).toBe(0)
-    // The loop runs on real rAF, so the first spawn lands ~20 ticks (0.7s) in.
-    // POLL for the event rather than sleeping a guessed duration: the assertion
-    // is "a keypress eventually scores", and a fixed sleep would encode a
-    // timing guess as the thing under test.
-    const deadline = Date.now() + 6000
-    while (score() === 0 && Date.now() < deadline) {
+    // Still a POLL, not a sleep: the claim is "a keypress eventually scores",
+    // and pinning the exact frame the first threat lands on would make the
+    // spawner's schedule the thing under test. What changed is only the clock
+    // — each pass advances the loop by one of OUR frames, so the bound is a
+    // frame count rather than a wall-clock deadline a busy machine can blow.
+    // 60 comes from the game's own schedule, not from a guess: the first
+    // spawn is due at tick 20, LOGIC_HZ is 30 and a frame is 16ms, so it
+    // lands on frame 42 (+1 for the frame that only sets the clock's origin).
+    // Clear of that, and still tight enough to fail loudly if the loop ever
+    // goes back to starting its accumulator in debt.
+    let frames = 0
+    while (score() === 0 && frames < 60) {
+      frames += 1
       await act(async () => {
+        pump(1)
         canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-        await new Promise((r) => setTimeout(r, 16))
       })
     }
     expect(score()).toBeGreaterThan(0)
