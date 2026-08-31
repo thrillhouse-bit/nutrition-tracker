@@ -1403,3 +1403,10 @@ sighting). Not urgent — nothing tracked here is blocked on it — but
 worth an owner deploy when convenient.
 
 No other findings. No fixes needed this pass.
+
+## 2026-08-31 — Check-in pass (recurring, 12:40 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `1936ce6`). Live site also unchanged, same version and
+health as last pass — the deploy-lag Info item added last pass still
+holds, not re-escalated further. No fixes needed this pass.
