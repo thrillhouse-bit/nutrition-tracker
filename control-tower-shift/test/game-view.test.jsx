@@ -168,7 +168,7 @@ describe('accessibility', () => {
     expect(label).toMatch(/P to pause/i)
   })
 
-  it('Enter clears the threat nearest the tower — the game is playable by keyboard', async () => {
+  it('Enter clears the threat nearest the tower — the game is playable by keyboard', { timeout: 12000 }, async () => {
     await mount(<ControlTowerShift />)
     const canvas = container.querySelector('canvas')
     const score = () => Number(container.querySelector('[data-testid="score"]').textContent)
@@ -176,7 +176,8 @@ describe('accessibility', () => {
     // The loop runs on real rAF, so the first spawn lands ~20 ticks (0.7s) in.
     // POLL for the event rather than sleeping a guessed duration: the assertion
     // is "a keypress eventually scores", and a fixed sleep would encode a
-    // timing guess as the thing under test.
+    // timing guess as the thing under test. 12s timeout: the 6s deadline plus
+    // headroom for slow CI / jsdom rAF overhead.
     const deadline = Date.now() + 6000
     while (score() === 0 && Date.now() < deadline) {
       await act(async () => {
