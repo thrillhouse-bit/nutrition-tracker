@@ -358,7 +358,10 @@ export default function ControlTowerShift() {
           }
         } catch { /* storage unavailable */ }
       }
-      if (canvasRef.current) draw(canvasRef.current, g, fxRef.current)
+      if (canvasRef.current) {
+        const ctx2d = canvasRef.current.getContext('2d')
+        if (ctx2d) draw(ctx2d, g, fxRef.current)
+      }
       sync()
       handle = raf(frame)
     }
