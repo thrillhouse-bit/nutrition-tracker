@@ -61,6 +61,7 @@ doesn't repeat that ground.
 | Low | Server logging | Several `console.error(err)` calls log the *raw* error object server-side (client-facing 500s are already sanitized, PR #45) — a DB constraint-violation error can embed a user-submitted value (e.g. an email) in its message. Flagged by the other session's production-verification audit as a real but low-severity, unconfirmed-in-practice pattern, not a client-facing leak | Reported (2026-08-26, from `docs/PRODUCTION-VERIFICATION-AUDIT.md`) |
 | Info | Deploy config | `SESSION_SECRET`'s production state is unconfirmed (unset in every dev environment checked so far) — if unset in production, any restart for any reason mass-logs-out every signed-in user, independent of any other change | Needs an owner verification, not a code fix (flagged by the same audit) |
 | Info | Live deploy | Live site stuck at commit `45bbf76` (PR #95, the food-search overhaul) for 3 consecutive check-ins — ~19.5 hours behind `main` as of 2026-08-27 12:42 UTC, having missed PR #96's already-reviewed, low-risk `MAX_RESULTS` tuning change | Resolved (2026-08-27, owner deploy — site now matches current `main` HEAD exactly) |
+| Info | Live deploy | Live site stuck at commit `431e2b0` since before PR #121 — now ~4 days / 32 commits behind `main` as of 2026-08-31 08:36 UTC. All missed app-code changes are the two already-reviewed, opt-in features this report tracked live (Control Tower Shift behind a URL hash, the read-only A2A surface) plus their follow-up fixes — no pending fix to an existing user-facing issue is stuck behind this | Reported (2026-08-31) — owner deploy action, not a code fix |
 
 ## 2026-08-25 — First pass
 
@@ -1382,3 +1383,23 @@ both are self-contained test-infrastructure hardening for
 `control-tower-shift/`. Live site now nine commits behind `main`
 (still `431e2b0`) — same low-risk, opt-in-only gap noted last pass,
 not escalated further. No fixes needed or attempted this pass.
+
+## 2026-08-31 — Check-in pass (recurring, 08:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `efa3b55`). Live site also unchanged
+(`GET /api/health` identical to last pass). One thing did grow enough
+to act on: the live-deploy gap first noted two passes ago is now ~4
+days / 32 commits behind `main` (still serving `431e2b0`, from before
+PR #121). Checked what's actually missing rather than just the count —
+every non-docs file in that gap belongs to the two already-reviewed,
+opt-in features this report has tracked live pass over pass (Control
+Tower Shift behind its URL hash, the read-only A2A surface) or their
+own follow-up fixes; no pending fix to an existing user-facing issue is
+stuck behind this. Added as a new Info item above rather than a passing
+mention, matching this report's own precedent from the PR #96 lag
+(flagged once it became multi-pass and multi-day, not on the first
+sighting). Not urgent — nothing tracked here is blocked on it — but
+worth an owner deploy when convenient.
+
+No other findings. No fixes needed this pass.
