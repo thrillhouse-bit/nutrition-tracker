@@ -64,5 +64,17 @@ shift fails.
 - 2026-08-30 — M5 complete. How-to-play panel added. Merge catch: "?" toggle was
   fixed 24px, under the 44px floor — fixed to `min-h-11 min-w-11`.
 - 2026-08-31 — Branch rebased onto `main` (commit `b3c19d0`). All M1-M5
-  content present. 121 game tests green (45 core + 13 spawner/loop + 63 view).
-  Production build verified. Game accessible at `/#control-tower`.
+|  content present. 121 game tests green (45 core + 13 spawner/loop + 63 view).
+|  Production build verified. Game accessible at `/#control-tower`.
+|- 2026-08-31 — **Deity progression system complete**: Full Tier 1 roster (Apollo,
+|  Athena, Hermes, Ares, Artemis, Aphrodite, Hercules), Tier 2 (Zeus, Hera,
+|  Poseidon, Hades, Persephone, Dionysus, Demeter), Tier 3 (Cronus, Helios,
+|  Selene, Prometheus, Nyx, Eros, Atlas, Oceanus) — 18 deities total across
+|  3 unlockable tiers. Added DeitySelect screen with tier-based unlock UI
+|  (accessible from pause menu). Each deity has a signature ability, domain
+|  glyph (adapted from Art.jsx), and faces monster waves from opposing pantheon.
+|  Added 15+ canvas glyph drawers for domain gods and monsters. Added token
+|  usage HUD counter (incremented per ability use + wave milestones). Tier 2+3
+|  unlock on wave completion. All 80 game tests pass, 973 total repo tests
+|  green, production build verified (ControlTowerShift-40.6 kB chunk).
+|  Created vitest.config.js + vitest.setup.js for jsdom localStorage support.
