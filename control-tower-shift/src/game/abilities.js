@@ -51,7 +51,10 @@ export function activateAbility(state, name) {
     }
   }
 
-  return next
+  return {
+    ...next,
+    tokenUsage: (next.tokenUsage || 0) + 1, // each ability use costs a token
+  }
 }
 
 // Global movement scale on threats: speed burst dilates time against them.

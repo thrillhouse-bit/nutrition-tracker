@@ -36,6 +36,9 @@ export function createInitialState(configOverrides = {}) {
     threatsRemainingInWave: threatsForWave(1, config),
     abilities: {},
     config,
+    god: null, // selected deity; set by the render layer on deity selection
+    unlockedTier: 1, // Tier 1 gods available; Tier 2 unlocks after surviving all waves
+    tokenUsage: 0, // visible token counter in the HUD
   }
 }
 
@@ -115,5 +118,12 @@ export function resume(state) {
 }
 
 export function restart(state) {
-  return createInitialState(state.config)
+  const fresh = createInitialState(state.config)
+  // Preserve unlocked tiers and token count across restarts
+  return {
+    ...fresh,
+    unlockedTier: state.unlockedTier || 1,
+    tokenUsage: state.tokenUsage || 0,
+    god: state.god || 'apollo',
+  }
 }

@@ -30,7 +30,7 @@ afterEach(async () => {
   if (container) document.body.removeChild(container)
   container = root = null
   window.location.hash = ''
-  window.localStorage.clear()
+  if (window.localStorage) window.localStorage.clear()
 })
 
 describe('GameGate', () => {
