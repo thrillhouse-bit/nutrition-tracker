@@ -1,5 +1,7 @@
-import { spawnThreat, advanceTick } from './game/state.js'
+import { spawnThreat, advanceTick, deityAttack } from './game/state.js'
 import { stepSpawner } from './spawner.js'
+import { distance } from './game/collision.js'
+import { abilityActive } from './game/abilities.js'
 
 export const LOGIC_HZ = 30 // config durations are in these ticks
 
@@ -8,41 +10,50 @@ export const LOGIC_HZ = 30 // config durations are in these ticks
 export function stepFrame(game, spawner, steps = 1) {
   let g = game
   for (let i = 0; i < steps; i++) {
-    for (const s of stepSpawner(spawner, g)) g = spawnThreat(g, s)
+    const spawns = stepSpawner(spawner, g)
+    for (const s of spawns) {
+      g = spawnThreat(g, s)
+      g.threatsRemainingInWave = Math.max(0, g.threatsRemainingInWave - 1)
+    }
     g = advanceTick(g)
   }
   return g
 }
 
-// The threat closest to the tower — the most urgent one on the field, and the
-// keyboard's target. Ties break on id so the choice is deterministic: a
-// keyboard player pressing Enter twice in one tick must not get a coin flip.
-export function nearestThreatToTower(state) {
-  const tx = state.config.towerX
-  const ty = state.config.towerY
+// The threat closest to the deity — the most urgent one on the field.
+export function nearestThreatToDeity(state) {
+  const d = state.deity
+  if (!d) return null
   let best = null
   let bestD = Infinity
   for (const t of state.threats) {
-    const d = Math.hypot(t.x - tx, t.y - ty)
-    if (d < bestD || (d === bestD && best && t.id < best.id)) {
+    const dist = distance(t, d)
+    if (dist < bestD || (dist === bestD && best && t.id < best.id)) {
       best = t
-      bestD = d
+      bestD = dist
     }
   }
   return best
 }
 
 // Nearest threat within its radius plus touch slop, or null. Slop makes small
-// fast triangles tappable on a phone without changing collision truth.
-export function threatAt(state, x, y, slop = 18) {
+// fast sprites tappable on a phone without changing collision truth.
+export function threatAt(state, x, y, slop = 24) {
   let best = null
   let bestD = Infinity
   for (const t of state.threats) {
-    const d = Math.hypot(t.x - x, t.y - y)
-    if (d <= t.radius + slop && d < bestD) {
+    const dist = Math.hypot(t.x - x, t.y - y)
+    if (dist <= t.radius + slop && dist < bestD) {
       best = t
-      bestD = d
+      bestD = dist
     }
   }
   return best
+}
+
+// Auto-attack: the deity's signature melee attack on the nearest threat
+export function autoAttackNearest(state) {
+  const target = nearestThreatToDeity(state)
+  if (!target) return state
+  return deityAttack(state)
 }

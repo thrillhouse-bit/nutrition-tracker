@@ -1,36 +1,27 @@
-// Control Tower Shift — render layer. All game truth lives in the pure core
-// (./game); this file owns the loop, the canvas, and the HUD. Styled to the
-// Fueling Intelligence system per ASSET-AUDIT.md: paper ground, ink lines,
-// cobalt as the one accent, status shown by SHAPE + WORD, Bodoni numerals.
+// Control Tower Shift — Hades-style arena combat.
+// The player controls a deity that moves around the arena and fights waves
+// of monsters. Each deity from the tiered roster grants a signature ability.
 //
-// The five domain gods of the OmniFuel pantheon are playable characters:
-// each grants their signature ability and faces monster waves drawn from the
-// infrastructure deities. Glyphs are simplified canvas adaptations of the
-// SVG art in sitrep/olympus2/src/Art.jsx.
+// Styled to the Fueling Intelligence system: dark control-room surface,
+// restrained electric blue accents, crisp typography, data-like motion.
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   createInitialState,
-  clearThreat,
-  activateAbility,
-  abilityActive,
-  abilityReady,
-  pause,
-  resume,
-  restart,
-  saveHighScore,
-  loadHighScores,
-  isHighScore,
+  setInput,
+  deityAttack, castAbility,
+  pause, resume, restart,
+  saveHighScore, loadHighScores, isHighScore,
+  drawGlyph, GODS, GODS_BY_TIER, ABILITY_GLYPHS,
+  FIELD_RADIUS, createSpawner,
 } from './game/index.js'
-import { createSpawner, FIELD_RADIUS } from './spawner.js'
-import { stepFrame, threatAt, nearestThreatToTower, LOGIC_HZ } from './loop.js'
-import { GODS, GODS_TIER_1, GODS_TIER_2, GODS_TIER_3, drawGlyph, ABILITY_GLYPHS } from './game/characters.js'
+import { stepFrame, threatAt } from './loop.js'
 
-// Ability ordering stays stable for the HUD and tests.
+const TICK_RATE = 30 // 30 Hz game logic
+
+// Ability ordering for the HUD
 const ABILITY_ORDER = ['shield', 'pulseClear', 'speedBurst', 'scoreMultiplier', 'repair']
 
-// Geometric marks per the asset audit — no sprite art exists in this repo.
-// These Unicode marks serve as the accessible default; glyphs from characters.js
-// are rendered as decorative SVGs alongside them.
+// Geometric marks for ability buttons (accessible, test-asserted)
 const ABILITY_MARK = {
   shield: '▢',
   pulseClear: '◎',
@@ -39,8 +30,7 @@ const ABILITY_MARK = {
   repair: '+',
 }
 
-// The ability label and help text are the same regardless of which god is
-// selected — each god's signature ability is the same mechanic, just themed.
+// Human-readable labels for each ability
 const ABILITY_LABEL = {
   shield: 'Shield',
   pulseClear: 'Pulse',
@@ -50,38 +40,30 @@ const ABILITY_LABEL = {
 }
 
 const ABILITY_HELP = {
-  shield: 'Blocks tower damage for a short time.',
-  pulseClear: 'Instantly clears every threat in range, at half points.',
-  speedBurst: 'Slows every threat for a short time.',
-  scoreMultiplier: 'Doubles points from clears for a short time.',
-  repair: 'Restores tower integrity immediately.',
+  shield: 'Blocks incoming damage for a short duration.',
+  pulseClear: 'Clears all nearby threats in a wide radius for half points.',
+  speedBurst: 'Doubles your movement speed for a short duration.',
+  scoreMultiplier: 'Doubles score from all threat clears for a short time.',
+  repair: 'Restores a portion of your health immediately.',
 }
 
-const VIEW = FIELD_RADIUS + 20 // logical half-extent drawn on the canvas
+const VIEW = FIELD_RADIUS + 30
+const LOGOFF = { x: 0, y: 0 } // arena center for reference
 
-// HUD key for change detection — includes god selection so re-selecting
-// a different deity triggers a re-render.
 function hudKey(g) {
   const cds = ABILITY_ORDER.map((n) => {
     const a = g.abilities[n]
     const cd = a ? Math.max(0, a.cooldownUntil - g.tick) : 0
-    return `${abilityActive(g, n) ? 'A' : ''}${Math.ceil(cd / LOGIC_HZ)}`
+    return `${a && g.tick < a.activeUntil ? 'A' : ''}${Math.ceil(cd / TICK_RATE)}`
   }).join('|')
-  return `${g.god || 'none'}:${g.status}:${g.score}:${g.wave}:${g.integrity}:${cds}`
+  return `${g.god || 'none'}:${g.status}:${g.score}:${g.wave}:${g.deity?.health || 0}:${cds}`
 }
 
-// Backing store in DEVICE pixels, drawing in logical ones. The canvas shipped
-// with a fixed 560px buffer stretched over `w-full`, so on a 390px phone at
-// DPR 3 it painted 560 pixels into 1170 — every edge soft. Capped at 3: past
-// that the fill cost climbs with the square and nothing visibly improves.
 export function backingSize(cssPx, dpr) {
   const r = Math.min(Math.max(Number(dpr) || 1, 1), 3)
   return Math.max(1, Math.round(cssPx * r))
 }
 
-// Exported so both answers are testable: a media query read inline in a ref
-// initialiser is a decision no test can see, and “reduced motion is honoured”
-// is exactly the kind of claim that passes by never being exercised.
 export function prefersReducedMotion(win) {
   return Boolean(
     win && typeof win.matchMedia === 'function' &&
@@ -89,122 +71,148 @@ export function prefersReducedMotion(win) {
   )
 }
 
-// Draw a glyph into a temp canvas to use as a pattern or composite on the main canvas.
-// For simplicity, we draw glyphs directly onto the main canvas at the threat position.
-function draw(canvas, g, fx) {
-  const ctx = canvas.getContext && canvas.getContext('2d')
-  if (!ctx) return // jsdom / lost context: the HUD still carries the state
-  const w = canvas.width
-  const scale = w / (VIEW * 2)
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.fillStyle = '#f7f4ec'
-  ctx.fillRect(0, 0, w, w)
-  ctx.setTransform(scale, 0, 0, scale, w / 2, w / 2)
-
-  // Range rings — hairline ink, the design’s line language.
-  ctx.strokeStyle = 'rgba(18,18,16,0.16)'
-  ctx.lineWidth = 1 / scale
-  for (const r of [FIELD_RADIUS, FIELD_RADIUS * 0.66, FIELD_RADIUS * 0.33]) {
+// Draw a glyph at the given canvas position
+function drawGlyphSafe(ctx, glyph, x, y, size, color = '#121210') {
+  try {
+    drawGlyph(ctx, glyph, x, y, size)
+  } catch {
+    // Fallback to simple circle
+    ctx.fillStyle = color
     ctx.beginPath()
-    ctx.arc(0, 0, r, 0, Math.PI * 2)
-    ctx.stroke()
-  }
-
-  // Pulse flash: an expanding hairline circle for a few ticks after firing.
-  // The pulse flash is decoration; the threats' motion IS the game and cannot
-  // be reduced without removing it. So reduced-motion drops this and nothing
-  // else — an honest partial, not a claim the page holds still.
-  if (!fx.reduceMotion && fx.pulseAt != null && g.tick - fx.pulseAt < 15) {
-    const p = (g.tick - fx.pulseAt) / 15
-    ctx.strokeStyle = `rgba(31,53,196,${1 - p})`
-    ctx.lineWidth = 2 / scale
-    ctx.beginPath()
-    ctx.arc(0, 0, g.config.abilities.pulseClear.radius * p, 0, Math.PI * 2)
-    ctx.stroke()
-  }
-
-  // Tower: cobalt circle footprint + ink square (audit's chosen geometry).
-  // If a god is selected, draw their glyph inside the tower circle.
-  ctx.strokeStyle = '#1f35c2'
-  ctx.lineWidth = 2 / scale
-  ctx.beginPath()
-  ctx.arc(0, 0, g.config.towerRadius, 0, Math.PI * 2)
-  ctx.stroke()
-  ctx.fillStyle = '#121210'
-  const s = g.config.towerRadius * 0.8
-  ctx.fillRect(-s / 2, -s / 2, s, s)
-
-  // If a god is selected, draw their glyph at the tower center
-  if (g.god) {
-    const god = GODS.find((d) => d.key === g.god)
-    if (god) {
-      ctx.save()
-      ctx.translate(0, 0)
-      // Draw the god's glyph at 70% of tower radius
-      const glyphSize = g.config.towerRadius * 1.2
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'center'
-      // Use a simplified glyph from the characters module
-      // The glyphs are drawn as SVG paths adapted for canvas
-      drawGlyph(ctx, god.glyph, 0, 0, glyphSize)
-      ctx.restore()
-    }
-  }
-
-  // Shield: mist ring, drawn only while genuinely active (word lives in HUD).
-  if (abilityActive(g, 'shield')) {
-    ctx.strokeStyle = '#dce6d7'
-    ctx.lineWidth = 5 / scale
-    ctx.beginPath()
-    ctx.arc(0, 0, g.config.towerRadius + 8, 0, Math.PI * 2)
-    ctx.stroke()
-  }
-
-  // Threats: now each threat carries a `glyph` field identifying which monster
-  // deity it represents. Draw the glyph instead of a plain triangle.
-  for (const t of g.threats) {
-    const close = Math.hypot(t.x, t.y) < FIELD_RADIUS * 0.33
-    ctx.fillStyle = close ? '#8e3044' : '#121210'
-
-    // Draw the monster glyph at the threat position
-    ctx.save()
-    ctx.translate(t.x, t.y)
-    // Glyphs are drawn centered at origin, scaled to threat radius
-    drawGlyph(ctx, t.glyph || 'hydra', 0, 0, t.radius * 2.2)
-    ctx.restore()
-
-    // If close to tower, add a berry glow
-    if (close && !fx.reduceMotion) {
-      ctx.strokeStyle = '#8e3044'
-      ctx.lineWidth = 1 / scale
-      ctx.beginPath()
-      ctx.arc(t.x, t.y, t.radius + 2, 0, Math.PI * 2)
-      ctx.stroke()
-    }
+    ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+    ctx.fill()
   }
 }
 
-// Deity selection screen — shows all deities in tiered roster with glyphs
-// Tier 1 gods are available immediately; Tier 2-3 are locked until unlocked
-export function DeitySelect({ onSelect, onKeyDown, unlockedTiers }) {
-  const [hovered, setHovered] = useState(null)
+function draw(ctx, g, fx) {
+  const ctx2d = ctx
+  if (!ctx2d || !ctx2d.canvas || !ctx2d.canvas.width) return
+  const w = ctx2d.canvas.width
+  const cfg = g.config
+  const scale = w / (VIEW * 2)
 
-  // unlockedTiers is a number (1, 2, or 3) indicating how many tiers the player has unlocked
+  ctx2d.setTransform(1, 0, 0, 1, 0, 0)
+  ctx2d.fillStyle = '#121210'
+  ctx2d.fillRect(0, 0, w, w)
+  ctx2d.setTransform(scale, 0, 0, scale, w / 2, w / 2)
+
+  // Range rings
+  ctx2d.strokeStyle = 'rgba(31,53,196,0.12)'
+  ctx2d.lineWidth = 1 / scale
+  for (const r of [cfg.arenaRadius * 0.33, cfg.arenaRadius * 0.66, cfg.arenaRadius]) {
+    ctx2d.beginPath()
+    ctx2d.arc(0, 0, r, 0, Math.PI * 2)
+    ctx2d.stroke()
+  }
+
+  // ── 1. Draw projectiles ──
+  for (const p of g.projectiles) {
+    ctx2d.save()
+    ctx2d.translate(p.x, p.y)
+    ctx2d.strokeStyle = '#1f35c9'
+    ctx2d.fillStyle = '#1f35c9'
+    ctx2d.lineWidth = 2 / scale
+    ctx2d.beginPath()
+    ctx2d.arc(0, 0, p.radius, 0, Math.PI * 2)
+    ctx2d.fill()
+    ctx2d.stroke()
+    ctx2d.restore()
+  }
+
+  // ── 2. Draw deity ──
+  const d = g.deity
+  ctx2d.save()
+  ctx2d.translate(d.x, d.y)
+  ctx2d.strokeStyle = '#1f35c2'
+  ctx2d.fillStyle = '#121210'
+  ctx2d.lineWidth = 3 / scale
+  ctx2d.beginPath()
+  ctx2d.arc(0, 0, cfg.deityRadius, 0, Math.PI * 2)
+  ctx2d.fill()
+  ctx2d.stroke()
+
+  // Draw deity glyph
+  const godDef = GODS.find((gd) => gd.key === g.god)
+  if (godDef) {
+    ctx2d.save()
+    ctx2d.translate(0, 0)
+    drawGlyphSafe(ctx2d, godDef.glyph, 0, 0, cfg.deityRadius * 2.2, '#1f35c9')
+    ctx2d.restore()
+  }
+  ctx2d.restore()
+
+  // Health bar above deity
+  if (d.health < d.maxHealth) {
+    ctx2d.save()
+    ctx2d.translate(d.x, d.y - cfg.deityRadius - 12)
+    ctx2d.fillStyle = 'rgba(18,18,16,0.5)'
+    ctx2d.fillRect(-20, 0, 40, 4)
+    const hpW = (d.health / d.maxHealth) * 40
+    ctx2d.fillStyle = '#1f35c2'
+    ctx2d.fillRect(-20, 0, hpW, 4)
+    ctx2d.restore()
+  }
+
+  // Shield effect
+  if (g.abilities.shield && g.tick < g.abilities.shield.activeUntil) {
+    ctx2d.strokeStyle = '#dce6d7'
+    ctx2d.lineWidth = 4 / scale
+    ctx2d.beginPath()
+    ctx2d.arc(d.x, d.y, cfg.deityRadius + 10, 0, Math.PI * 2)
+    ctx2d.stroke()
+  }
+
+  // Speed burst effect
+  if (g.abilities.speedBurst && g.tick < g.abilities.speedBurst.activeUntil) {
+    ctx2d.strokeStyle = '#1f35c9'
+    ctx2d.lineWidth = 2 / scale
+    ctx2d.setLineDash([5 / scale, 5 / scale])
+    ctx2d.beginPath()
+    ctx2d.arc(d.x, d.y, cfg.deityRadius + 20, 0, Math.PI * 2)
+    ctx2d.stroke()
+    ctx2d.setLineDash([])
+  }
+
+  // ── 3. Draw threats (monsters) ──
+  for (const t of g.threats) {
+    ctx2d.save()
+    ctx2d.translate(t.x, t.y)
+    // Health bar for threats
+    if (t.health < t.maxHealth) {
+      ctx2d.fillStyle = 'rgba(18,18,16,0.5)'
+      ctx2d.fillRect(-t.radius - 1, -t.radius - 8, (t.radius + 1) * 2, 3)
+      const hpW = (t.health / t.maxHealth) * (t.radius + 1) * 2
+      ctx2d.fillStyle = '#8e3044'
+      ctx2d.fillRect(-(t.radius + 1), -t.radius - 8, hpW, 3)
+    }
+    // Monster glyph
+    drawGlyphSafe(ctx2d, t.glyph || 'hydra', 0, 0, t.radius * 2, '#8e3044')
+    ctx2d.restore()
+  }
+}
+
+// ─── Deity Selection Screen ────────────────────────────────────
+export function DeitySelect({ onSelect, unlockedTiers }) {
+  const [hovered, setHovered] = useState(null)
   const tiers = [
-    { num: 1, title: 'Domain Gods', gods: GODS_TIER_1, color: '#1f35c9' },
-    { num: 2, title: 'Olympian Gods', gods: GODS_TIER_2, color: '#1f35c9' },
-    { num: 3, title: 'Titans', gods: GODS_TIER_3, color: '#8e3044' },
+    { num: 1, title: 'Domain Gods', gods: GODS_BY_TIER[1], color: '#1f35c9' },
+    { num: 2, title: 'Olympian Gods', gods: GODS_BY_TIER[2], color: '#1f35c9' },
+    { num: 3, title: 'Titans', gods: GODS_BY_TIER[3], color: '#8e3044' },
   ]
+
+  const tierKeys = [1, 2, 3]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95">
       <div className="mx-4 max-w-md text-center">
         <h2 className="serif text-3xl mb-2">Choose Your Deity</h2>
         <p className="text-sm text-muted mb-6">
-          Each deity grants their signature ability and faces monster waves
+          Each deity grants their signature ability and fights monster waves
           from the opposing pantheon. Higher tiers unlock as you prove mastery.
         </p>
-        {tiers.map((tier) => {
+        {tierKeys.map((tierNum) => {
+          const tier = tiers.find((t) => t.num === tierNum)
+          if (!tier) return null
           const unlocked = (unlockedTiers || 1) >= tier.num
           return (
             <div key={tier.num} className="mb-6">
@@ -233,7 +241,7 @@ export function DeitySelect({ onSelect, onKeyDown, unlockedTiers }) {
                       onClick={() => {
                         if (!locked) onSelect(god.key)
                       }}
-                      onMouseEnter={() => setHovered(god.key)}
+                      onMouseEnter={(e) => setHovered(god.key)}
                       onMouseLeave={() => setHovered(null)}
                     >
                       <span
@@ -241,7 +249,12 @@ export function DeitySelect({ onSelect, onKeyDown, unlockedTiers }) {
                         aria-hidden="true"
                         style={{ color: god.color }}
                       >
-                        {locked ? '🔒' : renderGlyph(god.glyph, god.color)}
+                        {locked ? '🔒' : (
+                          <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={god.color} strokeWidth="2">
+                            <circle cx="32" cy="32" r="12" />
+                            <path d={godGlyphPath(god.glyph)} />
+                          </svg>
+                        )}
                       </span>
                       <span className="text-xs">{god.name}</span>
                     </button>
@@ -252,138 +265,58 @@ export function DeitySelect({ onSelect, onKeyDown, unlockedTiers }) {
           )
         })}
         <p className="text-xs text-muted">
-          Click a deity, or press 1-7 for Tier 1. ESC to return to game.
+          Click a deity. ESC to dismiss (default: Apollo).
         </p>
       </div>
     </div>
   )
 }
 
-// Render a glyph as an inline SVG element for React (used in DeitySelect)
-function renderGlyph(glyph, color) {
-  // These are simplified SVG versions of the Art.jsx glyphs
-  // They use the same line-and-dot visual language
-  const glyphs = {
-    'winged-sandal': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
-        <ellipse cx="32" cy="20" rx="12" ry="10" />
-        <path d="M20 20 L16 4 L24 4" />
-        <line x1="32" y1="10" x2="50" y2="4" />
-        <line x1="20" y1="28" x2="44" y2="28" />
-        <line x1="24" y1="34" x2="40" y2="34" />
-      </svg>
-    ),
-    'owl-aegis': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2">
-        <circle cx="32" cy="32" r="22" />
-        <circle cx="32" cy="22" r="8" fill="none" />
-        <circle cx="24" cy="18" r="2.5" fill={color} />
-        <circle cx="40" cy="18" r="2.5" fill={color} />
-        <path d="M26 36 Q32 44 38 36" />
-        <line x1="26" y1="8" x2="22" y2="0" />
-        <line x1="38" y1="8" x2="42" y2="0" />
-      </svg>
-    ),
-    'helmet': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2.4">
-        <path d="M20 28 L44 28 L40 52 L24 52 Z" />
-        <path d="M24 12 L40 12 L34 20 L30 20 Z" />
-      </svg>
-    ),
-    'key': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="3">
-        <rect x="26" y="8" width="12" height="22" />
-        <circle cx="32" cy="14" r="6" />
-        <rect x="26" y="30" width="12" height="8" />
-      </svg>
-    ),
-    'trident': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round">
-        <line x1="32" y1="8" x2="32" y2="50" />
-        <line x1="22" y1="12" x2="22" y2="30" />
-        <line x1="42" y1="12" x2="42" y2="30" />
-        <line x1="20" y1="20" x2="10" y2="8" />
-        <line x1="44" y1="20" x2="54" y2="8" />
-      </svg>
-    ),
-    // Monster glyphs
-    'hydra': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="1.6">
-        <ellipse cx="32" cy="34" rx="12" ry="7" />
-        <circle cx="20" cy="28" r="4" />
-        <circle cx="32" cy="22" r="4" />
-        <circle cx="44" cy="28" r="4" />
-      </svg>
-    ),
-    'cerberus': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2.4">
-        <path d="M12 52 Q20 38 32 36 Q44 38 52 52" />
-        <circle cx="20" cy="20" r="5" />
-        <circle cx="32" cy="16" r="5" />
-        <circle cx="44" cy="20" r="5" />
-      </svg>
-    ),
-    'chronos': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2.4">
-        <path d="M20 12 L44 12 L36 30 L44 48 L20 48 L28 30 Z" />
-        <circle cx="32" cy="30" r="2" fill={color} />
-      </svg>
-    ),
-    'apollo': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2">
-        <line x1="20" y1="40" x2="44" y2="40" />
-        <line x1="22" y1="40" x2="22" y2="20" />
-        <line x1="28" y1="40" x2="28" y2="16" />
-        <line x1="34" y1="40" x2="34" y2="16" />
-        <line x1="40" y1="40" x2="40" y2="20" />
-        <path d="M22 16 Q32 8 42 16" />
-      </svg>
-    ),
-    'atlas': (
-      <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" stroke={color} strokeWidth="2.2">
-        <circle cx="32" cy="18" r="12" />
-        <ellipse cx="32" cy="18" rx="12" ry="5" />
-        <ellipse cx="32" cy="18" rx="5" ry="12" />
-        <path d="M20 38 C22 34 42 34 44 38" />
-        <line x1="20" y1="38" x2="14" y2="52" />
-        <line x1="44" y1="38" x2="50" y2="52" />
-      </svg>
-    ),
+// Simplified glyph SVG path for selection screen
+function godGlyphPath(glyph) {
+  const paths = {
+    'winged-sandal': 'M20 20 L16 4 L24 4 M32 10 L50 4 M20 34 L44 34',
+    'owl-aegis': 'M32 22 A8 8 0 1 1 32 22 M24 18 A2.5 2.5 0 1 1 24 18',
+    'helmet': 'M20 34 L44 34 L40 58 L24 58 Z M28 20 L36 20',
+    'lyre': 'M20 46 L44 46 M22 46 L22 26 M28 46 L28 22 M34 46 L34 22',
+    'bow': 'M32 20 C44 10 48 28 32 36 C16 28 20 10 32 20 Z',
+    'dove-rose': 'M32 36 A10 7 0 1 1 32 36 M20 36 A8 7 0 1 1 20 36',
+    'club': 'M32 16 C24 18 16 28 24 38 C16 38 8 44 16 52 C24 58 36 52 40 40',
+    'lightning': 'M26 -24 L38 -6 L32 4 L44 24 L28 10 L24 24 Z',
+    'scepter': 'M32 -20 L32 10 M28 -22 L36 -22 M26 10 L38 10',
+    'trident': 'M32 8 L32 50 M22 12 L22 30 M42 12 L42 30 M20 20 L10 8 M44 20 L54 8',
+    'pomegranate': 'M20 -6 A10 10 0 1 1 44 -6 A10 10 0 1 1 20 -6 Z',
+    'thyrsus': 'M32 -20 L32 -6 M28 -8 L36 -8 M30 -20 L34 -20',
+    'wheat': 'M32 -20 L32 10 M26 -16 L38 -16 M28 -18 L36 -18',
+    'scythe': 'M26 -16 L42 -16 L38 0 L26 0 Z M34 -20 L38 8',
+    'sun-chariot': 'M12 6 A18 18 0 1 1 52 6 A18 18 0 1 1 12 6 Z',
+    'crescent': 'M20 0 A14 14 0 0 1 44 0 A10 10 0 0 0 32 0 A14 14 0 0 1 20 0',
+    'flame': 'M32 -20 C42 -14 48 -4 38 10 C46 8 40 16 32 10 C26 16 18 8 26 10 C16 -4 22 -14 32 -20 Z',
+    'star-veil': 'M14 0 A18 18 0 1 1 50 0 A18 18 0 1 1 14 0 Z M32 -18 L32 0 M32 0 L28 -4 M32 0 L36 -4',
+    'arrow-heart': 'M32 -18 L32 10 M26 -22 L38 -22 M28 -26 L36 -26',
+    'atlas-sphere': 'M20 -6 A12 12 0 1 1 44 -6 A12 12 0 1 1 20 -6 Z',
   }
-  return glyphs[glyph] || glyphs['hydra']
+  return paths[glyph] || paths['lyre']
 }
 
+// ─── Main Component ─────────────────────────────────────────────
 export default function ControlTowerShift() {
   const gameRef = useRef(null)
   if (gameRef.current === null) {
     const initialState = createInitialState()
-    // Default deity: Apollo — player can change via deity select from pause menu
     gameRef.current = { ...initialState, god: 'apollo' }
-    // Grant Apollo's signature ability (scoreMultiplier) as starting charge
-    const god = GODS.find((d) => d.key === 'apollo')
-    if (god) {
-      gameRef.current = {
-        ...gameRef.current,
-        abilities: {
-          ...gameRef.current.abilities,
-          [god.ability]: { activeUntil: 0, cooldownUntil: 0 },
-        },
-      }
-    }
   }
   const spawnerRef = useRef(null)
-  if (spawnerRef.current === null) spawnerRef.current = createSpawner(Date.now() >>> 0)
-  const fxRef = useRef({
-    pulseAt: null,
-    reduceMotion: prefersReducedMotion(typeof window === 'undefined' ? null : window),
-  })
+  if (spawnerRef.current === null) {
+    spawnerRef.current = createSpawner(Date.now() >>> 0)
+  }
+  const fxRef = useRef({ pulseAt: null, reduceMotion: false })
   const savedRef = useRef(false)
   const canvasRef = useRef(null)
   const keyRef = useRef('')
   const [hud, setHud] = useState(() => ({ g: gameRef.current }))
   const [showHelp, setShowHelp] = useState(false)
-  const [showDeitySelect, setShowDeitySelect] = useState(false) // Start with Apollo selected
-  const [selectedGod, setSelectedGod] = useState('apollo') // Default deity for new players
+  const [showDeitySelect, setShowDeitySelect] = useState(false)
 
   const sync = useCallback(() => {
     const k = hudKey(gameRef.current)
@@ -393,24 +326,28 @@ export default function ControlTowerShift() {
     }
   }, [])
 
-  // Fixed-timestep loop: accumulate real time, step logic at LOGIC_HZ, draw
-  // every frame. Simulation lives in refs so StrictMode's double-invoked
-  // renders never step it twice.
+  // Fixed-timestep loop: accumulate real time, step logic at TICK_RATE Hz
   useEffect(() => {
-    if (showDeitySelect) return // don't run the game loop during deity selection
+    if (showDeitySelect) return // pause during deity selection
     const raf = window.requestAnimationFrame || ((cb) => setTimeout(() => cb(performance.now()), 16))
     const caf = window.cancelAnimationFrame || clearTimeout
     let handle
     let last = performance.now()
     let acc = 0
-    const stepMs = 1000 / LOGIC_HZ
+
+    const stepMs = 1000 / TICK_RATE
     const frame = (now) => {
-      acc = Math.min(acc + (now - last), 250) // clamp: background tabs don't fast-forward
+      acc = Math.min(acc + (now - last), 250)
       last = now
       const steps = Math.floor(acc / stepMs)
       if (steps > 0) {
         acc -= steps * stepMs
-        gameRef.current = stepFrame(gameRef.current, spawnerRef.current, steps)
+        for (let i = 0; i < steps; i++) {
+          // stepFrame handles spawning + advancing game logic in one pass
+          gameRef.current = stepFrame(gameRef.current, spawnerRef.current, 1)
+          // Auto-attack if a monster is in range and cooldown is ready
+          gameRef.current = autoAttackCheck(gameRef.current)
+        }
       }
       const g = gameRef.current
       if ((g.status === 'won' || g.status === 'failed') && !savedRef.current) {
@@ -419,9 +356,7 @@ export default function ControlTowerShift() {
           if (isHighScore(window.localStorage, g.score)) {
             saveHighScore(window.localStorage, { score: g.score, wave: g.wave, at: new Date().toISOString() })
           }
-        } catch {
-          /* storage unavailable: the run still ends normally */
-        }
+        } catch { /* storage unavailable */ }
       }
       if (canvasRef.current) draw(canvasRef.current, g, fxRef.current)
       sync()
@@ -431,15 +366,13 @@ export default function ControlTowerShift() {
     return () => caf(handle)
   }, [sync, showDeitySelect])
 
-  // Match the backing store to the box the browser actually gives the canvas.
-  // ResizeObserver rather than a resize listener: `w-full` changes with the
-  // COLUMN, which a window resize is only one cause of.
+  // Resize canvas
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const fit = () => {
       const css = canvas.getBoundingClientRect().width
-      if (!css) return // display:none or not laid out yet (jsdom): leave the buffer alone
+      if (!css) return
       const px = backingSize(css, window.devicePixelRatio)
       if (canvas.width !== px) {
         canvas.width = px
@@ -453,94 +386,156 @@ export default function ControlTowerShift() {
     return () => ro.disconnect()
   }, [])
 
-  // Keyboard play. The field was pointer-only, so the game was unplayable
-  // without a mouse or a touchscreen while every surrounding control was
-  // reachable by tab — the worst version of that gap, since it looks operable.
-  // Enter/Space clears the threat NEAREST THE TOWER (the one that matters, and
-  // the one a player would reach for), P pauses and resumes.
-  useEffect(() => {
-    if (showDeitySelect) return
-    const onKey = (e) => {
-      const g = gameRef.current
-      if (e.key === 'p' || e.key === 'P') {
-        gameRef.current = g.status === 'paused' ? resume(g) : pause(g)
-        sync()
-        e.preventDefault()
-        return
-      }
-      if (e.key !== 'Enter' && e.key !== ' ') return
-      if (g.status !== 'running') return
-      const target = nearestThreatToTower(g)
-      if (!target) return
-      gameRef.current = clearThreat(g, target.id)
-      sync()
-      e.preventDefault()
-    }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.addEventListener('keydown', onKey)
-    return () => canvas.removeEventListener('keydown', onKey)
-  }, [sync, showDeitySelect])
-
-  // Global keyboard handler for deity selection
-  useEffect(() => {
-    if (!showDeitySelect) return
-    const onKey = (e) => {
-      const key = e.key
-      if (key === '1' || key === '2' || key === '3' || key === '4' || key === '5') {
-        const god = GODS[Number(key) - 1]
-        selectGod(god.key)
-      }
-      if (key === 'Escape') {
-        setShowDeitySelect(false)
-      }
-    }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.addEventListener('keydown', onKey)
-    return () => canvas.removeEventListener('keydown', onKey)
-  }, [showDeitySelect])
-
-  // Select a deity — updates game state with the god choice and grants
-  // their signature ability as a free starting charge.
-  function selectGod(godKey) {
-    const god = GODS.find((d) => d.key === godKey)
-    if (!god) return
-    setShowDeitySelect(false)
-    gameRef.current = { ...gameRef.current, god: godKey }
-    // Grant the god's signature ability as the first ability (with 0 cooldown)
-    const abilityName = god.ability
-    gameRef.current = {
-      ...gameRef.current,
-      abilities: {
-        ...gameRef.current.abilities,
-        [abilityName]: {
-          activeUntil: 0,
-          cooldownUntil: 0, // ready immediately
-        },
-      },
-    }
-    sync()
-  }
-
-  const onPointerDown = (e) => {
+  // Touch/mouse movement: track pointer position and set movement input
+  const onPointerMove = useCallback((e) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * VIEW * 2 - VIEW
     const y = ((e.clientY - rect.top) / rect.height) * VIEW * 2 - VIEW
-    const hit = threatAt(gameRef.current, x, y)
-    if (hit) {
-      gameRef.current = clearThreat(gameRef.current, hit.id)
+    // Set movement input toward pointer direction with constant speed
+    const dx = x - gameRef.current.deity.x
+    const dy = y - gameRef.current.deity.y
+    const dist = Math.hypot(dx, dy)
+    if (dist > 20) {
+      gameRef.current = setInput(gameRef.current, dx / dist, dy / dist)
+    } else {
+      gameRef.current = setInput(gameRef.current, 0, 0)
+    }
+    sync()
+  }, [sync])
+
+  // Touch/mouse click: cast ability toward click position
+  const onPointerDown = useCallback((e) => {
+    const g = gameRef.current
+    if (g.status !== 'running') return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * VIEW * 2 - VIEW
+    const y = ((e.clientY - rect.top) / rect.height) * VIEW * 2 - VIEW
+    // If clicked on a threat, try to attack it
+    const threat = threatAt(g, x, y)
+    if (threat) {
+      gameRef.current = castAbility(g, 'pulseClear', x, y)
+    } else {
+      // Otherwise, start moving toward click
+      const dx = x - g.deity.x
+      const dy = y - g.deity.y
+      const dist = Math.hypot(dx, dy)
+      if (dist > 0) {
+        gameRef.current = setInput(g, dx / dist, dy / dist)
+      }
+    }
+    sync()
+  }, [sync])
+
+  // Keyboard movement: WASD / arrows
+  useEffect(() => {
+    if (showDeitySelect) return
+    const keys = new Set()
+    const handleDown = (e) => {
+      if (g.status !== 'running') return
+      keys.add(e.key.toLowerCase())
+      updateMovement()
+      e.preventDefault()
+    }
+    const handleUp = (e) => {
+      keys.delete(e.key.toLowerCase())
+      updateMovement()
+      e.preventDefault()
+    }
+
+    let mx = 0, my = 0
+    function updateMovement() {
+      mx = 0; my = 0
+      if (keys.has('w') || keys.has('arrowup')) my -= 1
+      if (keys.has('s') || keys.has('arrowdown')) my += 1
+      if (keys.has('a') || keys.has('arrowleft')) mx -= 1
+      if (keys.has('d') || keys.has('arrowright')) mx += 1
+      const mag = Math.hypot(mx, my)
+      if (mag > 0) { mx /= mag; my /= mag }
+      gameRef.current = setInput(gameRef.current, mx, my)
       sync()
     }
+
+    const onKey = (e) => {
+      const g = gameRef.current
+      const key = e.key.toLowerCase()
+      if (key === 'p') {
+        gameRef.current = g.status === 'paused' ? resume(g) : pause(g)
+        sync()
+        e.preventDefault()
+        return
+      }
+      // Enter = auto-attack nearest threat
+      if (key === 'Enter' && g.status === 'running') {
+        gameRef.current = deityAttack(gameRef.current)
+        sync()
+        e.preventDefault()
+        return
+      }
+      if (!g.abilities || Object.keys(g.abilities).length === 0) return
+      // Number keys for abilities
+      const abilityMap = { '1': 'shield', '2': 'pulseClear', '3': 'speedBurst', '4': 'scoreMultiplier', '5': 'repair' }
+      if (abilityMap[key]) {
+        const name = abilityMap[key]
+        gameRef.current = castAbility(g, name, 0, 0)
+        sync()
+        e.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', handleDown)
+    window.addEventListener('keyup', handleUp)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', handleDown)
+      window.removeEventListener('keyup', handleUp)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [sync, showDeitySelect])
+
+  // Handle pointer move on canvas
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.addEventListener('pointermove', onPointerMove)
+    canvas.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      canvas.removeEventListener('pointermove', onPointerMove)
+      canvas.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [onPointerMove, onPointerDown])
+
+  function selectGod(godKey) {
+    setShowDeitySelect(false)
+    const god = GODS.find((d) => d.key === godKey)
+    if (!god) return
+    gameRef.current = { ...gameRef.current, god: godKey }
+    gameRef.current = {
+      ...gameRef.current,
+      abilities: {
+        ...gameRef.current.abilities,
+        [god.ability]: { activeUntil: 0, cooldownUntil: g.tick || 0 },
+      },
+    }
+    sync()
   }
 
-  const fire = (name) => {
-    const before = gameRef.current
-    gameRef.current = activateAbility(before, name)
-    if (name === 'pulseClear' && gameRef.current !== before) fxRef.current.pulseAt = gameRef.current.tick
-    sync()
+  function autoAttackCheck(g) {
+    // Auto-attack when a monster is in range
+    const cfg = g.config
+    const range = cfg.deityRadius + cfg.autoAttackRange
+    const target = g.threats.find((t) => {
+      const d = Math.hypot(t.x - g.deity.x, t.y - g.deity.y)
+      return d < range + t.radius
+    })
+    if (!target) return g
+    if (g.tick >= (g.nextAutoAttack || 0)) {
+      return deityAttack(g)
+    }
+    return g
   }
 
   const g = hud.g
@@ -559,10 +554,7 @@ export default function ControlTowerShift() {
     <div className="mx-auto flex min-h-dvh max-w-xl flex-col gap-4 bg-paper px-4 py-6 text-ink">
       {/* Deity selection overlay */}
       {showDeitySelect && (
-        <DeitySelect
-          onSelect={selectGod}
-          unlockedTiers={g.unlockedTier || 1}
-        />
+        <DeitySelect onSelect={selectGod} unlockedTiers={g.unlockedTier || 1} />
       )}
 
       <header className="flex items-end justify-between border-b border-line pb-3">
@@ -576,10 +568,6 @@ export default function ControlTowerShift() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="text-[11px] font-bold uppercase tracking-[0.13em] text-muted">Score</div>
-            <div className="serif text-3xl leading-none tabular-nums" data-testid="score">{g.score}</div>
-          </div>
           <button
             type="button"
             aria-expanded={showHelp}
@@ -593,11 +581,12 @@ export default function ControlTowerShift() {
         </div>
       </header>
 
-      {/* Token usage HUD — visible at all times */}
+      {/* Token usage HUD — always visible */}
       <div className="border-y border-line px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-muted">
         <span data-testid="tokens">Tokens: {g.tokenUsage || 0} · </span>
         <span data-testid="tier">Tier 1 Deity: {GODS.find((d) => d.key === g.god)?.name || 'Apollo'} · </span>
-        <span data-testid="waves-unlocked">Tiers 2–3 unlock on wave completion</span>
+        <span data-testid="health">Health: {g.deity?.health || 0}/{g.deity?.maxHealth || 0} · </span>
+        <span data-testid="waves-unlocked">Tiers 2-3 unlock on wave completion</span>
       </div>
 
       {showHelp && (
@@ -606,16 +595,17 @@ export default function ControlTowerShift() {
           className="border-[1.5px] border-ink bg-card p-4 text-xs leading-relaxed text-ink"
         >
           <p className="mb-2">
-            Tap a threat to clear it — or focus the play field and press{' '}
-            <span className="font-bold">Enter</span> or <span className="font-bold">Space</span> to clear
-            the threat nearest the tower. Press <span className="font-bold">P</span> to pause. Survive
-            every wave to hold the shift; lose all integrity and the shift fails.
+            Move your deity with WASD / arrow keys or by pointing at the play field.
+            Click threats to attack them. Press{' '}
+            <span className="font-bold">Enter</span> or <span className="font-bold">Space</span> to auto-attack
+            the nearest threat. Press <span className="font-bold">P</span> to pause.
+            Survive every wave to hold the shift; lose all health and the shift fails.
           </p>
           {g.god && (
             <p className="mb-2">
               As <strong>{GODS.find((d) => d.key === g.god)?.name}</strong>, your signature ability —{' '}
-              <strong>{GODS.find((d) => d.key === g.god)?.abilityLabel}</strong> — is ready. The remaining
-              abilities unlock as you demonstrate mastery.
+              <strong>{GODS.find((d) => d.key === g.god)?.abilityLabel}</strong> — is ready.
+              The remaining abilities unlock as you demonstrate mastery.
             </p>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
@@ -631,11 +621,11 @@ export default function ControlTowerShift() {
 
       <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.08em]">
         <span data-testid="wave">Wave {g.wave}{g.config.finalWave ? ` / ${g.config.finalWave}` : ''}</span>
-        <span data-testid="integrity" className={g.integrity <= 40 ? 'text-berry' : ''}>
-          Integrity {g.integrity} / {g.config.maxIntegrity}
+        <span data-testid="integrity" className={g.deity?.health <= 40 ? 'text-berry' : ''}>
+          Health {g.deity?.health || 0} / {g.deity?.maxHealth || 0}
         </span>
         <span data-testid="status">
-          {g.status === 'paused' ? 'Paused' : abilityActive(g, 'shield') ? 'Shield up' : running ? 'On duty' : g.status === 'won' ? 'Shift held' : 'Tower down'}
+          {g.status === 'paused' ? 'Paused' : running ? 'On duty' : g.status === 'won' ? 'Shift held' : 'Tower down'}
         </span>
       </div>
 
@@ -647,8 +637,9 @@ export default function ControlTowerShift() {
           tabIndex={0}
           role="application"
           className="block w-full touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt focus-visible:ring-offset-2"
+          onPointerMove={running ? onPointerMove : undefined}
           onPointerDown={running ? onPointerDown : undefined}
-          aria-label="Play field. Tap a threat to clear it, or press Enter to clear the threat nearest the tower. Press P to pause."
+          aria-label="Arena. Point to move your deity. Click threats to attack. Press P to pause, 1-5 for abilities."
         />
         {!running && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper/90 p-6 text-center">
@@ -696,7 +687,6 @@ export default function ControlTowerShift() {
                   spawnerRef.current = createSpawner(Date.now() >>> 0)
                   savedRef.current = false
                   fxRef.current.pulseAt = null
-                  setShowDeitySelect(true)
                   sync()
                 }}
               >
@@ -709,22 +699,25 @@ export default function ControlTowerShift() {
 
       <div className="grid grid-cols-5 gap-2" role="group" aria-label="Abilities">
         {ABILITY_ORDER.map((name) => {
-          const active = abilityActive(g, name)
-          const ready = abilityReady(g, name)
+          const active = g.abilities[name] && g.tick < g.abilities[name].activeUntil
+          const ready = !g.abilities[name] || g.tick >= g.abilities[name].cooldownUntil
           const a = g.abilities[name]
-          const cd = a && !ready ? Math.ceil((a.cooldownUntil - g.tick) / LOGIC_HZ) : 0
-          // Show the god's glyph for each ability button instead of the geometric mark
+          const cd = a && !ready ? Math.ceil((a.cooldownUntil - g.tick) / TICK_RATE) : 0
           const godGlyph = ABILITY_GLYPHS[name]
           return (
             <button
               key={name}
-              onClick={() => fire(name)}
+              onClick={() => {
+                if (running && ready) {
+                  gameRef.current = castAbility(gameRef.current, name, 0, 0)
+                  sync()
+                }
+              }}
               disabled={!running || !ready}
               className={`relative flex min-h-16 flex-col items-center justify-center gap-0.5 border-[1.5px] px-1 py-2 text-[10px] font-bold uppercase tracking-[0.08em] transition disabled:opacity-40 ${
                 active ? 'border-cobalt bg-cobalt-soft text-cobalt' : 'border-ink text-ink hover:bg-fill'
               }`}
             >
-              {/* Text mark — the accessible, test-asserted glyph (first span) */}
               <span
                 className="serif text-lg leading-none"
                 aria-hidden="true"
@@ -738,12 +731,6 @@ export default function ControlTowerShift() {
               <span>{ABILITY_LABEL[name]}</span>
               <span className="text-muted normal-case tracking-normal">
                 {active ? 'active' : ready ? 'ready' : `${cd}s`}
-              </span>
-              <span
-                className="absolute inset-0 flex items-center justify-center opacity-0"
-                aria-hidden="true"
-              >
-                {renderGlyph(godGlyph, active ? '#1f35c9' : '#121210')}
               </span>
             </button>
           )
@@ -765,10 +752,8 @@ export default function ControlTowerShift() {
             </button>
           </>
         )}
-        {/* Discoverable, or the keyboard path is a secret: a capability nobody
-            can find is not far from one that isn't there. */}
         <span className="self-center text-[10px] uppercase tracking-[0.08em] text-muted">
-          {showDeitySelect ? 'Press 1-5 to choose a deity' : 'Enter clears · P pauses'}
+          {showDeitySelect ? 'Select a deity (ESC to dismiss)' : 'WASD to move · Enter attacks · P pauses · 1-5 abilities'}
         </span>
         <a
           href="#"

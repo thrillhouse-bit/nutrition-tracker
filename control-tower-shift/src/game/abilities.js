@@ -35,31 +35,38 @@ export function activateAbility(state, name) {
   if (name === 'repair') {
     next = {
       ...next,
-      integrity: Math.min(next.config.maxIntegrity, next.integrity + spec.amount),
+      deity: {
+        ...next.deity,
+        health: Math.min(next.deity.maxHealth, next.deity.health + spec.amount),
+      },
     }
   }
 
   if (name === 'pulseClear') {
-    const tower = { x: next.config.towerX, y: next.config.towerY }
-    const inRange = next.threats.filter((t) => distance(t, tower) <= spec.radius)
+    const d = next.deity
+    const inRange = next.threats.filter((t) => distance(t, d) <= spec.radius + t.radius)
     const perThreat = clearPoints(next, { pulse: true })
     next = addScore(next, perThreat * inRange.length)
     next = {
       ...next,
-      threats: next.threats.filter((t) => distance(t, tower) > spec.radius),
+      threats: next.threats.filter((t) => distance(t, d) > spec.radius + t.radius),
       threatsRemainingInWave: Math.max(0, next.threatsRemainingInWave - inRange.length),
     }
   }
 
-  return {
-    ...next,
-    tokenUsage: (next.tokenUsage || 0) + 1, // each ability use costs a token
-  }
+  return next
 }
 
-// Global movement scale on threats: speed burst dilates time against them.
+// Global movement scale: speed burst makes the deity faster.
+export function deitySpeedScale(state) {
+  return abilityActive(state, 'speedBurst')
+    ? state.config.abilities.speedBurst.factor
+    : 1
+}
+
+// Threat speed modifier (inverse — slow them when player is faster)
 export function threatSpeedScale(state) {
   return abilityActive(state, 'speedBurst')
-    ? state.config.abilities.speedBurst.threatSlowFactor
+    ? state.config.abilities.speedBurst.threatSlowFactor || 0.5
     : 1
 }

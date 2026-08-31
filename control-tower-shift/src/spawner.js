@@ -15,17 +15,18 @@ export function mulberry32(seed) {
   }
 }
 
-export const FIELD_RADIUS = 320 // threats spawn on this ring around the tower
+// Arena spawn ring — threats appear at the edge, then chase the deity
+export const FIELD_RADIUS = 280
 
-const BASE_INTERVAL = 75 // ticks between spawns at wave 1 (30 Hz → 2.5 s)
-const MIN_INTERVAL = 30
+const BASE_INTERVAL = 60 // ticks between spawns at wave 1 (30 Hz → 2.0 s)
+const MIN_INTERVAL = 22
 
 export function createSpawner(seed) {
   return { rng: mulberry32(seed), seed, wave: 1, spawned: 0, untilNext: 20, serial: 0 }
 }
 
 export function spawnInterval(wave) {
-  return Math.max(MIN_INTERVAL, BASE_INTERVAL - (wave - 1) * 6)
+  return Math.max(MIN_INTERVAL, BASE_INTERVAL - (wave - 1) * 5)
 }
 
 // Assign a monster type to each threat based on the wave number.
@@ -33,16 +34,12 @@ export function spawnInterval(wave) {
 export function monsterTypeForWave(wave, rng) {
   const keys = Object.keys(MONSTER_TYPES)
   if (wave <= 2) {
-    // First two waves: only Hydra (swarm) and Chronos (fast)
     return rng() < 0.6 ? 'hydra' : 'chronos'
   } else if (wave <= 5) {
-    // Mid waves: add Cerberus and Apollo
     return rng() < 0.4 ? 'hydra' : rng() < 0.7 ? 'cerberus' : rng() < 0.85 ? 'chronos' : 'apollo'
   } else if (wave <= 7) {
-    // Late waves: mix of all except Atlas
-    return rng() < 0.3 ? 'hydra' : rng() < 0.5 ? 'cerberus' : rng() < 0.7 ? 'chronos' : rng() < 0.85 ? 'apollo' : 'hydra'
+    return rng() < 0.3 ? 'hydra' : rng() < 0.5 ? 'cerberus' : rng() < 0.7 ? 'chronos' : rng() < 0.85 ? 'apollo' : rng() < 0.95 ? 'sphinx' : 'minotaur'
   } else {
-    // Endgame: Atlas bosses start appearing alongside others
     return rng() < 0.2 ? 'atlas' : rng() < 0.35 ? 'hydra' : rng() < 0.55 ? 'cerberus' : rng() < 0.75 ? 'chronos' : rng() < 0.9 ? 'apollo' : 'atlas'
   }
 }
@@ -66,35 +63,35 @@ export function stepSpawner(spawner, state) {
   spawner.serial += 1
 
   const angle = spawner.rng() * Math.PI * 2
-  const x = Math.cos(angle) * FIELD_RADIUS
-  const y = Math.sin(angle) * FIELD_RADIUS
-  // Aim at the tower with jittered speed and a slight tangential drift so
-  // approaches vary instead of all running straight down their radius. The
-  // drift is capped so every spawn still intersects the tower footprint:
-  // |drift|/speed <= 0.05/0.55 ≈ 0.09, and 0.09 × 320 ≈ 29 < towerRadius +
-  // threatRadius (34). Wider drift shipped first and made most threats miss
-  // and fly off forever — the unattended-shift test is what caught it.
-  const speed = 0.55 + spawner.rng() * 0.4
-  const drift = (spawner.rng() - 0.5) * 0.1
-  const nx = -x / FIELD_RADIUS
-  const ny = -y / FIELD_RADIUS
+  const r = FIELD_RADIUS
+  const x = Math.cos(angle) * r
+  const y = Math.sin(angle) * r
 
   // Assign a monster type based on wave and RNG
   const monsterType = monsterTypeForWave(state.wave, spawner.rng)
   const monsterSpec = MONSTER_TYPES[monsterType]
   const radius = monsterSpec ? monsterSpec.size : 10
 
+  // Base speed with wave scaling
+  const baseSpeed = state.config.threatBaseSpeed * (1 + (state.wave - 1) * state.config.waveSpeedAccel * 0.5)
+  // Monsters chase the deity — velocity set in state.spawnThreat based on deity position
+  // but spawner provides the initial spawn position
+
   return [
     {
       id: `w${state.wave}-${spawner.serial}`,
       x,
       y,
-      vx: nx * speed - ny * drift,
-      vy: ny * speed + nx * drift,
+      vx: 0, // will be set by spawnThreat based on deity position
+      vy: 0,
       radius,
-      god: monsterType,       // which deity/monster this threat represents
+      angle, // for rendering
+      god: monsterType,
       glyph: monsterSpec ? monsterSpec.glyph : 'hydra',
       behavior: monsterSpec ? monsterSpec.behavior : 'default',
+      speed: baseSpeed,
+      health: monsterSpec ? monsterSpec.size * 3 : 30,
+      monsterType: monsterType,
     },
   ]
 }

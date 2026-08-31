@@ -2,9 +2,11 @@ import { abilityActive } from './abilities.js'
 
 // Points for clearing one threat right now. Wave raises the stakes; the
 // multiplier ability applies its factor without compounding (see abilities.js).
-export function clearPoints(state, { pulse = false } = {}) {
+export function clearPoints(state, { pulse = false, auto = false, ability = null } = {}) {
   let pts = state.config.pointsPerClear * state.wave
   if (pulse) pts *= state.config.pulseClearFraction
+  if (auto) pts = Math.floor(pts * 0.8) // auto-attacks score slightly less
+  if (ability) pts = Math.floor(pts * 1.5) // ability kills score bonus
   if (abilityActive(state, 'scoreMultiplier')) {
     pts *= state.config.abilities.scoreMultiplier.factor
   }

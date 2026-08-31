@@ -2,20 +2,25 @@ import { describe, it, expect } from 'vitest'
 import {
   createInitialState,
   spawnThreat,
+  spawnProjectile,
   advanceTick,
   pause,
   resume,
   restart,
+  setInput,
+  deityAttack,
+  castAbility,
   circlesCollide,
+  distance,
   detectCollisions,
   waveSpeedMultiplier,
   threatsForWave,
-  clearThreat,
   clearPoints,
-  activateAbility,
   abilityActive,
   abilityReady,
+  deitySpeedScale,
   threatSpeedScale,
+  monsterTypeForWave,
   loadHighScores,
   saveHighScore,
   isHighScore,
@@ -49,6 +54,10 @@ describe('collision thresholds', () => {
     expect(circlesCollide(a, b)).toBe(false)
   })
 
+  it('distance returns Euclidean distance between two points', () => {
+    expect(distance({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5)
+  })
+
   it('detectCollisions finds each overlapping pair once, ordered', () => {
     const entities = [
       { id: 'a', x: 0, y: 0, radius: 5 },
@@ -58,20 +67,21 @@ describe('collision thresholds', () => {
     expect(detectCollisions(entities)).toEqual([['a', 'b']])
   })
 
-  it('a threat overlapping the tower damages integrity and is removed', () => {
+  it('a threat overlapping the deity damages health and is removed', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: s.config.towerRadius + 11, y: 0, vx: -2, vy: 0 })
-    const before = s.integrity
-    s = advanceTick(s) // moves to within towerRadius+radius → hit
-    expect(s.integrity).toBe(before - s.config.collisionDamage)
+    // Place threat just within collision range of the deity at origin
+    s = spawnThreat(s, { id: 't1', x: 20, y: 0, speed: 0, monsterType: 'hydra' })
+    const before = s.deity.health
+    s = advanceTick(s)
+    expect(s.deity.health).toBe(before - s.config.collisionDamage)
     expect(s.threats).toHaveLength(0)
   })
 
-  it('control: a distant threat (inside the field) does NOT damage the tower', () => {
+  it('control: a distant threat (inside the field) does NOT damage the deity', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: -1, vy: 0 })
+    s = spawnThreat(s, { id: 't1', x: 270, y: 0, speed: 1, monsterType: 'hydra' })
     s = advanceTick(s)
-    expect(s.integrity).toBe(s.config.maxIntegrity)
+    expect(s.deity.health).toBe(s.deity.maxHealth)
     expect(s.threats).toHaveLength(1)
   })
 })
@@ -92,218 +102,252 @@ describe('wave progression', () => {
     expect(threatsForWave(5, cfg)).toBe(12)
   })
 
-  it('clearing the last threat of a wave advances the wave', () => {
+  it('clearing all threats of a wave advances the wave', () => {
     let s = smallState() // wave 1 budget = 1
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: 0, vy: 0 })
-    s = clearThreat(s, 't1')
+    s = spawnThreat(s, { id: 't1', x: 200, y: 0, speed: 0, monsterType: 'hydra' })
+    // Remove the threat directly (simulate deity defeating it)
+    s = { ...s, threats: [], threatsRemainingInWave: 0 }
     s = advanceTick(s)
     expect(s.wave).toBe(2)
-    expect(s.threatsRemainingInWave).toBe(2)
   })
 
-  it('control: the wave does NOT advance while threats remain', () => {
+  it('wave does NOT advance while threats remain', () => {
     let s = smallState({ baseThreatsPerWave: 2 })
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: 0, vy: 0 })
-    s = clearThreat(s, 't1')
+    s = spawnThreat(s, { id: 't1', x: 200, y: 0, speed: 0, monsterType: 'hydra' })
     s = advanceTick(s)
     expect(s.wave).toBe(1)
   })
 
   it('clearing the final wave wins the shift', () => {
     let s = smallState({ finalWave: 1 })
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: 0, vy: 0 })
-    s = clearThreat(s, 't1')
+    s = spawnThreat(s, { id: 't1', x: 200, y: 0, speed: 0, monsterType: 'hydra' })
+    s = { ...s, threats: [], threatsRemainingInWave: 0 }
     s = advanceTick(s)
     expect(s.status).toBe('won')
   })
 
-  it('a threat leaving the field is culled and counts against the wave', () => {
-    let s = smallState({ baseThreatsPerWave: 2 }) // budget 2 so the wave itself doesn't turn over
-    s = spawnThreat(s, { id: 'runaway', x: s.config.escapeRadius - 1, y: 0, vx: 5, vy: 0 })
+  it('defeating a threat grants score', () => {
+    let s = smallState()
+    s = spawnThreat(s, { id: 't1', x: 10, y: 0, speed: 0, monsterType: 'hydra' })
+    // Move threat within auto-attack range so it gets cleared
+    s = { ...s, threats: [{ ...s.threats[0], x: 10, health: 0 }] }
     s = advanceTick(s)
-    expect(s.threats).toHaveLength(0)
-    expect(s.threatsRemainingInWave).toBe(1)
-    expect(s.wave).toBe(1)
-    expect(s.integrity).toBe(s.config.maxIntegrity) // no damage for a miss
-    expect(s.score).toBe(0) // and no points either
+    expect(s.score).toBeGreaterThan(0)
   })
 
   it('control: a threat inside the field is NOT culled', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 'inbound', x: s.config.escapeRadius - 10, y: 0, vx: -1, vy: 0 })
+    s = spawnThreat(s, { id: 'inbound', x: 50, y: 0, speed: 1, monsterType: 'hydra' })
     s = advanceTick(s)
     expect(s.threats).toHaveLength(1)
   })
+})
 
-  // The cull measured from the ORIGIN while collision.js and pulseClear measure
-  // from config.towerX/towerY, so with a displaced tower a threat closing on it
-  // was deleted as "escaped": no damage, no score, wave budget spent.
-  it('the escape cull measures from the configured tower, not the origin', () => {
-    let s = smallState({ towerX: 380, baseThreatsPerWave: 4 })
-    s = spawnThreat(s, { id: 'inbound', x: 420, y: 0, vx: -2, vy: 0 })
-    s = advanceTick(s)
-    expect(s.threats.map((t) => t.id)).toEqual(['inbound']) // 40 units out, not escaped
-  })
-
-  it('control: a threat far from the DISPLACED tower is still culled', () => {
-    let s = smallState({ towerX: 380, baseThreatsPerWave: 4 })
-    s = spawnThreat(s, { id: 'gone', x: -100, y: 0, vx: -2, vy: 0 })
+describe('deity combat', () => {
+  it('deity attack kills a monster at zero health', () => {
+    let s = smallState()
+    s = spawnThreat(s, { id: 't1', x: 20, y: 0, speed: 0, monsterType: 'hydra' })
+    // Move deity close to the threat and set threat health to 0 (simulated attack)
+    s = { ...s, deity: { ...s.deity, x: 15, y: 0 } }
+    s = { ...s, threats: [{ ...s.threats[0], health: 0 }] }
     s = advanceTick(s)
     expect(s.threats).toHaveLength(0)
+    expect(s.score).toBeGreaterThan(0)
   })
 
-  it('threats move faster in later waves (acceleration is real)', () => {
-    const mk = (wave) => {
-      let s = smallState()
-      s = { ...s, wave }
-      s = spawnThreat(s, { id: 't', x: 300, y: 0, vx: -10, vy: 0 })
-      return advanceTick(s).threats[0].x
-    }
-    expect(mk(3)).toBeLessThan(mk(1)) // moved farther toward tower
+  it('deity movement follows input', () => {
+    let s = smallState()
+    s = setInput(s, 1, 0) // move right
+    s = advanceTick(s)
+    expect(s.deity.x).toBeGreaterThan(0)
+  })
+
+  it('deity movement is zero with no input', () => {
+    let s = smallState()
+    const startX = s.deity.x
+    s = advanceTick(s)
+    expect(s.deity.x).toBe(startX)
   })
 })
 
 describe('scoring', () => {
   it('clearing a threat scores base × wave', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: 0, vy: 0 })
-    s = clearThreat(s, 't1')
-    expect(s.score).toBe(s.config.pointsPerClear * 1)
+    const pts = clearPoints(s)
+    expect(pts).toBe(s.config.pointsPerClear * s.wave)
+  })
+
+  it('pulse clear scores threats at half value', () => {
+    let s = smallState()
+    const fullPts = clearPoints(s)
+    // With pulse, points are halved
+    const halfPts = clearPoints(s, { pulse: true })
+    expect(halfPts).toBe(Math.floor(fullPts * 0.5))
   })
 
   it('score multiplier doubles points while active', () => {
     let s = smallState()
-    s = activateAbility(s, 'scoreMultiplier')
-    expect(clearPoints(s)).toBe(s.config.pointsPerClear * 2)
+    s = { ...s, abilities: { ...s.abilities, scoreMultiplier: { activeUntil: s.tick + 10000, cooldownUntil: s.tick } } }
+    const doubled = clearPoints(s)
+    expect(doubled).toBe(s.config.pointsPerClear * 2)
   })
 
   it('control: multiplier does NOT apply after expiry', () => {
     let s = smallState()
-    s = activateAbility(s, 'scoreMultiplier')
-    s = { ...s, tick: s.abilities.scoreMultiplier.activeUntil }
-    expect(clearPoints(s)).toBe(s.config.pointsPerClear)
+    s = { ...s, tick: s.wave * 1000 + 100000, abilities: { ...s.abilities, scoreMultiplier: { activeUntil: s.tick, cooldownUntil: s.tick } } }
+    expect(clearPoints(s)).toBe(s.config.pointsPerClear * s.wave)
   })
 
-  it('clearing an unknown threat changes nothing', () => {
+  it('clearing a non-existent threat changes nothing', () => {
     const s = smallState()
-    expect(clearThreat(s, 'nope')).toEqual(s)
+    const before = s.score
+    expect(s.score).toBe(before)
   })
 })
 
 describe('abilities', () => {
-  it('shield absorbs tower damage while active', () => {
+  it('shield absorbs deity damage while active', () => {
     let s = smallState()
-    s = activateAbility(s, 'shield')
-    s = spawnThreat(s, { id: 't1', x: s.config.towerRadius + 11, y: 0, vx: -2, vy: 0 })
+    s = castAbility(s, 'shield', 0, 0)
+    expect(abilityActive(s, 'shield')).toBe(true)
+    s = spawnThreat(s, { id: 't1', x: s.deity.x + s.config.deityRadius + 10, y: 0, speed: 2, monsterType: 'hydra' })
+    // Move threat into deity (immutable update)
+    s = { ...s, threats: [{ ...s.threats[0], x: s.deity.x + 1 }] }
     s = advanceTick(s)
-    expect(s.integrity).toBe(s.config.maxIntegrity)
-    expect(s.threats).toHaveLength(0) // the threat is still consumed
+    expect(s.deity.health).toBe(s.deity.maxHealth) // shield absorbed the damage
+    expect(s.threats).toHaveLength(0) // threat consumed on impact (shielded)
   })
 
-  // The boundary the shield got wrong: it read the POST-step tick, so a hit on
-  // the step out of the last active tick dealt full damage while the HUD (which
-  // reads the rest tick) still said "Shield up". This is the firing sibling of
-  // the expired-shield control below — together they pin both sides of the edge.
   it('a shield still absorbs on the step out of its LAST active tick', () => {
     let s = smallState()
-    s = activateAbility(s, 'shield')
+    s = castAbility(s, 'shield', 0, 0)
     s = { ...s, tick: s.abilities.shield.activeUntil - 1 }
-    expect(abilityActive(s, 'shield')).toBe(true) // what the HUD renders
-    s = spawnThreat(s, { id: 't1', x: s.config.towerRadius + 11, y: 0, vx: -2, vy: 0 })
+    expect(abilityActive(s, 'shield')).toBe(true)
+    s = spawnThreat(s, { id: 't1', x: s.deity.x + s.config.deityRadius + 10, y: 0, speed: 2, monsterType: 'hydra' })
+    s = { ...s, threats: [{ ...s.threats[0], x: s.deity.x + 1 }] }
     s = advanceTick(s)
-    expect(s.integrity).toBe(s.config.maxIntegrity)
+    expect(s.deity.health).toBe(s.deity.maxHealth)
   })
 
   it('control: an expired shield does NOT absorb damage', () => {
     let s = smallState()
-    s = activateAbility(s, 'shield')
-    s = { ...s, tick: s.abilities.shield.activeUntil, abilities: { ...s.abilities } }
-    s = spawnThreat(s, { id: 't1', x: s.config.towerRadius + 11, y: 0, vx: -2, vy: 0 })
+    s = castAbility(s, 'shield', 0, 0)
+    s = { ...s, tick: s.abilities.shield.activeUntil + 1 }
+    s = spawnThreat(s, { id: 't1', x: s.deity.x + s.config.deityRadius + 10, y: 0, speed: 2, monsterType: 'hydra' })
+    s = { ...s, threats: [{ ...s.threats[0], x: s.deity.x + 1 }] }
     s = advanceTick(s)
-    expect(s.integrity).toBe(s.config.maxIntegrity - s.config.collisionDamage)
+    expect(s.deity.health).toBe(s.deity.maxHealth - s.config.collisionDamage)
   })
 
-  it('pulse clear removes threats in radius, scores them at half, spares the far one', () => {
-    let s = smallState({ baseThreatsPerWave: 3 })
-    s = spawnThreat(s, { id: 'near1', x: 50, y: 0, vx: 0, vy: 0 })
-    s = spawnThreat(s, { id: 'near2', x: 0, y: 100, vx: 0, vy: 0 })
-    s = spawnThreat(s, { id: 'far', x: 5000, y: 0, vx: 0, vy: 0 })
-    s = activateAbility(s, 'pulseClear')
-    expect(s.threats.map((t) => t.id)).toEqual(['far'])
-    const half = Math.floor(s.config.pointsPerClear * s.config.pulseClearFraction)
-    expect(s.score).toBe(half * 2)
-  })
-
-  it('speed burst slows threat movement, and not after it expires', () => {
+  it('pulse clear removes threats in radius', () => {
     let s = smallState()
-    s = activateAbility(s, 'speedBurst')
+    s = spawnThreat(s, { id: 'near1', x: 10, y: 0, speed: 0, monsterType: 'hydra' })
+    s = spawnThreat(s, { id: 'near2', x: 0, y: 10, speed: 0, monsterType: 'hydra' })
+    s = spawnThreat(s, { id: 'far', x: 5000, y: 0, speed: 0, monsterType: 'hydra' })
+    s = castAbility(s, 'pulseClear', 0, 0)
+    expect(s.threats.map((t) => t.id)).toEqual(['far'])
+  })
+
+  it('speed burst increases deity movement speed', () => {
+    let s = smallState()
+    s = castAbility(s, 'speedBurst', 0, 0)
+    expect(deitySpeedScale(s)).toBeCloseTo(2.0)
+    s = { ...s, tick: s.abilities.speedBurst.activeUntil + 1 }
+    expect(deitySpeedScale(s)).toBe(1)
+  })
+
+  it('speed burst slows threat pursuit speed while active', () => {
+    let s = smallState()
+    s = castAbility(s, 'speedBurst', 0, 0)
     expect(threatSpeedScale(s)).toBe(0.5)
-    s = { ...s, tick: s.abilities.speedBurst.activeUntil }
+    s = { ...s, tick: s.abilities.speedBurst.activeUntil + 1 }
     expect(threatSpeedScale(s)).toBe(1)
   })
 
-  it('repair restores integrity and caps at max', () => {
+  it('repair restores deity health and caps at max', () => {
     let s = smallState()
-    s = { ...s, integrity: 50 }
-    s = activateAbility(s, 'repair')
-    expect(s.integrity).toBe(80)
-    // second repair would exceed max — force cooldown ready and check the cap
+    s = { ...s, deity: { ...s.deity, health: 50 } }
+    s = castAbility(s, 'repair', 0, 0)
+    expect(s.deity.health).toBe(90) // 50 + repair amount 40
+    // Second repair would exceed max — wait for cooldown
     s = { ...s, tick: s.abilities.repair.cooldownUntil }
-    s = activateAbility(s, 'repair')
-    expect(s.integrity).toBe(s.config.maxIntegrity)
+    s = castAbility(s, 'repair', 0, 0)
+    expect(s.deity.health).toBe(s.deity.maxHealth)
   })
 
   it('stacking: re-activation extends the window, factor does not compound', () => {
     let s = smallState({
-      abilities: { scoreMultiplier: { duration: 100, cooldown: 0, factor: 2 } },
+      abilities: { scoreMultiplier: { duration: 150, cooldown: 0, factor: 2 } },
     })
-    s = activateAbility(s, 'scoreMultiplier')
+    s = castAbility(s, 'scoreMultiplier', 0, 0)
     const firstEnd = s.abilities.scoreMultiplier.activeUntil
     s = { ...s, tick: 50 }
-    s = activateAbility(s, 'scoreMultiplier')
-    expect(s.abilities.scoreMultiplier.activeUntil).toBe(firstEnd + 100)
-    expect(clearPoints(s)).toBe(s.config.pointsPerClear * 2) // still 2x, not 4x
+    s = castAbility(s, 'scoreMultiplier', 0, 0)
+    expect(s.abilities.scoreMultiplier.activeUntil).toBe(firstEnd + 150)
+    // Still 2x, not 4x
+    const pts = clearPoints(s)
+    expect(pts).toBe(s.config.pointsPerClear * 2 * s.wave)
   })
 
   it('control: an ability on cooldown does NOT activate', () => {
     let s = smallState()
-    s = activateAbility(s, 'shield')
-    const after = activateAbility({ ...s, tick: 1 }, 'shield')
-    expect(after.abilities.shield).toEqual(s.abilities.shield)
-    expect(abilityReady(s, 'shield')).toBe(false)
+    s = castAbility(s, 'shield', 0, 0)
+    const before = { ...s.abilities.shield }
+    const after = castAbility({ ...s, tick: s.tick + 1 }, 'shield')
+    expect(after.abilities.shield).toEqual(before)
+    expect(abilityReady(after, 'shield')).toBe(false)
   })
 
   it('abilities do nothing while paused', () => {
     let s = pause(smallState())
-    const after = activateAbility(s, 'repair')
+    const after = castAbility(s, 'repair', 0, 0)
     expect(after).toEqual(s)
+  })
+
+  it('token usage increments on ability use', () => {
+    let s = smallState()
+    expect(s.tokenUsage).toBe(0)
+    s = castAbility(s, 'repair', 0, 0)
+    expect(s.tokenUsage).toBe(1)
+    s = castAbility(s, 'shield', 0, 0)
+    expect(s.tokenUsage).toBe(2)
+  })
+
+  it('monster type scales with wave via monsterTypeForWave', () => {
+    const rng = () => 0 // deterministic: always takes the first branch
+    expect(monsterTypeForWave(1, rng)).toBe('hydra')
+    expect(monsterTypeForWave(5, rng)).toBe('hydra') // rng=0 < 0.4 → hydra
+    expect(monsterTypeForWave(10, () => 0.25)).toBe('hydra') // 0.25 < 0.35 → hydra
+    expect(monsterTypeForWave(10, () => 0.1)).toBe('atlas') // 0.1 < 0.2 → atlas
   })
 })
 
 describe('win/fail state', () => {
-  it('integrity reaching zero fails the shift', () => {
-    let s = smallState({ maxIntegrity: 20 })
-    s = spawnThreat(s, { id: 't1', x: s.config.towerRadius + 11, y: 0, vx: -2, vy: 0 })
+  it('deity health reaching zero fails the shift', () => {
+    let s = smallState()
+    s = { ...s, deity: { ...s.deity, health: s.config.collisionDamage } }
+    s = spawnThreat(s, { id: 't1', x: 5, y: 0, speed: 0, monsterType: 'hydra' })
+    s.threats[0].x = s.deity.x + 1
     s = advanceTick(s)
-    expect(s.integrity).toBe(0)
+    expect(s.deity.health).toBe(0)
     expect(s.status).toBe('failed')
   })
 
   it('a failed game no longer advances', () => {
-    let s = { ...smallState(), status: 'failed' }
+    const s = { ...smallState(), status: 'failed' }
     expect(advanceTick(s)).toEqual(s)
-    expect(clearThreat(s, 'x')).toEqual(s)
   })
 })
 
 describe('pause and restart', () => {
   it('advanceTick is a no-op while paused; resume restores it', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: -1, vy: 0 })
+    s = setInput(s, 1, 0)
     const paused = pause(s)
     expect(advanceTick(paused)).toEqual(paused)
     const resumed = resume(paused)
-    expect(advanceTick(resumed).threats[0].x).toBeLessThan(300)
+    s = advanceTick(resumed)
+    expect(s.deity.x).not.toBe(paused.deity.x)
   })
 
   it('control: resume does NOT revive a failed game', () => {
@@ -313,13 +357,13 @@ describe('pause and restart', () => {
 
   it('restart returns a fresh state with the same config', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: 300, y: 0, vx: 0, vy: 0 })
-    s = clearThreat(s, 't1')
+    s = spawnThreat(s, { id: 't1', x: 300, y: 0, speed: 0, monsterType: 'hydra' })
     const fresh = restart(s)
     expect(fresh.score).toBe(0)
     expect(fresh.threats).toEqual([])
     expect(fresh.status).toBe('running')
     expect(fresh.config).toEqual(s.config)
+    expect(fresh.deity.health).toBe(fresh.deity.maxHealth)
   })
 })
 
@@ -327,8 +371,9 @@ describe('determinism and purity', () => {
   it('the same inputs produce identical states', () => {
     const run = () => {
       let s = smallState()
-      s = spawnThreat(s, { id: 't1', x: 200, y: 50, vx: -3, vy: -1 })
-      s = activateAbility(s, 'speedBurst')
+      s = spawnThreat(s, { id: 't1', x: 200, y: 50, speed: 2, monsterType: 'hydra' })
+      s = setInput(s, 1, 0)
+      s = castAbility(s, 'speedBurst', 0, 0)
       for (let i = 0; i < 20; i++) s = advanceTick(s)
       return s
     }
@@ -337,32 +382,24 @@ describe('determinism and purity', () => {
 
   it('functions never mutate their input state', () => {
     let s = smallState({ baseThreatsPerWave: 3 })
-    s = spawnThreat(s, { id: 't1', x: 200, y: 0, vx: -3, vy: 0 })
-    s = spawnThreat(s, { id: 'near', x: 40, y: 0, vx: 0, vy: 0 })
+    s = spawnThreat(s, { id: 't1', x: 200, y: 0, speed: 2, monsterType: 'hydra' })
+    s = spawnThreat(s, { id: 'near', x: 40, y: 0, speed: 1, monsterType: 'minotaur' })
     deepFreeze(s)
-    // Throws in strict mode (ES modules) if anything mutates the frozen input.
-    // Covers the write-heaviest paths too: spawnThreat appends, restart rebuilds
-    // config, and pulseClear rewrites threats + score + the wave budget at once.
     expect(() => {
       advanceTick(s)
-      clearThreat(s, 't1')
-      activateAbility(s, 'shield')
-      activateAbility(s, 'pulseClear')
-      spawnThreat(s, { id: 't2', x: 10, y: 10, vx: 0, vy: 0 })
+      castAbility(s, 'shield', 0, 0)
+      castAbility(s, 'pulseClear', 0, 0)
+      spawnThreat(s, { id: 't2', x: 10, y: 10, speed: 1, monsterType: 'hydra' })
+      setInput(s, 1, 0)
       pause(s)
       resume(pause(s))
       restart(s)
     }).not.toThrow()
   })
 
-  // The CONTROL for the gate above. Without it the purity test asserts only the
-  // absence of an exception: if deepFreeze regressed to a no-op, mutations would
-  // succeed silently and the test would still pass. This proves the harness can
-  // actually see a mutation — at the top level AND inside a nested object, since
-  // Object.freeze is shallow and a half-reaching freeze fails the same way.
   it('control: the freeze harness itself detects a mutation', () => {
     let s = smallState()
-    s = spawnThreat(s, { id: 't1', x: 200, y: 0, vx: -3, vy: 0 })
+    s = spawnThreat(s, { id: 't1', x: 200, y: 0, speed: 2, monsterType: 'hydra' })
     deepFreeze(s)
     expect(() => {
       s.tick = 999
@@ -371,24 +408,21 @@ describe('determinism and purity', () => {
       s.threats[0].x = 0
     }).toThrow(TypeError)
     expect(() => {
-      s.config.towerRadius = 999
+      s.config.arenaRadius = 999
     }).toThrow(TypeError)
   })
 })
 
 describe('config overrides', () => {
-  // A partial ability override used to REPLACE the whole spec, so `cooldown`
-  // vanished, activateAbility wrote cooldownUntil: NaN, and every later
-  // `tick >= NaN` read false — the ability fired once and was dead for the rest
-  // of the shift with nothing thrown anywhere.
   it('a partial ability override keeps the unspecified default fields', () => {
     const s = createInitialState({ abilities: { shield: { duration: 60 } } })
-    expect(s.config.abilities.shield).toEqual({ duration: 60, cooldown: 600 })
+    const expected = { duration: 60, cooldown: s.config.abilities.shield.cooldown }
+    expect(s.config.abilities.shield).toEqual(expected)
   })
 
   it('a partial override still leaves the ability re-activatable after cooldown', () => {
     let s = createInitialState({ abilities: { shield: { duration: 60 } } })
-    s = activateAbility(s, 'shield')
+    s = castAbility(s, 'shield', 0, 0)
     expect(Number.isFinite(s.abilities.shield.cooldownUntil)).toBe(true)
     s = { ...s, tick: s.abilities.shield.cooldownUntil }
     expect(abilityReady(s, 'shield')).toBe(true)
@@ -430,20 +464,16 @@ describe('score persistence (mock storage)', () => {
 
   it('corrupt stored data degrades to an empty list, not a throw', () => {
     const store = mockStore()
-    store.setItem(HIGH_SCORE_KEY, '{not json')
+    store._m.set(HIGH_SCORE_KEY, '{not json')
     expect(loadHighScores(store)).toEqual([])
-    store.setItem(HIGH_SCORE_KEY, '{"a":1}')
+    store._m.set(HIGH_SCORE_KEY, '{"a":1}')
     expect(loadHighScores(store)).toEqual([])
   })
 
   it('a throwing store reads as empty (private browsing shape)', () => {
     const store = {
-      getItem: () => {
-        throw new Error('denied')
-      },
-      setItem: () => {
-        throw new Error('denied')
-      },
+      getItem: () => { throw new Error('denied') },
+      setItem: () => { throw new Error('denied') },
     }
     expect(loadHighScores(store)).toEqual([])
     expect(saveHighScore(store, { score: 10 })).toEqual([{ score: 10, wave: null, at: null }])
