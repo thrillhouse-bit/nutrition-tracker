@@ -225,12 +225,35 @@ describe('GET /.well-known/agent-card.json', () => {
     expect((await res.json()).result).toBeTruthy()
   })
 
-  it('control: the parity probe can fail — an undeclared path 404s instead of answering', async () => {
+  it('control: the parity probe can fail — an undeclared path is refused where its declared sibling answers', async () => {
     // Without this, the 200-assertions above would prove nothing if every
-    // path answered (e.g. a SPA fallback swallowing GETs — dist/ is absent
-    // under vitest, and this pins that assumption).
-    const res = await get('/.well-known/agent.json') // the OLD a2a card path, deliberately not served
-    expect(res.status).toBe(404)
+    // path answered (e.g. a SPA fallback swallowing GETs).
+    //
+    // The probe sits under /api/ deliberately. Every endpoint the card
+    // declares is an /api/ path, and the SPA fallback at the bottom of
+    // server/index.js is `app.get(/^\/(?!api\/).*/, …)` — its negative
+    // lookahead excludes that prefix by construction, so this control holds
+    // whether or not a dist/ build happens to exist on the machine running
+    // the suite. It used to probe /.well-known/agent.json and assert 404,
+    // which is only true while dist/ is ABSENT: CI runs `npm test` before
+    // `npm run build` and stayed green, but anyone who built before testing
+    // got the SPA shell — 200 — and a failure that reads like a red main
+    // branch rather than a stale build directory. The assumption was
+    // ambient; measured 30 Aug 2026 in both states, this one is not.
+    const undeclared = await get('/api/agent/agent-card.json') // never a route
+    // 401, not 404: requireAuth blankets /api (server/index.js), and the
+    // declared endpoint escapes it only by being registered above that mount.
+    expect(undeclared.status, 'an undeclared /api path must be refused, not answered').toBe(401)
+    // …and the probe discriminates rather than refusing everything: the same
+    // prefix, declared, still answers anonymously.
+    expect((await get('/api/agent/status')).status).toBe(200)
+
+    // The OLD a2a card path stays deliberately unserved. WHAT answers it does
+    // depend on a build (404 bare, the SPA shell once dist/ exists), so the
+    // assertion is the part that is true either way: never the agent surface.
+    const oldCard = await get('/.well-known/agent.json')
+    expect(oldCard.headers.get('content-type') || '', 'the old card path must never be served by the agent surface')
+      .not.toMatch(/application\/json/)
   })
 
   it('card url follows OMNIFUEL_PUBLIC_URL when set, and defaults when not (both directions)', async () => {
