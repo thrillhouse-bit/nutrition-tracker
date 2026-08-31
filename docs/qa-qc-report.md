@@ -1337,3 +1337,48 @@ before PR #121), which is a longer gap than usual for a feature
 this contained, but the game is opt-in behind a URL hash with zero
 effect on the main app's own users — not escalating past a note. No
 fixes needed or attempted this pass.
+
+## 2026-08-31 — Check-in pass (recurring, 04:36 UTC)
+
+Two new commits since the last check-in, both from the other session
+and both worth calling out specifically: one directly closes a gap
+this report itself raised two passes ago, the other fixes a real,
+independently-diagnosed test-suite flake.
+
+**PR #130** fixes the exact stale-`dist/` false positive this report
+flagged (2026-08-30 20:36 UTC pass): the agent-surface negative-control
+test asserted `/.well-known/agent.json` 404s, resting on an unpinned
+assumption ("`dist/` is absent under vitest") that the test's own old
+comment stated but never enforced. The commit message is admirably
+precise about why this was worth a real fix rather than a shrug — CI
+was always green (the workflow tests before it builds), so this was
+never a production bug, but any contributor who built locally before
+testing got a failure unrelated to their own change. The probe now
+targets an `/api/`-prefixed path, which the SPA fallback's negative
+lookahead excludes by construction, so the control holds in both
+`dist/` states. **Verified this directly**: ran the file with `dist/`
+freshly built and present — 19/19, where two passes ago that exact
+condition was the one that broke. This closes the loop on this
+report's own diagnosis; no further tracking needed.
+
+**PR #131** root-causes a real, measured ~50% test flake in
+`game-view.test.jsx`'s keyboard-play test (introduced by PR #126's
+Enter-to-clear feature two passes ago) down to a genuine bug in the
+game loop, not a bad test: the fixed-timestep accumulator seeded its
+clock from `performance.now()` on mount but measured every later frame
+against the `requestAnimationFrame` timestamp — two clocks with a
+shared origin in a real browser, but not under jsdom, where the gap
+(1.4–1.7s measured) fed the accumulator a large negative delta that
+took real wall-clock frames to climb back out of before any game logic
+ran at all. Fixed by giving the clock a single first-frame origin and
+flooring the accumulator at zero. **Verified independently**: ran
+`npm test` four consecutive times in this pass (978/978 each run, one
+before pulling anything new plus three more back-to-back) — no flake
+observed, consistent with the fix's own claim of 6/6 clean runs.
+
+`npm run build`: clean, game chunk unchanged in shape. No Open Items
+table changes — neither PR fixes a previously tracked report item;
+both are self-contained test-infrastructure hardening for
+`control-tower-shift/`. Live site now nine commits behind `main`
+(still `431e2b0`) — same low-risk, opt-in-only gap noted last pass,
+not escalated further. No fixes needed or attempted this pass.
