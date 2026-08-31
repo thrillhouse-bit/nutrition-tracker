@@ -17,7 +17,7 @@ import {
   isHighScore,
 } from './game/index.js'
 import { createSpawner, FIELD_RADIUS } from './spawner.js'
-import { stepFrame, threatAt, nearestThreatToTower, LOGIC_HZ } from './loop.js'
+import { stepFrame, threatAt, nearestThreatToTower, createFrameClock, LOGIC_HZ } from './loop.js'
 
 const ABILITY_ORDER = ['shield', 'pulseClear', 'speedBurst', 'scoreMultiplier', 'repair']
 const ABILITY_LABEL = {
@@ -178,15 +178,13 @@ export default function ControlTowerShift() {
     const raf = window.requestAnimationFrame || ((cb) => setTimeout(() => cb(performance.now()), 16))
     const caf = window.cancelAnimationFrame || clearTimeout
     let handle
-    let last = performance.now()
-    let acc = 0
-    const stepMs = 1000 / LOGIC_HZ
+    // The frame clock reads ONE clock — the timestamps this rAF hands back.
+    // Seeding it from performance.now() instead is what froze the game for
+    // ~1.4s per mount under jsdom; see createFrameClock in loop.js.
+    const stepsFor = createFrameClock(1000 / LOGIC_HZ)
     const frame = (now) => {
-      acc = Math.min(acc + (now - last), 250) // clamp: background tabs don't fast-forward
-      last = now
-      const steps = Math.floor(acc / stepMs)
+      const steps = stepsFor(now)
       if (steps > 0) {
-        acc -= steps * stepMs
         gameRef.current = stepFrame(gameRef.current, spawnerRef.current, steps)
       }
       const g = gameRef.current
