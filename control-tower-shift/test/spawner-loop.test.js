@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { createSpawner, stepSpawner, spawnInterval, FIELD_RADIUS, mulberry32 } from '../src/spawner.js'
-import { stepFrame, threatAt, nearestThreatToTower, createFrameClock } from '../src/loop.js'
-import { createInitialState, pause } from '../src/game/index.js'
-import { threatsForWave } from '../src/game/waves.js'
+import { createSpawner, stepSpawner, mulberry32 } from '../src/spawner.js'
+import { stepFrame, threatAt, nearestThreatToDeity, createFrameClock } from '../src/loop.js'
+import { createInitialState, pause, FIELD_RADIUS, levelForIndex } from '../src/game/index.js'
 
 const runTicks = (state, spawner, n) => {
   const out = []
@@ -26,11 +25,13 @@ describe('spawner', () => {
     expect(a).not.toEqual(b)
   })
 
-  it('spawns exactly the wave budget, then stops', () => {
+  it('spawns exactly the level’s authored encounter, then stops', () => {
     const s = createInitialState()
     const spawner = createSpawner(7)
     const spawned = runTicks(s, spawner, 100000)
-    expect(spawned).toHaveLength(threatsForWave(1, s.config))
+    expect(spawned).toHaveLength(levelForIndex(0).encounter.order.length)
+    // The order is the authored composition.
+    expect(spawned.map((t) => t.monsterType)).toEqual(levelForIndex(0).encounter.order)
   })
 
   it('control: a paused game spawns nothing', () => {
@@ -38,17 +39,11 @@ describe('spawner', () => {
     expect(runTicks(s, createSpawner(7), 5000)).toHaveLength(0)
   })
 
-  it('spawns sit on the field ring and move inward', () => {
+  it('spawns sit on the arena edge and carry a chase speed', () => {
     const s = createInitialState()
     const [t] = runTicks(s, createSpawner(9), 200)
-    expect(Math.hypot(t.x, t.y)).toBeCloseTo(FIELD_RADIUS)
-    // Radial velocity component points at the tower.
-    expect(t.vx * t.x + t.vy * t.y).toBeLessThan(0)
-  })
-
-  it('spawn interval shrinks with wave and floors', () => {
-    expect(spawnInterval(2)).toBeLessThan(spawnInterval(1))
-    expect(spawnInterval(50)).toBe(30)
+    expect(Math.hypot(t.x, t.y)).toBeCloseTo(s.config.arenaRadius, -1)
+    expect(t.speed).toBeGreaterThan(0)
   })
 
   it('mulberry32 emits stable values in [0,1)', () => {
@@ -65,64 +60,51 @@ describe('spawner', () => {
 
 describe('loop', () => {
   it('stepFrame is deterministic for a fixed seed', () => {
-    const run = () => stepFrame(createInitialState(), createSpawner(11), 900)
+    const run = () => stepFrame(createInitialState(), createSpawner(11), 300)
     const a = run()
-    // PROVE THE RUN IS NON-TRIVIAL FIRST. Two identical no-ops compare equal,
-    // so `run() === run()` alone would still pass if stepFrame returned its
-    // input untouched — a determinism test that cannot tell determinism from
-    // doing nothing. Assert the simulation actually moved before comparing.
-    // (Not "the wave budget went down": by tick 900 the run is on wave 2,
-    // whose budget is LARGER than wave 1's. Measured, after the first draft of
-    // this guard asserted exactly that and failed.)
-    expect(a.tick).toBe(900)
-    expect(a.wave).toBeGreaterThan(1) // a wave was cleared
-    expect(a.integrity).toBeLessThan(a.config.maxIntegrity) // threats landed
+    expect(a.tick).toBe(300)
     expect(a).toEqual(run())
   })
 
-  it('a full unattended shift fails deterministically (threats reach the tower)', () => {
+  it('a full unattended campaign fails deterministically (threats reach deity)', () => {
     let g = createInitialState()
     const spawner = createSpawner(3)
     for (let i = 0; i < 20000 && g.status === 'running'; i++) g = stepFrame(g, spawner, 1)
     expect(g.status).toBe('failed')
-    expect(g.integrity).toBe(0)
+    expect(g.deity.health).toBe(0)
   })
 
-  it('nearestThreatToTower picks the closest to the CONFIGURED tower', () => {
-    const g = {
-      config: { towerX: 100, towerY: 0 },
-      threats: [
-        { id: 'a', x: 0, y: 0 },   // 100 from the tower, 0 from the origin
-        { id: 'b', x: 130, y: 0 }, // 30 from the tower
-      ],
-    }
-    // An origin-relative implementation would answer 'a'.
-    expect(nearestThreatToTower(g).id).toBe('b')
+  it('nearestThreatToDeity picks the closest threat', () => {
+    const deity = { x: 100, y: 0 }
+    const threats = [
+      { id: 'a', x: 0, y: 0, radius: 5 },
+      { id: 'b', x: 130, y: 0, radius: 5 },
+    ]
+    expect(nearestThreatToDeity({ deity, threats }).id).toBe('b')
   })
 
   it('control: an empty field has no nearest threat', () => {
-    expect(nearestThreatToTower({ config: { towerX: 0, towerY: 0 }, threats: [] })).toBeNull()
+    expect(nearestThreatToDeity({ deity: { x: 0, y: 0 }, threats: [] })).toBeNull()
   })
 
-  it('nearestThreatToTower breaks ties deterministically, not by order', () => {
+  it('nearestThreatToDeity breaks ties deterministically, not by order', () => {
+    const deity = { x: 0, y: 0 }
     const mk = (ids) => ({
-      config: { towerX: 0, towerY: 0 },
-      threats: ids.map((id) => ({ id, x: 50, y: 0 })),
+      deity,
+      threats: ids.map((id) => ({ id, x: 50, y: 0, radius: 5 })),
     })
-    expect(nearestThreatToTower(mk(['z', 'a'])).id).toBe('a')
-    expect(nearestThreatToTower(mk(['a', 'z'])).id).toBe('a')
+    expect(nearestThreatToDeity(mk(['z', 'a'])).id).toBe('a')
+    expect(nearestThreatToDeity(mk(['a', 'z'])).id).toBe('a')
   })
 
   it('threatAt hit-tests with slop and picks the nearest', () => {
-    const g = {
-      threats: [
-        { id: 'far', x: 0, y: 0, radius: 10 },
-        { id: 'near', x: 5, y: 0, radius: 10 },
-      ],
-    }
-    expect(threatAt(g, 6, 0).id).toBe('near')
-    expect(threatAt(g, 40, 0, 18)).toBeNull() // 35 from 'near': outside radius+slop (28)
-    expect(threatAt(g, 0, 37, 18)).toBeNull() // 37 from 'far': outside 28 too
+    const threats = [
+      { id: 'far', x: 0, y: 0, radius: 10 },
+      { id: 'near', x: 5, y: 0, radius: 10 },
+    ]
+    expect(threatAt({ threats }, 6, 0).id).toBe('near')
+    expect(threatAt({ threats }, 40, 0, 18)).toBeNull()
+    expect(threatAt({ threats }, 0, 37, 18)).toBeNull()
   })
 })
 

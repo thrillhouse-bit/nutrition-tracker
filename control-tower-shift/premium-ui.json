@@ -1,0 +1,16 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src"],
+  "locale": "en",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Scrollbar"],
+  "requiredCommands": ["game-tests", "build", "diff-check"],
+  "commands": {
+    "game-tests": "cd .. && npm run test:oathbearer",
+    "build": "cd .. && npm run build",
+    "diff-check": "cd .. && git diff --check"
+  },
+  "evidence": {
+    "failurePaths": "test/rpg-engine-reliability.test.js"
+  }
+}

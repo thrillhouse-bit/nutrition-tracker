@@ -1,30 +1,30 @@
-import { threatsForWave } from './game/waves.js'
+import { levelForIndex } from './game/campaign.js'
+import { resolveMonsterType } from './game/characters.js'
 
 // Deterministic spawner: all randomness comes from a seeded mulberry32 stream,
-// so a given seed replays the identical shift. The spawner is the ONLY place
-// randomness exists — the core in game/ never sees an RNG.
+// so a given seed replays the identical encounter. The spawner is the ONLY
+// place randomness exists — the core in game/ never sees an RNG.
+//
+// The spawner is an INTERNAL pacing mechanism: it feeds each level's authored
+// encounter composition into the simulation at a per-level rhythm. It never
+// owns campaign progression — completing a level is decided by the campaign
+// module (all spawned enemies gone), not by the spawner.
 export function mulberry32(seed) {
   let a = seed >>> 0
   return function () {
     a |= 0
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    t = (t ^ (t >>> 7), 61 | t) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
 
-export const FIELD_RADIUS = 320 // threats spawn on this ring around the tower
-
-const BASE_INTERVAL = 75 // ticks between spawns at wave 1 (30 Hz → 2.5 s)
-const MIN_INTERVAL = 30
+// Arena spawn ring — threats appear at the edge, then chase the deity.
+export const FIELD_RADIUS = 280
 
 export function createSpawner(seed) {
-  return { rng: mulberry32(seed), seed, wave: 1, spawned: 0, untilNext: 20, serial: 0 }
-}
-
-export function spawnInterval(wave) {
-  return Math.max(MIN_INTERVAL, BASE_INTERVAL - (wave - 1) * 6)
+  return { rng: mulberry32(seed), seed, levelIndex: null, spawned: 0, untilNext: 20, serial: 0 }
 }
 
 // Advance the spawner by one tick against the current game state; returns the
@@ -32,40 +32,52 @@ export function spawnInterval(wave) {
 // loop-owned bookkeeping, not game state.
 export function stepSpawner(spawner, state) {
   if (state.status !== 'running') return []
-  if (state.wave !== spawner.wave) {
-    spawner.wave = state.wave
+  const level = levelForIndex(state.levelIndex)
+  if (!level) return []
+  // A level change resets the encounter feed (progress is campaign-owned, so
+  // the spawner simply restarts each new level's authored list).
+  if (spawner.levelIndex !== state.levelIndex) {
+    spawner.levelIndex = state.levelIndex
     spawner.spawned = 0
     spawner.untilNext = 20
+    spawner.serial = 0
   }
-  const budget = threatsForWave(state.wave, state.config)
-  if (spawner.spawned >= budget) return []
+  const order = level.encounter.order
+  if (spawner.spawned >= order.length) return []
   spawner.untilNext -= 1
   if (spawner.untilNext > 0) return []
-  spawner.untilNext = spawnInterval(state.wave)
-  spawner.spawned += 1
+  spawner.untilNext = level.encounter.pacing
   spawner.serial += 1
 
+  const monsterType = order[spawner.spawned]
+  spawner.spawned += 1
+  const spec = resolveMonsterType(monsterType)
   const angle = spawner.rng() * Math.PI * 2
   const x = Math.cos(angle) * FIELD_RADIUS
   const y = Math.sin(angle) * FIELD_RADIUS
-  // Aim at the tower with jittered speed and a slight tangential drift so
-  // approaches vary instead of all running straight down their radius. The
-  // drift is capped so every spawn still intersects the tower footprint:
-  // |drift|/speed <= 0.05/0.55 ≈ 0.09, and 0.09 × 320 ≈ 29 < towerRadius +
-  // threatRadius (34). Wider drift shipped first and made most threats miss
-  // and fly off forever — the unattended-shift test is what caught it.
-  const speed = 0.55 + spawner.rng() * 0.4
-  const drift = (spawner.rng() - 0.5) * 0.1
-  const nx = -x / FIELD_RADIUS
-  const ny = -y / FIELD_RADIUS
+
+  // Threat stats scale gently per level (internal difficulty curve).
+  const speedMul = Math.min(
+    state.config.levelSpeedCap,
+    1 + state.levelIndex * state.config.levelSpeedAccel,
+  )
+  const baseSpeed = state.config.threatBaseSpeed * speedMul
+
   return [
     {
-      id: `w${state.wave}-${spawner.serial}`,
+      id: `l${state.levelIndex}-${spawner.serial}`,
       x,
       y,
-      vx: nx * speed - ny * drift,
-      vy: ny * speed + nx * drift,
-      radius: 10,
+      vx: 0,
+      vy: 0,
+      radius: spec.size,
+      angle,
+      god: monsterType,
+      glyph: spec.glyph,
+      behavior: spec.behavior,
+      speed: baseSpeed,
+      health: spec.size * 3,
+      monsterType,
     },
   ]
 }

@@ -1,0 +1,425 @@
+/* -----------------------------------------------------------------------
+   RPGSystemsPanel — Wilderness / Crafting field journal.
+
+   Carved-bronze / storm-blue mythic field journal, sharing the DESIGN.md
+   frontmatter vocabulary as CSS custom properties with literal fallbacks so
+   the panel renders correctly standalone (tests, storybook-style mounts)
+   and inherits cleanly when nested inside `.rpg-root`. Angular geometry, no
+   blur, no glassmorphism — matches the route's existing chrome.
+   ----------------------------------------------------------------------- */
+
+.rsp-panel {
+  --rsp-void: var(--rpg-void, #090d10);
+  --rsp-soot: var(--rpg-soot, #12100b);
+  --rsp-storm: #1b2a3d;
+  --rsp-storm-line: #2c4058;
+  --rsp-bronze-panel: var(--rpg-bronze-panel, #1d2633);
+  --rsp-ivory: var(--rpg-ivory, #f3e6c8);
+  --rsp-parchment: var(--rpg-parchment, #b8a888);
+  --rsp-bronze: var(--rpg-bronze, #a5761f);
+  --rsp-gold: var(--rpg-gold, #e8b64c);
+  --rsp-terracotta: var(--rpg-terracotta, #7d2b1f);
+  --rsp-terracotta-hot: var(--rpg-terracotta-hot, #9c3828);
+  --rsp-danger: var(--rpg-danger, #b3241c);
+  --rsp-focus: var(--rpg-focus, #f6cf70);
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(460px, 100%);
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  border: 1px solid var(--rsp-storm-line);
+  border-radius: 2px;
+  background: linear-gradient(160deg, rgba(18, 16, 11, 0.96), rgba(11, 16, 24, 0.97));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  padding: 0.85rem;
+  color: var(--rsp-ivory);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.rsp-panel * {
+  box-sizing: border-box;
+}
+
+/* Carved corner ticks — angular identity, echoes the route's .rpg-cut. */
+.rsp-cut {
+  position: relative;
+}
+.rsp-cut::before,
+.rsp-cut::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 0 solid var(--rsp-gold);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.rsp-cut::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+.rsp-cut::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
+.rsp-tablist {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--rsp-storm-line);
+  padding-bottom: 0.5rem;
+}
+.rsp-tab {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--rsp-storm-line);
+  border-radius: 2px;
+  background: rgba(27, 42, 61, 0.6);
+  color: var(--rsp-parchment);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.rsp-tab:hover {
+  border-color: var(--rsp-gold);
+  color: var(--rsp-ivory);
+}
+.rsp-tab.is-active {
+  border-color: var(--rsp-gold);
+  background: var(--rsp-bronze-panel);
+  color: var(--rsp-gold);
+}
+.rsp-panel button:focus-visible {
+  outline: 2px solid var(--rsp-focus);
+  outline-offset: 2px;
+}
+
+.rsp-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.rsp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.rsp-btn-primary {
+  background: var(--rsp-terracotta);
+  border-color: var(--rsp-gold);
+  color: #fff1d0;
+}
+.rsp-btn-primary:hover {
+  background: var(--rsp-terracotta-hot);
+}
+.rsp-btn-secondary {
+  background: var(--rsp-storm);
+  border-color: var(--rsp-storm-line);
+  color: var(--rsp-ivory);
+}
+.rsp-btn-secondary:hover {
+  border-color: var(--rsp-gold);
+}
+.rsp-btn-quiet {
+  background: rgba(11, 10, 6, 0.72);
+  border-color: var(--rsp-storm-line);
+  color: var(--rsp-parchment);
+}
+.rsp-btn-quiet:hover {
+  border-color: var(--rsp-gold);
+  color: var(--rsp-ivory);
+}
+.rsp-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Wilderness ───────────────────────────────────────────────────────── */
+.rsp-combat-level {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rsp-parchment);
+}
+.rsp-combat-level strong {
+  color: var(--rsp-gold);
+  font-size: 1.1rem;
+}
+
+.rsp-death-drop {
+  border: 1px solid var(--rsp-danger);
+  border-left-width: 3px;
+  background: rgba(24, 9, 7, 0.5);
+  padding: 0.55rem 0.7rem;
+  border-radius: 2px;
+}
+.rsp-death-drop p {
+  margin: 0.15rem 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.rsp-death-drop-title {
+  color: #e8a08a;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.rsp-death-drop-list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 11px;
+  color: var(--rsp-parchment);
+}
+
+.rsp-region-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rsp-region-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border: 1px solid var(--rsp-storm-line);
+  background: var(--rsp-storm);
+  padding: 0.65rem;
+  border-radius: 2px;
+}
+.rsp-region-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 13px;
+}
+.rsp-risk-badge {
+  border: 1px solid var(--rsp-storm-line);
+  border-radius: 2px;
+  padding: 0.15rem 0.45rem;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rsp-parchment);
+}
+.rsp-risk-low { color: #9fd6a0; border-color: #3f6b41; }
+.rsp-risk-moderate { color: var(--rsp-gold); border-color: var(--rsp-bronze); }
+.rsp-risk-high { color: #e0a25a; border-color: #8a5a20; }
+.rsp-risk-severe { color: #e8836a; border-color: #8a3a20; }
+.rsp-risk-extreme { color: #f08a8a; border-color: var(--rsp-danger); }
+
+.rsp-region-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.3rem 0.7rem;
+  margin: 0;
+}
+.rsp-region-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  border-bottom: 1px solid rgba(44, 64, 88, 0.5);
+  padding-bottom: 0.15rem;
+}
+.rsp-region-meta dt {
+  color: var(--rsp-parchment);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.rsp-region-meta dd {
+  margin: 0;
+  color: var(--rsp-ivory);
+  font-size: 11px;
+}
+.rsp-region-enemies {
+  margin: 0;
+  font-size: 11px;
+  color: var(--rsp-parchment);
+}
+
+.rsp-region-active {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.rsp-risk-warning {
+  margin: 0;
+  border-left: 2px solid var(--rsp-danger);
+  background: rgba(24, 9, 7, 0.4);
+  padding: 0.4rem 0.6rem;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e8a08a;
+}
+.rsp-encounter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border: 1px solid var(--rsp-gold);
+  background: var(--rsp-bronze-panel);
+  padding: 0.65rem;
+  border-radius: 2px;
+}
+.rsp-encounter p {
+  margin: 0;
+  font-size: 12px;
+}
+.rsp-encounter-reward {
+  color: var(--rsp-parchment);
+  font-size: 11px;
+}
+.rsp-panel-note {
+  margin: 0;
+  color: #8f8168;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.rsp-access-note {
+  border-left: 2px solid var(--rsp-bronze);
+  padding-left: 0.5rem;
+}
+.rsp-region-card.is-unavailable,
+.rsp-station-list li.is-unavailable {
+  border-color: rgba(44, 64, 88, 0.55);
+}
+.rsp-active-system-name {
+  margin: 0;
+  color: var(--rsp-gold);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Crafting ─────────────────────────────────────────────────────────── */
+.rsp-craft-status {
+  min-height: 1em;
+  margin: 0;
+  font-size: 11px;
+  color: var(--rsp-gold);
+}
+.rsp-station-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rsp-station-list button {
+  width: 100%;
+}
+.rsp-station-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.rsp-station-active {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.rsp-station-name {
+  margin: 0;
+  color: var(--rsp-gold);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.rsp-recipe-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rsp-recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid var(--rsp-storm-line);
+  background: var(--rsp-storm);
+  padding: 0.6rem;
+  border-radius: 2px;
+}
+.rsp-recipe p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--rsp-parchment);
+}
+.rsp-recipe strong {
+  color: var(--rsp-ivory);
+  font-size: 12.5px;
+}
+.rsp-recipe .rsp-btn {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+}
+
+/* ── Responsive / reduced-motion ─────────────────────────────────────── */
+@media (max-width: 390px) {
+  .rsp-panel {
+    width: 100%;
+    padding: 0.65rem;
+  }
+  .rsp-tab {
+    font-size: 10px;
+    padding: 0.5rem 0.4rem;
+  }
+  .rsp-region-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rsp-tab,
+  .rsp-btn {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .rsp-btn,
+  .rsp-tab,
+  .rsp-region-card,
+  .rsp-recipe,
+  .rsp-panel {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

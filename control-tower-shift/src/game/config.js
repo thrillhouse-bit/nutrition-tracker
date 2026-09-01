@@ -1,33 +1,46 @@
 // All tunables in one place so tests and the future UI read the same numbers.
+// Arena campaign: the player controls a deity moving through authored levels,
+// using deity powers and a deliberate melee strike to clear each level's encounter.
 export const DEFAULT_CONFIG = {
-  towerX: 0,
-  towerY: 0,
-  towerRadius: 24,
-  maxIntegrity: 100,
-  collisionDamage: 20,
-  // A threat farther than this from the tower has left the field: it is
-  // culled and still counts against the wave budget (no damage, no score).
-  // Without this a grazing miss flies forever and the wave can never end —
-  // caught by the unattended-shift loop test, not by inspection.
-  escapeRadius: 400,
-
-  // Waves
-  finalWave: 10, // null = endless shift
-  baseThreatsPerWave: 4,
-  threatsPerWaveGrowth: 2,
-  waveSpeedAccel: 0.15, // +15% threat speed per wave
-  waveSpeedCap: 2.5,
-
-  // Scoring
-  pointsPerClear: 100,
-  pulseClearFraction: 0.5, // pulse-cleared threats score half
-
-  // Abilities: duration/cooldown in ticks; 0 duration = instant
-  abilities: {
-    shield: { duration: 120, cooldown: 600 },
-    pulseClear: { duration: 0, cooldown: 900, radius: 180 },
-    speedBurst: { duration: 90, cooldown: 450, threatSlowFactor: 0.5 },
-    scoreMultiplier: { duration: 150, cooldown: 750, factor: 2 },
-    repair: { duration: 0, cooldown: 500, amount: 30 },
-  },
+  // Arena
+  arenaRadius: 280,        // playable area radius in logical px
+  // Player (deity) properties
+  deityRadius: 15,         // collision radius for the deity
+  deitySpeed: 1.9,         // logical px per tick (base)
+  deityBaseHealth: 100,    // max health per deity (Atlas passive raises it)
+  // Combat
+  autoAttackRange: 46,     // melee range (deity radius + weapon reach)
+  autoAttackDamage: 16,    // damage per auto-attack
+  autoAttackCooldown: 20,  // ticks between auto-attacks
+  pointsPerClear: 10,      // points for clearing one threat
+  projectileSpeed: 5.5,    // ranged power projectile speed
+  projectileRadius: 5,     // collision radius for projectiles
+  projectileDamage: 22,    // solar bow shot damage
+  threatDamage: 10,        // contact damage; several attackers can still punish standing still
+  threatContactCooldown: 75, // ticks before the same monster can hit again
+  threatKnockback: 95,     // logical px pushed away after contacting the deity
+  // Powers (shared numeric tuning — the definitions live in powers.js)
+  powerDamage: 24,            // bow-type power damage
+  powerBurstRadius: 130,      // radiant burst blast radius
+  powerBurstDamage: 45,       // radiant burst damage
+  powerPulseRadius: 175,      // war cry / earthshaker radius
+  powerPulseDamage: 40,       // war cry / earthshaker damage
+  powerStrikeDamage: 60,      // thunderbolt primary strike
+  powerChainRadius: 120,      // thunderbolt / love arrow chain range
+  powerChainDamage: 40,       // thunderbolt chain damage
+  powerHeal: 40,              // queens grace heal
+  powerBurnDps: 5,            // fire brand burn per tick
+  worldRiverRadius: 135,      // oceanus ring radius
+  worldRiverDps: 12,          // oceanus damage per tick
+  harvestMoonHeal: 1,         // demeter heal per tick
+  wingedStrideFactor: 1.9,    // hermes speed multiplier
+  herosWrathFactor: 2,        // hercules damage multiplier
+  primordialDarkFactor: 0.4,  // nyx global threat slow
+  // Threat (monster) base stats — scaled per level
+  threatBaseSpeed: 0.85,
+  threatBaseHealth: 30,
+  threatRadius: 11,
+  // Per-level internal pacing (never player-facing)
+  levelSpeedAccel: 0.12,   // threat speed growth per level
+  levelSpeedCap: 2.0,      // cap on the level speed multiplier
 }

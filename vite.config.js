@@ -30,7 +30,10 @@ export default defineConfig({
       // shared by every account on a browser, so a URL-keyed runtime cache can
       // return one person's nutrition or wearable data to the next account.
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        // Story artwork is route-specific and substantially larger than the
+        // install shell. Keep generic PNG/WebP files runtime-fetched; the
+        // required install icons below remain explicitly included.
+        globPatterns: ['**/*.{js,css,html,svg,ico,webmanifest}'],
         // Public legal documents are server-rendered and launch-gated. If the
         // app-shell navigation fallback claims them, an installed PWA shows
         // the sign-in SPA instead of the policy/terms the server approved.

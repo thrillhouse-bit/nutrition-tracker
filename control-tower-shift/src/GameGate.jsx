@@ -1,24 +1,36 @@
-// Hash gate: `#control-tower` mounts the game full-screen; anything else
-// renders the app untouched. Lives outside App so the main nav, auth flow,
-// and bundle stay exactly as they were — the game chunk loads only when the
-// hash is hit (React.lazy → its own Vite chunk).
+// Hash gate: exact-hash routing keeps the three surfaces independent.
+//   `#control-tower`        → arena campaign (full-screen game)
+//   `#control-tower-rpg`    → authored mythic RPG story slice
+//   anything else           → the app untouched
+// Exact `===` matches only — `#control-tower-rpg` can never accidentally mount
+// the arena, and neither hash leaks into the main app. Lives outside App so the
+// main nav, auth flow, and bundle stay as they were — each game chunk loads
+// only when its hash is hit (React.lazy → its own Vite chunk).
 import { lazy, Suspense, useEffect, useState } from 'react'
 
 const ControlTowerShift = lazy(() => import('./ControlTowerShift.jsx'))
+const ControlTowerRPG = lazy(() => import('./ControlTowerRPG.jsx'))
 
 export const GAME_HASH = '#control-tower'
+export const RPG_HASH = '#control-tower-rpg'
+
+export function routeFor(hash) {
+  if (hash === GAME_HASH) return 'arena'
+  if (hash === RPG_HASH) return 'rpg'
+  return null
+}
 
 export default function GameGate({ app }) {
-  const [atGame, setAtGame] = useState(() => window.location.hash === GAME_HASH)
+  const [route, setRoute] = useState(() => routeFor(window.location.hash))
   useEffect(() => {
-    const onHash = () => setAtGame(window.location.hash === GAME_HASH)
+    const onHash = () => setRoute(routeFor(window.location.hash))
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
-  if (!atGame) return app
+  if (!route) return app
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted">Loading the tower…</div>}>
-      <ControlTowerShift />
+      {route === 'arena' ? <ControlTowerShift /> : <ControlTowerRPG />}
     </Suspense>
   )
 }

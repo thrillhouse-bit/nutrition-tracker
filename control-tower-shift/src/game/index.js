@@ -1,19 +1,34 @@
 export { DEFAULT_CONFIG } from './config.js'
+export { CAMPAIGN, CAMPAIGN_LENGTH, levelForIndex, levelById, encounterSize, levelComplete, advanceLevel, objectiveProgress } from './campaign.js'
 export {
   createInitialState,
+  applyDeityPassive,
   spawnThreat,
   advanceTick,
-  pause,
-  resume,
-  restart,
+  setInput,
+  setAim,
+  setFiring,
+  deityAttack,
+  castPowerOn,
+  pause, resume, restart, restartLevel,
 } from './state.js'
-export { circlesCollide, distance, detectCollisions, threatsHittingTower } from './collision.js'
-export { waveSpeedMultiplier, threatsForWave, waveComplete, advanceWave } from './waves.js'
+export { circlesCollide, distance, detectCollisions } from './collision.js'
 export { clearPoints, addScore, clearThreat } from './scoring.js'
 export {
-  abilityActive,
-  abilityReady,
-  activateAbility,
+  POWER_DEFS,
+  DEITY_LOADOUT,
+  powersForGod,
+  powerActive,
+  powerReady,
+  castPower,
+  spawnProjectile,
+  deitySpeedScale,
+  deityDamageScale,
   threatSpeedScale,
-} from './abilities.js'
+  healPerTick,
+  riverDamagePerTick,
+  deityInvulnerable,
+} from './powers.js'
 export { loadHighScores, saveHighScore, isHighScore, HIGH_SCORE_KEY } from './persistence.js'
+export { drawGlyph, GODS, GODS_TIER_1, GODS_TIER_2, GODS_TIER_3, GODS_BY_TIER, MONSTER_TYPES, MONSTER_DEPRECATED, resolveMonsterType, ABILITY_GLYPHS } from './characters.js'
+export { createSpawner, mulberry32, FIELD_RADIUS, stepSpawner } from '../spawner.js'
