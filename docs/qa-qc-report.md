@@ -1552,3 +1552,74 @@ same `/api/health`, and `/api/legal/status` still reports
 `signupEnabled: false` — fourth consecutive pass with new signups
 blocked on the same owner legal-config deploy. No fixes needed this
 pass.
+
+## 2026-09-01 — Check-in pass (recurring, 20:35 UTC)
+
+Two large PRs since the last check-in (#142, #143), both from the
+"codex/"-prefixed session that also did the account-isolation/legal-
+gate work two passes ago — this time replacing the Control Tower Shift
+mini-game entirely with a much larger new title, "Oathbearer" (a
+Greek-mythology, RuneScape/Hades-inspired RPG, still opt-in behind
+`#control-tower-rpg`). PR #142 alone is 31,307 insertions across 156
+files, by far the largest single merge this report has seen.
+
+Given the scale, delegated the security-relevant review to a
+background research agent while independently running the test suite,
+build, and a live check of the core app myself — same split used for
+the account-isolation pass. The agent's brief was narrow and
+skeptical: verify the PR's own claim ("secure PWA merge: no
+authenticated API response cache") rather than trust it, confirm the
+game stays route-isolated from the main app, and flag anything outside
+the game's own directory.
+
+**PWA-caching claim — verified, not just read.** The agent diffed
+`vite.config.js` against the pre-PR commit: the only Workbox change is
+narrowing `globPatterns` (PNGs removed from precache, large story art
+already handled separately), `navigateFallbackDenylist` still excludes
+`/api/`, `/privacy`, `/terms` unchanged, and there is no
+`runtimeCaching` array anywhere in the config, before or after — so
+there was never a code path that could cache an authenticated API
+response in this PR, or before it. Claim holds.
+
+**Route isolation — confirmed.** `src/main.jsx` and `src/App.jsx` have
+zero diff in this PR; the RPG reuses the pre-existing `GameGate`
+component completely unchanged, hash-matching `#control-tower-rpg`
+exactly before lazy-loading its own chunk — the same pattern the old
+game used. No core-app files (`server/`, `src/api/`, `schema.sql`)
+were touched by the game rewrite itself; the ~31K-line diff is almost
+entirely inside `control-tower-shift/` (game logic, its own test
+suite, and a large amount of concept-art image assets). The only
+outside-the-game changes are trivial: three `package.json` script
+aliases, the PWA precache tweak above, new `vitest.config.js`/
+`vitest.setup.js` runner config, and two `// @vitest-environment node`
+annotations added to unrelated pre-existing tests.
+
+**Independently verified, not just trusted:** `npm test` — 97 files,
+1660/1660 passing, matching the PR's own claimed count exactly. `npm
+run build` — clean; the new RPG ships as its own separate lazy chunks
+(`ControlTowerRPG-*.js`/`.css`), not bundled into the main app's
+initial load. Live-verified with Playwright: the main app's root path
+still renders the normal sign-in screen (now also correctly showing
+"New accounts are temporarily paused..." matching the live legal-gate
+state from the last two passes — a nice incidental confirmation that's
+still wired correctly), and `#control-tower-rpg` loads a polished new
+title screen with zero `pageerror`/5xx events. One minor observation,
+not escalated: the PWA precache is now 1,147.80 KiB / 17 entries (was
+766 KiB before Control Tower Shift existed), including one ~1MB PNG —
+this downloads in the background after install for every user who
+installs the PWA, not just players of the game; worth a passing note
+for future asset-budget awareness, not a defect.
+
+One PR-body oddity worth recording factually rather than investigating
+further: PR #142's description credits "Hermes DeepSeek V4 Flash" for
+part of the game's locomotion code and tests, and reports a "Nous
+spend" figure — apparently a different AI tool/model contributed to
+this PR alongside whatever produced the "codex/" branches. Not
+something this report can verify or needs to act on; noted only so a
+future pass isn't surprised by unfamiliar attribution language in this
+area of the repo.
+
+No fixes made directly by this pass — nothing found affecting the core
+app, and the game's own internal content/balance is out of this
+report's scope. Live site: `GET /api/version` already matches current
+`main` HEAD (`cf486fd`) exactly — no deploy lag to report.
