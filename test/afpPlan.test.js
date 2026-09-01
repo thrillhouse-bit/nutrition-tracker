@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { addDaysToYmd, gatherSyncedSessions, getOrComputeAfpPlan, profileRowToEngineInput, plannedRowToSession } from '../server/afp/plan.js'
+import { addDaysToYmd, gatherSyncedSessions, getOrComputeAfpPlan, profileRowToEngineInput, plannedRowToSession, withCanonicalPlannedWorkout } from '../server/afp/plan.js'
 import { DEFAULT_AFP_PROFILE } from '../server/db.js'
 
 const fullProfileRow = {
@@ -52,6 +52,28 @@ describe('plannedRowToSession', () => {
   it('maps a stored row into the engine\'s session shape', () => {
     const s = plannedRowToSession({ sport: 'run', intensity: 'hard', duration_min: '60', distance_km: '10', is_key_session: true, is_race: false, carb_loading_opt_in: false })
     expect(s).toEqual({ sport: 'run', intensity: 'hard', durationMin: 60, distanceKm: 10, isKeySession: true, isRace: false, carbLoadingOptIn: false })
+  })
+})
+
+describe('withCanonicalPlannedWorkout', () => {
+  const planned = [{ sport: 'run', intensity: 'hard', duration_min: 60, start_time: '06:30', is_key_session: true, is_race: false }]
+
+  it('surfaces the canonical planned session in Today when no completed workout exists', () => {
+    const result = withCanonicalPlannedWorkout({ readiness: { value: 80 } }, planned, new Date('2026-08-25T12:00:00Z'))
+    expect(result.workout).toMatchObject({
+      provider: 'manual', demo: false,
+      value: { label: 'Morning Run', kind: 'run', intensity: 'hard', time: '6:30 AM', durationMin: 60, status: 'planned' },
+    })
+  })
+
+  it('replaces a legacy manual or demo workout with the canonical session', () => {
+    const legacy = { workout: { provider: 'manual', demo: false, value: { kind: 'walk' } } }
+    expect(withCanonicalPlannedWorkout(legacy, planned).workout.value.kind).toBe('run')
+  })
+
+  it('never overwrites a real completed wearable workout', () => {
+    const real = { workout: { provider: 'oura', demo: false, value: { kind: 'ride' } } }
+    expect(withCanonicalPlannedWorkout(real, planned)).toBe(real)
   })
 })
 

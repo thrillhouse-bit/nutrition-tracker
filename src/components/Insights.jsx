@@ -85,9 +85,8 @@ function EnergyChart({ days, avg, showAvg, target }) {
   )
 }
 
-// PROTEIN — daily protein intake against the user's REAL protein target
-// (server/index.js's targets.protein_g, store.getLatestTargets — an actual
-// chosen number). This is legitimately different from Energy's average-only
+// PROTEIN — daily protein intake against the current canonical AFP target
+// returned by server/index.js. This is legitimately different from Energy's average-only
 // situation above: Energy has no real target to plot, so it never claims one;
 // Protein has one, so showing it is the honest move, not the same mistake in
 // a different shape. Only ever rendered by Insights() when hasTargets is
@@ -245,12 +244,11 @@ export default function Insights({ refreshKey }) {
     return () => { alive = false }
   }, [refreshKey])
 
-  // units_pref decides display only — the API and stored data are always kg
-  // (see server/db.js's weight-log methods and lib/nutrition.js's converters,
-  // the same split SmartPlanForm already uses for height/weight input).
+  // units_pref decides display only — the API and stored data are always kg.
+  // Read it from the same canonical AFP profile that owns the plan.
   useEffect(() => {
     let alive = true
-    api.getProfile().then((r) => alive && setProfile(r?.profile || null)).catch(() => alive && setProfile(null))
+    api.getAfpProfile().then((r) => alive && setProfile(r?.profile || null)).catch(() => alive && setProfile(null))
     return () => { alive = false }
   }, [refreshKey])
 
@@ -292,16 +290,9 @@ export default function Insights({ refreshKey }) {
   const avgCal = num(nutrition?.avgCalories)
   const showAvgLine = days.length >= 2 && avgCal >= cMin && avgCal <= cMax
 
-  // Real targets — hasTargets (server/db.js) is the ONLY honest signal that
-  // these are numbers the user actually chose, not the silent DEFAULT_TARGETS
-  // fallback getLatestTargets returns otherwise (src/App.jsx gates onboarding
-  // on this exact field, for the exact same reason). calTarget/proteinTarget
-  // ride through even when hasTargets is false — onTargetDays above already
-  // depends on calTarget the same way and this must not silently disagree
-  // with that existing number — but the two NEW target reference lines below
-  // (Energy chart's target line, the whole Protein chart) only draw when
-  // hasTargets is true, so neither ever labels a fallback default "your
-  // target" out loud.
+  // The server only marks hasTargets when the canonical AFP profile is ready
+  // and today's AFP plan computed successfully. The reference lines below are
+  // therefore never drawn against a legacy or fabricated fallback target.
   const hasRealTargets = !!data?.targets?.hasTargets
   const calTarget = num(data?.targets?.calories)
   const proteinTarget = num(data?.targets?.protein_g)
@@ -362,7 +353,7 @@ export default function Insights({ refreshKey }) {
             <span className="tnum text-[13px] text-muted">trend {fmt(toDisplayUnit(latestTrend), 1)} {unitLabel}</span>
           ) : null}
         />
-        <form onSubmit={handleLogWeight} className="mt-2.5 flex items-center gap-2">
+        <form noValidate onSubmit={handleLogWeight} className="mt-2.5 flex items-center gap-2">
           <input
             type="number"
             inputMode="decimal"

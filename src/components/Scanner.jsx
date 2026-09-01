@@ -116,7 +116,7 @@ export default function Scanner({ onDetected }) {
 
       <ErrorNote>{error}</ErrorNote>
 
-      <form onSubmit={submitManual} className="flex gap-2">
+      <form noValidate onSubmit={submitManual} className="flex gap-2">
         <input
           value={manual}
           onChange={(e) => setManual(e.target.value)}

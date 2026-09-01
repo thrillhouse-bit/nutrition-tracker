@@ -298,3 +298,45 @@ Investigated and NOT changed, with reasons:
 - **Large-text / OS Dynamic-Type scaling** — inherited from the app's
   existing px-based Tailwind sizing, unchanged by and predating this
   redesign; not a regression to fix here.
+
+## 31 Aug 2026 — one Plan, one setup
+
+The visible Plan tab previously stacked two products: the richer Adaptive Fuel
+Plan followed by a "Quick targets" calculator, editable static targets,
+wearable influence controls, and a second workout editor. That hierarchy made
+the less capable system look equally authoritative and required users to enter
+the same body data twice.
+
+The tab now has one page title/date rail and one Daily Fuel Plan panel. Its
+existing component already contains the material states the feature needs:
+loading, incomplete-profile setup, computed rest/training days, warnings,
+safety suppression, frozen history, explicit overrides, no workouts, and
+workout create/edit. Onboarding uses that exact profile form and removes the
+calculate-versus-manual fork. This is a product-structure change, not a visual
+reskin: it adds no token, color, type, radius, shadow, or novel component.
+
+"Adaptive Fuel Plan" remains an implementation/API name (`afp`) but user-facing
+copy says "Daily Fuel Plan." The shorter name matches the tab and avoids
+presenting the calculation method as a separate product. Cross-screen behavior,
+migration, account isolation, and the legal gate are recorded in
+`docs/UX-CONTRACT.md`.
+
+## 31 Aug 2026 — account data lifecycle
+
+Connections remains the owner for everything that crosses the app/provider or
+app/account boundary. The account block now follows provider controls but is
+visually separated into signed-in identity, a safe export action, and a danger
+zone. This adds no new visual tokens: safe export uses the established outline
+button, the page-level delete trigger uses the existing low-emphasis danger
+outline, and only the irreversible confirmation uses the new solid-danger
+emphasis of the shared `Button` intent system.
+
+Permanent deletion uses the canonical `Sheet`, whose Close button receives
+initial focus, traps focus, restores it to the trigger, and treats Escape as
+Cancel. Backdrop dismissal is disabled for this serious action so an accidental
+tap does not discard a partially completed reauthentication step. The sheet
+names the account and deletion scope, states that recovery is impossible, and
+requires both current password and exact-email confirmation. It stays open on
+failure, clears only the sensitive password, blocks duplicate submission, and
+uses no browser-native alert/confirm/prompt. `docs/UX-CONTRACT.md` owns the full
+behavior and data-scope contract.

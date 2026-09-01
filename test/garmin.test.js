@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import crypto from 'node:crypto'
 import {
   garminConfigured,
+  garminReleaseReady,
   pkcePair,
   authorizeUrl,
   normalizeDaily,
@@ -19,6 +20,7 @@ beforeAll(() => {
   process.env.GARMIN_CLIENT_ID = CLIENT_ID
   process.env.GARMIN_CLIENT_SECRET = CLIENT_SECRET
   process.env.GARMIN_REDIRECT_URI = REDIRECT_URI
+  process.env.GARMIN_INTEGRATION_VERIFIED = 'true'
 })
 
 describe('garmin garminConfigured', () => {
@@ -35,6 +37,14 @@ describe('garmin garminConfigured', () => {
       // Sanity: restoring brings it back to true.
       expect(garminConfigured()).toBe(true)
     }
+  })
+
+  it('does not become release-ready on credentials alone', () => {
+    delete process.env.GARMIN_INTEGRATION_VERIFIED
+    expect(garminConfigured()).toBe(true)
+    expect(garminReleaseReady()).toBe(false)
+    process.env.GARMIN_INTEGRATION_VERIFIED = 'true'
+    expect(garminReleaseReady()).toBe(true)
   })
 })
 

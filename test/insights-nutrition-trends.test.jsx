@@ -19,7 +19,7 @@ vi.mock('../src/api/client.js', () => ({
   api: {
     insights: vi.fn(),
     signals: vi.fn(() => Promise.resolve({ signals: null })),
-    getProfile: vi.fn(() => Promise.resolve({ profile: null })),
+    getAfpProfile: vi.fn(() => Promise.resolve({ profile: null })),
     logWeight: vi.fn(),
   },
 }))
@@ -113,10 +113,8 @@ describe('Insights: protein-consistency chart', () => {
   it('CONTROL: shows the honest "no target set" state, never a chart against a fabricated target, when hasTargets is false', async () => {
     api.insights.mockResolvedValue({
       ...BASE_RESPONSE,
-      // getLatestTargets always returns SOMETHING (server/db.js's
-      // DEFAULT_TARGETS) even when nothing was ever chosen — protein_g: 150
-      // here is exactly that silent fallback, which is why the gate must
-      // read hasTargets and not just "is protein_g > 0".
+      // A non-ready AFP response must not be treated as a real target merely
+      // because a numeric value happens to be present in a malformed fixture.
       targets: { calories: 2000, protein_g: 150, hasTargets: false },
     })
     const el = await renderInsights()

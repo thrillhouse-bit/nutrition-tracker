@@ -23,7 +23,7 @@ vi.mock('../src/api/client.js', () => ({
   api: {
     insights: vi.fn(),
     signals: vi.fn(),
-    getProfile: vi.fn(() => Promise.resolve({ profile: null })),
+    getAfpProfile: vi.fn(() => Promise.resolve({ profile: null })),
     logWeight: vi.fn(),
   },
 }))

@@ -13,7 +13,10 @@ against public documentation only; every endpoint URL, OAuth scope name,
 and payload field name in it is marked `VERIFY`. Nothing in this matrix has
 been confirmed against a live account either — treat every "proposed
 mapping" below the same way: a documented shape to implement against once
-access exists, not a tested one.
+access exists, not a tested one. The server therefore reports Garmin as
+unconfigured and returns 503 from its webhook unless an approved operator has
+checked the partner contract (including request authentication/origin
+verification) and set `GARMIN_INTEGRATION_VERIFIED=true`.
 
 Garmin's push model delivers each summary type as its own top-level array
 in the webhook body (`{ dailies: [...] }`, `{ sleeps: [...] }`, etc., or

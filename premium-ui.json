@@ -1,0 +1,9 @@
+{
+  "sourceRoots": ["src"],
+  "locale": "en-US",
+  "canonicalMap": "docs/UX-CONTRACT.md",
+  "ownership": {
+    "Select/Listbox": "native",
+    "Date": "native"
+  }
+}

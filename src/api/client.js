@@ -1,9 +1,11 @@
 // Thin wrapper over the backend. Everything goes through `/api/*` so keys stay
-// server-side and the service worker can cache GETs for offline reads.
+// server-side. Authenticated responses are explicitly never browser-cached;
+// offline writes use the account-scoped outbox instead.
 
 async function req(path, options = {}) {
   const res = await fetch(`/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
     ...options,
   })
   const text = await res.text()
@@ -25,13 +27,17 @@ async function req(path, options = {}) {
 
 export const api = {
   health: () => req('/health'),
+  legalStatus: () => req('/legal/status'),
 
   // Auth — a signed session cookie, not a bearer token: nothing to store or
   // attach client-side beyond the fetch itself.
   me: () => req('/auth/me'),
-  signup: (email, password) => req('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  signup: (email, password, acceptLegal) => req('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, acceptLegal }) }),
   login: (email, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
+  exportAccountData: () => req('/account/export'),
+  deleteAccount: (password, confirmation) =>
+    req('/account/delete', { method: 'POST', body: JSON.stringify({ password, confirmation }) }),
 
   // Barcode lookup: cache → Open Food Facts → USDA. Returns a normalized food.
   lookupBarcode: (barcode) => req(`/lookup/${encodeURIComponent(barcode)}`),
@@ -110,7 +116,12 @@ export const api = {
         bounds ? `&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}` : ''
       }`,
     ),
-  planToday: (ymd) => req(`/plan/today?date=${encodeURIComponent(ymd)}`),
+  planToday: (ymd, bounds) =>
+    req(
+      `/plan/today?date=${encodeURIComponent(ymd)}${
+        bounds ? `&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}` : ''
+      }`,
+    ),
   signals: () => req('/signals'),
 
   // Manual workout input — states today's planned session directly, for
@@ -145,10 +156,10 @@ export const api = {
   // companion authenticates with, since it can't carry a session cookie.
   appleToken: () => req('/apple/token', { method: 'POST' }),
 
-  // --- Adaptive Fuel Plan ---
-  // A separate, additive feature — its own profile, its own planned-workout
-  // list, its own per-day computed plan. Never touches getProfile/setTargets/
-  // planToday above.
+  // --- Canonical daily fuel plan ---
+  // AFP is the one profile, workout schedule, and target engine used by both
+  // Today and Plan. The older profile/targets calls above remain only as a
+  // compatibility surface while existing accounts migrate.
   getAfpProfile: () => req('/afp/profile'),
   setAfpProfile: (patch) => req('/afp/profile', { method: 'PUT', body: JSON.stringify(patch) }),
 
@@ -158,7 +169,12 @@ export const api = {
 
   // The computed (or frozen historical) plan for one day, plus fresh
   // progress against that day's actual logged intake.
-  afpPlan: (ymd) => req(`/afp/plan?date=${encodeURIComponent(ymd)}`),
+  afpPlan: (ymd, bounds) =>
+    req(
+      `/afp/plan?date=${encodeURIComponent(ymd)}${
+        bounds ? `&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}` : ''
+      }`,
+    ),
   recomputeAfpPlan: (ymd) => req(`/afp/plan/${encodeURIComponent(ymd)}/recompute`, { method: 'POST' }),
   // Pass {} to clear a previously-set override.
   setAfpPlanOverrides: (ymd, overrides) =>

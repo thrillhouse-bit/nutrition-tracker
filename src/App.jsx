@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { api } from './api/client.js'
 import { dayBounds, MEALS, num, fmt, ymd, restoreEntryPayload } from './lib/nutrition.js'
 import { enqueue, dequeue, getQueue, pendingEntry } from './lib/outbox.js'
+import { purgeAccountStorage, purgeLegacyPrivateCaches, purgeUnownedLegacyStorage, readAccountJson, writeAccountJson } from './lib/privateStorage.js'
 import { Button, Sheet, ErrorNote, Spinner, StatusTag, ServingStepper } from './components/ui.jsx'
 // Scanner pulls in the large zxing library — load only when opened.
 const Scanner = lazy(() => import('./components/Scanner.jsx'))
@@ -11,13 +12,11 @@ import SearchFood from './components/SearchFood.jsx'
 import FoodConfirm from './components/FoodConfirm.jsx'
 import Today from './components/Today.jsx'
 import LogView from './components/LogView.jsx'
-import Plan from './components/Plan.jsx'
+import Plan from './components/CanonicalPlan.jsx'
 import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
 import Auth from './components/Auth.jsx'
 import Onboarding from './components/Onboarding.jsx'
-
-const RECENTS_KEY = 'nt_recents_v1'
 
 const ADD_OPTIONS = [
   { key: 'scan', label: 'Scan barcode', hint: 'Packaged groceries' },
@@ -83,14 +82,21 @@ export default function App() {
   // rely on the cookie, not on `user`, so they don't need to be re-wired.
   const [authState, setAuthState] = useState('loading')
   const [user, setUser] = useState(null)
-  // null = not yet checked, true = has real targets, false = first-run gate.
-  // Separate from authState because it needs its own fetch (api.getTargets's
-  // hasTargets field, server/db.js) and its own reset on logout.
-  const [hasTargets, setHasTargets] = useState(null)
+  // null = not yet checked, true = canonical profile ready, false = first-run
+  // gate. AFP is the only profile that can unlock daily targets.
+  const [planReady, setPlanReady] = useState(null)
+  const [planCheckKey, setPlanCheckKey] = useState(0)
 
   useEffect(() => {
     let alive = true
-    api.me()
+    ;(async () => {
+      // This MUST happen before /auth/me. An older active service worker could
+      // otherwise satisfy that first request from the browser-global api-cache
+      // and briefly identify the previous account to the new client.
+      purgeUnownedLegacyStorage()
+      await purgeLegacyPrivateCaches()
+      return api.me()
+    })()
       .then(({ user }) => { if (alive) { setUser(user); setAuthState(user ? 'in' : 'out') } })
       .catch(() => { if (alive) setAuthState('out') })
     return () => { alive = false }
@@ -101,19 +107,31 @@ export default function App() {
   useEffect(() => {
     if (authState !== 'in') return
     let alive = true
-    api.getTargets()
-      .then((r) => { if (alive) setHasTargets(r?.hasTargets ?? true) })
-      // Fail OPEN: a broken check must never trap a real user behind a gate
-      // they can't get past.
-      .catch(() => { if (alive) setHasTargets(true) })
+    api.getAfpProfile()
+      .then((r) => { if (alive) setPlanReady(r?.ready === true) })
+      .catch(() => { if (alive) setPlanReady('error') })
     return () => { alive = false }
-  }, [authState])
+  }, [authState, planCheckKey])
+
+  const clearSignedInState = async ({ deleteLocal = false } = {}) => {
+    if (deleteLocal && user?.id) purgeAccountStorage(user.id)
+    await purgeLegacyPrivateCaches()
+    setUser(null)
+    setAuthState('out')
+    setPlanReady(null)
+    setEntries([])
+    setTodayData(null)
+    setPending([])
+    setRecents([])
+  }
 
   const logout = async () => {
     await api.logout().catch(() => {})
-    setUser(null)
-    setAuthState('out')
-    setHasTargets(null)
+    await clearSignedInState()
+  }
+
+  const accountDeleted = async () => {
+    await clearSignedInState({ deleteLocal: true })
   }
 
   const [tab, setTab] = useState('today')
@@ -139,7 +157,7 @@ export default function App() {
   const [recents, setRecents] = useState([])
 
   // Offline write-queue
-  const [pending, setPending] = useState(() => getQueue())
+  const [pending, setPending] = useState([])
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
   const [syncing, setSyncing] = useState(false)
 
@@ -148,6 +166,11 @@ export default function App() {
   const [savingEntry, setSavingEntry] = useState(false)
 
   const loadEntries = useCallback(async (forDate) => {
+    if (authState !== 'in' || !user?.id) {
+      setEntries([])
+      setLoadingEntries(false)
+      return
+    }
     setLoadingEntries(true)
     try {
       const { from, to } = dayBounds(forDate)
@@ -158,7 +181,7 @@ export default function App() {
     } finally {
       setLoadingEntries(false)
     }
-  }, [])
+  }, [authState, user?.id])
 
   useEffect(() => { loadEntries(date) }, [date, refreshKey, loadEntries])
 
@@ -167,34 +190,48 @@ export default function App() {
   // same entries the log list shows (the server's midnight may be in another
   // timezone).
   useEffect(() => {
+    if (authState !== 'in' || !user?.id) {
+      setTodayData(null)
+      setTodayError(false)
+      return
+    }
     let alive = true
     setTodayError(false) // a fresh attempt for this date/refresh is starting — never show the PREVIOUS attempt's error while this one is still in flight
     api.today(ymd(date), dayBounds(date))
       .then((r) => { if (alive) { setTodayData(r); setTodayError(false) } })
       .catch(() => { if (alive) { setTodayData(null); setTodayError(true) } })
     return () => { alive = false }
-  }, [date, refreshKey])
+  }, [authState, user?.id, date, refreshKey])
+
+  // Load only this account's queued writes after authentication resolves.
+  useEffect(() => {
+    setPending(authState === 'in' && user?.id ? getQueue(user.id) : [])
+  }, [authState, user?.id])
 
   // Keep recents populated for the Log tab and the add-food menu without needing
   // to open the sheet first; refresh after each log so re-log stays current.
   useEffect(() => {
+    if (authState !== 'in' || !user?.id) {
+      setRecents([])
+      return
+    }
     let alive = true
     api.recentFoods(12)
       .then((r) => {
         if (!alive) return
         const foods = r.foods || []
         setRecents(foods)
-        try { localStorage.setItem(RECENTS_KEY, JSON.stringify(foods)) } catch {}
+        writeAccountJson('recents', user.id, foods)
       })
       .catch(() => {
         if (!alive) return
         try {
-          const cached = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]')
+          const cached = readAccountJson('recents', user.id, [])
           setRecents(Array.isArray(cached) ? cached : [])
         } catch { setRecents([]) }
       })
     return () => { alive = false }
-  }, [refreshKey])
+  }, [authState, user?.id, refreshKey])
 
   // OAuth return handoff (Oura/Garmin bounce back to /?provider=connected|error).
   useEffect(() => {
@@ -212,25 +249,36 @@ export default function App() {
   }, [])
 
   const flushOutbox = useCallback(async () => {
-    const q = getQueue()
-    if (!q.length || (typeof navigator !== 'undefined' && !navigator.onLine)) return
+    const userId = user?.id
+    if (authState !== 'in' || !userId) return []
+    const q = getQueue(userId)
+    if (!q.length || (typeof navigator !== 'undefined' && !navigator.onLine)) return q
     setSyncing(true)
     let changed = false
     for (const item of q) {
+      // Defense in depth in case localStorage is manually edited: a queue item
+      // must name the same owner as the account-scoped key that contained it.
+      if (String(item.ownerUserId) !== String(userId)) break
       try {
         await api.addEntry(item.payload)
-        dequeue(item.clientId)
+        dequeue(userId, item.clientId)
         changed = true
-      } catch (err) {
-        if (err.status) { dequeue(item.clientId); changed = true } else break
+      } catch {
+        // Network, validation, authentication and permission failures all keep
+        // the item. In particular, 401/403 pauses for reauthentication instead
+        // of permanently deleting a person's offline log.
+        break
       }
     }
-    setPending(getQueue())
+    const remaining = getQueue(userId)
+    setPending(remaining)
     setSyncing(false)
     if (changed) setRefreshKey((k) => k + 1)
-  }, [])
+    return remaining
+  }, [authState, user?.id])
 
   useEffect(() => {
+    if (authState !== 'in' || !user?.id) return undefined
     flushOutbox()
     const goOnline = () => { setOnline(true); flushOutbox() }
     const goOffline = () => setOnline(false)
@@ -240,20 +288,21 @@ export default function App() {
       window.removeEventListener('online', goOnline)
       window.removeEventListener('offline', goOffline)
     }
-  }, [flushOutbox])
+  }, [authState, user?.id, flushOutbox])
 
   // ---- add-food flow -----------------------------------------------------
   const openAdd = (mode = 'menu') => {
     setFlowError(''); setDraftFood(null); setFlow(mode)
+    if (!user?.id) return
     api.recentFoods(12)
       .then((r) => {
         const foods = r.foods || []
         setRecents(foods)
-        try { localStorage.setItem(RECENTS_KEY, JSON.stringify(foods)) } catch {}
+        writeAccountJson('recents', user.id, foods)
       })
       .catch(() => {
         try {
-          const cached = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]')
+          const cached = readAccountJson('recents', user.id, [])
           setRecents(Array.isArray(cached) ? cached : [])
         } catch { setRecents([]) }
       })
@@ -295,12 +344,13 @@ export default function App() {
     } catch (err) {
       const networkFailure = !err.status || (typeof navigator !== 'undefined' && !navigator.onLine)
       if (networkFailure) {
-        enqueue({
+        enqueue(user.id, {
           clientId: crypto.randomUUID(),
+          ownerUserId: user.id,
           payload: { ...payload, logged_at: payload.logged_at || new Date().toISOString() },
           food: payload.food || draftFood,
         })
-        setPending(getQueue()); closeFlow(); setDate(new Date())
+        setPending(getQueue(user.id)); closeFlow(); setDate(new Date())
       } else {
         setFlowError(err.message || 'Could not log the entry.')
       }
@@ -311,7 +361,7 @@ export default function App() {
 
   const deleteEntry = async (id) => {
     if (pending.some((i) => i.clientId === id)) {
-      dequeue(id); setPending(getQueue()); setEditingEntry(null); return
+      dequeue(user.id, id); setPending(getQueue(user.id)); setEditingEntry(null); return
     }
     // Snapshot before deleting so a mistaken tap (there's no confirm dialog
     // on this action) can be undone — re-logs the same food/servings/meal/
@@ -369,13 +419,13 @@ export default function App() {
     )
   }
   if (authState === 'out') {
-    return <Auth onAuthed={(u) => { setUser(u); setAuthState('in'); bump() }} />
+    return <Auth onAuthed={async (u) => { purgeUnownedLegacyStorage(); await purgeLegacyPrivateCaches(); setUser(u); setAuthState('in'); bump() }} />
   }
 
-  // Signed in, but hasTargets hasn't resolved yet — hold here rather than
+  // Signed in, but plan readiness hasn't resolved yet — hold here rather than
   // flash the tab shell (which would render Today's fabricated-default
   // baseline for a split second) before the gate below can apply.
-  if (hasTargets === null) {
+  if (planReady === null) {
     return (
       <div className="flex min-h-full items-center justify-center">
         <Spinner label="Loading…" />
@@ -383,8 +433,17 @@ export default function App() {
     )
   }
 
-  if (hasTargets === false) {
-    return <Onboarding onDone={() => { setHasTargets(true); bump() }} />
+  if (planReady === 'error') {
+    return (
+      <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-4 py-10">
+        <ErrorNote>OmniFuel could not verify your daily plan setup. Your account is still signed in, but targets are hidden until this check succeeds.</ErrorNote>
+        <Button variant="outline" className="mt-4" onClick={() => { setPlanReady(null); setPlanCheckKey((key) => key + 1) }}>Try again</Button>
+      </div>
+    )
+  }
+
+  if (planReady === false) {
+    return <Onboarding onDone={() => { setPlanReady(true); bump() }} />
   }
 
   return (
@@ -477,7 +536,7 @@ export default function App() {
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}
         {tab === 'plan' && <Plan {...shared} onChanged={bump} />}
         {tab === 'insights' && <Insights refreshKey={refreshKey} />}
-        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} />}
+        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} onAccountDeleted={accountDeleted} />}
       </main>
 
       {/* Add-food sheet. The confirm step owns its own header (the design shows

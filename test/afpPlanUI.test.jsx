@@ -85,7 +85,7 @@ describe('AdaptiveFuelPlan: empty/loading states', () => {
   it('shows a setup CTA, not an error, when the profile is incomplete', async () => {
     api.afpPlan.mockResolvedValue(NO_PLAN_YET)
     const el = await renderAfp()
-    expect(el.textContent).toMatch(/Set up your Adaptive Fuel Plan/)
+    expect(el.textContent).toMatch(/Set up your daily fuel plan/)
     expect(el.textContent).not.toMatch(/error/i)
   })
 
@@ -95,7 +95,7 @@ describe('AdaptiveFuelPlan: empty/loading states', () => {
     const btn = Array.from(el.querySelectorAll('button')).find((b) => /Set up my profile/.test(b.textContent))
     expect(btn).toBeTruthy()
     await act(async () => { btn.click() })
-    expect(el.textContent).toMatch(/Adaptive Fuel Plan profile/)
+    expect(el.textContent).toMatch(/Daily fuel plan profile/)
     expect(el.textContent).toMatch(/Baseline activity/)
   })
 })
@@ -332,10 +332,10 @@ describe('AdaptiveFuelPlan: recalculates when the date changes', () => {
     const root = createRoot(container)
     await act(async () => { root.render(<AdaptiveFuelPlan date={new Date('2026-08-25T12:00:00.000Z')} refreshKey={0} onChanged={() => {}} />) })
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
-    expect(api.afpPlan).toHaveBeenCalledWith('2026-08-25')
+    expect(api.afpPlan).toHaveBeenCalledWith('2026-08-25', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }))
 
     await act(async () => { root.render(<AdaptiveFuelPlan date={new Date('2026-08-26T12:00:00.000Z')} refreshKey={0} onChanged={() => {}} />) })
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
-    expect(api.afpPlan).toHaveBeenCalledWith('2026-08-26')
+    expect(api.afpPlan).toHaveBeenCalledWith('2026-08-26', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }))
   })
 })

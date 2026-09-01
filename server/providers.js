@@ -18,7 +18,7 @@
 // using a seeded evening-run scenario so the whole experience works with no
 // accounts. Demo data must never be presented as a live connection.
 import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailySummary as ouraDailySummary, dailyReadiness as ouraDailyReadiness, dailySleepHours as ouraDailySleepHours, dailySleepScore as ouraDailySleepScore, validAccessToken as ouraValidToken } from './integrations/oura.js'
-import { garminConfigured } from './integrations/garmin.js'
+import { garminReleaseReady } from './integrations/garmin.js'
 
 // `categories` is human-readable metadata only — nothing in this codebase
 // reads it at runtime (grepped: zero references outside this file). It
@@ -221,7 +221,7 @@ export async function providerStatus(store, userId, id, nowDate = new Date()) {
     return { ...meta, ...obs, status: ageH <= PROVIDER_STALE_HOURS ? 'connected' : 'stale', demo: false, last_synced_at: lastSynced }
   }
   if (id === 'garmin') {
-    if (!garminConfigured()) return { ...meta, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
+    if (!garminReleaseReady()) return { ...meta, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
     const accounts = await store.listGarminAccounts(userId)
     if (!accounts.length) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
     const daily = await store.getGarminDaily(accounts[0].id, ymd(nowDate)).catch(() => null)
@@ -422,7 +422,7 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
 // yet, while the Connections tab said stale, demo: false.
 //
 // Must check THIS USER's own account, not just whether the server can do
-// OAuth at all — checking only ouraConfigured()/garminConfigured() (server-
+// OAuth at all — checking only ouraConfigured()/garminReleaseReady() (server-
 // wide: are the app's own client id/secret set) meant that the moment ANY
 // user connected a real Oura account, the server counted as "configured" for
 // EVERY user, so every other, never-connected user's oura branch stopped
@@ -438,7 +438,7 @@ async function neverConnected(store, userId, id, settings) {
     return accounts.length === 0
   }
   if (id === 'garmin') {
-    if (!garminConfigured()) return true
+    if (!garminReleaseReady()) return true
     return (await store.listGarminAccounts(userId)).length === 0
   }
   if (id === 'apple') return !settings?.connected_at
