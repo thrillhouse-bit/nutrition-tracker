@@ -332,6 +332,15 @@ describe('conversations and witness fallback', () => {
     expect(conversation.nodes['choose-witness'].choices).toHaveLength(2)
   })
 
+  it('answers each Regent witness with testimony-specific language', () => {
+    const conversation = act5ConversationById('act5-regent-interruption')
+    const choices = Object.fromEntries(conversation.nodes['choose-witness'].choices.map((choice) => [choice.id, choice]))
+    expect(choices['ianthe-testimony'].next).toBe('elia-condition')
+    expect(choices['keeper-testimony'].next).toBe('keeper-condition')
+    expect(conversation.nodes['keeper-condition'].text).toMatch(/Melite kept both terms in the neutral record/i)
+    expect(conversation.nodes['keeper-condition'].text).toMatch(/every witness may refuse/i)
+  })
+
   it('authors three-light optional routing without replacing main/default NPC scenes', () => {
     expect(act5RuntimeEntityById('night-stair', 'selene')).toMatchObject({
       conversationId: 'act5-selene-reflection',

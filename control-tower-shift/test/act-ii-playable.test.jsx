@@ -141,6 +141,24 @@ describe('Act II playable world hooks', () => {
     expect(container.textContent).toContain('Nereid Caves')
   })
 
+  it('uses one honest skiff affordance and traverses to the archive barge', async () => {
+    const staged = act2State(5, 'storm-anchorage', { x: 866, y: 402 })
+    staged.world = { ...staged.world, spawnId: 'from-barge' }
+    staged.flags = { ...staged.flags, 'act2-anchorage-cleared': true }
+    await mountRPG(staged)
+
+    const skiffTargets = container.querySelectorAll('button[aria-label="Take the skiff to the barge"]')
+    expect(skiffTargets).toHaveLength(1)
+    expect(container.querySelector('button[aria-label="Archive Skiff Dock"]')).toBeNull()
+
+    await act(async () => skiffTargets[0].click())
+    await act(async () => { await Promise.resolve() })
+    expect(loadRPG(window.localStorage).save.world).toMatchObject({
+      mapId: 'archive-barge-deck',
+      spawnId: 'from-anchorage',
+    })
+  })
+
   it('accepts the optional Unmoored Heart loop from its authored echo', async () => {
     await mountRPG(act2State(3, 'nereid-caves', { x: 414, y: 414 }))
     const interact = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Interact')

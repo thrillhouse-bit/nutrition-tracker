@@ -517,6 +517,17 @@ describe('Acts III–V shared playable UI', () => {
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Skip').click())
     saved = loadRPG(window.localStorage).save
     expect(saved.flags['act5-moon-witnesses-aligned']).toBe(true)
+    const moonReady = saved
+
+    // The optional stair encounter belongs to the shadow route. Exercise the
+    // authored return control before approaching it instead of seeding a moon-
+    // state position on geometry that is intentionally not moon-walkable.
+    await unmountRPG()
+    const shadow = map.entities.find((entity) => entity.id === 'nyx-seal')
+    await mountRPG({ ...saved, status: 'playing', world: { ...saved.world, spawnId: 'anchors-stable', position: { x: shadow.x, y: shadow.y } } })
+    await clickWorldTarget(shadow.accessibleLabel)
+    saved = loadRPG(window.localStorage).save
+    expect(saved.flags[ACT5_LIGHT_FLAG]).toBe('shadow')
 
     await unmountRPG()
     const encounter = map.exits.find((exit) => exit.id === 'combat-act5-night-stair')
@@ -527,7 +538,7 @@ describe('Acts III–V shared playable UI', () => {
 
     await unmountRPG()
     const bridge = map.exits.find((exit) => exit.id === 'night-stair-to-false-sky')
-    await mountRPG({ ...saved, status: 'playing', world: { ...saved.world, position: { x: bridge.x, y: bridge.y } } })
+    await mountRPG({ ...moonReady, status: 'playing', world: { ...moonReady.world, position: { x: bridge.x, y: bridge.y } } })
     await clickWorldTarget(bridge.accessibleLabel)
     expect(loadRPG(window.localStorage).save.world).toMatchObject({ mapId: 'false-sky', spawnId: 'from-night-stair' })
   })

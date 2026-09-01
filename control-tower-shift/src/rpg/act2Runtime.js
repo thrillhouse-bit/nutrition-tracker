@@ -82,7 +82,6 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'melite', kind: 'npc', x: 232, y: 352, name: 'Melite', label: 'Speak with Melite', conversationId: 'act2-melite-oath-post' },
       { id: 'oath-post', kind: 'interact', x: 280, y: 330, name: 'Harbor Oath-Post', label: 'Inspect the oath-post' },
       { id: 'poseidon-shrine', kind: 'shrine', x: 328, y: 174, name: 'Poseidon Shrine', label: 'Honor the keeper of harbors', deityId: 'poseidon', savePointId: 'shrine-pelagos-poseidon' },
-      { id: 'skiff-docks', kind: 'travel-node', x: 474, y: 474, name: 'Harbor Skiff Docks', label: 'Board the archive skiff' },
       { id: 'salt-covenant-table', kind: 'choice', x: 442, y: 246, name: 'Salt Covenant Table', label: 'Ratify the Salt Covenant', choiceIds: ['harbor-first', 'boundary-first', 'shared-crossing'] },
     ],
     exits: [
@@ -101,9 +100,10 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     decor: [
       { id: 'harbor-column-1', kind: 'column', x: 390, y: 126 }, { id: 'harbor-column-2', kind: 'column', x: 520, y: 126 },
       { id: 'harbor-brazier', kind: 'brazier', x: 448, y: 168 }, { id: 'harbor-nets', kind: 'fishing-nets', x: 724, y: 388 },
+      { id: 'skiff-docks', kind: 'skiff-dock', x: 474, y: 474 },
       { id: 'harbor-amphorae', kind: 'urn', x: 202, y: 450 },
     ],
-    tide: { initialStateId: 'ebb', laneIds: ['harbor-promenade', 'harbor-jetty', 'harbor-shrine-steps'], wellIds: [], skiffNodeIds: ['skiff-docks'], ropeLiftIds: [] },
+    tide: { initialStateId: 'ebb', laneIds: ['harbor-promenade', 'harbor-jetty', 'harbor-shrine-steps'], wellIds: [], skiffNodeIds: [], ropeLiftIds: [] },
   },
 
   'breakwater-road': {
@@ -198,11 +198,10 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     },
     entities: [
       { id: 'rope-lift', kind: 'rope-lift', x: 720, y: 174, name: 'Archive Rope Lift', label: 'Raise the archive pennant' },
-      { id: 'archive-skiff-dock', kind: 'travel-node', x: 836, y: 386, name: 'Archive Skiff Dock', label: 'Take the skiff to the barge' },
     ],
     exits: [
       { id: 'anchorage-to-caves', x: 38, y: 286, toMapId: 'nereid-caves', spawnId: 'from-anchorage', returnSpawnId: 'from-caves', kind: 'foot', gate: [] },
-      { id: 'anchorage-to-barge', x: 866, y: 402, toMapId: 'archive-barge-deck', spawnId: 'from-anchorage', returnSpawnId: 'from-barge', kind: 'skiff', gate: [{ kind: 'flag', flagId: 'act2-anchorage-cleared', value: true }] },
+      { id: 'anchorage-to-barge', x: 866, y: 402, toMapId: 'archive-barge-deck', spawnId: 'from-anchorage', returnSpawnId: 'from-barge', kind: 'skiff', label: 'Take the skiff to the barge', gate: [{ kind: 'flag', flagId: 'act2-anchorage-cleared', value: true }] },
       { id: 'combat-act2-anchorage', x: 430, y: 244, kind: 'combat', encounterId: 'enc-act2-anchorage', label: 'Break the anchorage ambush', gate: [] },
     ],
     collisions: [
@@ -217,8 +216,9 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     decor: [
       { id: 'anchorage-mast', kind: 'broken-mast', x: 562, y: 124 }, { id: 'anchorage-brazier-1', kind: 'brazier', x: 236, y: 182 },
       { id: 'anchorage-brazier-2', kind: 'brazier', x: 774, y: 286 }, { id: 'anchorage-ruin', kind: 'ruin', x: 404, y: 112 },
+      { id: 'archive-skiff-dock', kind: 'skiff-dock', x: 836, y: 386 },
     ],
-    tide: { initialStateId: 'ebb', laneIds: ['anchorage-platform', 'anchorage-lift-path'], wellIds: [], skiffNodeIds: ['archive-skiff-dock'], ropeLiftIds: ['rope-lift'] },
+    tide: { initialStateId: 'ebb', laneIds: ['anchorage-platform', 'anchorage-lift-path'], wellIds: [], skiffNodeIds: [], ropeLiftIds: ['rope-lift'] },
   },
 
   'archive-barge-deck': {
