@@ -471,6 +471,42 @@
 .rpg-bank-entry small { color: var(--rpg-parchment); font-size: 9px; }
 .rpg-bank-entry button { min-height: 44px; border: 1px solid #5a4a2a; border-radius: 2px; background: #1d2633; color: var(--rpg-ivory); cursor: pointer; font-size: 10px; }
 .rpg-bank-entry button:hover { border-color: var(--rpg-gold); }
+.rpg-shop { display: grid; gap: 0.7rem; }
+.rpg-shop-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.rpg-shop-mode button,
+.rpg-shop-actions button {
+  min-height: 44px;
+  border: 1px solid var(--rpg-bronze);
+  border-radius: 2px;
+  background: var(--rpg-bronze-panel);
+  color: var(--rpg-ivory);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+.rpg-shop-mode button[aria-pressed="true"] { border-color: var(--rpg-gold); background: var(--rpg-terracotta); }
+.rpg-shop-mode button:hover,
+.rpg-shop-actions button:hover:not(:disabled) { border-color: var(--rpg-gold); }
+.rpg-shop-mode button:focus-visible,
+.rpg-shop-actions button:focus-visible { outline: 2px solid var(--rpg-focus); outline-offset: 2px; }
+.rpg-shop-actions button:disabled { cursor: not-allowed; opacity: 0.45; }
+.rpg-shop-status {
+  min-height: 2.9rem;
+  margin: 0;
+  padding: 0.65rem;
+  border-left: 2px solid var(--rpg-gold);
+  background: var(--rpg-soot);
+  color: var(--rpg-parchment);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.rpg-shop-list { display: grid; gap: 0.55rem; margin: 0; padding: 0; list-style: none; }
+.rpg-shop-entry { display: grid; gap: 0.55rem; padding: 0.7rem; border: 1px solid var(--rpg-bronze); background: var(--rpg-void); }
+.rpg-shop-item-copy { display: grid; gap: 0.18rem; }
+.rpg-shop-item-copy strong { color: var(--rpg-ivory); font-size: 12px; }
+.rpg-shop-item-copy span,
+.rpg-shop-entry small { color: var(--rpg-parchment); font-size: 9px; line-height: 1.4; }
+.rpg-shop-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.35rem; }
 .rpg-skill-action { position: absolute; left: 50%; bottom: 12%; z-index: 25; min-width: 210px; transform: translateX(-50%); border: 1px solid #7a5a1e; background: rgba(9, 13, 16, 0.94); padding: 0.55rem 0.7rem; text-align: center; }
 .rpg-skill-action > span { display: block; color: var(--rpg-gold); font-size: 8px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
 .rpg-skill-action > strong { display: block; margin: 0.15rem 0 0.4rem; color: var(--rpg-ivory); font-size: 11px; }

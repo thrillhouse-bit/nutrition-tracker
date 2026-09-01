@@ -49,6 +49,9 @@ describe('crafting reducer integration', () => {
       ...state,
       inventory: addInventoryItem(state.inventory, 'copper-bar', 1, ALL_ITEM_DEFS).inventory,
     }
+    const remote = applyEvent(state, { type: 'BANK_DEPOSIT_MATERIALS' })
+    expect(remote).toBe(state)
+    state = atMap(state, 'beacon-overlook')
     state = applyEvent(state, { type: 'BANK_DEPOSIT_MATERIALS' })
     expect(state.inventory.bank.slots).toContainEqual({ itemId: 'copper-bar', quantity: 1 })
     state = applyEvent(state, { type: 'BANK_WITHDRAW', itemId: 'copper-bar', quantity: 1 })

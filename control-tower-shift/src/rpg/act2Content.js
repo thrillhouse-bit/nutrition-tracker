@@ -12,7 +12,7 @@
 //     eros, hermes are the Act II patron cast)
 //   - Act I completion prerequisites: `mq-act1-ash-at-dawn` completed and the
 //     restored Far-Sighted epithet (`act1-far-sighted-restored`)
-//   - Save contract stays schema-v1; this module adds known content IDs only.
+//   - Save contract remains versioned; this module adds known content IDs only.
 //
 // Story logic reasons only about the stable kebab-case IDs below; display
 // text is never used to infer progression.

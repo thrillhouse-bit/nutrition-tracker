@@ -39,13 +39,14 @@
 | Form | Not applicable | no text-entry form | none | static audit |
 | Scrollbar | Application global stylesheet / native forced-colors | `src/index.css` | overlay overflow only | computed style + narrow browser |
 | Toast | Inline persistent save alert | `ControlTowerRPG` save status | error only | save-failure component test |
-| Persistence | `rpg/save.js` | schema-v1 envelope | new / continue / recover | storage matrix + E2E |
+| Persistence | `rpg/save.js` | versioned envelope with v1→v2 migration | new / continue / recover | storage matrix + E2E |
 | Dialogue | `ControlTowerRPG` + content registry | `rpg/content.js` | next / deterministic skip | keyboard + skip-equivalence tests |
 | Combat result | `ControlTowerRPG` + reducer | encounter outcome event | win / defeat | browser + exactly-once tests |
 | World navigation | `rpg/pathfinding.js` + semantic target buttons | map bounds/collisions/traversal lanes | ground destination / approach-and-act | path unit tests + browser coordinates |
 | Skills | `rpg/progression.js` | stored XP + derived 1–99 curve | combat / divine / gathering / artisan / world | curve + award + save tests |
 | Inventory | `rpg/progression.js` | 28-slot inventory and item registry | physical / stackable / quest record | capacity + normalization + browser panel |
 | Quest journal | registered quest definitions + reducer progress | registry and current save | main / side / completed | reducer + browser panel |
+| Shop / Trading | `rpg/economy.js` + physical merchant entity | immutable shop registry + scalar drachma wallet | buy / sell | atomic domain + reducer + browser tests |
 
 ## Component behavior
 
@@ -83,6 +84,10 @@
 | Move to destination | Ground click/tap | accelerated distance-driven walk over a collision-aware route | selected walkable point with exact settled pose | gold ground reticle + visible gait/contact shadow | blocked-route inline note | world control | `RPG-SYSTEMS.md`, `src/rpg/locomotion.js` |
 | Approach and act | Semantic world-target activation | collision-aware route | interaction range, then authored action | dialogue/resource/combat/gate result | blocked-route inline note | target or resulting surface | `RPG-SYSTEMS.md` |
 | Gain skill XP | Resolved skill action, quest, or combat victory | deterministic reducer event | same world/result surface | level/XP record updates | invalid skill/gain is a no-op | prior control | `RPG-SYSTEMS.md` |
+| Open shop | Approach a merchant world target | collision-aware route + reducer map validation | merchant ledger side panel | wallet, stock, and carried counts | remote/unknown merchant is inert | first Buy action | `src/rpg/economy.js` |
+| Buy | Merchant ledger quantity action | one replay-safe reducer event | same merchant ledger | exact item, quantity, and drachma total in live status | insufficient funds/stock/space leaves wallet, item, and stock unchanged | activated quantity action | `src/rpg/economy.js` |
+| Sell | Merchant ledger quantity action | one replay-safe reducer event | same merchant ledger | exact item, quantity, and drachma total in live status | insufficient carried quantity leaves inventory, wallet, and stock unchanged | activated quantity action | `src/rpg/economy.js` |
+| Close shop | Close button or Escape | immediate reducer close | exploration at the merchant | world targets return | reload/travel also clears live merchant state | merchant world context | `src/rpg/state.js` |
 
 ## Navigation and responsive behavior
 
@@ -107,8 +112,10 @@
 ## Async and resilience
 
 - Mutation default (pessimistic/optimistic/queued): Pure local reducer transition followed by immediate boundary persistence.
+- Routine in-game trades do not require confirmation. The pure economy resolver atomically preflights currency, carried quantity, backpack capacity, finite stock, safe arithmetic, and physical map access before settling a buy or sell.
+- Shop stock restocks from deterministic `playtimeTicks`; wall-clock time, reloads, and reopening cannot accelerate it. Processed transaction IDs are bounded in the save and prevent duplicate settlement.
 - Idempotency and duplicate-submit policy: Encounter, dialogue effect, reward, and objective events are guarded by stable IDs and current-state match.
-- Auto-save/draft recovery: Boundary-only schema-v1 saves; no mid-combat/projectile persistence.
+- Auto-save/draft recovery: Boundary-only versioned saves; no mid-combat/projectile persistence.
 - Offline/read-stale/write behavior: Fully offline-capable; storage denial shows persistent save warning while play continues.
 - Retry/backoff/timeout behavior: No network dependency. A later boundary retries local save.
 - Version conflict and multi-tab behavior: Future schema is refused; latest successfully loaded boundary is authoritative. Multi-tab live merge is out of scope and must not silently combine states.
@@ -119,7 +126,7 @@
 
 ## Validation
 
-- Schema/validation layer: Explicit schema-v1 normalization in `src/rpg/save.js`; canonical IDs come from content/game registries.
+- Schema/validation layer: Explicit v1→v2 migration and current normalization in `src/rpg/save.js`; canonical IDs come from content/game registries.
 - Trigger timing: Validate before exposing Continue and again on load.
 - Error summary/inline policy: Corrupt/future/unavailable save state is stated on the entry surface with recovery actions.
 - Server error mapping: Not applicable.

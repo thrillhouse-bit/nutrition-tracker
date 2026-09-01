@@ -240,6 +240,37 @@ export function addInventoryItem(inventory, itemId, quantity = 1, itemDefs = ITE
   return { inventory: { ...normalized, slots }, added }
 }
 
+export function carriedItemQuantity(inventory, itemId, itemDefs = ITEM_DEFS) {
+  const normalized = normalizeInventory(inventory, itemDefs)
+  return normalized.slots
+    .filter((entry) => entry.itemId === itemId)
+    .reduce((total, entry) => total + entry.quantity, 0)
+}
+
+// Remove from carried slots only. The operation is atomic: insufficient
+// carried quantity leaves the normalized inventory unchanged and removes 0.
+export function removeInventoryItem(inventory, itemId, quantity = 1, itemDefs = ITEM_DEFS) {
+  const normalized = normalizeInventory(inventory, itemDefs)
+  const item = itemDefs[itemId]
+  const count = normalizedItemQuantity({ quantity })
+  if (!item || !count || carriedItemQuantity(normalized, itemId, itemDefs) < count) {
+    return { inventory: normalized, removed: 0 }
+  }
+  let remaining = count
+  const slots = []
+  for (const entry of normalized.slots) {
+    if (entry.itemId !== itemId || remaining <= 0) {
+      slots.push(entry)
+      continue
+    }
+    const taken = Math.min(entry.quantity, remaining)
+    const left = entry.quantity - taken
+    remaining -= taken
+    if (left > 0) slots.push({ ...entry, quantity: left })
+  }
+  return { inventory: { ...normalized, slots }, removed: count }
+}
+
 const MATERIAL_CATEGORIES = new Set(['ore', 'bar', 'wood', 'fish', 'herb', 'fiber', 'hide', 'gem', 'essence'])
 
 export function depositAllMaterials(inventory, itemDefs = ITEM_DEFS) {

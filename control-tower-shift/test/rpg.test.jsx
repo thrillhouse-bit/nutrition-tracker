@@ -108,7 +108,7 @@ describe('schema v1 + documented spawn', () => {
   it('a fresh save is schema v1 and starts at the Beacon Overlook start', () => {
     const s = createInitialState()
     expect(s.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(SCHEMA_VERSION).toBe(1)
+    expect(SCHEMA_VERSION).toBe(2)
     expect(s.world.mapId).toBe(START_MAP)
     expect(s.world.spawnId).toBe(START_SPAWN)
     const spawn = mapById(START_MAP).spawn
@@ -505,7 +505,7 @@ describe('save round trip, corrupt JSON, future schema, unknown IDs', () => {
     expect(hasSave(store)).toBe(true)
     const { save, error } = loadRPG(store)
     expect(error).toBe('none')
-    expect(save.schemaVersion).toBe(1)
+    expect(save.schemaVersion).toBe(2)
     expect(save.protagonist.activePatronId).toBe(TIER1_PATRON_IDS[2])
     expect(save.world.mapId).toBe('beacon-overlook')
     clearSave(store)
@@ -553,8 +553,8 @@ describe('save round trip, corrupt JSON, future schema, unknown IDs', () => {
     clearSave(store)
   })
 
-  it('migrateSave returns raw for v1 and null for corrupt/future', () => {
-    expect(migrateSave({ schemaVersion: 1 })).toEqual({ schemaVersion: 1 })
+  it('migrateSave upgrades v1 and returns null for corrupt/future', () => {
+    expect(migrateSave({ schemaVersion: 1 })).toMatchObject({ schemaVersion: 2, economy: { openShopId: null } })
     expect(migrateSave(null)).toBeNull()
     expect(migrateSave({ schemaVersion: 99 })).toBeNull()
     expect(migrateSave({})).toBeNull()
@@ -563,7 +563,7 @@ describe('save round trip, corrupt JSON, future schema, unknown IDs', () => {
   it('normalizeState sanitizes a hostile but parseable save into a valid v1 state', () => {
     const n = normalizeState({ schemaVersion: 1, quests: 'bogus', flags: { x: () => 1 } })
     expect(n).not.toBeNull()
-    expect(n.schemaVersion).toBe(1)
+    expect(n.schemaVersion).toBe(2)
     expect(n.status).toBe('playing')
     expect(n.world.mapId).toBe('beacon-overlook')
   })

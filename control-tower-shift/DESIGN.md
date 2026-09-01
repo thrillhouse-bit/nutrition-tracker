@@ -36,6 +36,7 @@ components:
   dialogue: { }
   shrine-card: { }
   combat-canvas: { }
+  shop-panel: { }
 ---
 
 # Control Tower: Oathbearer Design System
@@ -91,6 +92,8 @@ Primary story actions use terracotta with gold border; secondary actions use bro
 ### Navigation and data display
 
 Exact hash routes isolate arena and RPG loops. Location, objective, patron, health, and encounter progress remain the only always-visible HUD data. Skills, Pack, and Journal open quiet record panels without turning the world into a dashboard. World targets use semantic 48px hotspots with a small diamond reticle only on hover/focus; the character walks to the authored target before the action resolves. Player-facing “waves” are forbidden; encounters show authored map/encounter identity and concrete completion. Act cards summarize destination, recovered epithet, and the next main objective without pretending unbuilt regions are playable.
+
+Commerce is physically approached in the world rather than exposed as global HUD chrome. Merchant ledgers reuse the quiet side-panel grammar: item, unit price, stock, carried quantity, and exact transaction outcome remain legible in text. Bronze tally lines are the signature; pricing and availability never rely on color alone.
 
 ### Forms and overlays
 

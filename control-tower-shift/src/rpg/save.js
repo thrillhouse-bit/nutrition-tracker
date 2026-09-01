@@ -21,6 +21,7 @@ import { normalizeInventory, normalizeSkills } from './progression.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
 import { craftingAccessDecision } from './systemAccess.js'
 import { REGIONS_BY_ID as WILDERNESS_REGIONS_BY_ID } from './wilderness.js'
+import { SHOP_DEFS, createInitialEconomy, normalizeEconomy } from './economy.js'
 
 export const RPG_SAVE_KEY = 'control-tower-shift:rpg-save:v1'
 
@@ -35,11 +36,51 @@ export function migrateSave(raw) {
   if (v === undefined || v === null || typeof v !== 'number') return null
   if (v > SCHEMA_VERSION) return null // future schema — refuse to downgrade
   if (v === SCHEMA_VERSION) return raw
-  // Future versions migrate here; for now v1 is the only version.
+  if (v === 1) {
+    const playtimeTicks = typeof raw.playtimeTicks === 'number' && Number.isSafeInteger(raw.playtimeTicks) && raw.playtimeTicks >= 0
+      ? raw.playtimeTicks
+      : 0
+    return {
+      ...raw,
+      schemaVersion: 2,
+      inventory: migrateLegacyDrachma(raw.inventory),
+      economy: createInitialEconomy(playtimeTicks),
+      playtimeTicks,
+    }
+  }
   return null
 }
 
-// Validate and normalize a raw state into a safe, renderable v1 state. Falls
+function migrateLegacyDrachma(raw) {
+  const inventory = raw && typeof raw === 'object' ? raw : {}
+  const quantity = (entry) => typeof entry?.quantity === 'number' && Number.isSafeInteger(entry.quantity) && entry.quantity > 0
+    ? entry.quantity
+    : 0
+  const slots = Array.isArray(inventory.slots) ? inventory.slots : []
+  const bankSlots = Array.isArray(inventory.bank?.slots) ? inventory.bank.slots : []
+  const legacyCoins = [...slots, ...bankSlots]
+    .filter((entry) => entry?.itemId === 'drachma')
+    .reduce((total, entry) => Math.min(Number.MAX_SAFE_INTEGER, total + quantity(entry)), 0)
+  const existing = typeof inventory.currency === 'number' && Number.isSafeInteger(inventory.currency) && inventory.currency >= 0
+    ? inventory.currency
+    : 0
+  const migrated = {
+    ...inventory,
+    currency: Math.min(Number.MAX_SAFE_INTEGER, existing + legacyCoins),
+  }
+  if (Array.isArray(inventory.slots)) migrated.slots = slots.filter((entry) => entry?.itemId !== 'drachma')
+  if (inventory.bank && typeof inventory.bank === 'object') {
+    migrated.bank = {
+      ...inventory.bank,
+      ...(Array.isArray(inventory.bank.slots)
+        ? { slots: bankSlots.filter((entry) => entry?.itemId !== 'drachma') }
+        : {}),
+    }
+  }
+  return migrated
+}
+
+// Validate and normalize a raw state into a safe, renderable current state. Falls
 // back to the last valid shrine (a map the player has visited) or the
 // documented spawn for any unknown IDs. Never throws.
 export function normalizeState(raw) {
@@ -115,10 +156,18 @@ export function normalizeState(raw) {
   const inv = migrated.inventory || {}
   const arr = (x) => (Array.isArray(x) ? x.filter((s) => typeof s === 'string') : [])
 
-  // V1 persists only reconstructible encounter/dialogue boundaries. If an old
+  // Saves persist only reconstructible encounter/dialogue boundaries. If an old
   // or interrupted build wrote an ephemeral status, resume into the world
   // instead of loading without the corresponding local UI/session object.
   const status = migrated.status === 'ending' ? 'ending' : 'playing'
+
+  const playtimeTicks = typeof migrated.playtimeTicks === 'number' && Number.isSafeInteger(migrated.playtimeTicks) && migrated.playtimeTicks >= 0
+    ? migrated.playtimeTicks
+    : 0
+  const economy = normalizeEconomy(migrated.economy, playtimeTicks)
+  // Trading is a live physical interaction, never a resumable save boundary.
+  // Reload closes even a locally valid merchant panel.
+  economy.openShopId = null
 
   const normalized = {
     schemaVersion: SCHEMA_VERSION,
@@ -155,8 +204,9 @@ export function normalizeState(raw) {
     },
     wilderness: normalizeWilderness(migrated.wilderness, base.wilderness),
     crafting: normalizeCrafting(migrated.crafting, base.crafting, mapId),
-    combatSnapshot: null, // v1 persists combat only at boundaries, never mid-frame
-    playtimeTicks: typeof migrated.playtimeTicks === 'number' ? migrated.playtimeTicks : 0,
+    economy,
+    combatSnapshot: null, // saves persist combat only at boundaries, never mid-frame
+    playtimeTicks,
     savedAt: typeof migrated.savedAt === 'string' ? migrated.savedAt : new Date().toISOString(),
   }
   normalized.flags = normalizedProgressFlags(normalized)
@@ -236,7 +286,7 @@ export function saveRPG(store, state) {
 
 // Load + validate. Returns { save, error } where error is one of
 // 'none' | 'corrupt' | 'future' | 'unknown'. 'future' means a newer schema
-// version (refuse to load). 'unknown' means a valid v1 save whose IDs were
+// version (refuse to load). 'unknown' means a valid migratable save whose IDs were
 // unknown and normalized to safe fallbacks. 'corrupt' means the data could not
 // be parsed into a safe state at all.
 export function loadRPG(store) {
@@ -299,6 +349,19 @@ function hasUnknownIds(raw) {
     if (raw.crafting.stationId != null && !STATION_IDS.has(raw.crafting.stationId)) return true
     if (hasUnknownStructuredIds(raw.crafting)) return true
   }
+  if (raw.economy && typeof raw.economy === 'object') {
+    if (raw.economy.openShopId != null && !SHOP_DEFS[raw.economy.openShopId]) return true
+    if (raw.economy.shops && typeof raw.economy.shops === 'object') {
+      for (const [shopId, shopState] of Object.entries(raw.economy.shops)) {
+        const shop = SHOP_DEFS[shopId]
+        if (!shop) return true
+        if (shopState?.stock && typeof shopState.stock === 'object') {
+          for (const itemId of Object.keys(shopState.stock)) if (!shop.listings[itemId]) return true
+        }
+      }
+    }
+    if (hasUnknownStructuredIds(raw.economy.lastResult)) return true
+  }
   if (raw.flags && typeof raw.flags === 'object') {
     // Encounter/quest ids referenced in flags that we know about should be
     // validated; unknown non-ID flags are simply ignored, not errors.
@@ -326,6 +389,7 @@ function hasUnknownStructuredIds(value) {
   }
   for (const [key, nested] of Object.entries(value)) {
     if (key === 'itemId' && (typeof nested !== 'string' || !ALL_ITEM_DEFS[nested])) return true
+    if (key === 'shopId' && (typeof nested !== 'string' || !SHOP_DEFS[nested])) return true
     if (key === 'recipeId' && (typeof nested !== 'string' || !RECIPE_IDS.has(nested))) return true
     if (key === 'stationId' && (nested != null && (typeof nested !== 'string' || !STATION_IDS.has(nested)))) return true
     if (hasUnknownStructuredIds(nested)) return true
@@ -333,7 +397,7 @@ function hasUnknownStructuredIds(value) {
   return false
 }
 
-// Whether the store currently holds a valid v1 save (used to enable Continue).
+// Whether the store currently holds a valid migratable save (used to enable Continue).
 export function hasSave(store) {
   return loadRPG(store).save != null
 }
