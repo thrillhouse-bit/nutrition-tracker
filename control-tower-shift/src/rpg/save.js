@@ -8,6 +8,7 @@
 import { TIER1_PATRON_IDS } from './content.js'
 import {
   REGISTERED_QUESTS,
+  REGISTERED_MAPS,
   rpgMapById as mapById,
   rpgQuestDefById as questDefById,
   rpgSpawnById as spawnById,
@@ -22,11 +23,23 @@ import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
 import { craftingAccessDecision } from './systemAccess.js'
 import { REGIONS_BY_ID as WILDERNESS_REGIONS_BY_ID } from './wilderness.js'
 import { SHOP_DEFS, createInitialEconomy, normalizeEconomy } from './economy.js'
+import { normalizeEquipment } from './equipment.js'
+import {
+  createInitialResourceNodes,
+  normalizeResourceNodes,
+  resourceNodeKey,
+} from './resources.js'
 
 export const RPG_SAVE_KEY = 'control-tower-shift:rpg-save:v1'
 
 const RECIPE_IDS = new Set(RECIPES.map((recipe) => recipe.id))
 const STATION_IDS = new Set(RECIPES.map((recipe) => recipe.stationId))
+const RESOURCE_NODE_KEYS = new Set(Object.values(REGISTERED_MAPS).flatMap((map) =>
+  (map.entities || [])
+    .filter((entity) => entity.kind === 'resource')
+    .map((entity) => resourceNodeKey(map.id, entity.id))
+    .filter(Boolean),
+))
 
 // Pure migration pipeline keyed by schemaVersion. Returns the migrated state
 // or null when the version is not migratable (e.g. a future version).
@@ -36,11 +49,12 @@ export function migrateSave(raw) {
   if (v === undefined || v === null || typeof v !== 'number') return null
   if (v > SCHEMA_VERSION) return null // future schema — refuse to downgrade
   if (v === SCHEMA_VERSION) return raw
+  let migrated = raw
   if (v === 1) {
     const playtimeTicks = typeof raw.playtimeTicks === 'number' && Number.isSafeInteger(raw.playtimeTicks) && raw.playtimeTicks >= 0
       ? raw.playtimeTicks
       : 0
-    return {
+    migrated = {
       ...raw,
       schemaVersion: 2,
       inventory: migrateLegacyDrachma(raw.inventory),
@@ -48,7 +62,14 @@ export function migrateSave(raw) {
       playtimeTicks,
     }
   }
-  return null
+  if (migrated.schemaVersion === 2) {
+    return {
+      ...migrated,
+      schemaVersion: 3,
+      resources: createInitialResourceNodes(),
+    }
+  }
+  return migrated.schemaVersion === SCHEMA_VERSION ? migrated : null
 }
 
 function migrateLegacyDrachma(raw) {
@@ -169,6 +190,14 @@ export function normalizeState(raw) {
   // Reload closes even a locally valid merchant panel.
   economy.openShopId = null
 
+  const normalizedInventory = normalizeInventory({
+    ...inv,
+    epithetFragments: arr(inv.epithetFragments),
+    questItems: arr(inv.questItems),
+    currency: typeof inv.currency === 'number' && Number.isFinite(inv.currency) ? Math.max(0, Math.floor(inv.currency)) : 0,
+  }, ALL_ITEM_DEFS)
+  normalizedInventory.equipment = normalizeEquipment(inv.equipment ?? normalizedInventory.equipment, ALL_ITEM_DEFS)
+
   const normalized = {
     schemaVersion: SCHEMA_VERSION,
     status,
@@ -189,12 +218,10 @@ export function normalizeState(raw) {
     mainQuestId,
     quests,
     flags,
-    inventory: normalizeInventory({
-      ...inv,
-      epithetFragments: arr(inv.epithetFragments),
-      questItems: arr(inv.questItems),
-      currency: typeof inv.currency === 'number' && Number.isFinite(inv.currency) ? Math.max(0, Math.floor(inv.currency)) : 0,
-    }, ALL_ITEM_DEFS),
+    inventory: normalizedInventory,
+    resources: normalizeResourceNodes(migrated.resources, playtimeTicks, {
+      allowedNodeKeys: RESOURCE_NODE_KEYS,
+    }),
     progression: {
       rank: typeof migrated.progression?.rank === 'number' ? migrated.progression.rank : 0,
       powerUnlocks: arr(migrated.progression?.powerUnlocks),
@@ -361,6 +388,9 @@ function hasUnknownIds(raw) {
       }
     }
     if (hasUnknownStructuredIds(raw.economy.lastResult)) return true
+  }
+  if (raw.resources?.nodes && typeof raw.resources.nodes === 'object') {
+    for (const key of Object.keys(raw.resources.nodes)) if (!RESOURCE_NODE_KEYS.has(key)) return true
   }
   if (raw.flags && typeof raw.flags === 'object') {
     // Encounter/quest ids referenced in flags that we know about should be

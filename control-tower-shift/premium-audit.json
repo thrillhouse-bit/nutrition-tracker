@@ -1,0 +1,13 @@
+{
+  "findings": [],
+  "mode": "strict",
+  "projectRoot": "/Users/jacksonkemper/Documents/Codex/2026-08-30/hel/work/control-tower-mythic-rebuild/control-tower-shift",
+  "schemaVersion": 1,
+  "summary": {
+    "errors": 0,
+    "total": 0,
+    "unresolved": 0,
+    "violations": 0,
+    "warnings": 0
+  }
+}

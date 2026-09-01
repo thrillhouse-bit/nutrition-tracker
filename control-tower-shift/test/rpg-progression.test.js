@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  INVENTORY_CAPACITY, SKILL_DEFS, addInventoryItem, awardSkillXp, depositAllMaterials,
+  INVENTORY_CAPACITY, SKILL_DEFS, addInventoryItem, awardSkillXp, depositAllMaterials, depositBankItem,
   createInitialInventory, createInitialSkills, levelForXp, xpForLevel,
   withdrawBankItem,
 } from '../src/rpg/progression.js'
@@ -50,6 +50,12 @@ describe('28-slot material inventory', () => {
     inventory = withdrawBankItem(inventory, 'copper-ore', 2)
     expect(inventory.slots.filter((slot) => slot.itemId === 'copper-ore')).toHaveLength(2)
     expect(inventory.bank.slots.find((slot) => slot.itemId === 'copper-ore').quantity).toBe(1)
+  })
+
+  it('deposits one explicitly selected carried item for bank-aware crafting', () => {
+    const deposited = depositBankItem(createInitialInventory(), 'barley-flatbread', 1)
+    expect(deposited.slots.filter((entry) => entry.itemId === 'barley-flatbread')).toHaveLength(2)
+    expect(deposited.bank.slots).toContainEqual({ itemId: 'barley-flatbread', quantity: 1 })
   })
 })
 

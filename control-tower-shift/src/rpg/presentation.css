@@ -388,6 +388,12 @@
 .rpg-world-target:active .rpg-world-target-reticle {
   background: rgba(232, 182, 76, 0.3);
 }
+.rpg-world-target.is-depleted { color: var(--rpg-parchment); cursor: wait; }
+.rpg-world-target.is-depleted .rpg-world-target-reticle {
+  border-style: dashed;
+  opacity: 0.62;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0.82);
+}
 
 /* ── RuneScape-inspired persistent record panels ───────────────────── */
 .rpg-side-panel {
@@ -446,12 +452,22 @@
 .rpg-skill small { color: #807560; font-size: 9px; }
 .rpg-skill-bar { height: 3px; margin: 0.32rem 0; background: #28251e; }
 .rpg-skill-bar span { display: block; height: 100%; background: var(--rpg-gold); }
-.rpg-equipment-line,
 .rpg-inventory-summary { display: flex; justify-content: space-between; gap: 0.6rem; margin: 0.75rem 0; color: var(--rpg-parchment); font-size: 10px; }
-.rpg-equipment-line { flex-direction: column; padding: 0.6rem; border-left: 2px solid var(--rpg-gold); background: #121923; }
-.rpg-equipment-line b { display: inline-block; min-width: 4.5rem; color: var(--rpg-gold); text-transform: uppercase; letter-spacing: 0.1em; }
+.rpg-equipment-ledger { display: grid; gap: 0.55rem; margin: 0.75rem 0; padding: 0.65rem; border-left: 2px solid var(--rpg-gold); background: #121923; }
+.rpg-equipment-stats { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.65rem; color: var(--rpg-parchment); font-size: 10px; }
+.rpg-equipment-stats strong { grid-row: span 3; align-self: center; color: var(--rpg-gold); text-transform: uppercase; letter-spacing: 0.1em; }
+.rpg-equipment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+.rpg-equipment-slot { display: grid; gap: 0.25rem; min-width: 0; padding: 0.4rem; border: 1px solid #342e23; background: #0d1319; }
+.rpg-equipment-slot span { display: grid; gap: 0.1rem; color: var(--rpg-parchment); font-size: 9px; overflow-wrap: anywhere; }
+.rpg-equipment-slot b { color: var(--rpg-gold); text-transform: uppercase; letter-spacing: 0.1em; }
+.rpg-equipment-slot button,
+.rpg-item-action { min-height: 44px; border: 1px solid #5a4a2a; border-radius: 2px; background: #1b2a3d; color: var(--rpg-ivory); cursor: pointer; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.rpg-equipment-slot button:hover,
+.rpg-item-action:hover { border-color: var(--rpg-gold); }
+.rpg-item-action { width: 100%; margin-top: 0.22rem; }
+.rpg-item-action:disabled { opacity: 0.4; cursor: not-allowed; }
 .rpg-inventory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; }
-.rpg-inventory-slot { position: relative; display: grid; place-items: center; min-height: 62px; padding: 0.28rem; border: 1px solid #342e23; background: linear-gradient(145deg, #171b20, #0c1014); color: var(--rpg-gold); text-align: center; }
+.rpg-inventory-slot { position: relative; display: grid; place-items: center; align-content: start; min-height: 62px; padding: 0.28rem; border: 1px solid #342e23; background: linear-gradient(145deg, #171b20, #0c1014); color: var(--rpg-gold); text-align: center; }
 .rpg-inventory-slot > span { font-size: 1.2rem; }
 .rpg-inventory-slot small { display: block; max-width: 100%; color: var(--rpg-parchment); font-size: 8px; line-height: 1.05; }
 .rpg-inventory-slot b { position: absolute; right: 3px; bottom: 2px; color: var(--rpg-ivory); font-size: 9px; }

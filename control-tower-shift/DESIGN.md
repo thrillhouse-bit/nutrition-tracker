@@ -37,6 +37,9 @@ components:
   shrine-card: { }
   combat-canvas: { }
   shop-panel: { }
+  equipment-ledger: { }
+  resource-target: { }
+  crafting-source-control: { }
 ---
 
 # Control Tower: Oathbearer Design System
@@ -94,6 +97,8 @@ Primary story actions use terracotta with gold border; secondary actions use bro
 Exact hash routes isolate arena and RPG loops. Location, objective, patron, health, and encounter progress remain the only always-visible HUD data. Skills, Pack, and Journal open quiet record panels without turning the world into a dashboard. World targets use semantic 48px hotspots with a small diamond reticle only on hover/focus; the character walks to the authored target before the action resolves. Player-facing “waves” are forbidden; encounters show authored map/encounter identity and concrete completion. Act cards summarize destination, recovered epithet, and the next main objective without pretending unbuilt regions are playable.
 
 Commerce is physically approached in the world rather than exposed as global HUD chrome. Merchant ledgers reuse the quiet side-panel grammar: item, unit price, stock, carried quantity, and exact transaction outcome remain legible in text. Bronze tally lines are the signature; pricing and availability never rely on color alone.
+
+Renewable resources reuse the semantic diamond target: available nodes are gold and depleted nodes remain discoverable with a dashed parchment reticle plus a textual renewal estimate. Equipment uses a compact carved ledger inside the Pack, with all eleven canonical slots, readable combat totals, and explicit 44px Equip/Unequip actions. Crafting material provenance is a deliberate station control, not an invisible convenience: carried materials are the default, and a physically local Storehouse can be opted into with exact carried/bank deductions announced after settlement.
 
 ### Forms and overlays
 

@@ -81,8 +81,8 @@ export function awardSkillXpBundle(state, rewards) {
 }
 
 export const ITEM_DEFS = Object.freeze({
-  'oath-spear': { id: 'oath-spear', name: 'Oath-Spear', category: 'weapon', equipmentSlot: 'weapon', stackable: false, tier: 1 },
-  'traveler-tunic': { id: 'traveler-tunic', name: 'Traveler Tunic', category: 'armor', equipmentSlot: 'body', stackable: false, tier: 1 },
+  'oath-spear': { id: 'oath-spear', name: 'Oath-Spear', category: 'weapon', equipmentSlot: 'weapon', stackable: false, tier: 1, combatModifiers: Object.freeze({ accuracyBonus: 3, damageBonus: 5 }) },
+  'traveler-tunic': { id: 'traveler-tunic', name: 'Traveler Tunic', category: 'armor', equipmentSlot: 'body', stackable: false, tier: 1, combatModifiers: Object.freeze({ defenseBonus: 2, maxHealthBonus: 0 }) },
   'barley-flatbread': { id: 'barley-flatbread', name: 'Barley Flatbread', category: 'food', stackable: false, tier: 1 },
   'copper-ore': { id: 'copper-ore', name: 'Copper Ore', category: 'ore', stackable: false, tier: 1 },
   'tin-ore': { id: 'tin-ore', name: 'Tin Ore', category: 'ore', stackable: false, tier: 1 },
@@ -205,7 +205,15 @@ export function normalizeInventory(raw, itemDefs = ITEM_DEFS) {
   const bankSlots = Array.isArray(raw?.bank?.slots)
     ? normalizeBankSlots(raw.bank.slots, itemDefs)
     : []
-  const equipment = { ...baseline.equipment }
+  // An absent equipment object is a legacy/new-save boundary and receives the
+  // starter kit. Once equipment has been persisted, explicit nulls are player
+  // intent and must remain empty rather than silently re-equipping that kit.
+  const hasPersistedEquipment = Boolean(
+    raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'equipment'),
+  )
+  const equipment = hasPersistedEquipment
+    ? Object.fromEntries(EQUIPMENT_SLOTS.map((slot) => [slot, null]))
+    : { ...baseline.equipment }
   for (const slot of EQUIPMENT_SLOTS) {
     const itemId = raw?.equipment?.[slot]
     if (itemDefinition(itemDefs, itemId)?.equipmentSlot === slot) equipment[slot] = itemId
@@ -289,6 +297,24 @@ export function depositAllMaterials(inventory, itemDefs = ITEM_DEFS) {
     else carried.push(entry)
   }
   return { ...normalized, slots: carried, bank: { ...normalized.bank, slots: bankSlots } }
+}
+
+export function depositBankItem(inventory, itemId, quantity = 1, itemDefs = ITEM_DEFS) {
+  const normalized = normalizeInventory(inventory, itemDefs)
+  const item = itemDefs[itemId]
+  const count = normalizedItemQuantity({ quantity })
+  if (!item || !count || carriedItemQuantity(normalized, itemId, itemDefs) < count) return normalized
+  const bankIndex = normalized.bank.slots.findIndex((entry) => entry.itemId === itemId)
+  if (bankIndex < 0 && normalized.bank.slots.length >= BANK_CAPACITY) return normalized
+  const removed = removeInventoryItem(normalized, itemId, count, itemDefs)
+  if (removed.removed !== count) return normalized
+  const bankSlots = [...normalized.bank.slots]
+  if (bankIndex >= 0) {
+    bankSlots[bankIndex] = { ...bankSlots[bankIndex], quantity: bankSlots[bankIndex].quantity + count }
+  } else {
+    bankSlots.push({ itemId, quantity: count })
+  }
+  return { ...removed.inventory, bank: { ...normalized.bank, slots: bankSlots } }
 }
 
 export function withdrawBankItem(inventory, itemId, quantity = 1, itemDefs = ITEM_DEFS) {
