@@ -62,6 +62,9 @@ snapshot.
 - Public login is throttled by client address and normalized account identity;
   signup is throttled by client address. Responses stay generic and expose a
   `Retry-After` duration without logging raw limiter keys.
+- Optional alpha signup uses exactly ten high-entropy invitation codes. Public
+  status exposes only whether an invite is required; plaintext codes are never
+  logged or persisted, and the digest ledger remains single-use after deletion.
 
 ## Account data lifecycle
 
@@ -103,6 +106,12 @@ If any required value is absent or invalid:
 Existing users may still sign in. Legal status is public only as readiness,
 version, links, and missing configuration labels; configured values are not
 exposed through the status endpoint.
+
+An existing account with a missing or superseded acceptance is held outside
+the private app shell and ordinary private APIs until it affirmatively accepts
+the server's current version. The gate preserves sign-out, legal-document
+links, account export, and permanent deletion; auth exposes only the
+required/not-required boolean.
 
 ## Legacy compatibility boundary
 

@@ -13,6 +13,7 @@ create table if not exists users (
   password_hash text not null,
   legal_version text,
   legal_accepted_at timestamptz,
+  invite_code_digest text unique,
   created_at    timestamptz not null default now()
 );
 
@@ -21,6 +22,19 @@ create table if not exists users (
 -- auditable signup-acceptance fields before the new server code is deployed.
 alter table users add column if not exists legal_version text;
 alter table users add column if not exists legal_accepted_at timestamptz;
+alter table users add column if not exists invite_code_digest text;
+create unique index if not exists users_invite_code_digest_idx on users (invite_code_digest) where invite_code_digest is not null;
+
+-- A durable, digest-only redemption ledger. `user_id` is deliberately set
+-- null (not cascaded) on account deletion: deleting an alpha account must not
+-- make its invitation reusable. The users-table digest supplies a second
+-- uniqueness guard while an account exists; PgStore creates both records in
+-- one transaction.
+create table if not exists alpha_invite_redemptions (
+  code_digest text primary key,
+  user_id bigint unique references users (id) on delete set null,
+  redeemed_at timestamptz not null default now()
+);
 
 create table if not exists foods (
   id               bigint generated always as identity primary key,

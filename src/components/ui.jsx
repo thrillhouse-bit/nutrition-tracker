@@ -461,7 +461,7 @@ export function Spinner({ label }) {
 export function ErrorNote({ children }) {
   if (!children) return null
   return (
-    <div className="flex items-start gap-2 border border-alert/40 bg-alert/5 px-3 py-2 text-sm text-alert">
+    <div role="alert" className="flex items-start gap-2 border border-alert/40 bg-alert/5 px-3 py-2 text-sm text-alert">
       <span aria-hidden className="mt-0.5 flex h-3 w-3 shrink-0 items-center justify-center bg-alert text-[9px] font-bold leading-none text-white">!</span>
       <span>{children}</span>
     </div>

@@ -17,6 +17,7 @@ process.env.TZ = 'Pacific/Apia'
 const fake = vi.hoisted(() => {
   const state = {
     users: [], // { id, email, password_hash, legal_version, legal_accepted_at, created_at }
+    inviteRedemptions: new Set(), // deterministic digests only; retained after account deletion
     entries: [], // { id, food_id, logged_at, servings_consumed, meal, food }
     integrations: {}, // keyed by provider only — one user drives this whole file
     appleSignals: {},
@@ -42,16 +43,35 @@ const fake = vi.hoisted(() => {
   let userSeq = 0
   const store = {
     // --- auth / users ----------------------------------------------------
-    createUser: async ({ email, password_hash, legal_version = null }) => {
+    createUser: async ({ email, password_hash, legal_version = null, invite_code_digest = null }) => {
+      if (invite_code_digest && state.inviteRedemptions.has(invite_code_digest)) {
+        const error = new Error('This invitation is invalid or has already been used.')
+        error.status = 403
+        error.code = 'INVITE_UNAVAILABLE'
+        throw error
+      }
+      if (state.users.some((user) => user.email === email)) {
+        const error = new Error('An account with that email already exists.')
+        error.status = 409
+        throw error
+      }
       const now = new Date().toISOString()
-      const row = { id: ++userSeq, email, password_hash, legal_version, legal_accepted_at: legal_version ? now : null, created_at: now }
+      const row = { id: ++userSeq, email, password_hash, legal_version, legal_accepted_at: legal_version ? now : null, invite_code_digest, created_at: now }
       state.users.push(row)
+      if (invite_code_digest) state.inviteRedemptions.add(invite_code_digest)
       return { id: row.id, email: row.email, created_at: row.created_at }
     },
     getUserByEmail: async (email) => state.users.find((u) => u.email === email) || null,
     getUserById: async (id) => {
       const u = state.users.find((u) => u.id === Number(id))
-      return u ? { id: u.id, email: u.email, created_at: u.created_at } : null
+      return u ? { id: u.id, email: u.email, legal_version: u.legal_version, legal_accepted_at: u.legal_accepted_at, created_at: u.created_at } : null
+    },
+    acceptLegalVersion: async (id, legalVersion) => {
+      const user = state.users.find((row) => row.id === Number(id))
+      if (!user) return null
+      user.legal_version = legalVersion
+      user.legal_accepted_at = new Date().toISOString()
+      return { ...user }
     },
     countUsers: async () => state.users.length,
     getSoleUserId: async () => (state.users.length === 1 ? state.users[0].id : null),
@@ -427,7 +447,98 @@ describe('legal publication and signup gate', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toMatch(/no-store.*private/)
     expect(res.headers.get('vary')).toMatch(/Cookie/i)
-    expect(await res.json()).toMatchObject({ ready: true, signupEnabled: true, privacyUrl: '/privacy', termsUrl: '/terms' })
+    expect(await res.json()).toMatchObject({ ready: true, signupEnabled: true, inviteRequired: false, privacyUrl: '/privacy', termsUrl: '/terms' })
+  })
+
+  it('fails closed in invite-only mode, reveals no code/count data, and redeems each configured code once', async () => {
+    const codes = Array.from({ length: 10 }, (_, index) => `AlphaInvite${String(index + 1).padStart(2, '0')}_abcdefghijklmnop`)
+    process.env.ALPHA_INVITE_ONLY = 'true'
+    process.env.ALPHA_INVITE_CODES = codes.join(',')
+    const { signupIpLimiter } = await import('../server/authRateLimit.js')
+    signupIpLimiter.reset()
+    try {
+      const status = await (await fetch(`${base}/api/legal/status`)).json()
+      expect(status).toMatchObject({ ready: true, signupEnabled: true, inviteRequired: true })
+      expect(Object.keys(status)).not.toContain('remaining')
+      expect(JSON.stringify(status)).not.toContain(codes[0])
+
+      const invalid = await fetch(`${base}/api/auth/signup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'alpha-invalid@example.test', password: 'testpassword123', acceptLegal: true, inviteCode: 'not-a-real-code' }),
+      })
+      expect(invalid.status).toBe(403)
+      const generic = await invalid.json()
+      expect(generic).toEqual({ error: 'This invitation is invalid or has already been used.' })
+
+      const accepted = await fetch(`${base}/api/auth/signup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'alpha-one@example.test', password: 'testpassword123', acceptLegal: true, inviteCode: codes[0] }),
+      })
+      expect(accepted.status).toBe(201)
+
+      const reused = await fetch(`${base}/api/auth/signup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'alpha-two@example.test', password: 'testpassword123', acceptLegal: true, inviteCode: codes[0] }),
+      })
+      expect(reused.status).toBe(403)
+      expect(await reused.json()).toEqual(generic)
+
+      // Even a different valid code must not turn alpha signup into an email
+      // enumeration oracle.
+      const duplicateEmail = await fetch(`${base}/api/auth/signup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'alpha-one@example.test', password: 'testpassword123', acceptLegal: true, inviteCode: codes[1] }),
+      })
+      expect(duplicateEmail.status).toBe(403)
+      expect(await duplicateEmail.json()).toEqual(generic)
+
+      process.env.ALPHA_INVITE_CODES = codes.slice(0, 9).join(',')
+      const unavailableStatus = await (await fetch(`${base}/api/legal/status`)).json()
+      expect(unavailableStatus).toMatchObject({ signupEnabled: false, inviteRequired: true })
+      const misconfigured = await fetch(`${base}/api/auth/signup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'alpha-three@example.test', password: 'testpassword123', acceptLegal: true, inviteCode: codes[2] }),
+      })
+      expect(misconfigured.status).toBe(503)
+    } finally {
+      delete process.env.ALPHA_INVITE_ONLY
+      delete process.env.ALPHA_INVITE_CODES
+      // Most of this long-standing route suite intentionally models the
+      // legacy single-user Apple token fallback. Remove this test's alpha
+      // account while retaining its digest redemption, matching real account
+      // deletion and avoiding cross-test pollution of that sole-user fixture.
+      fake.state.users = fake.state.users.filter((user) => user.email !== 'alpha-one@example.test')
+      signupIpLimiter.reset()
+    }
+  })
+
+  it('requires existing accounts to accept the currently published legal version without exposing acceptance details', async () => {
+    const user = fake.state.users.find((row) => row.id === authUserId)
+    user.legal_version = 'August 1, 2026'
+    user.legal_accepted_at = '2026-08-01T00:00:00.000Z'
+
+    const before = await (await get('/api/auth/me')).json()
+    expect(before.user).toEqual({ id: authUserId, email: 'route-tests@example.com', legalAcceptanceRequired: true })
+
+    const privateBefore = await get('/api/targets')
+    expect(privateBefore.status).toBe(428)
+    expect(await privateBefore.json()).toEqual({
+      error: 'Review and accept the current Terms of Service and Privacy Policy to continue.',
+      code: 'LEGAL_ACCEPTANCE_REQUIRED',
+    })
+    // Re-consent must never be coerced as the price of exercising account
+    // export/deletion rights.
+    expect((await get('/api/account/export')).status).toBe(200)
+
+    const rejected = await post('/api/auth/legal-acceptance', { acceptLegal: false })
+    expect(rejected.status).toBe(400)
+
+    const accepted = await post('/api/auth/legal-acceptance', { acceptLegal: true })
+    expect(accepted.status).toBe(200)
+    expect(await accepted.json()).toEqual({ user: { id: authUserId, email: 'route-tests@example.com', legalAcceptanceRequired: false } })
+    expect(user.legal_version).toBe('August 31, 2026')
+    expect(Date.parse(user.legal_accepted_at)).not.toBeNaN()
+    expect((await get('/api/targets')).status).toBe(200)
   })
 
   it('requires and records acceptance of the currently published legal version', async () => {

@@ -59,6 +59,7 @@ import { ensureCanonicalAfpProfile, isAfpProfileReady } from './afp/migration.js
 import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 import { registerAgentRoutes } from './agent.js'
 import { legalStatus, renderLegalDocument, renderLegalUnavailablePage } from './legal.js'
+import { alphaAccessStatus, configuredInviteDigest, inviteUnavailableError } from './alphaAccess.js'
 import {
   clientRateLimitKey,
   loginCredentialLimiter,
@@ -66,8 +67,11 @@ import {
   sendRateLimit,
   signupIpLimiter,
 } from './authRateLimit.js'
+import { securityHeaders } from './securityHeaders.js'
 
 const app = express()
+app.disable('x-powered-by')
+app.use(securityHeaders())
 // Render terminates TLS and forwards one trusted client-address hop. Express
 // must understand that hop or every production login shares the proxy's IP
 // bucket. Local development keeps the direct socket address.
@@ -171,9 +175,11 @@ app.get('/api/version', (req, res) => {
 // never silently route these URLs into the authenticated SPA shell.
 app.get('/api/legal/status', (req, res) => {
   const status = legalStatus()
+  const alpha = alphaAccessStatus()
   res.json({
     ready: status.ready,
-    signupEnabled: status.signupEnabled,
+    signupEnabled: status.signupEnabled && alpha.signupEnabled,
+    inviteRequired: alpha.inviteRequired,
     version: status.version,
     privacyUrl: status.privacyUrl,
     termsUrl: status.termsUrl,
@@ -194,10 +200,29 @@ for (const kind of ['privacy', 'terms']) {
 // --- auth (public) ----------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function currentLegalAcceptanceRequired(user, legal = legalStatus()) {
+  return Boolean(
+    user && legal.ready && (!user.legal_accepted_at || user.legal_version !== legal.version),
+  )
+}
+
+function publicUser(user, legal = legalStatus()) {
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    legalAcceptanceRequired: currentLegalAcceptanceRequired(user, legal),
+  }
+}
+
 app.post('/api/auth/signup', asyncH(async (req, res) => {
   const legal = legalStatus()
   if (!legal.signupEnabled) {
     return res.status(503).json({ error: 'New accounts are temporarily unavailable while the Privacy Policy and Terms of Service are finalized.' })
+  }
+  const alpha = alphaAccessStatus()
+  if (!alpha.signupEnabled) {
+    return res.status(503).json({ error: 'New accounts are temporarily unavailable.' })
   }
   if (req.body?.acceptLegal !== true) {
     return res.status(400).json({ error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy.' })
@@ -208,9 +233,23 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
   const password = String(req.body?.password || '')
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' })
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' })
-  if (await store.getUserByEmail(email)) return res.status(409).json({ error: 'An account with that email already exists.' })
+  const inviteCodeDigest = alpha.inviteRequired ? configuredInviteDigest(req.body?.inviteCode) : null
+  if (alpha.inviteRequired && !inviteCodeDigest) throw inviteUnavailableError()
+  // Preserve the established 409 in ordinary open-signup mode. In invite
+  // mode the atomic create below maps BOTH a used code and a duplicate email
+  // to the invitation response so possession of a code cannot become an
+  // account-enumeration oracle.
+  if (!alpha.inviteRequired && await store.getUserByEmail(email)) {
+    return res.status(409).json({ error: 'An account with that email already exists.' })
+  }
   const password_hash = await hashPassword(password)
-  const user = await store.createUser({ email, password_hash, legal_version: legal.version })
+  let user
+  try {
+    user = await store.createUser({ email, password_hash, legal_version: legal.version, invite_code_digest: inviteCodeDigest })
+  } catch (err) {
+    if (alpha.inviteRequired && (err.status === 409 || err.code === 'INVITE_UNAVAILABLE')) throw inviteUnavailableError()
+    throw err
+  }
   // This box may already hold data logged before multi-user accounts existed
   // (entries, targets, connected integrations with no owner). The first
   // person to sign up on it is that data's only plausible owner — there's no
@@ -221,7 +260,7 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
     await store.migrateLegacyDataToUser(user.id)
   }
   setSessionCookie(res, user.id)
-  res.status(201).json({ user: { id: user.id, email: user.email } })
+  res.status(201).json({ user: { id: user.id, email: user.email, legalAcceptanceRequired: false } })
 }))
 
 // A well-formed but arbitrary salt:hash pair, matching hashPassword's shape
@@ -250,7 +289,7 @@ app.post('/api/auth/login', asyncH(async (req, res) => {
   if (!user || !ok) return res.status(401).json({ error: 'Incorrect email or password.' })
   loginCredentialLimiter.clear(credentialKey)
   setSessionCookie(res, user.id)
-  res.json({ user: { id: user.id, email: user.email } })
+  res.json({ user: publicUser(user) })
 }))
 
 app.post('/api/auth/logout', (req, res) => {
@@ -264,7 +303,25 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', asyncH(async (req, res) => {
   if (req.userId == null) return res.json({ user: null })
   const user = await store.getUserById(req.userId)
-  res.json({ user: user ? { id: user.id, email: user.email } : null })
+  res.json({ user: publicUser(user) })
+}))
+
+// Existing accounts are not silently grandfathered into a newly published
+// legal version. This endpoint is authenticated, requires an explicit current
+// acknowledgement, and stores the server's version (never a client-supplied
+// version string).
+app.post('/api/auth/legal-acceptance', requireAuth, asyncH(async (req, res) => {
+  const legal = legalStatus()
+  if (!legal.ready) return res.status(503).json({ error: 'The legal documents are temporarily unavailable.' })
+  if (req.body?.acceptLegal !== true) {
+    return res.status(400).json({ error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy.' })
+  }
+  const user = await store.acceptLegalVersion(req.userId, legal.version)
+  if (!user) {
+    clearSessionCookie(res)
+    return res.status(401).json({ error: 'Sign in required.' })
+  }
+  res.json({ user: publicUser(user, legal) })
 }))
 
 // --- agent-to-agent (A2A) read surface — public, read-only ------------------
@@ -338,6 +395,21 @@ requireAuthRouter.post('/account/delete', asyncH(async (req, res) => {
   clearSessionCookie(res)
   res.status(204).end()
 }))
+
+// Re-consent is enforced at the API boundary, not only by the React shell.
+// Keep export and deletion above this middleware so a person never has to
+// accept new terms merely to exercise their data rights. Auth/me, logout,
+// acceptance itself, and the public documents are registered before this
+// router and remain available as well.
+requireAuthRouter.use((req, res, next) => {
+  if (currentLegalAcceptanceRequired(req.user)) {
+    return res.status(428).json({
+      error: 'Review and accept the current Terms of Service and Privacy Policy to continue.',
+      code: 'LEGAL_ACCEPTANCE_REQUIRED',
+    })
+  }
+  next()
+})
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------
 requireAuthRouter.get('/lookup/:barcode', asyncH(async (req, res) => {

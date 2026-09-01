@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { JsonStore, DEFAULT_PROFILE } from '../server/db.js'
+import { digestInviteCode } from '../server/alphaAccess.js'
 
 // JsonStore behavioral contract tests. The JSON store is the dev fallback for
 // PgStore and the two must behave identically (routes only ever see `store`).
@@ -46,6 +47,47 @@ describe('JsonStore persist() after a failed write', () => {
     expect(food.name).toBe('Rice')
     const onDisk = JSON.parse(await fs.readFile(good, 'utf8'))
     expect(onDisk.foods.map((f) => f.name)).toContain('Rice')
+  })
+})
+
+describe('JsonStore alpha invitation redemption', () => {
+  it('stores only a digest and allows exactly one concurrent claim', async () => {
+    const file = path.join(dir, 'store.json')
+    const s = new JsonStore(file)
+    const plaintext = 'AlphaInvite01_abcdefghijklmnop'
+    const digest = digestInviteCode(plaintext)
+    const results = await Promise.allSettled([
+      s.createUser({ email: 'alpha-one@example.test', password_hash: 'hash-one', legal_version: 'v1', invite_code_digest: digest }),
+      s.createUser({ email: 'alpha-two@example.test', password_hash: 'hash-two', legal_version: 'v1', invite_code_digest: digest }),
+    ])
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')[0].reason).toMatchObject({ status: 403, code: 'INVITE_UNAVAILABLE' })
+
+    const raw = await fs.readFile(file, 'utf8')
+    expect(raw).not.toContain(plaintext)
+    const stored = JSON.parse(raw)
+    expect(stored.alpha_invite_redemptions).toHaveLength(1)
+    expect(stored.alpha_invite_redemptions[0].code_digest).toBe(digest)
+  })
+
+  it('does not make an invitation reusable after its account is deleted', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const digest = digestInviteCode('AlphaInvite02_abcdefghijklmnop')
+    const user = await s.createUser({ email: 'alpha-delete@example.test', password_hash: 'hash', invite_code_digest: digest })
+    await s.deleteUser(user.id)
+    await expect(s.createUser({ email: 'alpha-reuse@example.test', password_hash: 'hash', invite_code_digest: digest }))
+      .rejects.toMatchObject({ status: 403, code: 'INVITE_UNAVAILABLE' })
+    const stored = JSON.parse(await fs.readFile(path.join(dir, 'store.json'), 'utf8'))
+    expect(stored.alpha_invite_redemptions).toEqual([expect.objectContaining({ code_digest: digest, user_id: null })])
+  })
+
+  it('records current legal acceptance for an existing user', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const user = await s.createUser({ email: 'reconsent@example.test', password_hash: 'hash', legal_version: 'v1' })
+    const accepted = await s.acceptLegalVersion(user.id, 'v2')
+    expect(accepted).toMatchObject({ legal_version: 'v2' })
+    expect(Date.parse(accepted.legal_accepted_at)).not.toBeNaN()
+    expect(await s.getUserById(user.id)).toMatchObject({ legal_version: 'v2' })
   })
 })
 

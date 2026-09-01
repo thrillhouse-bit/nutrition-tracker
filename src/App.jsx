@@ -15,7 +15,7 @@ import LogView from './components/LogView.jsx'
 import Plan from './components/CanonicalPlan.jsx'
 import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
-import Auth from './components/Auth.jsx'
+import Auth, { LegalReconsent } from './components/Auth.jsx'
 import Onboarding from './components/Onboarding.jsx'
 
 const ADD_OPTIONS = [
@@ -77,7 +77,8 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
 
 export default function App() {
   // Auth gate: 'loading' avoids a flash of the login screen while /auth/me
-  // resolves, 'out' shows Auth, 'in' shows the app. Everything below this
+  // resolves, 'out' shows Auth, 'consent' holds an existing account at the
+  // current-version legal acknowledgement, and 'in' shows the app. Everything below this
   // point already assumes a session exists — the rest of the app's fetches
   // rely on the cookie, not on `user`, so they don't need to be re-wired.
   const [authState, setAuthState] = useState('loading')
@@ -97,7 +98,7 @@ export default function App() {
       await purgeLegacyPrivateCaches()
       return api.me()
     })()
-      .then(({ user }) => { if (alive) { setUser(user); setAuthState(user ? 'in' : 'out') } })
+      .then(({ user }) => { if (alive) { setUser(user); setAuthState(user ? (user.legalAcceptanceRequired ? 'consent' : 'in') : 'out') } })
       .catch(() => { if (alive) setAuthState('out') })
     return () => { alive = false }
   }, [])
@@ -419,7 +420,10 @@ export default function App() {
     )
   }
   if (authState === 'out') {
-    return <Auth onAuthed={async (u) => { purgeUnownedLegacyStorage(); await purgeLegacyPrivateCaches(); setUser(u); setAuthState('in'); bump() }} />
+    return <Auth onAuthed={async (u) => { purgeUnownedLegacyStorage(); await purgeLegacyPrivateCaches(); setUser(u); setAuthState(u.legalAcceptanceRequired ? 'consent' : 'in'); bump() }} />
+  }
+  if (authState === 'consent') {
+    return <LegalReconsent user={user} onAccepted={(acceptedUser) => { setUser(acceptedUser); setAuthState('in'); bump() }} onLogout={logout} />
   }
 
   // Signed in, but plan readiness hasn't resolved yet — hold here rather than

@@ -17,6 +17,8 @@ export default function Auth({ onAuthed }) {
   const [showPassword, setShowPassword] = useState(false)
   const [legal, setLegal] = useState(null)
   const [acceptedLegal, setAcceptedLegal] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
+  const [showInviteCode, setShowInviteCode] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -29,14 +31,17 @@ export default function Auth({ onAuthed }) {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
-    if (mode === 'signup' && !legal?.signupEnabled) return setError('New accounts are temporarily unavailable while the legal documents are finalized.')
+    if (mode === 'signup' && !legal?.signupEnabled) return setError(legal?.ready ? 'New accounts are temporarily unavailable.' : 'New accounts are temporarily unavailable while the legal documents are finalized.')
     if (mode === 'signup' && !acceptedLegal) return setError('Agree to the Terms of Service and acknowledge the Privacy Policy to create an account.')
+    if (mode === 'signup' && legal?.inviteRequired && !inviteCode.trim()) return setError('Enter your invitation code to create an account.')
     const cleanEmail = email.trim().toLowerCase()
     if (!EMAIL_RE.test(cleanEmail)) return setError('Enter a valid email address.')
     if (mode === 'signup' && password.length < 8) return setError('Password must be at least 8 characters.')
     setBusy(true)
     try {
-      const { user } = mode === 'signup' ? await api.signup(cleanEmail, password, acceptedLegal) : await api.login(cleanEmail, password)
+      const { user } = mode === 'signup'
+        ? await api.signup(cleanEmail, password, acceptedLegal, legal?.inviteRequired ? inviteCode.trim() : undefined)
+        : await api.login(cleanEmail, password)
       onAuthed(user)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -74,6 +79,32 @@ export default function Auth({ onAuthed }) {
             placeholder="you@example.com"
           />
         </Field>
+        {mode === 'signup' && legal?.inviteRequired && (
+          <Field label="Invitation code" hint="Use the private code you received with your alpha invitation.">
+            <div className="relative">
+              <input
+                type={showInviteCode ? 'text' : 'password'}
+                autoComplete="one-time-code"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck="false"
+                required
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                className={`${inputCls} pr-16`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowInviteCode((shown) => !shown)}
+                aria-label={showInviteCode ? 'Hide invitation code' : 'Show invitation code'}
+                aria-pressed={showInviteCode}
+                className="absolute inset-y-0 right-0 min-w-14 px-2 text-xs font-semibold text-cobalt hover:text-cobalt-ink"
+              >
+                {showInviteCode ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </Field>
+        )}
         <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters.' : undefined}>
           <div className="relative">
             <input
@@ -111,7 +142,7 @@ export default function Auth({ onAuthed }) {
             </span>
           </label>
         )}
-        <Button type="submit" disabled={busy || (mode === 'signup' && (!legal?.signupEnabled || !acceptedLegal))} className="w-full">
+        <Button type="submit" disabled={busy || (mode === 'signup' && (!legal?.signupEnabled || !acceptedLegal || (legal?.inviteRequired && !inviteCode.trim())))} className="w-full">
           {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
         </Button>
       </form>
@@ -119,14 +150,14 @@ export default function Auth({ onAuthed }) {
       {mode === 'signup' || legal?.signupEnabled ? (
         <button
           type="button"
-          onClick={() => { setMode((m) => (m === 'signup' ? 'login' : 'signup')); setShowPassword(false); setAcceptedLegal(false); setError('') }}
+          onClick={() => { setMode((m) => (m === 'signup' ? 'login' : 'signup')); setShowPassword(false); setShowInviteCode(false); setAcceptedLegal(false); setInviteCode(''); setError('') }}
           className="mt-6 min-h-11 text-sm font-semibold text-cobalt hover:text-cobalt-ink"
         >
           {mode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
         </button>
       ) : (
         <p className="mt-6 text-center text-sm text-muted">
-          {legal === null ? 'Checking new-account availability…' : 'New accounts are temporarily paused while the legal documents are finalized.'}
+          {legal === null ? 'Checking new-account availability…' : legal.ready ? 'New accounts are temporarily paused.' : 'New accounts are temporarily paused while the legal documents are finalized.'}
         </p>
       )}
 
@@ -135,5 +166,60 @@ export default function Auth({ onAuthed }) {
         {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms">Terms of Service</a>.
       </p>
     </div>
+  )
+}
+
+export function LegalReconsent({ user, onAccepted, onLogout }) {
+  const [acknowledged, setAcknowledged] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!acknowledged || busy) return
+    setError('')
+    setBusy(true)
+    try {
+      const { user: acceptedUser } = await api.acceptCurrentLegal()
+      onAccepted(acceptedUser)
+    } catch (err) {
+      setError(err.message || 'The acknowledgement could not be saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <main className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16">
+      <header className="mb-8">
+        <div className="eyebrow mb-2 text-cobalt">Account update</div>
+        <h1 className="serif text-4xl leading-none text-ink">Review the current terms</h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted">
+          Before continuing as {user.email}, review OmniFuel&apos;s current legal documents and confirm your acceptance.
+        </p>
+      </header>
+      <form onSubmit={submit} className="space-y-5" noValidate>
+        <ErrorNote>{error}</ErrorNote>
+        <p className="text-sm leading-relaxed text-muted">
+          Open the <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms" target="_blank" rel="noreferrer">Terms of Service</a>
+          {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a> before acknowledging them.
+        </p>
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-relaxed text-muted">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(event) => setAcknowledged(event.target.checked)}
+            className="mt-1 h-5 w-5 shrink-0 accent-cobalt"
+          />
+          <span>I agree to the current Terms of Service and acknowledge the current Privacy Policy.</span>
+        </label>
+        <Button type="submit" disabled={!acknowledged || busy} aria-busy={busy} className="w-full">
+          {busy ? 'Saving…' : 'Agree and continue'}
+        </Button>
+      </form>
+      <button type="button" onClick={onLogout} disabled={busy} className="mt-6 min-h-11 text-sm font-semibold text-cobalt hover:text-cobalt-ink disabled:opacity-50">
+        Sign out
+      </button>
+    </main>
   )
 }

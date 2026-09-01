@@ -32,9 +32,10 @@ export const api = {
   // Auth — a signed session cookie, not a bearer token: nothing to store or
   // attach client-side beyond the fetch itself.
   me: () => req('/auth/me'),
-  signup: (email, password, acceptLegal) => req('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, acceptLegal }) }),
+  signup: (email, password, acceptLegal, inviteCode) => req('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, acceptLegal, inviteCode }) }),
   login: (email, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
+  acceptCurrentLegal: () => req('/auth/legal-acceptance', { method: 'POST', body: JSON.stringify({ acceptLegal: true }) }),
   exportAccountData: () => req('/account/export'),
   deleteAccount: (password, confirmation) =>
     req('/account/delete', { method: 'POST', body: JSON.stringify({ password, confirmation }) }),
