@@ -14,6 +14,9 @@
     "gen:icons": "node scripts/gen-icons.mjs",
     "db:init": "node server/scripts/init-db.js",
     "test": "vitest run",
+    "test:oathbearer": "vitest run control-tower-shift",
+    "verify:oathbearer": "npm run test:oathbearer && npm run build",
+    "verify:oathbearer:beta": "node scripts/verify-oathbearer-beta.mjs && npm run verify:oathbearer",
     "test:watch": "vitest"
   },
   "dependencies": {

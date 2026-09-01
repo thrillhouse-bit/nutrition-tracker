@@ -19,10 +19,7 @@ export const GODS_TIER_1 = [
     domain: 'Speed',
     attribute: 'winged sandal',
     color: '#1f35c9',
-    ability: 'speedBurst',
-    abilityLabel: 'Winged Stride',
     glyph: 'winged-sandal',
-    description: 'Doubles movement speed, slows all threats.',
   },
   {
     key: 'athena',
@@ -30,10 +27,7 @@ export const GODS_TIER_1 = [
     domain: 'Wisdom',
     attribute: 'owl on aegis',
     color: '#1f35c9',
-    ability: 'shield',
-    abilityLabel: 'Aegis Ward',
     glyph: 'owl-aegis',
-    description: 'Absorbs tower damage for a short duration.',
   },
   {
     key: 'ares',
@@ -41,10 +35,7 @@ export const GODS_TIER_1 = [
     domain: 'War',
     attribute: 'Corinthian helmet',
     color: '#1f35c9',
-    ability: 'pulseClear',
-    abilityLabel: 'War Cry',
     glyph: 'helmet',
-    description: 'Clears all threats in a wide radius at half score.',
   },
   {
     key: 'apollo',
@@ -52,10 +43,7 @@ export const GODS_TIER_1 = [
     domain: 'Light',
     attribute: 'laurel lyre',
     color: '#1f35c9',
-    ability: 'scoreMultiplier',
-    abilityLabel: 'Golden Lyre',
     glyph: 'lyre',
-    description: 'Doubles score from all clears for a duration.',
   },
   {
     key: 'artemis',
@@ -63,10 +51,7 @@ export const GODS_TIER_1 = [
     domain: 'Hunt',
     attribute: 'silver bow',
     color: '#1f35c9',
-    ability: 'precisionStrike',
-    abilityLabel: 'Arrow Storm',
     glyph: 'bow',
-    description: 'Clears multiple distant threats at full score.',
   },
   {
     key: 'aphrodite',
@@ -74,10 +59,7 @@ export const GODS_TIER_1 = [
     domain: 'Love',
     attribute: 'dove and rose',
     color: '#1f35c9',
-    ability: 'charm',
-    abilityLabel: 'Bewilder',
     glyph: 'dove-rose',
-    description: 'Neutralizes the next wave of threats.',
   },
   {
     key: 'hercules',
@@ -85,10 +67,7 @@ export const GODS_TIER_1 = [
     domain: 'Strength',
     attribute: 'club and lion pelt',
     color: '#1f35c9',
-    ability: 'godStrength',
-    abilityLabel: "Hero's Wrath",
     glyph: 'club',
-    description: 'Increases tower damage output, threats take 2x damage.',
   },
 ];
 
@@ -99,10 +78,7 @@ export const GODS_TIER_2 = [
     domain: 'Sky',
     attribute: 'lightning bolt',
     color: '#1f35c9',
-    ability: 'lightning',
-    abilityLabel: 'Thunderbolt',
     glyph: 'lightning',
-    description: 'Instantly clears ALL threats for double score.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
   {
@@ -111,10 +87,7 @@ export const GODS_TIER_2 = [
     domain: 'Queenship',
     attribute: 'royal scepter',
     color: '#1f35c9',
-    ability: 'queenlyGrace',
-    abilityLabel: "Queen's Grace",
     glyph: 'scepter',
-    description: 'Restores integrity and grants temporary invincibility.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
   {
@@ -123,10 +96,7 @@ export const GODS_TIER_2 = [
     domain: 'Sea',
     attribute: 'trident',
     color: '#1f35c9',
-    ability: 'earthshaker',
-    abilityLabel: 'Earthshaker',
     glyph: 'trident',
-    description: 'Tidal wave clears all threats and slows the rest.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
   {
@@ -135,10 +105,7 @@ export const GODS_TIER_2 = [
     domain: 'Underworld',
     attribute: 'chained key',
     color: '#1f35c9',
-    ability: 'underworldGate',
-    abilityLabel: 'Gate of the Dead',
     glyph: 'chained-key',
-    description: 'Opens a portal that traps threats and converts them to score.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
   {
@@ -147,10 +114,7 @@ export const GODS_TIER_2 = [
     domain: 'Seasons',
     attribute: 'pomegranate crown',
     color: '#1f35c9',
-    ability: 'seasonalShift',
-    abilityLabel: 'Seasonal Shift',
     glyph: 'pomegranate',
-    description: 'Cycles threat strength: weak→strong→weak over time.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
   {
@@ -159,10 +123,7 @@ export const GODS_TIER_2 = [
     domain: 'Wine',
     attribute: 'ivy-wreathed thyrsus',
     color: '#1f35c9',
-    ability: 'intoxication',
-    abilityLabel: 'Inebriation',
     glyph: 'thyrsus',
-    description: 'Confuses all threats — they move randomly for a duration.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
   {
@@ -171,10 +132,7 @@ export const GODS_TIER_2 = [
     domain: 'Harvest',
     attribute: 'wheat sheaf',
     color: '#1f35c9',
-    ability: 'harvestMoon',
-    abilityLabel: 'Harvest Moon',
     glyph: 'wheat',
-    description: 'Heals integrity over time and boosts threat clear rewards.',
     unlock: 'Survive all 10 waves with any Tier 1 god',
   },
 ];
@@ -186,10 +144,7 @@ export const GODS_TIER_3 = [
     domain: 'Time',
     attribute: 'harvesting scythe',
     color: '#8e3044',
-    ability: 'temporalRewind',
-    abilityLabel: 'Temporal Rewind',
     glyph: 'scythe',
-    description: 'Rewinds damage taken and restores integrity to previous peak.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -198,10 +153,7 @@ export const GODS_TIER_3 = [
     domain: 'Sun',
     attribute: 'solar chariot',
     color: '#8e3044',
-    ability: 'sunChariot',
-    abilityLabel: 'Sun Chariot',
     glyph: 'sun-chariot',
-    description: 'Blinds all threats — they stop moving and take double damage.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -210,10 +162,7 @@ export const GODS_TIER_3 = [
     domain: 'Moon',
     attribute: 'crescent moon and torch',
     color: '#8e3044',
-    ability: 'lunarVeil',
-    abilityLabel: 'Lunar Veil',
     glyph: 'crescent',
-    description: 'Invisibility cloak — threats cannot target the tower.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -222,10 +171,7 @@ export const GODS_TIER_3 = [
     domain: 'Fire',
     attribute: 'fire-tongs and torch',
     color: '#8e3044',
-    ability: 'fireBrand',
-    abilityLabel: 'Fire Brand',
     glyph: 'flame',
-    description: 'Ignites threats — they burn and deal residual damage.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -234,10 +180,7 @@ export const GODS_TIER_3 = [
     domain: 'Night',
     attribute: 'starry veil',
     color: '#8e3044',
-    ability: 'primordialDark',
-    abilityLabel: 'Primordial Dark',
     glyph: 'star-veil',
-    description: 'Shrouds the field — all threat speed is reduced.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -246,10 +189,7 @@ export const GODS_TIER_3 = [
     domain: 'Desire',
     attribute: 'winged arrow',
     color: '#8e3044',
-    ability: 'loveArrow',
-    abilityLabel: 'Love Arrow',
     glyph: 'arrow-heart',
-    description: 'Converts threats to allies that fight alongside the tower.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -258,10 +198,7 @@ export const GODS_TIER_3 = [
     domain: 'Endurance',
     attribute: 'celestial sphere',
     color: '#8e3044',
-    ability: 'worldBearer',
-    abilityLabel: 'World Bearer',
     glyph: 'atlas-sphere',
-    description: 'Doubles integrity and grants a protective barrier.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
   {
@@ -270,10 +207,7 @@ export const GODS_TIER_3 = [
     domain: 'Waters',
     attribute: 'river encircling the world',
     color: '#8e3044',
-    ability: 'worldRiver',
-    abilityLabel: 'World River',
     glyph: 'river-circle',
-    description: 'Creates a ring of water that slows and damages threats.',
     unlock: 'Survive all 10 waves with any Tier 2 god',
   },
 ];
@@ -300,8 +234,12 @@ export const MONSTER_TYPES = {
     name: 'Chronos', glyph: 'chronos', size: 10, behavior: 'fast', tier: 1,
     description: 'Time-wraith — approaches quickly.',
   },
-  apollo: {
-    name: 'Apollo', glyph: 'lyre', size: 11, behavior: 'erratic', tier: 1,
+  // Renamed from the old `apollo` monster key: that key collided with the god
+  // Apollo. Story content (the RPG) must never treat the monster table's
+  // `apollo` as the god Apollo, so the monster now lives under `apolloWeaver`
+  // and the deprecated alias below resolves any legacy reference to it.
+  apolloWeaver: {
+    name: 'Weaver', glyph: 'lyre', size: 11, behavior: 'erratic', tier: 1,
     description: 'Senses-guided — weaves unpredictably.',
   },
   sphinx: {
@@ -321,6 +259,18 @@ export const MONSTER_TYPES = {
     description: 'The World-Bearer — extremely slow but massive.',
   },
 };
+
+// Deprecated monster keys → current keys. The old `apollo` monster key
+// collided with the god Apollo, so any legacy reference resolves to the renamed
+// monster. Never resolve a god key through here; story content treats the
+// string `apollo` as the god only.
+export const MONSTER_DEPRECATED = { apollo: 'apolloWeaver' };
+
+// Resolve a monster type key, honoring deprecated aliases, with a safe fallback.
+export function resolveMonsterType(key) {
+  const k = MONSTER_DEPRECATED[key] || key
+  return MONSTER_TYPES[k] || MONSTER_TYPES.hydra
+}
 
 // Map ability name → glyph label used for the ability button.
 // Each ability is associated with the deity whose domain it represents.

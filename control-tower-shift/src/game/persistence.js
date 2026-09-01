@@ -17,15 +17,15 @@ export function loadHighScores(store) {
     if (!Array.isArray(parsed)) return []
     return parsed
       .filter((e) => e && typeof e.score === 'number' && Number.isFinite(e.score))
-      .map((e) => ({ score: Math.floor(e.score), wave: e.wave ?? null, at: e.at ?? null }))
+      .map((e) => ({ score: Math.floor(e.score), level: e.level ?? e.wave ?? null, at: e.at ?? null }))
   } catch {
     return []
   }
 }
 
 // Returns the new list (sorted desc, trimmed to MAX_ENTRIES) and writes it.
-export function saveHighScore(store, { score, wave = null, at = null }) {
-  const list = [...loadHighScores(store), { score: Math.floor(score), wave, at }]
+export function saveHighScore(store, { score, level = null, at = null }) {
+  const list = [...loadHighScores(store), { score: Math.floor(score), level, at }]
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_ENTRIES)
   try {

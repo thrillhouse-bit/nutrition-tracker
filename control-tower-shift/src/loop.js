@@ -1,7 +1,6 @@
 import { spawnThreat, advanceTick, deityAttack } from './game/state.js'
 import { stepSpawner } from './spawner.js'
 import { distance } from './game/collision.js'
-import { abilityActive } from './game/abilities.js'
 
 export const LOGIC_HZ = 30 // config durations are in these ticks
 
@@ -13,7 +12,6 @@ export function stepFrame(game, spawner, steps = 1) {
     const spawns = stepSpawner(spawner, g)
     for (const s of spawns) {
       g = spawnThreat(g, s)
-      g.threatsRemainingInWave = Math.max(0, g.threatsRemainingInWave - 1)
     }
     g = advanceTick(g)
   }
@@ -51,7 +49,7 @@ export function threatAt(state, x, y, slop = 24) {
   return best
 }
 
-// Auto-attack: the deity's signature melee attack on the nearest threat
+// Auto-attack: the deity's melee on the nearest threat.
 export function autoAttackNearest(state) {
   const target = nearestThreatToDeity(state)
   if (!target) return state

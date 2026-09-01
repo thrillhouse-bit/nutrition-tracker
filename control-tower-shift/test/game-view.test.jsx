@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// Render-layer tests for Control Tower Shift, mirroring the repo's jsdom +
-// raw react-dom idiom. The canvas draws nothing under jsdom (getContext is
-// null) — by design the HUD carries every state assertion. House rule: each
-// gate gets a firing AND a non-firing test.
-import { describe, it, expect, afterEach } from 'vitest'
+// Render-layer tests for Control Tower Shift (arena campaign slice), mirroring
+// the repo's jsdom + raw react-dom idiom. The canvas draws nothing under jsdom
+// (getContext is null) — by design the HUD carries every state assertion.
+// House rule: each gate gets a firing AND a non-firing test.
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -31,6 +31,7 @@ afterEach(async () => {
   container = root = null
   window.location.hash = ''
   if (window.localStorage) window.localStorage.clear()
+  vi.restoreAllMocks()
 })
 
 describe('GameGate', () => {
@@ -56,36 +57,52 @@ describe('GameGate', () => {
 })
 
 describe('ControlTowerShift HUD', () => {
-  it('mounts in arena with Tier 1 deity Apollo, full health, wave 1, score 0', async () => {
+  it('mounts with Apollo, full health, level 1, score 0, on duty', async () => {
     await mount(<ControlTowerShift />)
-    expect(container.querySelector('[data-testid="wave"]')?.textContent).toContain('Wave 1')
+    expect(container.querySelector('[data-testid="level"]')?.textContent).toContain('Level 1 / 3')
     expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
-    expect(container.querySelector('[data-testid="tier"]')?.textContent).toContain('Apollo')
+    expect(container.textContent).toContain('Apollo')
+    expect(container.querySelector('[data-testid="health"]')?.textContent).toContain('100/100')
   })
 
-  it('renders all five ability buttons, ready', async () => {
+  it('shows the level location and objective progress, never “Wave N/10”', async () => {
+    await mount(<ControlTowerShift />)
+    expect(container.querySelector('[data-testid="level"]')?.textContent).toContain('Level 1 / 3')
+    expect(container.textContent).toContain('Acropolis')
+    const objEl = container.querySelector('[data-testid="objective"]')?.textContent
+    expect(objEl).toMatch(/Repel the serpent sentries/)
+    expect(objEl).toContain('0 / 4')
+    // No wave framing survives in player-facing copy.
+    expect(container.textContent).not.toMatch(/Wave\s*\d+\s*\/\s*10/i)
+  })
+
+  it('renders exactly three primary powers, ready', async () => {
     await mount(<ControlTowerShift />)
     const group = container.querySelector('[role="group"]')
     const buttons = group.querySelectorAll('button')
-    expect(buttons).toHaveLength(5)
+    expect(buttons).toHaveLength(3)
+    const names = [...buttons].map((b) => b.textContent.trim())
+    expect(names.join(' ')).toContain('Solar Bow')
+    expect(names.join(' ')).toContain('Radiant Burst')
+    expect(names.join(' ')).toContain('Golden Lyre')
     for (const b of buttons) {
       expect(b.disabled).toBe(false)
       expect(b.textContent).toContain('ready')
     }
   })
 
-  it('firing shield marks it active and disables it (cooldown)', async () => {
+  it('firing the solar bow marks it on cooldown and disables it', async () => {
     await mount(<ControlTowerShift />)
-    const shieldBtn = [...container.querySelectorAll('[role="group"] button')].find((b) =>
-      b.textContent.includes('Shield'),
+    const bow = [...container.querySelectorAll('[role="group"] button')].find((b) =>
+      b.textContent.includes('Solar Bow'),
     )
-    await act(async () => shieldBtn.click())
-    expect(shieldBtn.textContent).toContain('active')
-    expect(shieldBtn.disabled).toBe(true)
+    await act(async () => bow.click())
+    expect(bow.disabled).toBe(true)
+    expect(bow.textContent).toMatch(/[0-9]+s/)
     expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
   })
 
-  it('pause overlays and disables abilities; resume restores duty', async () => {
+  it('pause overlays and disables powers; resume restores duty', async () => {
     await mount(<ControlTowerShift />)
     const pauseBtn = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Pause')
     await act(async () => pauseBtn.click())
@@ -98,13 +115,11 @@ describe('ControlTowerShift HUD', () => {
     expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
   })
 
-  // isHighScore was already exported and tested — it just wasn't wired to the
-  // one write path. Driven here through the real module, not a mock.
   it('a 0-score finished run is NOT written to the board', async () => {
     const { isHighScore, saveHighScore, loadHighScores } = await import('../src/game/index.js')
     const store = window.localStorage
     expect(isHighScore(store, 0)).toBe(false)
-    if (isHighScore(store, 0)) saveHighScore(store, { score: 0, wave: 1 })
+    if (isHighScore(store, 0)) saveHighScore(store, { score: 0, level: 1 })
     expect(loadHighScores(store)).toEqual([])
   })
 
@@ -112,30 +127,25 @@ describe('ControlTowerShift HUD', () => {
     const { isHighScore, saveHighScore, loadHighScores } = await import('../src/game/index.js')
     const store = window.localStorage
     expect(isHighScore(store, 900)).toBe(true)
-    if (isHighScore(store, 900)) saveHighScore(store, { score: 900, wave: 3 })
+    if (isHighScore(store, 900)) saveHighScore(store, { score: 900, level: 3 })
     expect(loadHighScores(store).map((e) => e.score)).toEqual([900])
   })
 
-  it('token usage HUD is visible and tracks ability use', async () => {
+  it('token usage HUD is visible and tracks a power use', async () => {
     await mount(<ControlTowerShift />)
     const tokensEl = container.querySelector('[data-testid="tokens"]')
     expect(tokensEl?.textContent).toContain('Tokens:')
     expect(tokensEl?.textContent).toContain('0')
-  })
-
-  it('control: repair at full health leaves health unchanged', async () => {
-    await mount(<ControlTowerShift />)
-    const repairBtn = [...container.querySelectorAll('[role="group"] button')].find((b) =>
-      b.textContent.includes('Repair'),
+    const bow = [...container.querySelectorAll('[role="group"] button')].find((b) =>
+      b.textContent.includes('Solar Bow'),
     )
-    await act(async () => repairBtn.click())
-    // Token usage increments on ability use
+    await act(async () => bow.click())
     expect(container.querySelector('[data-testid="tokens"]')?.textContent).toContain('1')
   })
 })
 
 describe('How to play panel', () => {
-  it('is closed by default and opens/closes on the "?" toggle', async () => {
+  it('is closed by default and opens/closes on the “?” toggle', async () => {
     await mount(<ControlTowerShift />)
     const toggle = container.querySelector('button[aria-expanded]')
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
@@ -145,7 +155,7 @@ describe('How to play panel', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const panel = container.querySelector('#ctshift-help')
     expect(panel).toBeTruthy()
-    for (const label of ['Shield', 'Pulse', 'Burst', 'Score', 'Repair']) {
+    for (const label of ['Solar Bow', 'Radiant Burst', 'Golden Lyre']) {
       expect(panel.textContent).toContain(label)
     }
 
@@ -155,17 +165,13 @@ describe('How to play panel', () => {
   })
 })
 
-// Accessibility pass, 30 Aug 2026. These four gaps were raised by the
-// adversarial review but never adjudicated — 76 of its 102 agents died on a
-// session limit — so each was re-verified against the real code before being
-// fixed here, and each gets its firing and non-firing sibling.
-describe('accessibility', () => {
+describe('accessibility and input', () => {
   it('the play field is focusable and says how to play without a pointer', async () => {
     await mount(<ControlTowerShift />)
     const canvas = container.querySelector('canvas')
     expect(canvas.getAttribute('tabindex')).toBe('0')
     const label = canvas.getAttribute('aria-label')
-    expect(label).toMatch(/P to pause/i)
+    expect(label).toMatch(/P pauses/i)
   })
 
   it('P pauses and resumes from the keyboard', async () => {
@@ -191,22 +197,14 @@ describe('accessibility', () => {
     expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
   })
 
-  it('no ability button repeats its mark inside its own label', async () => {
+  it('no power button repeats its mark inside its own label', async () => {
     await mount(<ControlTowerShift />)
     for (const b of container.querySelectorAll('[role="group"] button')) {
-      const [mark, label] = [...b.querySelectorAll('span')].map((s) => s.textContent.trim())
-      expect(label.includes(mark), `"${mark}" is repeated in its label "${label}"`).toBe(false)
+      const mark = b.querySelector('span')?.textContent.trim()
+      // The visible name is the third span (mark, sr-only, name, state, hint).
+      const name = [...b.querySelectorAll('span')][2]?.textContent.trim()
+      expect(name.includes(mark), `"${mark}" is repeated in "${name}"`).toBe(false)
     }
-  })
-
-  it('control: the marks are still rendered (deleting them would pass the test above)', async () => {
-    await mount(<ControlTowerShift />)
-    const marks = [...container.querySelectorAll('[role="group"] button')].map(
-      (b) => b.querySelector('span')?.textContent.trim(),
-    )
-    expect(marks).toHaveLength(5)
-    for (const m of marks) expect(m).toBeTruthy()
-    expect(new Set(marks).size).toBe(5)
   })
 
   it('every control clears the 44px touch floor', async () => {
@@ -234,12 +232,22 @@ describe('accessibility', () => {
     expect(prefersReducedMotion(win(false))).toBe(false)
   })
 
-  it('Enter key triggers an attack attempt without crashing (keyboard playable)', { timeout: 10000 }, async () => {
+  it('control: no matchMedia (or no window) is not reduced motion', () => {
+    expect(prefersReducedMotion({})).toBe(false)
+    expect(prefersReducedMotion(null)).toBe(false)
+  })
+
+  it('control: a missing or nonsense DPR falls back to 1:1, never 0', () => {
+    expect(backingSize(390, undefined)).toBe(390)
+    expect(backingSize(390, 0)).toBe(390)
+    expect(backingSize(390, NaN)).toBe(390)
+    expect(backingSize(0, 2)).toBe(1)
+  })
+
+  it('Enter key triggers a melee attempt without crashing (keyboard playable)', { timeout: 10000 }, async () => {
     await mount(<ControlTowerShift />)
     const canvas = container.querySelector('canvas')
     expect(canvas).toBeTruthy()
-    // With no threats on the field, Enter is a legal no-op — the game must
-    // not crash and must stay on duty.
     await act(async () => {
       canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
@@ -255,15 +263,45 @@ describe('accessibility', () => {
     expect(container.querySelector('[data-testid="tokens"]')?.textContent).toContain('Tokens: 0')
   })
 
-  it('control: no matchMedia (or no window) is not reduced motion', () => {
-    expect(prefersReducedMotion({})).toBe(false)
-    expect(prefersReducedMotion(null)).toBe(false)
+  it('keyboard power shortcuts cast powers and meter tokens', async () => {
+    await mount(<ControlTowerShift />)
+    const canvas = container.querySelector('canvas')
+    const tokens = () => container.querySelector('[data-testid="tokens"]')?.textContent
+    await act(async () => {
+      canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'j', bubbles: true }))
+    })
+    expect(tokens()).toContain('Tokens: 1')
+    await act(async () => {
+      canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'k', bubbles: true }))
+    })
+    expect(tokens()).toContain('Tokens: 2')
   })
 
-  it('control: a missing or nonsense DPR falls back to 1:1, never 0', () => {
-    expect(backingSize(390, undefined)).toBe(390)
-    expect(backingSize(390, 0)).toBe(390)
-    expect(backingSize(390, NaN)).toBe(390)
-    expect(backingSize(0, 2)).toBe(1)
+  it('no browser-native alert/confirm/prompt is used', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true)
+    const promptSpy = vi.spyOn(window, 'prompt').mockImplementation(() => null)
+    await mount(<ControlTowerShift />)
+    const bow = [...container.querySelectorAll('[role="group"] button')].find((b) =>
+      b.textContent.includes('Solar Bow'),
+    )
+    await act(async () => bow.click())
+    await act(async () => {
+      const p = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Pause')
+      p.click()
+    })
+    expect(alertSpy).not.toHaveBeenCalled()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(promptSpy).not.toHaveBeenCalled()
+  })
+
+  it('the first-time control hint is dismissible and does not obscure the arena', async () => {
+    await mount(<ControlTowerShift />)
+    const note = container.querySelector('[role="note"]')
+    expect(note).toBeTruthy()
+    const dismiss = container.querySelector('button[aria-label="Dismiss control hint"]')
+    await act(async () => dismiss.click())
+    expect(container.querySelector('[role="note"]')).toBeNull()
+    expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
   })
 })

@@ -1,41 +1,46 @@
 // All tunables in one place so tests and the future UI read the same numbers.
-// REWRITTEN for Hades-style arena combat: the player controls the deity directly,
-// moving around the arena and fighting waves of monsters.
+// Arena campaign: the player controls a deity moving through authored levels,
+// using deity powers and a deliberate melee strike to clear each level's encounter.
 export const DEFAULT_CONFIG = {
   // Arena
   arenaRadius: 280,        // playable area radius in logical px
   // Player (deity) properties
-  deityRadius: 16,         // collision radius for the deity
-  deitySpeed: 1.8,         // logical px per tick (base)
-  deityBaseHealth: 100,    // max health per deity
+  deityRadius: 15,         // collision radius for the deity
+  deitySpeed: 1.9,         // logical px per tick (base)
+  deityBaseHealth: 100,    // max health per deity (Atlas passive raises it)
   // Combat
-  autoAttackRange: 48,     // melee range (deity radius + weapon reach)
-  autoAttackDamage: 15,    // damage per auto-attack
+  autoAttackRange: 46,     // melee range (deity radius + weapon reach)
+  autoAttackDamage: 16,    // damage per auto-attack
+  autoAttackCooldown: 20,  // ticks between auto-attacks
   pointsPerClear: 10,      // points for clearing one threat
-  pulseClearFraction: 0.5, // pulse clear scores threats at half value
-  autoAttackCooldown: 18,  // ticks between auto-attacks
-  projectileSpeed: 4.5,    // ranged ability projectile speed
+  projectileSpeed: 5.5,    // ranged power projectile speed
   projectileRadius: 5,     // collision radius for projectiles
-  threatDamage: 20,        // damage per hit when a monster reaches the deity
-  collisionDamage: 20,     // damage when a threat overlaps the deity (used in tests)
-  // Waves
-  finalWave: 10,           // null = endless
-  baseThreatsPerWave: 3,
-  threatsPerWaveGrowth: 2,
-  // Threat (monster) base stats — scaled by wave
-  threatBaseSpeed: 0.9,
+  projectileDamage: 22,    // solar bow shot damage
+  threatDamage: 10,        // contact damage; several attackers can still punish standing still
+  threatContactCooldown: 75, // ticks before the same monster can hit again
+  threatKnockback: 95,     // logical px pushed away after contacting the deity
+  // Powers (shared numeric tuning — the definitions live in powers.js)
+  powerDamage: 24,            // bow-type power damage
+  powerBurstRadius: 130,      // radiant burst blast radius
+  powerBurstDamage: 45,       // radiant burst damage
+  powerPulseRadius: 175,      // war cry / earthshaker radius
+  powerPulseDamage: 40,       // war cry / earthshaker damage
+  powerStrikeDamage: 60,      // thunderbolt primary strike
+  powerChainRadius: 120,      // thunderbolt / love arrow chain range
+  powerChainDamage: 40,       // thunderbolt chain damage
+  powerHeal: 40,              // queens grace heal
+  powerBurnDps: 5,            // fire brand burn per tick
+  worldRiverRadius: 135,      // oceanus ring radius
+  worldRiverDps: 12,          // oceanus damage per tick
+  harvestMoonHeal: 1,         // demeter heal per tick
+  wingedStrideFactor: 1.9,    // hermes speed multiplier
+  herosWrathFactor: 2,        // hercules damage multiplier
+  primordialDarkFactor: 0.4,  // nyx global threat slow
+  // Threat (monster) base stats — scaled per level
+  threatBaseSpeed: 0.85,
   threatBaseHealth: 30,
   threatRadius: 11,
-  // Wave scaling
-  waveSpeedAccel: 0.15,    // threat speed multiplier growth per wave
-  waveSpeedCap: 2.5,       // cap on wave speed multiplier
-  // Abilities: duration/cooldown in ticks; 0 = instant
-  abilities: {
-    shield: { duration: 120, cooldown: 600 },
-    pulseClear: { duration: 0, cooldown: 900, radius: 180, damage: 40 },
-    speedBurst: { duration: 90, cooldown: 450, factor: 2.0, threatSlowFactor: 0.5 },
-    scoreMultiplier: { duration: 150, cooldown: 750, factor: 2 },
-    repair: { duration: 0, cooldown: 500, amount: 40 },
-  },
-  spawnInterval: 45,       // base ticks between spawns (scaled by wave)
+  // Per-level internal pacing (never player-facing)
+  levelSpeedAccel: 0.12,   // threat speed growth per level
+  levelSpeedCap: 2.0,      // cap on the level speed multiplier
 }

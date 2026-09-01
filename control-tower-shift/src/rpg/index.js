@@ -1,0 +1,20 @@
+// RPG layer barrel — content, state, save, and combat adapter. Pure modules;
+// no React or DOM imports here so the whole layer is unit-testable.
+
+export * from './content.js'
+export * from './act2Content.js'
+export * from './act2Runtime.js'
+export * from './act3Content.js'
+export * from './act3Runtime.js'
+export * from './act4Content.js'
+export * from './act4Runtime.js'
+export * from './act5Content.js'
+export * from './act5Runtime.js'
+export * from './registry.js'
+export * from './state.js'
+export * from './save.js'
+export * from './combatAdapter.js'
+export * from './progression.js'
+export * from './pathfinding.js'
+export * from './wilderness.js'
+export * from './crafting.js'

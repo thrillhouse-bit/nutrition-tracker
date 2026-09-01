@@ -29,7 +29,10 @@ export default defineConfig({
       // (below) makes the most recently loaded API data readable offline too;
       // scanning/lookup still require the network, as intended.
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        // Story artwork is route-specific and substantially larger than the
+        // install shell. Keep generic PNG/WebP files runtime-fetched; the
+        // required install icons below remain explicitly included.
+        globPatterns: ['**/*.{js,css,html,svg,ico,webmanifest}'],
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {

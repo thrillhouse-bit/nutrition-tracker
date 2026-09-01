@@ -1,14 +1,14 @@
-import { abilityActive } from './abilities.js'
+import { powerActive } from './powers.js'
 
-// Points for clearing one threat right now. Wave raises the stakes; the
-// multiplier ability applies its factor without compounding (see abilities.js).
+// Points for clearing one threat right now. Level index raises the stakes;
+// Apollo's Golden Lyre tempo doubles the take while active.
 export function clearPoints(state, { pulse = false, auto = false, ability = null } = {}) {
-  let pts = state.config.pointsPerClear * state.wave
-  if (pulse) pts *= state.config.pulseClearFraction
-  if (auto) pts = Math.floor(pts * 0.8) // auto-attacks score slightly less
-  if (ability) pts = Math.floor(pts * 1.5) // ability kills score bonus
-  if (abilityActive(state, 'scoreMultiplier')) {
-    pts *= state.config.abilities.scoreMultiplier.factor
+  let pts = state.config.pointsPerClear * (state.levelIndex + 1)
+  if (pulse) pts *= 0.5
+  if (auto) pts = Math.floor(pts * 0.8)
+  if (ability) pts = Math.floor(pts * 1.5)
+  if (powerActive(state, 'goldenLyre')) {
+    pts *= 2
   }
   return Math.floor(pts)
 }
@@ -26,6 +26,6 @@ export function clearThreat(state, threatId) {
   return {
     ...next,
     threats: next.threats.filter((t) => t.id !== threatId),
-    threatsRemainingInWave: Math.max(0, next.threatsRemainingInWave - 1),
+    threatsRemainingInLevel: Math.max(0, (next.threatsRemainingInLevel || 0) - 1),
   }
 }

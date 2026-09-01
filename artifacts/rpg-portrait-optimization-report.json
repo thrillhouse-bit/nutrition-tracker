@@ -1,0 +1,201 @@
+{
+  "task": "generate responsive WebP derivatives for the five existing RPG portrait PNGs",
+  "generated_utc": "2026-09-01T06:53:19Z",
+  "sources_preserved": true,
+  "converter": {
+    "tool": "Pillow 12.3.0",
+    "webp_library": "libwebp 1.6.0",
+    "format": "WEBP",
+    "lossless": false,
+    "quality": 88,
+    "method": 6,
+    "resampling": "Image.Resampling.LANCZOS",
+    "height_rule": "round(source_height * target_width / source_width)",
+    "alpha_rule": "preserve source mode/alpha; verify decoded output alpha presence equals source"
+  },
+  "entries": [
+    {
+      "source": {
+        "path": "control-tower-shift/src/assets/portraits/amonides-keeper-v1.png",
+        "dimensions": [768, 960],
+        "bytes": 1278708,
+        "sha256": "85c69872066009af1c792ae8dd6b38f4aa0d0083ae7b3570312fb2aa4fc046f4",
+        "format": "PNG",
+        "mode": "RGB",
+        "alpha_present": false
+      },
+      "outputs": [
+        {
+          "path": "control-tower-shift/src/assets/portraits/amonides-keeper-v1-128.webp",
+          "dimensions": [128, 160],
+          "bytes": 5854,
+          "sha256": "fa83aa9cf2a14645f17cd64277698267f303f8bfc0c8074ddb6d0d3a372a66db",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        },
+        {
+          "path": "control-tower-shift/src/assets/portraits/amonides-keeper-v1-256.webp",
+          "dimensions": [256, 320],
+          "bytes": 22948,
+          "sha256": "ad9929e23d6fc765aaa9b7d00fde302f626ef735d002abed0faeed8705a9685b",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        }
+      ]
+    },
+    {
+      "source": {
+        "path": "control-tower-shift/src/assets/portraits/ianthe-namecutter-v1.png",
+        "dimensions": [768, 960],
+        "bytes": 1353977,
+        "sha256": "55c84880cb64f086a0cebf2a388825aa2ce902cfeea321df767ce3f01dfc919d",
+        "format": "PNG",
+        "mode": "RGB",
+        "alpha_present": false
+      },
+      "outputs": [
+        {
+          "path": "control-tower-shift/src/assets/portraits/ianthe-namecutter-v1-128.webp",
+          "dimensions": [128, 160],
+          "bytes": 7932,
+          "sha256": "381858802eed6234dbd896d29c67bd3ae8793f4527c1a64f796c408963badecb",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        },
+        {
+          "path": "control-tower-shift/src/assets/portraits/ianthe-namecutter-v1-256.webp",
+          "dimensions": [256, 320],
+          "bytes": 28008,
+          "sha256": "deddbe51b33c91f42a4f0731cd5cf079a9b16fb7311ff0c84b3b8922fd9dbeff",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        }
+      ]
+    },
+    {
+      "source": {
+        "path": "control-tower-shift/src/assets/portraits/kallias-zeusborn-v1.png",
+        "dimensions": [768, 960],
+        "bytes": 1322271,
+        "sha256": "f18fc0d4299397b515696e9dfca017349001c6a5f3760de233711216e9cfcc4b",
+        "format": "PNG",
+        "mode": "RGB",
+        "alpha_present": false
+      },
+      "outputs": [
+        {
+          "path": "control-tower-shift/src/assets/portraits/kallias-zeusborn-v1-128.webp",
+          "dimensions": [128, 160],
+          "bytes": 7774,
+          "sha256": "63992c58095cdbb695e420ef66e0791b0b07ed3138bf3c4b67addf3bd5a8554c",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        },
+        {
+          "path": "control-tower-shift/src/assets/portraits/kallias-zeusborn-v1-256.webp",
+          "dimensions": [256, 320],
+          "bytes": 27772,
+          "sha256": "9ed103429549994edc3dbfda7db29ff28a0f8393271013e7a078fd0b51129b89",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        }
+      ]
+    },
+    {
+      "source": {
+        "path": "control-tower-shift/src/assets/portraits/name-cutter-captain-v1.png",
+        "dimensions": [575, 960],
+        "bytes": 1032177,
+        "sha256": "bfa82b9f4a2b387ce4397d7d0064a08acfc52dd348416ea5cb089047cc32f83f",
+        "format": "PNG",
+        "mode": "RGB",
+        "alpha_present": false
+      },
+      "outputs": [
+        {
+          "path": "control-tower-shift/src/assets/portraits/name-cutter-captain-v1-128.webp",
+          "dimensions": [128, 214],
+          "bytes": 10260,
+          "sha256": "dfb41e7069ec15fa9fa254338a72cdfeb244b6eff7c0e276b4c918f8ae8c01e9",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        },
+        {
+          "path": "control-tower-shift/src/assets/portraits/name-cutter-captain-v1-256.webp",
+          "dimensions": [256, 427],
+          "bytes": 37838,
+          "sha256": "2425e4cc8ac60f49950410a9ba739a1893fabe00bd9d8a7b238109c5a8a4423b",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        }
+      ]
+    },
+    {
+      "source": {
+        "path": "control-tower-shift/src/assets/portraits/thessa-cartographer-v1.png",
+        "dimensions": [768, 960],
+        "bytes": 1341940,
+        "sha256": "d70798af76afe1d485bcb1101bcef68b06517c0ad6fd23e8859f33234d99705c",
+        "format": "PNG",
+        "mode": "RGB",
+        "alpha_present": false
+      },
+      "outputs": [
+        {
+          "path": "control-tower-shift/src/assets/portraits/thessa-cartographer-v1-128.webp",
+          "dimensions": [128, 160],
+          "bytes": 7264,
+          "sha256": "d3beb0b4ca19d50c920ddd59123636655163be342dc3744234929cfb37e69f0b",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        },
+        {
+          "path": "control-tower-shift/src/assets/portraits/thessa-cartographer-v1-256.webp",
+          "dimensions": [256, 320],
+          "bytes": 25066,
+          "sha256": "2c724902a7d46eec1b91adc929e3cef22e272e04a0c624fd8580168e74b84d88",
+          "format": "WEBP",
+          "mode": "RGB",
+          "alpha_present": false,
+          "conversion": { "quality": 88, "method": 6, "lossless": false, "resampling": "LANCZOS" }
+        }
+      ]
+    }
+  ],
+  "aggregate": {
+    "source_bytes": 6329073,
+    "output_128_bytes": 39084,
+    "output_256_bytes": 141632,
+    "all_output_bytes": 180716,
+    "all_output_reduction_percent": 97.14
+  },
+  "acceptance_check": {
+    "source_count_exactly_five": true,
+    "output_count_exactly_ten": true,
+    "target_widths_exact": true,
+    "aspect_ratio_preserved_with_integer_height_rounding": true,
+    "decoded_alpha_presence_matches_source": true,
+    "every_output_smaller_than_its_source": true,
+    "all_outputs_decode_with_pillow": true,
+    "source_sha256_matches_pre_conversion_capture": true,
+    "no_packages_installed": true
+  }
+}

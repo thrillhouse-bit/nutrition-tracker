@@ -1,0 +1,99 @@
+{
+  "task": "create lightweight runtime variants of world sprites and Act I environment backplates",
+  "method": "Pillow 12.3.0, Image.Resampling.LANCZOS, method=6 (WebP encoder). Character: quality=90 lossy WebP with alpha. Environment: quality=82 lossy WebP, source dimensions preserved.",
+  "generated_utc": "2026-09-01T00:00:00Z",
+  "sources_preserved": true,
+  "entries": [
+    {
+      "kind": "character",
+      "source": "control-tower-shift/src/assets/characters/kallias-world-cutout-v1.png",
+      "output": "control-tower-shift/src/assets/characters/kallias-world-cutout-v1-384.webp",
+      "source_dimensions": [919, 1401],
+      "output_dimensions": [384, 585],
+      "source_bytes": 1791584,
+      "output_bytes": 69042,
+      "percentage_reduction": 96.15,
+      "output_codec": "webp",
+      "output_pixel_format": "yuva420p",
+      "alpha_present": true,
+      "alpha_usable": true,
+      "alpha_evidence": "ffmpeg-independent decode to raw rgba; all 4 corner pixels alpha=0; 61.6% fully-transparent pixels; 15284 partially-transparent edge pixels"
+    },
+    {
+      "kind": "character",
+      "source": "control-tower-shift/src/assets/characters/thessa-world-cutout-v1.png",
+      "output": "control-tower-shift/src/assets/characters/thessa-world-cutout-v1-384.webp",
+      "source_dimensions": [656, 1494],
+      "output_dimensions": [384, 875],
+      "source_bytes": 1497113,
+      "output_bytes": 95706,
+      "percentage_reduction": 93.61,
+      "output_codec": "webp",
+      "output_pixel_format": "yuva420p",
+      "alpha_present": true,
+      "alpha_usable": true,
+      "alpha_evidence": "ffmpeg-independent decode to raw rgba; all 4 corner pixels alpha=0; 37.7% fully-transparent pixels; 9949 partially-transparent edge pixels"
+    },
+    {
+      "kind": "character",
+      "source": "control-tower-shift/src/assets/characters/amonides-world-cutout-v1.png",
+      "output": "control-tower-shift/src/assets/characters/amonides-world-cutout-v1-384.webp",
+      "source_dimensions": [635, 1494],
+      "output_dimensions": [384, 903],
+      "source_bytes": 1400356,
+      "output_bytes": 93242,
+      "percentage_reduction": 93.34,
+      "output_codec": "webp",
+      "output_pixel_format": "yuva420p",
+      "alpha_present": true,
+      "alpha_usable": true,
+      "alpha_evidence": "ffmpeg-independent decode to raw rgba; all 4 corner pixels alpha=0; 36.9% fully-transparent pixels; 9656 partially-transparent edge pixels"
+    },
+    {
+      "kind": "environment",
+      "source": "control-tower-shift/src/assets/environments/act1-beacon-overlook-v2.png",
+      "output": "control-tower-shift/src/assets/environments/act1-beacon-overlook-v2.webp",
+      "source_dimensions": [1672, 941],
+      "output_dimensions": [1672, 941],
+      "source_bytes": 3236968,
+      "output_bytes": 379800,
+      "percentage_reduction": 88.27,
+      "output_codec": "webp",
+      "output_pixel_format": "yuv420p",
+      "alpha_present": false,
+      "alpha_usable": false,
+      "alpha_evidence": "source is RGB (no alpha channel); lossy WebP yuv420p as expected for full-screen backplate"
+    },
+    {
+      "kind": "environment",
+      "source": "control-tower-shift/src/assets/environments/act1-olive-road-v2.png",
+      "output": "control-tower-shift/src/assets/environments/act1-olive-road-v2.webp",
+      "source_dimensions": [1672, 941],
+      "output_dimensions": [1672, 941],
+      "source_bytes": 3317077,
+      "output_bytes": 418504,
+      "percentage_reduction": 87.38,
+      "output_codec": "webp",
+      "output_pixel_format": "yuv420p",
+      "alpha_present": false,
+      "alpha_usable": false,
+      "alpha_evidence": "source is RGB (no alpha channel); lossy WebP yuv420p as expected for full-screen backplate"
+    }
+  ],
+  "aggregate": {
+    "source_bytes": 11243098,
+    "output_bytes": 1056294,
+    "percentage_reduction": 90.60
+  },
+  "acceptance_check": {
+    "character_width_exact_384": true,
+    "aspect_ratio_preserved": true,
+    "character_alpha_usable": true,
+    "environment_dimensions_preserved_1672x941": true,
+    "every_output_smaller_than_source": true,
+    "aggregate_reduction_target_ge_65pct": true,
+    "output_actual_pct": 90.6,
+    "all_outputs_decode_independently": "verified via ffprobe 8.1.2 and ffmpeg 8.1.2 decode to raw rgba",
+    "no_packages_installed": true
+  }
+}

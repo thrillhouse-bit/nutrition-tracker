@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createSpawner, stepSpawner, mulberry32 } from '../src/spawner.js'
 import { stepFrame, threatAt, nearestThreatToDeity } from '../src/loop.js'
-import { createInitialState, pause, FIELD_RADIUS } from '../src/game/index.js'
-import { threatsForWave } from '../src/game/waves.js'
-import { spawnInterval } from '../src/spawner.js'
+import { createInitialState, pause, FIELD_RADIUS, levelForIndex } from '../src/game/index.js'
 
 const runTicks = (state, spawner, n) => {
   const out = []
@@ -27,11 +25,13 @@ describe('spawner', () => {
     expect(a).not.toEqual(b)
   })
 
-  it('spawns exactly the wave budget, then stops', () => {
+  it('spawns exactly the level’s authored encounter, then stops', () => {
     const s = createInitialState()
     const spawner = createSpawner(7)
     const spawned = runTicks(s, spawner, 100000)
-    expect(spawned).toHaveLength(threatsForWave(1, s.config))
+    expect(spawned).toHaveLength(levelForIndex(0).encounter.order.length)
+    // The order is the authored composition.
+    expect(spawned.map((t) => t.monsterType)).toEqual(levelForIndex(0).encounter.order)
   })
 
   it('control: a paused game spawns nothing', () => {
@@ -39,17 +39,11 @@ describe('spawner', () => {
     expect(runTicks(s, createSpawner(7), 5000)).toHaveLength(0)
   })
 
-  it('spawns sit on the arena edge and move inward toward deity', () => {
+  it('spawns sit on the arena edge and carry a chase speed', () => {
     const s = createInitialState()
     const [t] = runTicks(s, createSpawner(9), 200)
     expect(Math.hypot(t.x, t.y)).toBeCloseTo(s.config.arenaRadius, -1)
-    // Threat should have a speed (not vx/vy in the old model)
     expect(t.speed).toBeGreaterThan(0)
-  })
-
-  it('spawn interval shrinks with wave and floors at 30 ticks', () => {
-    expect(spawnInterval(2)).toBeLessThan(spawnInterval(1))
-    expect(spawnInterval(50)).toBe(22) // floors at MIN_INTERVAL
   })
 
   it('mulberry32 emits stable values in [0,1)', () => {
@@ -72,7 +66,7 @@ describe('loop', () => {
     expect(a).toEqual(run())
   })
 
-  it('a full unattended shift fails deterministically (threats reach deity)', () => {
+  it('a full unattended campaign fails deterministically (threats reach deity)', () => {
     let g = createInitialState()
     const spawner = createSpawner(3)
     for (let i = 0; i < 20000 && g.status === 'running'; i++) g = stepFrame(g, spawner, 1)
@@ -83,8 +77,8 @@ describe('loop', () => {
   it('nearestThreatToDeity picks the closest threat', () => {
     const deity = { x: 100, y: 0 }
     const threats = [
-      { id: 'a', x: 0, y: 0, radius: 5 },   // 100 from deity
-      { id: 'b', x: 130, y: 0, radius: 5 }, // 30 from deity
+      { id: 'a', x: 0, y: 0, radius: 5 },
+      { id: 'b', x: 130, y: 0, radius: 5 },
     ]
     expect(nearestThreatToDeity({ deity, threats }).id).toBe('b')
   })
