@@ -11,8 +11,16 @@ create table if not exists users (
   id            bigint generated always as identity primary key,
   email         text not null unique,
   password_hash text not null,
+  legal_version text,
+  legal_accepted_at timestamptz,
   created_at    timestamptz not null default now()
 );
+
+-- `create table if not exists` does not add columns to an existing deployment.
+-- Keep the init script safely re-runnable so established databases gain the
+-- auditable signup-acceptance fields before the new server code is deployed.
+alter table users add column if not exists legal_version text;
+alter table users add column if not exists legal_accepted_at timestamptz;
 
 create table if not exists foods (
   id               bigint generated always as identity primary key,
@@ -94,9 +102,15 @@ create table if not exists garmin_accounts (
   access_token  text not null,
   refresh_token text not null,
   expires_at    timestamptz,
+  garmin_user_id text,
   created_at    timestamptz not null default now()
 );
+-- Existing deployments predate webhook routing by Garmin's opaque user id.
+-- `if not exists` above cannot add the column on its own.
+alter table garmin_accounts add column if not exists garmin_user_id text;
 create index if not exists garmin_accounts_user_id_idx on garmin_accounts (user_id);
+create unique index if not exists garmin_accounts_garmin_user_id_idx
+  on garmin_accounts (garmin_user_id) where garmin_user_id is not null;
 
 -- Oura workouts (auto-detected or manually logged in the Oura app), pulled
 -- from GET /v2/usercollection/workout. One row per Oura workout id per

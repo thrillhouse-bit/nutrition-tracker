@@ -12,10 +12,10 @@ integration via OAuth). Each is a single `<!doctype html>` file with all CSS
 inline — no external resources, no build step — and is mobile-friendly.
 
 > **These are TEMPLATES, not legal advice.** They were drafted to be a
-> reasonable, honest starting point that satisfies Oura's and Garmin's OAuth
-> developer requirements for a public Privacy Policy and Terms of Service URL.
-> They have **not** been reviewed by a lawyer. Read them, fill in the
-> placeholders below, and get professional review before relying on them —
+> reasonable, honest starting point intended to support Oura/Garmin review for
+> a public Privacy Policy and Terms of Service URL.
+> They have **not** been reviewed by a lawyer. Read them, configure the
+> operator-specific values below, and get professional review before relying on them —
 > especially the health-data, liability, and governing-law sections.
 
 ## Where to host
@@ -28,61 +28,69 @@ Oura/Garmin as the developer application's privacy-policy and terms URLs):
 | `privacy-policy.html` | https://omnifuelapp.tech/privacy |
 | `terms-of-service.html` | https://omnifuelapp.tech/terms |
 
-The pages cross-link to each other and to https://omnifuelapp.tech using those
-canonical paths, so wire the routes `/privacy` and `/terms` to these files
-(e.g. a reverse-proxy rewrite or a static route). Both are plain static HTML —
-no server logic required.
+The Express server owns `/privacy` and `/terms`. It renders these source
+templates only when the legal launch gate is complete; otherwise both routes
+return 503 and new-account signup remains disabled.
 
 ## Contact inbox
 
-The pages list **privacy@omnifuelapp.tech** as the contact / data-deletion
-address. **This inbox must actually exist and be monitored** (a real mailbox
-or a forwarding alias) before you publish — Oura/Garmin reviewers and users
-will use it. This address was updated to match the app's real domain but its
-existence has not been verified — confirm it's live before publishing, or
-replace `privacy@omnifuelapp.tech` everywhere in both HTML files with a
-different address.
+Set `LEGAL_CONTACT_EMAIL` to an inbox that actually exists and is monitored (a
+real mailbox or forwarding alias). The server substitutes it into both link
+destinations and visible contact text.
 
-## Placeholders to fill in
+## Required launch configuration
 
-Every item below appears in the pages as a highlighted bracketed placeholder
-(`[LIKE THIS]`). Search both HTML files and replace each before publishing:
+Set these environment variables; do not edit guesses directly into the HTML:
 
-- `[EFFECTIVE DATE — fill in]` — the "Last updated" date near the top of **both**
+- `LEGAL_EFFECTIVE_DATE` — the "Last updated" date near the top of **both**
   pages (e.g. `August 24, 2026`).
-- `[LEGAL ENTITY / OWNER NAME]` — the person or entity operating the app
+- `LEGAL_ENTITY_NAME` — the person or entity operating the app
   (appears in both pages: intro/scope, IP, liability, indemnification, contact,
   and footer copyright). Do not leave this generic — reviewers expect a named
   operator of record.
-- `[GOVERNING-LAW JURISDICTION]` — the state/country whose law governs the Terms
+- `LEGAL_GOVERNING_JURISDICTION` — the state/country whose law governs the Terms
   and where disputes are heard (Terms §12). Pick where the operator is based.
-- `[DATA HOSTING LOCATION / COUNTRY — fill in or generalize]` — where the app
+- `LEGAL_DATA_HOSTING_LOCATION` — where the app
   and its database are hosted, for the Privacy Policy's international-users
   section (§11). Fill in the real region, or generalize the sentence if hosting
   moves around.
-- `[YEAR]` — the copyright year in each page's footer.
+- `LEGAL_YEAR` — the copyright year in each page's footer.
+- `LEGAL_CONTACT_EMAIL` — the monitored privacy/deletion inbox.
+- `LEGAL_REVIEWED=true` — an explicit operator acknowledgement after review.
+
+The gate rejects empty, placeholder-like, malformed email/year/date values.
+The renderer also refuses to publish if any bracketed template marker remains.
 
 ## Notes on accuracy (why the pages say what they say)
 
-- **Multi-user accounts (updated):** the app now has self-service signup with
-  email + hashed password per account, and a per-account biometric profile.
-  The Privacy Policy's "Information we collect" and "Your rights" sections
-  describe this for real — they used to (incorrectly) claim no accounts or
-  logins existed at all. Keep this note in sync if the auth model changes
-  again.
+- **Multi-user accounts and lifecycle (updated):** the app now has self-service signup with
+  email + hashed password per account, an affirmative legal acknowledgement
+  whose published version/time is stored on the account, authenticated JSON
+  export, and password + exact-email verified permanent deletion. The Privacy
+  Policy's "Information we collect," retention, and rights sections must stay
+  in sync with those routes.
+- **Daily Fuel Plan health/safety data:** the canonical profile stores body and
+  goal inputs plus optional pregnancy/postpartum and eating-disorder/restriction
+  safety flags; training plans and reproducible daily snapshots are also
+  persisted. The policy names these explicitly. Adding a profile/workout field
+  requires a disclosure review, not only a schema/UI change.
 - **Label photos → Anthropic:** the OCR route sends the nutrition-label image to
   the Claude API and stores only the extracted structured values, not the image.
-  The Privacy Policy states this, and that API inputs are not used to train
-  Anthropic's models.
+  The Privacy Policy links Anthropic's current commercial/API training and
+  retention disclosures and states their default plus exceptions.
 - **Wearable tokens are server-side:** OAuth access/refresh tokens live in the
   server's database/store and are never returned to the client. The pages say
   so, and are **honest** that this is a personal project with no security
   certification and that tokens may be unencrypted at rest depending on
   deployment — adjust that wording if you harden storage.
-- **Garmin is described as planned:** the app currently ships the Oura
-  integration; Garmin is written in so the same published URLs cover it once the
-  Garmin Health API integration lands. If Garmin support is dropped, remove those
-  references.
+- **Garmin is implemented but provider-gated:** OAuth/webhook code exists, but
+  real use still requires Garmin approval, evaluation, verification, and
+  potentially commercial licensing. The server fails closed unless
+  `GARMIN_INTEGRATION_VERIFIED=true`; that acknowledgement must follow review
+  of the current private partner wire and webhook-security requirements, not
+  merely receipt of credentials. Do not claim platform compliance merely
+  because the code path exists; preserve Garmin attribution in UI and exports.
 - If the app's behavior changes (new data collected, new third parties, ads,
   any selling/sharing of data), update both pages — several sections make
-  explicit promises ("no ads," "never sold or shared") that must stay true.
+  explicit promises ("no ads," "not sold," and no marketing sharing) that must
+  stay true, while still disclosing infrastructure processors honestly.

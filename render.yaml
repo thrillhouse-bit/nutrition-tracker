@@ -15,6 +15,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SESSION_SECRET
+        sync: false
       # --- Oura (required to wire real credentials) ---
       # OURA_REDIRECT_URI must be https://<this-service-url>/api/oura/callback
       # and must exactly match the Redirect URI on your Oura app.
@@ -24,10 +26,34 @@ services:
         sync: false
       - key: OURA_REDIRECT_URI
         sync: false
-      # --- Persistence (recommended so Oura tokens survive restarts) ---
-      # A Neon Postgres connection string. Without it the app uses an in-container
-      # JSON store that resets on each deploy (fine for a quick test, not for keeps).
+      # --- Garmin (optional; leave verification false until partner review) ---
+      - key: GARMIN_CLIENT_ID
+        sync: false
+      - key: GARMIN_CLIENT_SECRET
+        sync: false
+      - key: GARMIN_REDIRECT_URI
+        sync: false
+      - key: GARMIN_INTEGRATION_VERIFIED
+        value: "false"
+      # --- Persistence (required; production refuses disposable storage) ---
+      # A Neon Postgres connection string. It stores accounts, logs, integration
+      # tokens, plans, and legal acceptance records across deploys.
       - key: DATABASE_URL
+        sync: false
+      # --- Legal launch gate (all required before new signup is enabled) ---
+      - key: LEGAL_ENTITY_NAME
+        sync: false
+      - key: LEGAL_EFFECTIVE_DATE
+        sync: false
+      - key: LEGAL_GOVERNING_JURISDICTION
+        sync: false
+      - key: LEGAL_DATA_HOSTING_LOCATION
+        sync: false
+      - key: LEGAL_CONTACT_EMAIL
+        sync: false
+      - key: LEGAL_YEAR
+        sync: false
+      - key: LEGAL_REVIEWED
         sync: false
       # --- Optional extras ---
       - key: ANTHROPIC_API_KEY     # label OCR (Claude vision)

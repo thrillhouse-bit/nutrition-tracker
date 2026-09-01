@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { num, fmt, ymd, lbToKg, kgToLb, ftInToCm, cmToFtIn } from '../lib/nutrition.js'
+import { num, fmt, ymd, dayBounds, lbToKg, kgToLb, ftInToCm, cmToFtIn } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
 import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, StatusMark, Meter, Why } from './ui.jsx'
 
@@ -153,7 +153,7 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
   return (
     <div className="space-y-5 border border-line bg-card p-4 shadow-[0_1px_0_rgb(18_18_16/0.06)]">
       <div>
-        <h3 className="eyebrow">Adaptive Fuel Plan profile</h3>
+        <h3 className="eyebrow">Daily fuel plan profile</h3>
         <p className="mt-1.5 text-xs text-faint">
           Body metrics and a goal, used only to estimate your energy and macro needs — an educational estimate, not medical advice.
         </p>
@@ -263,7 +263,7 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
-        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
+        {onCancel ? <Button variant="subtle" onClick={onCancel}>Cancel</Button> : <span />}
         <Button onClick={submit} disabled={!canSubmit || saving}>{saving ? 'Saving…' : 'Save profile'}</Button>
       </div>
       <p className="text-[9.5px] font-medium uppercase tracking-[0.1em] text-faint">Estimate only · not medical advice</p>
@@ -369,7 +369,7 @@ function WorkoutEditor({ date, workout, unitsPref, onCancel, onSaved, onDeleted 
         )}
       </div>
       <Field label="Notes (optional)">
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} maxLength={500} />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${inputCls} resize-none`} maxLength={500} />
       </Field>
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
         {isEdit ? <TextButton onClick={remove} disabled={saving}>Remove session</TextButton> : <span />}
@@ -497,7 +497,6 @@ const SAFETY_LABEL = {
 
 export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const [profile, setProfile] = useState(null)
-  const [onboardingProfile, setOnboardingProfile] = useState(null)
   const [plan, setPlan] = useState(null)
   const [workouts, setWorkouts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -510,12 +509,12 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const load = () => {
     let alive = true
     setLoading(true); setError('')
-    Promise.all([api.afpPlan(day), api.listAfpWorkouts(day, day), api.getAfpProfile(), api.getProfile()])
-      .then(([p, w, prof, general]) => {
+    Promise.all([api.afpPlan(day, dayBounds(date)), api.listAfpWorkouts(day, day), api.getAfpProfile()])
+      .then(([p, w, prof]) => {
         if (!alive) return
-        setPlan(p); setWorkouts(w.workouts || []); setProfile(prof.profile); setOnboardingProfile(general.profile)
+        setPlan(p); setWorkouts(w.workouts || []); setProfile(prof.profile)
       })
-      .catch((err) => { if (alive) setError(err.message || 'Could not load your Adaptive Fuel Plan.') })
+      .catch((err) => { if (alive) setError(err.message || 'Could not load your daily fuel plan.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }
@@ -529,36 +528,14 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
     try { await api.recomputeAfpPlan(day) } finally { refresh() }
   }
 
-  if (loading && !plan) return <Spinner label="Building your Adaptive Fuel Plan…" />
+  if (loading && !plan) return <Spinner label="Building your daily fuel plan…" />
   if (error) return <ErrorNote>{error}</ErrorNote>
 
   const p = plan?.plan
-  const hasProfileYet = profile && (profile.weight_kg != null || profile.height_cm != null || profile.age_years != null)
-
-  // AfpProfileForm's fields largely duplicate Plan's own onboarding profile
-  // (height/weight/age/sex/activity level/units) — a user who already
-  // calculated or typed a baseline there was hitting a BLANK "Set up my
-  // profile" form here and re-typing the exact same metrics a second time,
-  // which read as the Adaptive Fuel Plan not working at all rather than
-  // just not-yet-configured. Field-by-field fallback, never the reverse: an
-  // AFP-specific value the user already saved always wins, so this becomes
-  // a no-op the moment they've saved once. goal/body_fat_pct/weekly_change_kg/
-  // calorie_adjustment/the safety flags have no onboarding equivalent and
-  // still start blank, exactly as before.
-  const profileForForm = profile && onboardingProfile ? {
-    ...profile,
-    units_pref: profile.units_pref ?? onboardingProfile.units_pref,
-    height_cm: profile.height_cm ?? onboardingProfile.height_cm,
-    weight_kg: profile.weight_kg ?? onboardingProfile.weight_kg,
-    age_years: profile.age_years ?? onboardingProfile.age_years,
-    sex: profile.sex ?? onboardingProfile.sex,
-    activity_level: profile.activity_level ?? onboardingProfile.activity_level,
-  } : profile
-
   if (editingProfile) {
     return (
       <div className="mt-5">
-        <AfpProfileForm profile={profileForForm} onCancel={() => setEditingProfile(false)} onSaved={() => { setEditingProfile(false); refresh() }} />
+        <AfpProfileForm profile={profile} onCancel={() => setEditingProfile(false)} onSaved={() => { setEditingProfile(false); refresh() }} />
       </div>
     )
   }
@@ -566,7 +543,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   if (!p?.ok) {
     return (
       <div className="mt-5">
-        <EmptyState title="Set up your Adaptive Fuel Plan">
+        <EmptyState title="Set up your daily fuel plan">
           Enter your body metrics, baseline activity and a goal, and this plan will calculate a real-time daily
           energy and macro target — including carbohydrate periodization on training days. Nothing here replaces
           medical advice.
@@ -581,7 +558,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   return (
     <div className="mt-5 space-y-5">
       <header className="flex items-baseline justify-between gap-3">
-        <h3 className="serif text-[22px] leading-none text-ink">Adaptive Fuel Plan</h3>
+        <h3 className="serif text-[22px] leading-none text-ink">Daily Fuel Plan</h3>
         <TextButton onClick={() => setEditingProfile(true)} chevron>Edit profile</TextButton>
       </header>
 

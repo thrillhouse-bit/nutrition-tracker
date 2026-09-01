@@ -23,7 +23,7 @@ export default function ManualEntry({ onSubmit }) {
   }
 
   return (
-    <form onSubmit={go} className="space-y-4">
+    <form noValidate onSubmit={go} className="space-y-4">
       <Field label="Name">
         <input autoFocus value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="e.g. Deli turkey" />
       </Field>

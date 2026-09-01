@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 import { Button, ErrorNote, Field, inputCls } from './ui.jsx'
 
@@ -14,16 +14,29 @@ export default function Auth({ onAuthed }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [legal, setLegal] = useState(null)
+  const [acceptedLegal, setAcceptedLegal] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    api.legalStatus()
+      .then((status) => { if (alive) setLegal(status) })
+      .catch(() => { if (alive) setLegal({ ready: false, signupEnabled: false }) })
+    return () => { alive = false }
+  }, [])
 
   const submit = async (e) => {
     e.preventDefault()
     setError('')
+    if (mode === 'signup' && !legal?.signupEnabled) return setError('New accounts are temporarily unavailable while the legal documents are finalized.')
+    if (mode === 'signup' && !acceptedLegal) return setError('Agree to the Terms of Service and acknowledge the Privacy Policy to create an account.')
     const cleanEmail = email.trim().toLowerCase()
     if (!EMAIL_RE.test(cleanEmail)) return setError('Enter a valid email address.')
     if (mode === 'signup' && password.length < 8) return setError('Password must be at least 8 characters.')
     setBusy(true)
     try {
-      const { user } = mode === 'signup' ? await api.signup(cleanEmail, password) : await api.login(cleanEmail, password)
+      const { user } = mode === 'signup' ? await api.signup(cleanEmail, password, acceptedLegal) : await api.login(cleanEmail, password)
       onAuthed(user)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -62,29 +75,65 @@ export default function Auth({ onAuthed }) {
           />
         </Field>
         <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters.' : undefined}>
-          <input
-            type="password"
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            required
-            minLength={mode === 'signup' ? 8 : undefined}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className={inputCls}
-            placeholder="••••••••"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              required
+              minLength={mode === 'signup' ? 8 : undefined}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`${inputCls} pr-16`}
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((shown) => !shown)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 min-w-14 px-2 text-xs font-semibold text-cobalt hover:text-cobalt-ink"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </Field>
-        <Button type="submit" disabled={busy} className="w-full">
+        {mode === 'signup' && legal?.signupEnabled && (
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-relaxed text-muted">
+            <input
+              type="checkbox"
+              checked={acceptedLegal}
+              onChange={(e) => setAcceptedLegal(e.target.checked)}
+              className="mt-1 h-5 w-5 shrink-0 accent-cobalt"
+            />
+            <span>
+              I agree to the <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms" target="_blank" rel="noreferrer">Terms of Service</a>
+              {' '}and acknowledge the <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+            </span>
+          </label>
+        )}
+        <Button type="submit" disabled={busy || (mode === 'signup' && (!legal?.signupEnabled || !acceptedLegal))} className="w-full">
           {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
         </Button>
       </form>
 
-      <button
-        type="button"
-        onClick={() => { setMode((m) => (m === 'signup' ? 'login' : 'signup')); setError('') }}
-        className="mt-6 min-h-11 text-sm font-semibold text-cobalt hover:text-cobalt-ink"
-      >
-        {mode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
-      </button>
+      {mode === 'signup' || legal?.signupEnabled ? (
+        <button
+          type="button"
+          onClick={() => { setMode((m) => (m === 'signup' ? 'login' : 'signup')); setShowPassword(false); setAcceptedLegal(false); setError('') }}
+          className="mt-6 min-h-11 text-sm font-semibold text-cobalt hover:text-cobalt-ink"
+        >
+          {mode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
+        </button>
+      ) : (
+        <p className="mt-6 text-center text-sm text-muted">
+          {legal === null ? 'Checking new-account availability…' : 'New accounts are temporarily paused while the legal documents are finalized.'}
+        </p>
+      )}
+
+      <p className="mt-5 text-center text-xs leading-relaxed text-faint">
+        Review OmniFuel's <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
+        {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms">Terms of Service</a>.
+      </p>
     </div>
   )
 }

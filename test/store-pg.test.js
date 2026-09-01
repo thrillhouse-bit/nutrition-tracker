@@ -179,6 +179,20 @@ describe('PgStore Adaptive Fuel Plan planned workouts', () => {
   })
 })
 
+describe('PgStore.deleteUser', () => {
+  it('reports whether the account row was actually deleted', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => [{ id: 12 }]
+    await expect(store.deleteUser(12)).resolves.toBe(true)
+  })
+
+  it('returns false for a missing account', async () => {
+    const store = new PgStore('postgres://unused')
+    store.sql = () => []
+    await expect(store.deleteUser(999)).resolves.toBe(false)
+  })
+})
+
 describe('PgStore Adaptive Fuel Plan daily plan snapshots', () => {
   it('setAfpDailyPlanOverrides returns null when no plan row exists for that day (control)', async () => {
     const store = new PgStore('postgres://unused')

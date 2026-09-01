@@ -45,7 +45,7 @@ export function WorkoutForm({ initial, onCancel, onSaved }) {
   }
 
   return (
-    <form onSubmit={save} className="space-y-4">
+    <form noValidate onSubmit={save} className="space-y-4">
       <ErrorNote>{error}</ErrorNote>
       <Field label="Type">
         <select value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>

@@ -35,14 +35,12 @@
         <string>processing</string>
     </array>
 
-    <!-- Must match BackgroundSync.refreshTaskId / processingTaskId EXACTLY, or
-         BGTaskScheduler.register traps at launch.
-         TODO: replace the "com.example.FuelCompanion" prefix with the real
-         bundle id and keep these in lockstep with BackgroundSync.swift. -->
+    <!-- Derived from PRODUCT_BUNDLE_IDENTIFIER, exactly like BackgroundSync,
+         so changing the app id cannot silently break task registration. -->
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>com.example.FuelCompanion.refresh</string>
-        <string>com.example.FuelCompanion.sync</string>
+        <string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string>
+        <string>$(PRODUCT_BUNDLE_IDENTIFIER).sync</string>
     </array>
 
     <!-- App Transport Security: the PWA is expected to be served over HTTPS, so

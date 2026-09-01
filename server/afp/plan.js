@@ -43,6 +43,65 @@ export function plannedRowToSession(row) {
   }
 }
 
+function formatTime12(value) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ''))) return null
+  const [hour, minute] = value.split(':').map(Number)
+  const displayHour = hour % 12 || 12
+  return `${displayHour}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
+}
+
+function partOfDay(hour) {
+  if (hour < 5) return 'Night'
+  if (hour < 12) return 'Morning'
+  if (hour < 17) return 'Afternoon'
+  if (hour < 21) return 'Evening'
+  return 'Night'
+}
+
+// Planned sessions live in the same canonical store that sets AFP's training
+// energy. Surface the leading session to Today/recommendations too so a person
+// never enters a workout in Plan that the daily loop then ignores. A real
+// completed wearable signal still wins; an old manual signal or demo does not.
+export function withCanonicalPlannedWorkout(signals = {}, plannedRows = [], nowDate = new Date()) {
+  const existing = signals.workout
+  if (existing && !existing.demo && existing.provider !== 'manual') return signals
+  if (!plannedRows.length) return signals
+
+  const selected = [...plannedRows].sort((a, b) => {
+    const priorityA = a.is_key_session || a.is_race ? 0 : 1
+    const priorityB = b.is_key_session || b.is_race ? 0 : 1
+    if (priorityA !== priorityB) return priorityA - priorityB
+    return (a.start_time || '99:99').localeCompare(b.start_time || '99:99')
+  })[0]
+  const startHour = selected.start_time
+    ? Number(selected.start_time.slice(0, 2)) + Number(selected.start_time.slice(3, 5)) / 60
+    : null
+  const sportLabel = selected.sport[0].toUpperCase() + selected.sport.slice(1)
+  const label = startHour == null ? sportLabel : `${partOfDay(startHour)} ${sportLabel}`
+  const recorded = nowDate.toISOString()
+  return {
+    ...signals,
+    workout: {
+      value: {
+        label,
+        shortLabel: selected.sport,
+        kind: selected.sport,
+        intensity: selected.intensity,
+        time: formatTime12(selected.start_time),
+        startHour,
+        endHour: startHour == null ? null : startHour + Number(selected.duration_min) / 60,
+        durationMin: Number(selected.duration_min),
+        status: 'planned',
+      },
+      provider: 'manual',
+      freshness: 'fresh',
+      recorded_at: recorded,
+      fetched_at: recorded,
+      demo: false,
+    },
+  }
+}
+
 function ouraWorkoutToSession(w) {
   return {
     sport: OURA_ACTIVITY_TO_KIND[String(w.activity || '').toLowerCase()] || 'workout',

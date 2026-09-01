@@ -1,25 +1,26 @@
 // Offline write-queue. When a log can't reach the server (offline, or spotty
 // in-store signal), we stash the exact POST payload here and replay it once the
-// connection returns. Backed by localStorage; every access is guarded because
-// it can throw (private mode) or be absent (SSR/tests).
-const KEY = 'nt_outbox_v1'
+// connection returns. Every queue is namespaced by the authenticated user id;
+// a browser-global queue can otherwise replay account A's food into account B.
+// Backed by localStorage; every access is guarded because it can throw (private
+// mode) or be absent (SSR/tests).
+import { readAccountJson, writeAccountJson } from './privateStorage.js'
 
-function read() {
-  try {
-    const raw = globalThis.localStorage?.getItem(KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+function requireUserId(userId) {
+  if (userId === null || userId === undefined || String(userId) === '') {
+    throw new Error('An authenticated user id is required for the offline queue.')
   }
 }
 
-function write(items) {
-  try {
-    globalThis.localStorage?.setItem(KEY, JSON.stringify(items))
-  } catch {
-    /* storage unavailable — the queue is best-effort */
-  }
+function read(userId) {
+  requireUserId(userId)
+  const parsed = readAccountJson('outbox', userId, [])
+  return Array.isArray(parsed) ? parsed : []
+}
+
+function write(userId, items) {
+  requireUserId(userId)
+  writeAccountJson('outbox', userId, items)
 }
 
 // --- pure helpers (no storage), so the core logic is unit-testable ---------
@@ -45,18 +46,18 @@ export function pendingEntry(item) {
 }
 
 // --- storage-backed API ----------------------------------------------------
-export function getQueue() {
-  return read()
+export function getQueue(userId) {
+  return read(userId)
 }
 
-export function enqueue(item) {
-  const q = addToQueue(read(), item)
-  write(q)
+export function enqueue(userId, item) {
+  const q = addToQueue(read(userId), item)
+  write(userId, q)
   return q
 }
 
-export function dequeue(clientId) {
-  const q = removeFromQueue(read(), clientId)
-  write(q)
+export function dequeue(userId, clientId) {
+  const q = removeFromQueue(read(userId), clientId)
+  write(userId, q)
   return q
 }

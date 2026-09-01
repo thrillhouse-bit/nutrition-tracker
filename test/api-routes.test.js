@@ -16,7 +16,7 @@ process.env.TZ = 'Pacific/Apia'
 // (with a real userId in the first slot) would silently misbehave.
 const fake = vi.hoisted(() => {
   const state = {
-    users: [], // { id, email, password_hash, created_at }
+    users: [], // { id, email, password_hash, legal_version, legal_accepted_at, created_at }
     entries: [], // { id, food_id, logged_at, servings_consumed, meal, food }
     integrations: {}, // keyed by provider only — one user drives this whole file
     appleSignals: {},
@@ -42,8 +42,9 @@ const fake = vi.hoisted(() => {
   let userSeq = 0
   const store = {
     // --- auth / users ----------------------------------------------------
-    createUser: async ({ email, password_hash }) => {
-      const row = { id: ++userSeq, email, password_hash, created_at: new Date().toISOString() }
+    createUser: async ({ email, password_hash, legal_version = null }) => {
+      const now = new Date().toISOString()
+      const row = { id: ++userSeq, email, password_hash, legal_version, legal_accepted_at: legal_version ? now : null, created_at: now }
       state.users.push(row)
       return { id: row.id, email: row.email, created_at: row.created_at }
     },
@@ -61,6 +62,25 @@ const fake = vi.hoisted(() => {
       return null
     },
     migrateLegacyDataToUser: async () => {},
+    exportUserData: async (userId) => {
+      const user = state.users.find((u) => u.id === Number(userId))
+      return {
+        schema_version: 1,
+        exported_at: '2026-08-31T00:00:00.000Z',
+        exclusions: ['password and session credentials', 'provider OAuth and ingest tokens', 'shared food lookup cache'],
+        source_attribution: { garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' },
+        account: user ? { id: user.id, email: user.email, legal_version: user.legal_version, legal_accepted_at: user.legal_accepted_at, created_at: user.created_at } : null,
+        nutrition_logs: [], target_history: [], profile: null,
+        provider_connections: { oura: [], garmin: [], settings: [] },
+        wearable_data: { signals: [], oura_workouts: [], garmin_dailies: [] },
+        planning: { legacy_daily_plans: [], adaptive_profile: null, workouts: [], daily_plans: [] },
+      }
+    },
+    deleteUser: async (userId) => {
+      const before = state.users.length
+      state.users = state.users.filter((u) => u.id !== Number(userId))
+      return state.users.length < before
+    },
 
     // --- personal-data methods — userId is always the first argument -----
     getProfile: async (userId) => state.profile,
@@ -299,6 +319,19 @@ let authUserId = null
 
 beforeAll(async () => {
   process.env.PORT = '0' // never collide with a dev server
+  Object.assign(process.env, {
+    LEGAL_ENTITY_NAME: 'OmniFuel Route Test Operator',
+    LEGAL_EFFECTIVE_DATE: 'August 31, 2026',
+    LEGAL_GOVERNING_JURISDICTION: 'Test jurisdiction',
+    LEGAL_DATA_HOSTING_LOCATION: 'Test region',
+    LEGAL_CONTACT_EMAIL: 'privacy@example.test',
+    LEGAL_YEAR: '2026',
+    LEGAL_REVIEWED: 'true',
+    GARMIN_CLIENT_ID: 'route-test-client',
+    GARMIN_CLIENT_SECRET: 'route-test-secret',
+    GARMIN_REDIRECT_URI: 'http://localhost.test/api/garmin/callback',
+    GARMIN_INTEGRATION_VERIFIED: 'true',
+  })
   const { default: app } = await import('../server/index.js')
   server = app.listen(0)
   await new Promise((resolve) => server.once('listening', resolve))
@@ -311,7 +344,7 @@ beforeAll(async () => {
   const signupRes = await fetch(`${base}/api/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'route-tests@example.com', password: 'testpassword123' }),
+    body: JSON.stringify({ email: 'route-tests@example.com', password: 'testpassword123', acceptLegal: true }),
   })
   if (signupRes.status !== 201) {
     throw new Error(`test setup: signup failed (${signupRes.status}): ${await signupRes.text()}`)
@@ -328,6 +361,7 @@ afterAll(() => {
 afterEach(() => {
   vi.useRealTimers()
   delete process.env.APPLE_INGEST_TOKEN
+  process.env.GARMIN_INTEGRATION_VERIFIED = 'true'
   oura.legacy = false
   oura.dailySummary = async () => null
   fake.state.entries = []
@@ -377,6 +411,135 @@ const patch = (path, body, headers = {}) =>
     headers: { 'Content-Type': 'application/json', Cookie: authCookie, ...headers },
     body: JSON.stringify(body),
   })
+
+describe('legal publication and signup gate', () => {
+  it('serves real legal documents instead of the SPA shell', async () => {
+    const privacy = await fetch(`${base}/privacy`)
+    const terms = await fetch(`${base}/terms`)
+    expect(privacy.status).toBe(200)
+    expect(terms.status).toBe(200)
+    expect(await privacy.text()).toContain('OmniFuel Route Test Operator')
+    expect(await terms.text()).toContain('Test jurisdiction')
+  })
+
+  it('reports legal readiness publicly', async () => {
+    const res = await fetch(`${base}/api/legal/status`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toMatch(/no-store.*private/)
+    expect(res.headers.get('vary')).toMatch(/Cookie/i)
+    expect(await res.json()).toMatchObject({ ready: true, signupEnabled: true, privacyUrl: '/privacy', termsUrl: '/terms' })
+  })
+
+  it('requires and records acceptance of the currently published legal version', async () => {
+    const rejected = await fetch(`${base}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'no-consent@example.test', password: 'testpassword123' }),
+    })
+    expect(rejected.status).toBe(400)
+    expect((await rejected.json()).error).toMatch(/must agree/i)
+
+    expect(fake.state.users[0].legal_version).toBe('August 31, 2026')
+    expect(Date.parse(fake.state.users[0].legal_accepted_at)).not.toBeNaN()
+  })
+
+  it('fails closed when review configuration is removed', async () => {
+    const reviewed = process.env.LEGAL_REVIEWED
+    delete process.env.LEGAL_REVIEWED
+    try {
+      const policy = await fetch(`${base}/privacy`)
+      expect(policy.status).toBe(503)
+      expect(await policy.text()).toMatch(/not accepting new accounts/i)
+
+      const signup = await fetch(`${base}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'blocked-signup@example.test', password: 'testpassword123' }),
+      })
+      expect(signup.status).toBe(503)
+      expect((await signup.json()).error).toMatch(/temporarily unavailable/i)
+    } finally {
+      process.env.LEGAL_REVIEWED = reviewed
+    }
+  })
+})
+
+describe('account data lifecycle', () => {
+  it('exports only the signed-in account without credential material', async () => {
+    const res = await get('/api/account/export')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="omnifuel-export-\d{4}-\d{2}-\d{2}\.json"$/)
+    const body = await res.json()
+    expect(body.account).toMatchObject({ id: authUserId, email: 'route-tests@example.com' })
+    expect(body.source_attribution).toEqual({ garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' })
+    expect(JSON.stringify(body)).not.toContain('testpassword123')
+    expect(body.account.password_hash).toBeUndefined()
+  })
+
+  it('requires password + exact email, hard-deletes, clears the cookie, and revokes every stale session', async () => {
+    const signup = await fetch(`${base}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'delete-me@example.com', password: 'delete-password-123', acceptLegal: true }),
+    })
+    expect(signup.status).toBe(201)
+    const deleteCookie = (signup.headers.get('set-cookie') || '').split(';')[0]
+
+    const wrongConfirmation = await fetch(`${base}/api/account/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: deleteCookie },
+      body: JSON.stringify({ password: 'delete-password-123', confirmation: 'somebody-else@example.com' }),
+    })
+    expect(wrongConfirmation.status).toBe(400)
+
+    const wrongPassword = await fetch(`${base}/api/account/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: deleteCookie },
+      body: JSON.stringify({ password: 'wrong-password', confirmation: 'delete-me@example.com' }),
+    })
+    expect(wrongPassword.status).toBe(401)
+
+    const deleted = await fetch(`${base}/api/account/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: deleteCookie },
+      body: JSON.stringify({ password: 'delete-password-123', confirmation: 'delete-me@example.com' }),
+    })
+    expect(deleted.status).toBe(204)
+    expect(deleted.headers.get('set-cookie')).toMatch(/nt_session=;/)
+
+    // A copy of the old cookie from another device is still cryptographically
+    // valid, but the protected-route existence gate must now refuse it.
+    const staleSession = await fetch(`${base}/api/connections`, { headers: { Cookie: deleteCookie } })
+    expect(staleSession.status).toBe(401)
+    expect(staleSession.headers.get('set-cookie')).toMatch(/nt_session=;/)
+
+    // The suite's original account remains intact (cross-account isolation).
+    expect(await fake.store.getUserById(authUserId)).toMatchObject({ email: 'route-tests@example.com' })
+  })
+})
+
+describe('authentication abuse controls', () => {
+  it('throttles repeated credential failures with a generic 429 and Retry-After', async () => {
+    let last
+    try {
+      for (let attempt = 0; attempt < 9; attempt++) {
+        last = await fetch(`${base}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'rate-limit-target@example.com', password: 'always-wrong' }),
+        })
+        if (attempt < 8) expect(last.status).toBe(401)
+      }
+      expect(last.status).toBe(429)
+      expect(Number(last.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(await last.json()).toEqual({ error: 'Too many attempts. Try again later.' })
+    } finally {
+      const { loginCredentialLimiter, loginIpLimiter } = await import('../server/authRateLimit.js')
+      loginCredentialLimiter.reset()
+      loginIpLimiter.reset()
+    }
+  })
+})
 
 describe('GET /api/version', () => {
   const ORIGINAL = process.env.GIT_SHA
@@ -697,6 +860,14 @@ describe('POST /api/garmin/webhook malformed dailies', () => {
   // garmin_accounts.garmin_user_id (see server/index.js's webhook handler).
   const valid = { userId: 'garmin-user-abc', calendarDate: '2026-08-25', activeKilocalories: 500, bmrKilocalories: 1500, steps: 1000 }
 
+  it('fails closed until the private partner contract is explicitly verified', async () => {
+    delete process.env.GARMIN_INTEGRATION_VERIFIED
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
+    const res = await post('/api/garmin/webhook', { dailies: [valid] })
+    expect(res.status).toBe(503)
+    expect(fake.state.garminDailies['7:2026-08-25']).toBeUndefined()
+  })
+
   it('survives a malformed element and still stores the valid rows around it', async () => {
     fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
     // Garmin retries on any non-200: one junk element must not 500 the batch
@@ -711,6 +882,17 @@ describe('POST /api/garmin/webhook malformed dailies', () => {
     const res = await post('/api/garmin/webhook', { dailies: [valid] })
     expect(res.status).toBe(200)
     expect((await res.json()).received).toBe(1)
+    expect(fake.state.garminDailies['7:2026-08-25']).toBeTruthy()
+  })
+
+  it('accepts the server-to-server webhook without a browser session cookie', async () => {
+    fake.state.garminAccounts = [{ id: 7, garmin_user_id: 'garmin-user-abc' }]
+    const res = await fetch(`${base}/api/garmin/webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dailies: [valid] }),
+    })
+    expect(res.status).toBe(200)
     expect(fake.state.garminDailies['7:2026-08-25']).toBeTruthy()
   })
 
@@ -1589,27 +1771,25 @@ describe('GET /api/insights targets + onTargetDetail', () => {
     food: { id: 1, name: 'food', calories, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0 },
   })
 
-  it('exposes the real calorie/protein targets with hasTargets:true once the user has actually chosen them', async () => {
-    fake.state.targets = { calories: 2200, protein_g: 160, carbs_g: 220, fat_g: 70, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
-    fake.state.targetsEverSet = true
-    const res = await get('/api/insights?window=7')
+  it('exposes the canonical AFP calorie/protein targets once the profile is ready', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 2200, protein_g: 160 } }
+    const res = await get('/api/insights?window=7&tzOffsetMinutes=0')
     const body = await res.json()
-    expect(body.targets).toEqual({ calories: 2200, protein_g: 160, hasTargets: true })
+    expect(body.targets).toEqual({ calories: 2200, protein_g: 160, hasTargets: true, basis: 'current_afp_plan' })
   })
 
-  it('CONTROL: reports hasTargets:false alongside the silent DEFAULT_TARGETS numbers when nothing was ever chosen', async () => {
-    // fake.state.targets/targetsEverSet are already at their post-afterEach
-    // defaults (DEFAULT_TARGETS, never set) — the same shape a real user who
-    // skipped/never reached onboarding would see from getLatestTargets.
+  it('CONTROL: reports no target instead of leaking deprecated default numbers when AFP is incomplete', async () => {
     const res = await get('/api/insights?window=7')
     const body = await res.json()
-    expect(body.targets).toEqual({ calories: 2000, protein_g: 150, hasTargets: false })
+    expect(body.targets).toEqual({ calories: 0, protein_g: 0, hasTargets: false, basis: 'current_afp_plan' })
   })
 
   it('computes onTargetDetail for every calendar day in the window, agreeing exactly with the onTargetDays count', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) }) // "today" = 2026-08-31 at tzOffsetMinutes=0
-    fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
-    fake.state.targetsEverSet = true
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 2000, protein_g: 150 } }
     fake.state.entries = [
       calEntry('2026-08-27', 2000), // on target (diff 0, tolerance ±200)
       calEntry('2026-08-28', 2600), // off target (diff 600)
@@ -1639,10 +1819,8 @@ describe('GET /api/insights targets + onTargetDetail', () => {
 
   it('CONTROL: marks every day null (never false) when there is no positive calorie target, so a missing target never renders as a missed one', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
-    // An explicit real target of 0 (allowed by TargetsSchema's nonNegNum) —
-    // the one shape where calTarget is falsy despite hasTargets being true.
-    fake.state.targets = { calories: 0, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
-    fake.state.targetsEverSet = true
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 0, protein_g: 150 } }
     fake.state.entries = [calEntry('2026-08-30', 2000)]
     const res = await get('/api/insights?window=7&tzOffsetMinutes=0')
     const body = await res.json()
@@ -1693,6 +1871,22 @@ describe('GET /api/today day bounds', () => {
     const res = await get('/api/today?date=2026-08-25&from=garbage&to=alsogarbage')
     expect(res.status).toBe(200)
     expect((await res.json()).intake.calories).toBe(500)
+  })
+
+  it('uses AFP as the single target source and surfaces its planned session in Today', async () => {
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    await put('/api/afp/workouts', {
+      date: '2026-08-24', sport: 'run', start_time: '06:30', duration_min: 60,
+      intensity: 'hard', is_key_session: true,
+    })
+    const qs = 'date=2026-08-24&from=2026-08-24T00:00:00.000Z&to=2026-08-25T00:00:00.000Z'
+    const res = await get(`/api/today?${qs}`)
+    const body = await res.json()
+
+    expect(body.plan.ok).toBe(true)
+    expect(body.baseline).toEqual(body.plan.computedTargets)
+    expect(body.adjusted).toEqual(body.plan.targets)
+    expect(body.signals.workout.value).toMatchObject({ kind: 'run', intensity: 'hard', status: 'planned', durationMin: 60 })
   })
 })
 
@@ -1954,12 +2148,10 @@ describe('GET /api/insights correlations', () => {
   })
 })
 
-// --- Adaptive Fuel Plan ----------------------------------------------------
-// A fully separate feature (server/afp/engine.js + server/afp/plan.js) with
-// its own profile/planned-workouts/daily-plan state (see the fake store's
-// afpProfile/plannedWorkouts/afpDailyPlans above) — never touches
-// profile/daily_targets/daily_plans, so these tests never need to reset that
-// state.
+// --- Canonical daily fuel plan --------------------------------------------
+// AFP owns the profile, planned sessions, and daily targets consumed by both
+// Plan and Today. Legacy profile/target state is reset separately because it
+// remains only as a compatibility/migration source.
 const FULL_AFP_PROFILE = {
   weight_kg: 70, height_cm: 175, age_years: 30, sex: 'male', activity_level: 'sedentary', goal: 'maintain',
 }

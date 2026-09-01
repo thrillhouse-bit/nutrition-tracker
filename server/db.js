@@ -79,6 +79,18 @@ function pickFood(f = {}) {
   return out
 }
 
+function exportFood(f) {
+  if (!f) return null
+  const { raw_api_response, ...safe } = f
+  return safe
+}
+
+function exportIntegration(row) {
+  if (!row) return row
+  const { ingest_token, ...settings } = row.settings || {}
+  return { ...row, settings }
+}
+
 // Aggregates raw Apple `workout` wearable_signals rows into one row per day
 // — shared by PgStore.listAppleWorkoutHistory and JsonStore's sibling below.
 // Unlike Oura readiness (one score a day by construction — saveOuraHistory
@@ -139,13 +151,13 @@ export class PgStore {
   // 25 Aug 2026 — flagged as a residual risk; already a named open item in
   // docs/qa-qc-report.md). JsonStore's createUser already throws this same
   // clean 409 defensively; this brings PgStore to parity.
-  async createUser({ email, password_hash }) {
+  async createUser({ email, password_hash, legal_version = null }) {
     const sql = await this.ready()
     try {
       const rows = await sql`
-        insert into users (email, password_hash)
-        values (${email}, ${password_hash})
-        returning id, email, created_at`
+        insert into users (email, password_hash, legal_version, legal_accepted_at)
+        values (${email}, ${password_hash}, ${legal_version}, ${legal_version ? new Date().toISOString() : null})
+        returning id, email, legal_version, legal_accepted_at, created_at`
       return rows[0]
     } catch (err) {
       if (err.code === '23505') {
@@ -834,6 +846,76 @@ export class PgStore {
     return rows[0] || null
   }
 
+  // Complete account-owned data export. Credentials, OAuth tokens, Apple
+  // ingest tokens, password hashes, and the shared food lookup cache are
+  // deliberately excluded. Nutrition values used by a log entry are joined
+  // in so the export remains intelligible without exposing the global cache.
+  async exportUserData(userId) {
+    const sql = await this.ready()
+    const [
+      accountRows,
+      nutritionLogs,
+      targetHistory,
+      profileRows,
+      ouraConnections,
+      ouraWorkouts,
+      garminConnections,
+      garminDailies,
+      integrations,
+      wearableSignals,
+      dailyPlans,
+      afpProfileRows,
+      plannedWorkouts,
+      afpDailyPlans,
+    ] = await Promise.all([
+      sql`select id, email, legal_version, legal_accepted_at, created_at from users where id = ${userId}`,
+      sql`select e.id, e.food_id, e.logged_at, e.servings_consumed, e.meal, e.created_at,
+                 f.name as food_name, f.brand as food_brand, f.barcode as food_barcode,
+                 f.serving_size, f.serving_unit, f.calories, f.protein_g, f.carbs_g,
+                 f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.source as food_source
+          from log_entries e join foods f on f.id = e.food_id
+          where e.user_id = ${userId} order by e.logged_at asc, e.id asc`,
+      sql`select * from daily_targets where user_id = ${userId} order by effective_from asc, id asc`,
+      sql`select * from profile where user_id = ${userId}`,
+      sql`select id, label, expires_at, created_at from oura_accounts where user_id = ${userId} order by id asc`,
+      sql`select w.* from oura_workouts w join oura_accounts a on a.id = w.account_id where a.user_id = ${userId} order by w.day asc, w.id asc`,
+      sql`select id, label, garmin_user_id, expires_at, created_at from garmin_accounts where user_id = ${userId} order by id asc`,
+      sql`select d.* from garmin_dailies d join garmin_accounts a on a.id = d.account_id where a.user_id = ${userId} order by d.day asc, d.id asc`,
+      sql`select user_id, provider, enabled, demo, connected_at, last_synced_at, error,
+                 settings - 'ingest_token' as settings
+          from integrations where user_id = ${userId} order by provider asc`,
+      sql`select * from wearable_signals where user_id = ${userId} order by day asc, id asc`,
+      sql`select * from daily_plans where user_id = ${userId} order by date asc`,
+      sql`select * from afp_profile where user_id = ${userId}`,
+      sql`select * from planned_workouts where user_id = ${userId} order by date asc, start_time asc nulls last, id asc`,
+      sql`select * from afp_daily_plans where user_id = ${userId} order by date asc`,
+    ])
+    return {
+      schema_version: 1,
+      exported_at: new Date().toISOString(),
+      exclusions: ['password and session credentials', 'provider OAuth and ingest tokens', 'shared food lookup cache'],
+      source_attribution: { garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' },
+      account: accountRows[0] || null,
+      nutrition_logs: nutritionLogs,
+      target_history: targetHistory,
+      profile: profileRows[0] || null,
+      provider_connections: { oura: ouraConnections, garmin: garminConnections, settings: integrations },
+      wearable_data: { signals: wearableSignals, oura_workouts: ouraWorkouts, garmin_dailies: garminDailies },
+      planning: {
+        legacy_daily_plans: dailyPlans,
+        adaptive_profile: afpProfileRows[0] || null,
+        workouts: plannedWorkouts,
+        daily_plans: afpDailyPlans,
+      },
+    }
+  }
+
+  async deleteUser(userId) {
+    const sql = await this.ready()
+    const rows = await sql`delete from users where id = ${userId} returning id`
+    return rows.length > 0
+  }
+
   // One-time boot migration: if pre-multi-user data exists (rows with no
   // user_id — the columns didn't exist before tonight) it would already have
   // failed the NOT NULL constraint on insert, so a fresh `create table` never
@@ -917,14 +999,22 @@ export class JsonStore {
   }
 
   // --- users -------------------------------------------------------------
-  async createUser({ email, password_hash }) {
+  async createUser({ email, password_hash, legal_version = null }) {
     const d = await this.load()
     if (d.users.find((u) => u.email === email)) {
       const err = new Error('An account with that email already exists.')
       err.status = 409
       throw err
     }
-    const row = { id: ++d.seq.user, email, password_hash, created_at: new Date().toISOString() }
+    const now = new Date().toISOString()
+    const row = {
+      id: ++d.seq.user,
+      email,
+      password_hash,
+      legal_version,
+      legal_accepted_at: legal_version ? now : null,
+      created_at: now,
+    }
     d.users.push(row)
     await this.persist()
     return { id: row.id, email: row.email, created_at: row.created_at }
@@ -1584,6 +1674,85 @@ export class JsonStore {
     return { ...row }
   }
 
+  async exportUserData(userId) {
+    const d = await this.load()
+    const uid = Number(userId)
+    const account = d.users.find((u) => u.id === uid)
+    const safeAccount = account ? {
+      id: account.id,
+      email: account.email,
+      legal_version: account.legal_version ?? null,
+      legal_accepted_at: account.legal_accepted_at ?? null,
+      created_at: account.created_at,
+    } : null
+    const nutritionLogs = d.entries
+      .filter((entry) => entry.user_id === uid)
+      .map((entry) => ({ ...entry, food: exportFood(d.foods.find((food) => food.id === entry.food_id)) }))
+      .sort((a, b) => String(a.logged_at).localeCompare(String(b.logged_at)))
+    const ouraAccountIds = new Set((d.oura_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    const garminAccountIds = new Set((d.garmin_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    const ouraConnections = (d.oura_accounts || [])
+      .filter((a) => a.user_id === uid)
+      .map(({ access_token, refresh_token, ...safe }) => safe)
+    const garminConnections = (d.garmin_accounts || [])
+      .filter((a) => a.user_id === uid)
+      .map(({ access_token, refresh_token, ...safe }) => safe)
+    const integrations = Object.values(d.integrations || {})
+      .filter((row) => row.user_id === uid)
+      .map(exportIntegration)
+    const byUser = (row) => row.user_id === uid
+    const valuesForUser = (object = {}) => Object.values(object).filter(byUser)
+    return {
+      schema_version: 1,
+      exported_at: new Date().toISOString(),
+      exclusions: ['password and session credentials', 'provider OAuth and ingest tokens', 'shared food lookup cache'],
+      source_attribution: { garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' },
+      account: safeAccount,
+      nutrition_logs: nutritionLogs,
+      target_history: d.targets.filter(byUser),
+      profile: d.profiles?.[uid] || null,
+      provider_connections: { oura: ouraConnections, garmin: garminConnections, settings: integrations },
+      wearable_data: {
+        signals: (d.wearable_signals || []).filter(byUser),
+        oura_workouts: (d.oura_workouts || []).filter((row) => ouraAccountIds.has(row.account_id)),
+        garmin_dailies: (d.garmin_dailies || []).filter((row) => garminAccountIds.has(row.account_id)),
+      },
+      planning: {
+        legacy_daily_plans: valuesForUser(d.daily_plans),
+        adaptive_profile: d.afp_profiles?.[uid] || null,
+        workouts: (d.planned_workouts || []).filter(byUser),
+        daily_plans: valuesForUser(d.afp_daily_plans),
+      },
+    }
+  }
+
+  async deleteUser(userId) {
+    const d = await this.load()
+    const uid = Number(userId)
+    if (!d.users.some((u) => u.id === uid)) return false
+    const ouraAccountIds = new Set((d.oura_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    const garminAccountIds = new Set((d.garmin_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
+    d.users = d.users.filter((u) => u.id !== uid)
+    d.entries = d.entries.filter((row) => row.user_id !== uid)
+    d.targets = d.targets.filter((row) => row.user_id !== uid)
+    d.oura_accounts = (d.oura_accounts || []).filter((row) => row.user_id !== uid)
+    d.oura_workouts = (d.oura_workouts || []).filter((row) => !ouraAccountIds.has(row.account_id))
+    d.garmin_accounts = (d.garmin_accounts || []).filter((row) => row.user_id !== uid)
+    d.garmin_dailies = (d.garmin_dailies || []).filter((row) => !garminAccountIds.has(row.account_id))
+    d.wearable_signals = (d.wearable_signals || []).filter((row) => row.user_id !== uid)
+    d.planned_workouts = (d.planned_workouts || []).filter((row) => row.user_id !== uid)
+    for (const name of ['profiles', 'afp_profiles']) {
+      if (d[name]) delete d[name][uid]
+    }
+    for (const name of ['integrations', 'daily_plans', 'afp_daily_plans']) {
+      for (const [key, row] of Object.entries(d[name] || {})) {
+        if (row.user_id === uid) delete d[name][key]
+      }
+    }
+    await this.persist()
+    return true
+  }
+
   // Symmetry with PgStore — a fresh JsonStore file never has legacy
   // (ownerless) rows in the first place, so this is a no-op there, but keeps
   // the interface identical for anything that calls it unconditionally.
@@ -1618,6 +1787,12 @@ function makeStore() {
   const url = process.env.DATABASE_URL
   if (url) {
     return { store: new PgStore(url), backend: 'postgres' }
+  }
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EPHEMERAL_STORAGE !== 'true') {
+    throw new Error(
+      'DATABASE_URL is required in production. Refusing to start with the disposable JSON store. ' +
+      'Set ALLOW_EPHEMERAL_STORAGE=true only for an intentionally disposable preview.',
+    )
   }
   const file = path.join(__dirname, '.data', 'store.json')
   return { store: new JsonStore(file), backend: 'json-file' }
