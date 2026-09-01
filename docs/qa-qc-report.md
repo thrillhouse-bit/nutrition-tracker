@@ -1526,3 +1526,11 @@ site.
 No fixes made directly by this pass — every actionable item found was
 already fixed or is an owner-only deploy/config action, not something
 in this session's direct-fix lane.
+
+## 2026-09-01 — Check-in pass (recurring, 08:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `f7e9515`). Live site also unchanged: same version,
+same `/api/health`, and the new-signups-blocked Info item from last
+pass still holds (`/api/legal/status` unchanged — legal env vars still
+not configured in production). No fixes needed this pass.
