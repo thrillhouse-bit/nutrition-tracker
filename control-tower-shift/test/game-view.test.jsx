@@ -66,6 +66,26 @@ const installFramePump = () => {
 let container
 let root
 
+// Node 22 exposes an experimental global `localStorage` getter that resolves
+// to undefined unless the process is launched with --localstorage-file. Vitest
+// copies that value into jsdom, shadowing jsdom's own Storage implementation.
+// Give this browser test an explicit, per-test store so game persistence is
+// deterministic in local runs and the same Node 22 environment used by CI.
+const installMemoryStorage = () => {
+  const values = new Map()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      get length() { return values.size },
+      clear: () => values.clear(),
+      getItem: (key) => values.has(String(key)) ? values.get(String(key)) : null,
+      key: (index) => [...values.keys()][index] ?? null,
+      removeItem: (key) => values.delete(String(key)),
+      setItem: (key, value) => values.set(String(key), String(value)),
+    },
+  })
+}
+
 const mount = async (el) => {
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -74,6 +94,7 @@ const mount = async (el) => {
 }
 
 beforeEach(() => {
+  installMemoryStorage()
   pump = installFramePump()
 })
 
