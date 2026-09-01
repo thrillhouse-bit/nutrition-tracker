@@ -1543,3 +1543,12 @@ same `/api/health`, and `/api/legal/status` still reports
 `signupEnabled: false` — new signups remain blocked pending the
 owner's legal-config deploy, same as the last two passes. No fixes
 needed this pass.
+
+## 2026-09-01 — Check-in pass (recurring, 16:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `dd93cfa`). Live site also unchanged: same version,
+same `/api/health`, and `/api/legal/status` still reports
+`signupEnabled: false` — fourth consecutive pass with new signups
+blocked on the same owner legal-config deploy. No fixes needed this
+pass.
