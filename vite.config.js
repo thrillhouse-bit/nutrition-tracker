@@ -25,30 +25,20 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      // Precache the built app shell so the UI opens offline. Runtime caching
-      // (below) makes the most recently loaded API data readable offline too;
-      // scanning/lookup still require the network, as intended.
+      // Precache only the public app shell so the UI opens offline. Authenticated
+      // API responses must never enter a service-worker cache: request URLs are
+      // shared by every account on a browser, so a URL-keyed runtime cache can
+      // return one person's nutrition or wearable data to the next account.
       workbox: {
         // Story artwork is route-specific and substantially larger than the
         // install shell. Keep generic PNG/WebP files runtime-fetched; the
         // required install icons below remain explicitly included.
         globPatterns: ['**/*.{js,css,html,svg,ico,webmanifest}'],
-        navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [
-          {
-            // GET reads (today's log, targets, history). NetworkFirst means the
-            // last successful response is served when offline.
-            urlPattern: ({ url, request }) =>
-              url.pathname.startsWith('/api/') && request.method === 'GET',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 7 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
+        // Public legal documents are server-rendered and launch-gated. If the
+        // app-shell navigation fallback claims them, an installed PWA shows
+        // the sign-in SPA instead of the policy/terms the server approved.
+        navigateFallbackDenylist: [/^\/api\//, /^\/privacy\/?$/, /^\/terms\/?$/],
+        cleanupOutdatedCaches: true,
       },
       includeAssets: ['icon.svg', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
       // Installed identity matches the in-app v2 system: the app titles itself

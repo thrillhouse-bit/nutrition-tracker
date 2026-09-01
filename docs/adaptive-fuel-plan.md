@@ -1,27 +1,30 @@
-# Adaptive Fuel Plan — architecture note
+# Daily Fuel Plan — canonical architecture
 
-25 Aug 2026. A new, additive feature inside the existing Planning tab:
-real-time daily energy/macro targets computed from a richer profile, planned
-and synced training, and a goal — plus training-day carbohydrate
-periodization. This note describes what was built and why; see the PR body
-for the exact file list and test/build results.
+Originally added on 25 Aug 2026 as a parallel "Adaptive Fuel Plan". Made the
+canonical planning system on 31 Aug 2026 after the parallel calculator,
+editable static targets, wearable-adjustment rules, and AFP engine created
+contradictory answers and duplicate setup.
 
-## Why additive, not a replacement
+AFP now owns the user profile, planned sessions, computed targets, progress,
+safety rules, and historical snapshots. The visible Plan tab is a thin shell
+over this system. Today reads the same AFP baseline and adjusted target object,
+and planned AFP sessions feed Today's workout context and recommendation. The
+Garmin summary compatibility endpoint also reads AFP targets.
 
-The existing "Plan" tab already had a working baseline-calculator
-(`server/planCalc.js`) + wearable-adjustment engine (`server/plan.js`) that
-Today, Insights, and the Garmin Connect IQ watch app all depend on via
-`daily_targets`. The Adaptive Fuel Plan's profile model (optional sex, body
-fat %, a different goal taxonomy, weekly-rate guardrails, per-day
-periodized carbs) is a deliberate, explicit superset that would have forced
-either a breaking schema change or two divergent meanings for the same
-fields. Instead it is a **fully separate, independently-versioned system**:
-own tables (`afp_profile`, `planned_workouts`, `afp_daily_plans`), own engine
-(`server/afp/engine.js`, `ENGINE_VERSION`), own API namespace (`/api/afp/*`),
-own UI section. It reads real synced-workout data from the same
-`oura_workouts` / Apple `wearable_signals` tables the rest of the app already
-populates, but never reads or writes `profile` / `daily_targets` /
-`daily_plans` / `plan.js`. Nothing about the existing Plan flow changed.
+## Compatibility and migration
+
+Existing accounts are migrated lazily by `server/afp/migration.js`. The bridge
+copies only missing height, weight, age, sex, unit, activity, and goal fields
+from the old calculator profile. It never overwrites an AFP profile the person
+already edited. Legacy endurance maps to maintenance because training energy is
+periodized separately; mapping it to an additional surplus would double-count
+the same intent.
+
+The old `profile`, `daily_targets`, `daily_plans`, `server/planCalc.js`, and
+`server/plan.js` surfaces remain temporarily for API/data compatibility. They
+are not a second visible product and must not become the source of truth for a
+new screen. `/api/plan/today` is a compatibility adapter over AFP. New product
+work uses `/api/afp/*` and the contract in `docs/UX-CONTRACT.md`.
 
 ## The engine (`server/afp/engine.js`)
 
@@ -105,22 +108,18 @@ layered the same way: they persist across a same-day recompute, and clearing
 them (an empty PATCH body) reverts to the engine's own numbers without
 touching `afp_profile`'s defaults.
 
-## What changed vs. what's untouched
+## Runtime ownership
 
-**New**: `server/afp/engine.js`, `server/afp/plan.js`,
-`src/components/AdaptiveFuelPlan.jsx`, the `afp_profile` /
-`planned_workouts` / `afp_daily_plans` tables, `/api/afp/*` routes, matching
-client methods. `ftInToCm`/`cmToFtIn` were lifted from `SmartPlanForm.jsx`
-into `src/lib/nutrition.js` (alongside the existing `lbToKg`/`kgToLb`) so the
-new profile form and the legacy one share one implementation instead of two
-copies that could drift — `SmartPlanForm.jsx`'s own behavior is unchanged.
-
-**Untouched**: `server/planCalc.js`, `server/plan.js`, `daily_targets`,
-`daily_plans`, `SmartPlanForm.jsx`, `EditTargets`, and everything Today/
-Insights/the watch app read from them. `Plan.jsx` gained one new section
-(`<AdaptiveFuelPlan>`) above its existing content and a "Quick targets"
-subheading to separate the two, and nothing else in that file changed
-in behavior.
+- `server/afp/engine.js` is the pure calculation engine.
+- `server/afp/plan.js` reconciles planned and completed sessions and persists
+  versioned snapshots.
+- `server/afp/migration.js` is the one-way compatibility bridge.
+- `src/components/AdaptiveFuelPlan.jsx` owns profile, workout, target,
+  explanation, progress, override, and safety interactions.
+- `src/components/CanonicalPlan.jsx` is the visible Plan route.
+- `server/index.js`'s Today composite uses AFP `computedTargets` as baseline
+  and AFP `targets` as adjusted. A real completed wearable workout wins over a
+  planned session; otherwise the AFP planned session is surfaced consistently.
 
 ## Known limitations / future integration points
 
@@ -137,7 +136,5 @@ in behavior.
   reviewable; wiring them to a product-level settings surface is a natural
   next step the code was structured to make easy (no call site reaches into
   them beyond the engine itself).
-- `distance_km` unit display (mi/km) in the workout editor follows the AFP
-  profile's `units_pref`; it is not yet synced with the legacy profile's own
-  `units_pref` if the two ever diverge for one user (unlikely in practice,
-  since both default from the same imperial/metric choice a user makes once).
+- Removal of legacy profile/targets tables and endpoints is a separate schema
+  deprecation after native clients and old deployments have moved to AFP.

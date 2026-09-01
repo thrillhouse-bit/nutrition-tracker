@@ -24,6 +24,8 @@ vi.mock('../src/api/client.js', () => ({
     clearSyncedHistory: vi.fn(() => Promise.resolve({ removed: 0 })),
     setInfluence: vi.fn(() => Promise.resolve({ influence: {} })),
     appleToken: vi.fn(() => Promise.resolve({ token: 'tok' })),
+    exportAccountData: vi.fn(() => Promise.resolve({ account: {} })),
+    deleteAccount: vi.fn(() => Promise.resolve(null)),
   },
 }))
 

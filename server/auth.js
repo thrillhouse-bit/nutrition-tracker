@@ -9,10 +9,12 @@ import { promisify } from 'node:util'
 
 const scrypt = promisify(crypto.scrypt)
 
-// No SESSION_SECRET set (local/dev) gets a random one generated at boot —
-// sessions just don't survive a restart, the same tradeoff this app already
-// accepts for the JSON-file store being an explicit "dev fallback". A real
-// deploy must set SESSION_SECRET so a restart doesn't sign everyone out.
+// Local/dev can use a random per-boot secret. Production must fail at startup
+// without an operator-owned secret: silently rotating it on every deploy logs
+// every account out and makes session behavior operationally unreliable.
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET is required in production. Generate a persistent secret before starting OmniFuel.')
+}
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')
 if (!process.env.SESSION_SECRET) {
   console.warn('[auth] SESSION_SECRET not set — using a random per-boot secret (sessions will not survive a restart). Set SESSION_SECRET in production.')

@@ -47,6 +47,7 @@ doesn't repeat that ground.
 | — | Today.jsx | Day-nav (‹ ›) was the only frequent control anchored at the top of a tall screen | Merged (2026-08-25, PR #49, added a swipe gesture) |
 | High | Apple integration | `POST /api/apple/token` existed server-side but had no UI path to generate/copy it — the integration wasn't usable end-to-end through the app | Merged (2026-08-25, PR #52, other session) — flagged in the architecture-review pass but missed in this table's earlier reconciliation; corrected in this check-in |
 | — | Oura readiness signal | Every "readiness" value in the app (Today, Plan, Insights) was actually sourced from Oura's activity-score endpoint, not the dedicated readiness endpoint — a bug this session never found, caught and fixed independently | Merged (2026-08-25, PR #51, other session) |
+| High | Cross-account data leak (shared device) | The offline-write outbox and "recents" list used one browser-global `localStorage` key each (not per-account). On a shared device, User A's queued-offline food-log entries and recent-foods list could be silently flushed/shown under User B's session after A logged out and B logged in — a real, exploitable cross-account leak/misattribution, not just theoretical. A bug this session never found; caught and fixed independently | Merged (2026-09-01, PR #135, other session) — verified via code review: both namespaces now keyed per-user-id, legacy un-attributed keys purged (never replayed) on boot |
 | — | Search (OFF) | Search depended on Open Food Facts' legacy `cgi/search.pl` endpoint alone (no fallback), with no graceful failure state — an upstream 503 left the UI stuck. Also fixed, same PR: without a configured USDA key, common whole-food queries (zucchini, courgette, a typo) returned zero or irrelevant results | Merged (2026-08-26, PR #73, real retrieval+ranking redesign + working retry state; further overhauled PR #95 — see below) |
 | Medium | Apple ingest token | Doubles as a bearer credential for the *entire* authenticated API (not just ingest) if it leaks — a deliberate tradeoff per the code's own comment, worth explicit owner sign-off | Reported (2026-08-25) |
 | Medium | Signup | Concurrent signups with the same email leak a raw Postgres constraint-violation message instead of the intended 409 (JsonStore already handles this correctly; Postgres doesn't) | Merged (2026-08-25, PR #55, audit residual-gap cleanup) |
@@ -54,13 +55,15 @@ doesn't repeat that ground.
 | — | Onboarding | A fresh signup dropped straight into an empty Today with no baseline-setup prompt | Merged (2026-08-25, PR #54, other session) |
 | Low | Onboarding | The new first-run gate (PR #54) still doesn't mention that Connections' demo-data toggles exist to preview what recommendations look like with a wearable connected | Reported (2026-08-25) |
 | Medium | Auth | No "forgot password" / account-recovery path exists — attempted, judged too large for a direct fix (needs new email-service infrastructure with no existing provider configured anywhere in this project); see the implementation proposal in this pass's section below | Reported (2026-08-25) — proposal written up, not attempted |
-| High | Garmin webhook | `POST /api/garmin/webhook` has no signature/shared-secret verification — researched; infeasible to implement safely right now (every base URL and field name in `garmin.js` is marked `VERIFY` — the exact signing scheme, if any, is unknown until Garmin partner access is granted) | Reported (2026-08-25) — researched, blocked on Garmin partner docs |
+| High | Garmin webhook | `POST /api/garmin/webhook` has no signature/shared-secret verification — the underlying gap is unchanged (blocked on Garmin partner docs), but PR #135/#137 (2026-09-01) added `GARMIN_INTEGRATION_VERIFIED`, an explicit operator opt-in the webhook now 503s without (previously accepted unverified requests whenever Garmin was merely configured) — default posture is now fail-closed, real signature verification still unimplemented for when an operator does opt in | Reported (2026-09-01) — mitigated (fail-closed default), not resolved; still blocked on Garmin partner docs |
 | Medium | Garmin OAuth | `refreshAccessToken`/`validAccessToken` are implemented but never called — researched; bigger than scoped (needs new `listAllGarminAccounts()` methods on both storage backends, and the refresh cadence/necessity itself is unverified against partner docs) | Reported (2026-08-25) — researched, deferred as larger than scoped |
 | Info | Live deploy | `GET /api/health` on the live site reports `backend: "json-file"` — no `DATABASE_URL` configured in production | Resolved (2026-08-25, owner deploy — site now reports `backend: "postgres"`) |
 | Info | Live deploy | Live site hasn't redeployed since before this session's first pass — now well behind `main` | Resolved (2026-08-26 — `GET /api/version` confirms the live site matches `origin/main` HEAD exactly) |
 | Low | Server logging | Several `console.error(err)` calls log the *raw* error object server-side (client-facing 500s are already sanitized, PR #45) — a DB constraint-violation error can embed a user-submitted value (e.g. an email) in its message. Flagged by the other session's production-verification audit as a real but low-severity, unconfirmed-in-practice pattern, not a client-facing leak | Reported (2026-08-26, from `docs/PRODUCTION-VERIFICATION-AUDIT.md`) |
 | Info | Deploy config | `SESSION_SECRET`'s production state is unconfirmed (unset in every dev environment checked so far) — if unset in production, any restart for any reason mass-logs-out every signed-in user, independent of any other change | Needs an owner verification, not a code fix (flagged by the same audit) |
 | Info | Live deploy | Live site stuck at commit `45bbf76` (PR #95, the food-search overhaul) for 3 consecutive check-ins — ~19.5 hours behind `main` as of 2026-08-27 12:42 UTC, having missed PR #96's already-reviewed, low-risk `MAX_RESULTS` tuning change | Resolved (2026-08-27, owner deploy — site now matches current `main` HEAD exactly) |
+| Info | Live deploy | Live site stuck at commit `431e2b0` since before PR #121 — now ~4 days / 32 commits behind `main` as of 2026-08-31 08:36 UTC. All missed app-code changes are the two already-reviewed, opt-in features this report tracked live (Control Tower Shift behind a URL hash, the read-only A2A surface) plus their follow-up fixes — no pending fix to an existing user-facing issue is stuck behind this | Resolved (2026-09-01 — live site redeployed, `GET /api/version` now matches current `main` HEAD `58f1223` exactly) |
+| Info | Live deploy | `GET /api/legal/status` on the live site reports `signupEnabled: false` — none of the 7 required `LEGAL_*` operator env vars (entity name, effective date, jurisdiction, hosting location, contact email, year, review acknowledgement) are configured in production, so new signups are currently blocked. Also reports `inviteRequired: true`, meaning `ALPHA_INVITE_ONLY` is already set — the owner appears mid-rollout on the new invite-only alpha launch (PR #137) but hasn't yet set the legal vars it depends on. Existing accounts are unaffected (legal re-consent gate only activates once `legal.ready` is true) | Reported (2026-09-01) — owner deploy/config action, not a code fix; new signups blocked until resolved |
 
 ## 2026-08-25 — First pass
 
@@ -1337,3 +1340,215 @@ before PR #121), which is a longer gap than usual for a feature
 this contained, but the game is opt-in behind a URL hash with zero
 effect on the main app's own users — not escalating past a note. No
 fixes needed or attempted this pass.
+
+## 2026-08-31 — Check-in pass (recurring, 04:36 UTC)
+
+Two new commits since the last check-in, both from the other session
+and both worth calling out specifically: one directly closes a gap
+this report itself raised two passes ago, the other fixes a real,
+independently-diagnosed test-suite flake.
+
+**PR #130** fixes the exact stale-`dist/` false positive this report
+flagged (2026-08-30 20:36 UTC pass): the agent-surface negative-control
+test asserted `/.well-known/agent.json` 404s, resting on an unpinned
+assumption ("`dist/` is absent under vitest") that the test's own old
+comment stated but never enforced. The commit message is admirably
+precise about why this was worth a real fix rather than a shrug — CI
+was always green (the workflow tests before it builds), so this was
+never a production bug, but any contributor who built locally before
+testing got a failure unrelated to their own change. The probe now
+targets an `/api/`-prefixed path, which the SPA fallback's negative
+lookahead excludes by construction, so the control holds in both
+`dist/` states. **Verified this directly**: ran the file with `dist/`
+freshly built and present — 19/19, where two passes ago that exact
+condition was the one that broke. This closes the loop on this
+report's own diagnosis; no further tracking needed.
+
+**PR #131** root-causes a real, measured ~50% test flake in
+`game-view.test.jsx`'s keyboard-play test (introduced by PR #126's
+Enter-to-clear feature two passes ago) down to a genuine bug in the
+game loop, not a bad test: the fixed-timestep accumulator seeded its
+clock from `performance.now()` on mount but measured every later frame
+against the `requestAnimationFrame` timestamp — two clocks with a
+shared origin in a real browser, but not under jsdom, where the gap
+(1.4–1.7s measured) fed the accumulator a large negative delta that
+took real wall-clock frames to climb back out of before any game logic
+ran at all. Fixed by giving the clock a single first-frame origin and
+flooring the accumulator at zero. **Verified independently**: ran
+`npm test` four consecutive times in this pass (978/978 each run, one
+before pulling anything new plus three more back-to-back) — no flake
+observed, consistent with the fix's own claim of 6/6 clean runs.
+
+`npm run build`: clean, game chunk unchanged in shape. No Open Items
+table changes — neither PR fixes a previously tracked report item;
+both are self-contained test-infrastructure hardening for
+`control-tower-shift/`. Live site now nine commits behind `main`
+(still `431e2b0`) — same low-risk, opt-in-only gap noted last pass,
+not escalated further. No fixes needed or attempted this pass.
+
+## 2026-08-31 — Check-in pass (recurring, 08:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `efa3b55`). Live site also unchanged
+(`GET /api/health` identical to last pass). One thing did grow enough
+to act on: the live-deploy gap first noted two passes ago is now ~4
+days / 32 commits behind `main` (still serving `431e2b0`, from before
+PR #121). Checked what's actually missing rather than just the count —
+every non-docs file in that gap belongs to the two already-reviewed,
+opt-in features this report has tracked live pass over pass (Control
+Tower Shift behind its URL hash, the read-only A2A surface) or their
+own follow-up fixes; no pending fix to an existing user-facing issue is
+stuck behind this. Added as a new Info item above rather than a passing
+mention, matching this report's own precedent from the PR #96 lag
+(flagged once it became multi-pass and multi-day, not on the first
+sighting). Not urgent — nothing tracked here is blocked on it — but
+worth an owner deploy when convenient.
+
+No other findings. No fixes needed this pass.
+
+## 2026-08-31 — Check-in pass (recurring, 12:40 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `1936ce6`). Live site also unchanged, same version and
+health as last pass — the deploy-lag Info item added last pass still
+holds, not re-escalated further. No fixes needed this pass.
+
+## 2026-09-01 — Check-in pass (recurring, consolidated 16:36/20:36/00:36 UTC)
+
+Three scheduled firings queued while this session was idle (16:36,
+20:36, and 00:36 UTC); since repo/live-site state only reflects the
+present moment, not three separate historical snapshots, this is one
+consolidated pass covering current state rather than three repeated
+audits of the same unchanging thing.
+
+Eight new commits landed, across three PRs (#135, #136, #137) — all
+from a different author/session than the "codex/"-prefixed branches
+this report hasn't seen before, merged directly by the repo owner. This
+is the largest, highest-stakes merge this report has reconciled since
+the PR #54 pass: 73 files, ~3,750 insertions, covering account-data
+isolation, legal/alpha launch gating, and new security headers.
+Delegated the deep diff review to a background research agent (given
+the size) while independently running the test suite, build, and a
+live spot-check of the security-relevant claims myself.
+
+**PR #135 — real, previously-unfound bug: cross-account data leak on a
+shared device.** The offline-write outbox (`nt_outbox_v1`) and recents
+list (`nt_recents_v1`) were both single browser-global `localStorage`
+keys, and the old flush effect ran unconditionally on mount/online
+regardless of which account was signed in. Confirmed via code review
+(reading the actual before/after diff, not just the commit title):
+User A queues a food-log write offline, doesn't flush, logs out; User
+B logs in on the same device; on the next load/online event, A's still-
+queued entries get POSTed under B's session cookie, silently
+attributing A's food log to B — and B's Log tab briefly shows A's
+recent foods. Genuinely exploitable on any shared or reused device,
+not theoretical. The fix (`src/lib/privateStorage.js`, new) namespaces
+both keys per user id, cross-checks a carried `ownerUserId` before
+replay, gates every load/flush effect on an authenticated user, and
+purges old un-attributed legacy keys on boot rather than ever
+guessing/replaying them into whoever happens to be signed in. Added as
+a new High item in the table above (Merged) — this report never found
+it, so it's tracked the same way the earlier Oura-readiness catch was.
+The same PR bundles two unrelated changesets in one commit (an AFP
+daily-planning consolidation, and a Node 22 test-stabilization fix) —
+noted as a process observation, not a defect: made the isolation fix
+harder to audit in isolation than the PR title suggested, though the
+isolation-relevant code itself was small and well-scoped once
+separated out.
+
+**PR #137 — legal re-consent + invite-only alpha gate, both verified
+fail-closed.** `server/legal.js` requires 7 operator env vars before
+`signupEnabled`/re-consent go active, and additionally refuses to ever
+serve a legal document with a leftover template placeholder (503
+instead). Existing accounts are correctly *not* locked out when legal
+is unconfigured — the re-consent gate only activates once
+`legal.ready` is true, so failing closed on new signups doesn't also
+fail closed on sign-in. Reproduced directly (not just read): a signup
+attempt in this sandbox — which has no `LEGAL_*` vars set — returned
+503 with `"New accounts are temporarily unavailable..."`. The new
+`server/alphaAccess.js` invite gate stores only a SHA-256 digest of
+each code (never plaintext), compares with `crypto.timingSafeEqual`,
+and enforces single-use redemption atomically in both storage
+backends; confirmed opt-in (`ALPHA_INVITE_ONLY` unset/false by default
+in `.env.example`, matching this repo's established env-gated-feature
+convention).
+
+**Security headers, also verified live, not just read.** Booted the
+server locally and curled `/api/health`: `Content-Security-Policy`
+(`default-src 'self'`, no inline/eval scripts, `object-src 'none'`,
+`frame-ancestors 'none'`), `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy:
+strict-origin-when-cross-origin`, `Cross-Origin-Opener-Policy` /
+`Cross-Origin-Resource-Policy: same-origin`, and a scoped
+`Permissions-Policy` (camera self-only for barcode scan, mic/geo
+denied) — all present exactly as the PR claims, applied globally as
+the first middleware so API/SPA/legal responses are all covered.
+`Strict-Transport-Security` is correctly conditioned on production
+(not sent in this dev boot). `style-src` allows `'unsafe-inline'` —
+a real, deliberate, documented CSP loosening (the app uses inline
+`style=""` throughout), not an oversight.
+
+**Garmin webhook — this report's own standing High item, mitigated but
+not resolved.** `GARMIN_INTEGRATION_VERIFIED` is a new explicit
+operator opt-in the webhook now 503s without; confirmed live in this
+sandbox (`POST /api/garmin/webhook` → 503, var unset). This flips the
+*default* posture from "accepts unverified requests whenever Garmin is
+merely configured" to fail-closed-by-default — a real improvement —
+but does **not** add actual signature/HMAC verification for when an
+operator does opt in, so the underlying finding (still blocked on
+Garmin partner docs) stays open, description updated in the table
+above rather than marked Resolved.
+
+**PR #136** bumps Vitest 2.1.9 → 4.1.11 (skipping major version 3
+entirely) to clear a critical/high/moderate `npm audit` chain in the
+dev-dependency graph; `npm audit --omit=dev` was already 0 before and
+after. A large major-version jump for a routine advisory bump is worth
+a passing note (config/behavior differences between v3 and v4 weren't
+individually reviewed by either session), but the full suite passing
+unchanged afterward is reasonably strong evidence nothing broke.
+
+**Independently verified, not just trusted:** `npm test` — 61 files,
+1047/1047 passing (up from 978 two passes ago — Vitest bump plus ~70
+new tests across the three PRs). `npm run build` — clean. Live site:
+`GET /api/version` now matches current `main` HEAD (`58f1223`)
+exactly — the long-standing deploy-lag Info item from the last two
+passes is resolved. **New finding from checking the live site's own
+state, not just the repo:** `GET /api/legal/status` reports
+`signupEnabled: false` (none of the 7 `LEGAL_*` vars configured in
+production) and `inviteRequired: true` (`ALPHA_INVITE_ONLY` already
+set live) — the owner appears mid-rollout on the new alpha launch,
+with new signups currently blocked until the legal vars are set.
+Existing accounts are unaffected per the fail-closed design above.
+Added as a new Info item in the table, flagged for an owner action
+since real users are currently blocked from signing up on the live
+site.
+
+No fixes made directly by this pass — every actionable item found was
+already fixed or is an owner-only deploy/config action, not something
+in this session's direct-fix lane.
+
+## 2026-09-01 — Check-in pass (recurring, 08:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `f7e9515`). Live site also unchanged: same version,
+same `/api/health`, and the new-signups-blocked Info item from last
+pass still holds (`/api/legal/status` unchanged — legal env vars still
+not configured in production). No fixes needed this pass.
+
+## 2026-09-01 — Check-in pass (recurring, 12:45 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `bfba4aa`). Live site also unchanged: same version,
+same `/api/health`, and `/api/legal/status` still reports
+`signupEnabled: false` — new signups remain blocked pending the
+owner's legal-config deploy, same as the last two passes. No fixes
+needed this pass.
+
+## 2026-09-01 — Check-in pass (recurring, 16:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `dd93cfa`). Live site also unchanged: same version,
+same `/api/health`, and `/api/legal/status` still reports
+`signupEnabled: false` — fourth consecutive pass with new signups
+blocked on the same owner legal-config deploy. No fixes needed this
+pass.

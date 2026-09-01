@@ -9,7 +9,7 @@ import { fmt, num } from '../lib/nutrition.js'
 
 /* --- buttons ------------------------------------------------------------- */
 // Block CTA: uppercase, tracked, bold, sharp. The design's primary language.
-export function Button({ variant = 'primary', className = '', ...props }) {
+export function Button({ variant = 'primary', className = '', type = 'button', onClick, ...props }) {
   const base =
     'inline-flex items-center justify-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-[0.13em] transition disabled:opacity-40 disabled:pointer-events-none'
   const variants = {
@@ -17,14 +17,17 @@ export function Button({ variant = 'primary', className = '', ...props }) {
     outline: 'border-[1.5px] border-ink text-ink hover:bg-fill',
     subtle: 'border-[1.5px] border-line-strong text-muted hover:bg-fill',
     danger: 'border-[1.5px] border-alert/60 text-alert hover:bg-alert/5',
+    dangerSolid: 'border-[1.5px] border-alert bg-alert text-white hover:bg-alert/90',
   }
-  return <button className={`${base} ${variants[variant] || variants.primary} ${className}`} {...props} />
+  return <button type={type} onClick={onClick} className={`${base} ${variants[variant] || variants.primary} ${className}`} {...props} />
 }
 
 // Inline text action — cobalt, sentence case, optional trailing chevron.
-export function TextButton({ children, chevron = false, className = '', ...props }) {
+export function TextButton({ children, chevron = false, className = '', type = 'button', onClick, ...props }) {
   return (
     <button
+      type={type}
+      onClick={onClick}
       // min-h-11: every rendered TextButton measured 20-36px tall — under the
       // 44px touch floor. Call sites with tight rhythm compensate with
       // negative margins (the Toggle's hit-area pattern).
@@ -133,7 +136,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), in
 // their place in the page underneath. Every open Sheet in the app (Why's
 // disclosure, the add-food flow, FoodConfirm, the entry editor) inherits this
 // from here rather than each carrying its own copy.
-export function Sheet({ open, onClose, title, children, size = 'md', grabber = true }) {
+export function Sheet({ open, onClose, title, children, size = 'md', grabber = true, closeOnBackdrop = true }) {
   const panelRef = useRef(null)
   const closeBtnRef = useRef(null)
   const returnFocusRef = useRef(null)
@@ -174,7 +177,7 @@ export function Sheet({ open, onClose, title, children, size = 'md', grabber = t
   if (!open) return null
   const width = size === 'lg' ? 'sm:max-w-xl' : 'sm:max-w-md'
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/25 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/25 sm:items-center" onClick={closeOnBackdrop ? onClose : undefined}>
       <div
         ref={panelRef}
         role="dialog"
@@ -458,7 +461,7 @@ export function Spinner({ label }) {
 export function ErrorNote({ children }) {
   if (!children) return null
   return (
-    <div className="flex items-start gap-2 border border-alert/40 bg-alert/5 px-3 py-2 text-sm text-alert">
+    <div role="alert" className="flex items-start gap-2 border border-alert/40 bg-alert/5 px-3 py-2 text-sm text-alert">
       <span aria-hidden className="mt-0.5 flex h-3 w-3 shrink-0 items-center justify-center bg-alert text-[9px] font-bold leading-none text-white">!</span>
       <span>{children}</span>
     </div>
@@ -479,7 +482,7 @@ export function EmptyState({ title, children, className = '' }) {
 // Sheet. Used to be a native <details>/<summary>: real, keyboard-reachable,
 // but not a button (no role, Enter/Space activation only by accident of the
 // element, no aria-expanded) and its content was locked to plain strings
-// inline in the page flow. A real <button> plus the app's own Sheet gets
+// inline in the page flow. A real button plus the app's own Sheet gets
 // the semantics for free and gives call sites room to pass richer content —
 // `items` can be plain strings (Plan.jsx's "why did my target change") or
 // any React node (Today.jsx mixes in StatusMark/SourceLabel for signal

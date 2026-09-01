@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client.js'
-import { Button, Meter, Spinner, StatusMark, TextButton, Toggle } from './ui.jsx'
+import { Button, ErrorNote, Field, inputCls, Meter, Sheet, Spinner, StatusMark, TextButton, Toggle } from './ui.jsx'
 
 // Human "time since" for a last-sync timestamp.
 function since(ts) {
@@ -83,6 +83,163 @@ const APPLE_READS = ['workouts', 'activeEnergy', 'exercise', 'sleep', 'hrv', 're
 // reads the real name; only the heading below looks this id up first.
 const DISPLAY_NAME = {
   apple: 'Apple Health · Apple Watch',
+}
+
+export function AccountControls({ user, onLogout, onAccountDeleted }) {
+  const [exporting, setExporting] = useState(false)
+  const [exportNote, setExportNote] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const downloadExport = async () => {
+    setExporting(true)
+    setExportNote('')
+    try {
+      const data = await api.exportAccountData()
+      const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `omnifuel-export-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      setExportNote('Your export was downloaded. Credentials and the shared food cache are excluded.')
+    } catch (err) {
+      setExportNote(err.message || 'Could not download your data. Try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const closeDelete = () => {
+    if (deleting) return
+    setDeleteOpen(false)
+    setPassword('')
+    setConfirmation('')
+    setShowPassword(false)
+    setDeleteError('')
+  }
+
+  const deleteAccount = async (event) => {
+    event.preventDefault()
+    setDeleteError('')
+    if (!password) return setDeleteError('Enter your current password.')
+    if (confirmation !== user.email) {
+      return setDeleteError('Type your account email exactly to confirm deletion.')
+    }
+    setDeleting(true)
+    try {
+      await api.deleteAccount(password, confirmation)
+      setPassword('')
+      await onAccountDeleted?.()
+    } catch (err) {
+      setPassword('')
+      setShowPassword(false)
+      setDeleteError(err.message || 'Could not delete your account. Try again.')
+      setDeleting(false)
+    }
+  }
+
+  const confirmationReady = password.length > 0 && confirmation === user.email
+
+  return (
+    <section className="mt-7 border-t border-line pt-4" aria-labelledby="account-heading">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div id="account-heading" className="eyebrow">Account</div>
+          <div className="truncate text-sm text-ink">{user.email}</div>
+        </div>
+        <Button variant="subtle" onClick={onLogout} className="shrink-0">Log out</Button>
+      </div>
+
+      <div className="mt-5 border-t border-line pt-4">
+        <div className="eyebrow">Your data</div>
+        <p className="mt-1 max-w-md text-xs leading-relaxed text-muted">
+          Download your account, nutrition log, targets, profile, plans, and wearable history as JSON. Passwords and connection tokens are never included.
+        </p>
+        <Button
+          variant="outline"
+          onClick={downloadExport}
+          disabled={exporting}
+          aria-busy={exporting}
+          className="mt-3 w-full sm:w-auto"
+        >
+          {exporting ? 'Preparing export…' : 'Download my data'}
+        </Button>
+        {exportNote && <p className="mt-2 text-xs leading-relaxed text-muted" role="status">{exportNote}</p>}
+      </div>
+
+      <div className="mt-5 border-t border-alert/30 pt-4">
+        <div className="eyebrow text-alert">Danger zone</div>
+        <p className="mt-1 max-w-md text-xs leading-relaxed text-muted">
+          Permanently deletes this account, its nutrition history, plans, profiles, wearable connections, tokens, and synced health data. This cannot be undone.
+        </p>
+        <Button variant="danger" onClick={() => setDeleteOpen(true)} className="mt-3 w-full sm:w-auto">
+          Delete account
+        </Button>
+      </div>
+
+      <Sheet open={deleteOpen} onClose={closeDelete} title="Permanently delete account" grabber={false} closeOnBackdrop={false}>
+        <p className="text-sm leading-relaxed text-muted">
+          This permanently deletes <strong className="text-ink">{user.email}</strong> and all account-owned data from OmniFuel. It cannot be recovered. The shared product nutrition cache is not tied to your account and remains.
+        </p>
+        <form onSubmit={deleteAccount} className="mt-5 space-y-4" noValidate>
+          <div role="alert"><ErrorNote>{deleteError}</ErrorNote></div>
+          <Field label="Current password" hint="Required to verify that this is your account.">
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(event) => { setPassword(event.target.value); setDeleteError('') }}
+                className={`${inputCls} pr-16`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((shown) => !shown)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 min-w-14 px-2 text-xs font-semibold text-cobalt hover:text-cobalt-ink"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </Field>
+          <Field label={`Type ${user.email} to confirm`}>
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              required
+              value={confirmation}
+              onChange={(event) => { setConfirmation(event.target.value); setDeleteError('') }}
+              className={inputCls}
+            />
+          </Field>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="subtle" onClick={closeDelete} disabled={deleting}>Keep my account</Button>
+            <Button
+              variant="dangerSolid"
+              type="submit"
+              disabled={deleting || !confirmationReady}
+              aria-busy={deleting}
+            >
+              {deleting ? 'Deleting account…' : 'Delete account forever'}
+            </Button>
+          </div>
+        </form>
+      </Sheet>
+    </section>
+  )
 }
 
 function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
@@ -460,7 +617,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   )
 }
 
-export default function Connections({ refreshKey, onChanged, user, onLogout }) {
+export default function Connections({ refreshKey, onChanged, user, onLogout, onAccountDeleted }) {
   const [conn, setConn] = useState(null)
   const [ouraAccts, setOuraAccts] = useState([])
   const [garminAccts, setGarminAccts] = useState([])
@@ -629,16 +786,8 @@ export default function Connections({ refreshKey, onChanged, user, onLogout }) {
         </div>
       </footer>
 
-      {/* Account — the session, not a wearable; kept last and visually separate. */}
-      {user && (
-        <section className="mt-6 flex items-center justify-between gap-3 border-t border-line pt-3">
-          <div className="min-w-0">
-            <div className="eyebrow">Signed in</div>
-            <div className="truncate text-sm text-ink">{user.email}</div>
-          </div>
-          <Button variant="subtle" onClick={onLogout} className="shrink-0">Log out</Button>
-        </section>
-      )}
+      {/* Account lifecycle stays separate from provider-specific controls. */}
+      {user && <AccountControls user={user} onLogout={onLogout} onAccountDeleted={onAccountDeleted} />}
     </div>
   )
 }

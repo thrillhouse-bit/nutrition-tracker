@@ -24,6 +24,15 @@ export function garminConfigured() {
   return Boolean(process.env.GARMIN_CLIENT_ID && process.env.GARMIN_CLIENT_SECRET && process.env.GARMIN_REDIRECT_URI)
 }
 
+// Credentials alone do not make this integration safe to expose. The push
+// authentication/verification contract and several wire details live behind
+// Garmin's approved-partner documentation and have never been validated by
+// this project. Keep every externally reachable Garmin path fail-closed until
+// an operator with that documentation explicitly records that verification.
+export function garminReleaseReady() {
+  return garminConfigured() && process.env.GARMIN_INTEGRATION_VERIFIED === 'true'
+}
+
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
 // PKCE: a high-entropy verifier and its S256 challenge. The verifier is secret

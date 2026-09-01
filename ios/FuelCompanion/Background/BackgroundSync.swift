@@ -6,18 +6,23 @@
 // Two identifiers are declared for the two UIBackgroundModes we request:
 //   • refreshTaskId    — BGAppRefreshTask   (opportunistic, short)
 //   • processingTaskId — BGProcessingTask   (longer, e.g. after a big import)
-// Both MUST appear verbatim in Info.plist's BGSchedulerPermittedIdentifiers, or
-// registration traps at launch. See the TODO on the reverse-DNS prefix.
+// Both MUST appear in Info.plist's BGSchedulerPermittedIdentifiers. The plist
+// and this code derive them from PRODUCT_BUNDLE_IDENTIFIER so they cannot drift.
 
 import Foundation
 import BackgroundTasks
 
 enum BackgroundSync {
 
-    // TODO: replace "com.example.FuelCompanion" with your real bundle id prefix,
-    // and keep these two strings byte-identical to the Info.plist entries.
-    static let refreshTaskId = "com.example.FuelCompanion.refresh"
-    static let processingTaskId = "com.example.FuelCompanion.sync"
+    private static var appIdentifier: String {
+        guard let value = Bundle.main.bundleIdentifier, !value.isEmpty else {
+            preconditionFailure("FuelCompanion requires PRODUCT_BUNDLE_IDENTIFIER")
+        }
+        return value
+    }
+
+    static var refreshTaskId: String { "\(appIdentifier).refresh" }
+    static var processingTaskId: String { "\(appIdentifier).sync" }
 
     /// The work one background run performs. Set once by the app at launch so the
     /// registered handlers have something to call. Kept as a stored closure

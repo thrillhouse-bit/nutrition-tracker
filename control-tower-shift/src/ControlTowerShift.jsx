@@ -19,7 +19,7 @@ import {
   CAMPAIGN_LENGTH, levelForIndex, objectiveProgress,
   createSpawner,
 } from './game/index.js'
-import { stepFrame } from './loop.js'
+import { stepFrame, createFrameClock, LOGIC_HZ } from './loop.js'
 import { draw, levelPalette, observeFx, castFx, spawnBurst, VIEW_W, VIEW_H, ISO_Y } from './renderer.js'
 
 const TICK_RATE = 30 // 30 Hz game logic
@@ -402,17 +402,15 @@ export default function ControlTowerShift() {
     const raf = window.requestAnimationFrame || ((cb) => setTimeout(() => cb(performance.now()), 16))
     const caf = window.cancelAnimationFrame || clearTimeout
     let handle
-    let last = performance.now()
-    let acc = 0
-    const stepMs = 1000 / TICK_RATE
+    // Read only the timestamp supplied by this rAF source. Mixing it with
+    // performance.now() gives jsdom (and some embedded browsers) different
+    // time origins and can leave a freshly mounted encounter apparently frozen.
+    const stepsFor = createFrameClock(1000 / LOGIC_HZ)
 
     const frame = (now) => {
-      acc = Math.min(acc + (now - last), 250)
-      last = now
-      const steps = Math.floor(acc / stepMs)
       const fx = fxRef.current
+      const steps = stepsFor(now)
       if (steps > 0) {
-        acc -= steps * stepMs
         const before = gameRef.current
         for (let i = 0; i < steps; i++) {
           // Level cards are a readable pre-encounter beat, not a blind damage
@@ -781,7 +779,7 @@ export default function ControlTowerShift() {
               onPointerDown={running ? onPointerDown : undefined}
               onPointerUp={running ? onPointerUp : undefined}
               onPointerCancel={running ? onPointerUp : undefined}
-              aria-label="Arena. Move with WASD or arrows. Pointer or tap to fire the bow. J K L or 1 2 3 cast powers. P pauses."
+              aria-label="Arena. Move with WASD or arrows. Pointer or tap to fire the bow. Enter performs a point-blank melee. J K L or 1 2 3 cast powers. P pauses."
             />
 
             {/* Power cards — overlaid on the arena's lower edge, mockup-style. */}

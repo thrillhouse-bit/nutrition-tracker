@@ -25,6 +25,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY server ./server
+COPY legal ./legal
 COPY schema.sql ./schema.sql
 EXPOSE 3001
 # DATABASE_URL, ANTHROPIC_API_KEY, FDC_API_KEY are provided at runtime (env).

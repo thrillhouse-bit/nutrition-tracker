@@ -1,21 +1,8 @@
 // @vitest-environment jsdom
 //
-// Regression test for the Adaptive Fuel Plan "Set up my profile" form
-// duplicating data entry: AfpProfileForm's fields (height/weight/age/sex/
-// activity level/units) largely mirror Plan's own onboarding profile
-// (src/components/Onboarding.jsx / SmartPlanForm, api.getProfile()), but
-// AdaptiveFuelPlan.jsx only ever fetched its own separate api.getAfpProfile()
-// — a user who already calculated or typed a baseline saw a completely
-// BLANK "Set up my profile" form and had to re-type the exact same body
-// metrics a second time, which read as the feature not working rather than
-// just not-yet-configured for THIS specific plan.
-//
-// Fixed by fetching the general onboarding profile alongside the AFP one and
-// falling back field-by-field when the AFP-specific field hasn't been set.
-// Proves both directions (house rule: prove the control, not only the
-// mutation) — the form prefills from onboarding data when the AFP profile is
-// still empty, AND an AFP-specific value the user already saved is never
-// clobbered by different onboarding data.
+// The compatibility migration now happens on the server. The panel consumes
+// only the canonical AFP profile, so there is no second client-side profile
+// merge that can drift from onboarding or overwrite explicit AFP values.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import React from 'react'
 import { act } from 'react'
@@ -79,10 +66,9 @@ function ageInput(el) {
   return field.querySelector('input')
 }
 
-describe('AdaptiveFuelPlan: "Set up my profile" prefills from the onboarding profile', () => {
-  it('fills height/weight/age from api.getProfile() when the AFP-specific profile has none yet', async () => {
-    api.getAfpProfile.mockResolvedValue({ profile: { units_pref: 'imperial', weight_kg: null, height_cm: null, age_years: null, sex: null, activity_level: null } })
-    api.getProfile.mockResolvedValue({ profile: { units_pref: 'imperial', height_cm: 177.8, weight_kg: 79.4, age_years: 32, sex: 'male', activity_level: 'moderate' } })
+describe('AdaptiveFuelPlan: canonical profile ownership', () => {
+  it('prefills from the server-returned canonical profile and never fetches the legacy profile', async () => {
+    api.getAfpProfile.mockResolvedValue({ profile: { units_pref: 'imperial', height_cm: 177.8, weight_kg: 79.4, age_years: 32, sex: 'male', activity_level: 'moderate' } })
     const el = await renderAfp()
     await openSetupForm(el)
 
@@ -91,11 +77,25 @@ describe('AdaptiveFuelPlan: "Set up my profile" prefills from the onboarding pro
     expect(inch.value).toBe('10')
     expect(weightLbInput(el).value).toBe('175')
     expect(ageInput(el).value).toBe('32')
+    expect(api.getProfile).not.toHaveBeenCalled()
   })
 
-  it('CONTROL: keeps the AFP-specific values when they already exist, even though onboarding has different numbers', async () => {
-    api.getAfpProfile.mockResolvedValue({ profile: { units_pref: 'imperial', height_cm: 165.1, weight_kg: 60, age_years: 40, sex: 'female', activity_level: 'active' } })
+  it('CONTROL: leaves missing canonical values blank instead of secretly merging a second profile in the browser', async () => {
+    api.getAfpProfile.mockResolvedValue({ profile: { units_pref: 'imperial', weight_kg: null, height_cm: null, age_years: null, sex: null, activity_level: null } })
     api.getProfile.mockResolvedValue({ profile: { units_pref: 'imperial', height_cm: 177.8, weight_kg: 79.4, age_years: 32, sex: 'male', activity_level: 'moderate' } })
+    const el = await renderAfp()
+    await openSetupForm(el)
+
+    const { ft, inch } = heightInputs(el)
+    expect(ft.value).toBe('')
+    expect(inch.value).toBe('')
+    expect(weightLbInput(el).value).toBe('')
+    expect(ageInput(el).value).toBe('')
+    expect(api.getProfile).not.toHaveBeenCalled()
+  })
+
+  it('keeps explicit canonical values intact', async () => {
+    api.getAfpProfile.mockResolvedValue({ profile: { units_pref: 'imperial', height_cm: 165.1, weight_kg: 60, age_years: 40, sex: 'female', activity_level: 'active' } })
     const el = await renderAfp()
     await openSetupForm(el)
 

@@ -35,8 +35,8 @@ Five tabs:
 |---|---|
 | **Today** | Home. A context strip (recovery/training with source + freshness), a focal **next-action recommendation** with a **"Why this?"** disclosure, compact progress vs. targets, and the chronological log. |
 | **Log** | The four ways to add food — scan barcode, scan label, search, manual — plus one-tap re-log of recents, grouped by meal. |
-| **Plan** | Baseline vs. adjusted daily targets with a plain-language rationale for **every** adjustment. The baseline is editable and is **never** changed silently by the engine. |
-| **Insights** | Nutrition trends over 7 / 14 / 30 days with an explicit insufficient-data state. Recovery/training correlations are shown cautiously — never causal, never medical. |
+| **Plan** | The canonical Daily Fuel Plan: one profile, planned sessions, daily energy/macros, progress, safety guardrails, and a plain-language rationale for every adjustment. Today uses these exact targets. |
+| **Insights** | Nutrition trends over 7 / 14 / 30 days against the current canonical AFP target, with an explicit insufficient-data state. Recovery/training correlations are shown cautiously — never causal, never medical. |
 | **Connections** | Provider rows (Oura, Garmin, Apple Health) with live status (connected / actively syncing / stale / demo / not-configured / disconnected / error), last-sync, categories, connect / reconnect / disconnect, per-provider **enable** + **demo** toggles, and toggles for what may influence the plan (readiness / sleep / workouts). Includes a privacy note. Oura additionally persists last-attempted-sync, the most recent backfill's fetched/accepted/deduplicated record counts, and a classified token-refresh/backfill failure reason — see `docs/oura-sync-runbook.md`. |
 
 ## Stack
@@ -45,7 +45,7 @@ Five tabs:
 |---|---|
 | Frontend | React + Vite, Tailwind CSS v4, installable PWA (`vite-plugin-pwa`) |
 | Backend | Express proxy (`server/`) — keeps all API keys server-side |
-| Database | Neon Postgres when `DATABASE_URL` is set; local JSON file otherwise |
+| Database | Neon Postgres in production; local JSON only for development or an explicitly disposable preview |
 | Barcodes | `@zxing/browser` (camera, retail 1D formats) |
 | Label OCR | Claude vision (`@anthropic-ai/sdk`), structured JSON output |
 | Nutrition data | Open Food Facts (primary) → USDA FoodData Central (fallback), cached |
@@ -68,7 +68,8 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
 
 ### Enabling the optional pieces
 
-- **Cross-device sync (Neon):** set `DATABASE_URL` in `.env`, then `npm run db:init`
+- **Durable storage (Neon):** production requires `DATABASE_URL`; set it in
+  `.env`, then run `npm run db:init`
   to create the tables (or paste `schema.sql` into the Neon SQL editor).
 - **Label OCR:** set `ANTHROPIC_API_KEY`. Optionally set `ANTHROPIC_MODEL`
   (defaults to `claude-opus-5`; `claude-haiku-4-5` is much cheaper per scan).
@@ -80,7 +81,10 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
   works as a single-account fallback. See [Wearables](#wearables-oura).
 - **Wearable signals (Garmin):** a push-based alternative source for the same
   signals — set `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and
-  `GARMIN_REDIRECT_URI`, then **Connect Garmin**. Today prefers Oura and falls
+  `GARMIN_REDIRECT_URI`, verify the private partner wire and webhook-security
+  contract, and only then set `GARMIN_INTEGRATION_VERIFIED=true`. The integration
+  fails closed without that acknowledgement. Then choose **Connect Garmin**.
+  Today prefers Oura and falls
   back to Garmin (`GET /api/energy/summary`). Garmin's Health API is gated by a
   partner program that was **on hold as of 2026**, so you may not be able to
   obtain credentials yet — see [Wearables](#wearables-oura).
@@ -216,7 +220,11 @@ One-time setup:
    For local dev that's `http://localhost:5173/api/garmin/callback`; in
    production it's `https://<your-domain>/api/garmin/callback`.
 3. Put `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, and `GARMIN_REDIRECT_URI`
-   in `.env`.
+   in `.env`. Check the approved-partner documentation against every `VERIFY`
+   marker, including the provider's current webhook authentication/origin
+   verification requirements. Implement those controls if required, then set
+   `GARMIN_INTEGRATION_VERIFIED=true`. The flag records that review; it is not
+   itself request authentication.
 4. In the app, open **Connections** → the **Garmin** card → **Connect
    Garmin**, authorize on Garmin, and you're returned to the app.
 
@@ -245,7 +253,10 @@ hold Garmin Health API access.
 endpoint URLs, the OAuth scope name, and the summary payload field names live
 behind Garmin's partner portal and could not be confirmed from public docs.
 They are marked **`VERIFY`** in `server/integrations/garmin.js` and must be
-checked against the partner documentation once access is granted.
+checked against the partner documentation once access is granted. OAuth,
+provider status, and webhook ingestion stay disabled unless
+`GARMIN_INTEGRATION_VERIFIED=true`; do not set it until webhook request
+verification has also been resolved.
 
 ### Apple Health & Apple Watch — native companion
 
@@ -299,9 +310,19 @@ Health API hold above.
   calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg,
   source (`openfoodfacts` | `usda` | `manual` | `ocr`), raw_api_response (jsonb).
   Every successful lookup is cached here, so repeat scans never hit the network.
+- **`users`** — account credentials plus the accepted legal-document version
+  and acceptance timestamp; password hashes and acceptance records never leave
+  the server.
 - **`log_entries`** — id, food_id, logged_at, servings_consumed, meal (optional).
-- **`daily_targets`** — versioned; the latest `effective_from` row drives the
-  Today rings and the Plan tab's editable **baseline**.
+- **`afp_profile`** — the canonical body/activity/goal profile used to build
+  daily targets. Existing calculator profiles are copied into missing fields
+  once and never overwrite explicit AFP edits.
+- **`planned_workouts`** — per-account training sessions used both for daily
+  energy/carbohydrate periodization and Today's workout context.
+- **`afp_daily_plans`** — versioned, reproducible daily plan snapshots with
+  computed targets, overrides, warnings, and the exact input snapshot.
+- **`daily_targets`** — deprecated compatibility data for older clients; it no
+  longer drives the visible Today or Plan experience.
 - **`integrations`** — one row per provider (`oura` | `garmin` | `apple`):
   `enabled` / `demo` flags, `connected_at` / `last_synced_at` timestamps, and a
   `settings` blob (incl. which categories may influence the plan). Backs the
@@ -321,6 +342,8 @@ Full DDL in [`schema.sql`](./schema.sql).
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | backend + which integrations are configured |
+| GET | `/account/export` | download the signed-in account's data as JSON; credentials, provider tokens, and the shared food cache are excluded |
+| POST | `/account/delete` | password + exact-email verified permanent account deletion; clears the session and cascades all account-owned data |
 | GET | `/lookup/:barcode` | cache → Open Food Facts → USDA; caches the hit |
 | GET | `/search?q=` | text search (USDA + OFF) for no-barcode foods. Returns `{results, degraded, partial, canonicalCoverage, usdaConfigured, query, providers}` — three separate honesty facts, not one: `degraded` = everything tried failed, `partial` = some of it did and this answer is incomplete, `canonicalCoverage` = whether any source of canonical whole foods answered. See `docs/food-search.md`. |
 | POST | `/ocr` | `{imageBase64, mediaType}` → parsed food (Claude vision) |
@@ -328,11 +351,14 @@ Full DDL in [`schema.sql`](./schema.sql).
 | GET | `/entries?from=&to=` | log entries in a time range |
 | POST | `/entries` | log a food (`food_id` or inline `food`) |
 | PATCH/DELETE | `/entries/:id` | edit / remove an entry |
-| GET / PUT | `/targets` | read / set daily targets (the Plan baseline) |
-| GET | `/today?date=` | composite for the Today screen: intake, baseline + adjusted targets, rationale, composed signals, and the next-action recommendation |
-| GET | `/plan/today?date=` | baseline vs. adjusted targets + rationale + the signals used |
+| GET / PUT | `/afp/profile` | read / set the canonical planning profile; GET performs safe legacy migration |
+| GET / PUT / DELETE | `/afp/workouts` | list, save, and remove canonical planned sessions |
+| GET | `/afp/plan?date=` | canonical daily targets, progress, explanation, safety state, and freeze state |
+| GET | `/today?date=&from=&to=` | Today composite built from the same AFP baseline/targets, canonical planned or completed workout, intake, and next action |
+| GET | `/plan/today?date=` | deprecated compatibility adapter over the canonical AFP plan |
+| GET / PUT | `/targets` | deprecated static-target compatibility surface |
 | GET | `/signals` | composed wearable signals (one per metric) with provenance + freshness |
-| GET | `/insights?window=7\|14\|30` | nutrition trends over the window + insufficient-data flag + a cautious (non-causal) correlations note |
+| GET | `/insights?window=7\|14\|30` | nutrition trends against today's canonical AFP target + insufficient-data flag + a cautious (non-causal) correlations note |
 | GET | `/oura/connect` | start OAuth — redirects to Oura's consent screen |
 | GET | `/oura/callback` | OAuth callback — stores the account, returns to the app |
 | GET | `/oura/accounts` | list connected accounts (no tokens) + config state |
@@ -340,7 +366,7 @@ Full DDL in [`schema.sql`](./schema.sql).
 | GET | `/oura/summary?date=` | Oura activity/expenditure for a day (if configured) |
 | GET | `/garmin/connect` | start Garmin OAuth 2.0 (PKCE) — redirects to Garmin's consent screen |
 | GET | `/garmin/callback` | OAuth callback — stores the account, returns to the app |
-| POST | `/garmin/webhook` | Garmin pushes daily summaries here; the server stores them |
+| POST | `/garmin/webhook` | Garmin pushes daily summaries here; disabled until the partner contract is explicitly verified |
 | GET | `/garmin/accounts` | list connected Garmin accounts (no tokens) + config state |
 | DELETE | `/garmin/accounts/:id` | disconnect a Garmin account |
 | GET | `/garmin/summary?date=` | a stored Garmin day (served from the store, not fetched) |
@@ -399,9 +425,10 @@ Honest refusals, in the same spirit as the rest of the app:
 - [x] Manual food entry (name + macros) → log
 - [x] Today view: context strip, running totals vs. targets, editable/deletable log
 - [x] History view: past days + 7-day average
-- [x] Editable daily targets (versioned)
-- [x] Explainable **adjusted targets** — baseline vs. adjusted with a
-  plain-language rationale for every adjustment (baseline never changed silently)
+- [x] One canonical Daily Fuel Plan shared by onboarding, Today, Plan, and the
+  watch summary compatibility route
+- [x] Explainable targets with planned/completed training reconciliation,
+  versioned snapshots, explicit overrides, and safety guardrails
 - [x] Focal **next-action recommendation** with a "Why this?" disclosure
 - [x] Provider abstraction with per-signal **provenance + freshness**
   (Oura, Garmin, Apple Health behind one adapter shape)
@@ -439,7 +466,33 @@ served from a secure origin — so deploy it and put it behind TLS.
 
 In production the Express server serves the built PWA **and** the API from one
 origin, so the frontend's relative `/api` calls just work — no separate frontend
-host, no CORS.
+host, no CORS. `DATABASE_URL` and `SESSION_SECRET` are mandatory: startup fails
+closed rather than accepting accounts into disposable storage or rotating every
+session at redeploy. `ALLOW_EPHEMERAL_STORAGE=true` exists only for an explicitly
+disposable production preview and must not be used for real data.
+
+Public credential endpoints have a bounded in-process abuse limiter. Defaults:
+8 attempts per client+email and 30 per client address over 15 minutes for
+login, and 5 signup attempts per client address per hour. Override with
+`AUTH_LOGIN_CREDENTIAL_MAX`, `AUTH_LOGIN_IP_MAX`, `AUTH_LOGIN_WINDOW_MS`,
+`AUTH_SIGNUP_IP_MAX`, and `AUTH_SIGNUP_WINDOW_MS`. This limiter is per process;
+before running multiple API replicas, replace or supplement it with a shared
+edge/Redis limiter so limits cannot be bypassed by replica rotation.
+
+For a private first-ten-person alpha, set `ALPHA_INVITE_ONLY=true` and provide
+exactly ten distinct high-entropy codes in comma-separated
+`ALPHA_INVITE_CODES` (24–128 letters, numbers, `_`, or `-`). Misconfiguration
+fails closed. Public status exposes only whether an invite is required;
+plaintext codes are never logged or persisted. Postgres atomically enforces
+single redemption and retains the digest ledger after account deletion. Apply
+`schema.sql` before enabling this additional gate; it never bypasses the legal
+launch gate.
+
+After deployment and secret configuration, run the read-only alpha gate:
+
+```bash
+EXPECTED_SHA="$(git rev-parse HEAD)" scripts/verify_alpha.sh https://omnifuelapp.tech
+```
 
 ```bash
 npm run build && npm start      # serves dist/ + /api on PORT (default 3001)
@@ -457,7 +510,8 @@ docker run -p 3001:3001 \
 ```
 
 Put a reverse proxy (Caddy/nginx) in front for TLS. With `DATABASE_URL` set,
-run `npm run db:init` once against Neon first. Each route is written to stay
+run `npm run db:init` before each schema-bearing release. It is idempotent and
+upgrades an existing deployment as well as initializing a new one. Each route is written to stay
 portable to serverless functions (e.g. Vercel `/api/*`) if you'd rather split
 them later.
 

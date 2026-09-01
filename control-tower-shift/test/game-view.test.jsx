@@ -4,7 +4,7 @@
 // the repo's jsdom + raw react-dom idiom. The canvas draws nothing under jsdom
 // (getContext is null) — by design the HUD carries every state assertion.
 // House rule: each gate gets a firing AND a non-firing test.
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -15,8 +15,76 @@ const { default: ControlTowerShift, backingSize, prefersReducedMotion } =
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
+// The tests own the clock.
+//
+// The game loop runs on requestAnimationFrame. Left on the real one, it
+// advances at whatever rate the machine happens to deliver frames, which made
+// this file's timing a function of CPU load rather than of the game: the
+// keyboard test below waited on wall-clock spawns and spent 3.0-4.8s of its
+// 5s budget under a full `npm test` (measured 30 Aug 2026 over six runs), and
+// it timed out outright on a loaded machine. That failure was never contained
+// either — a timeout abandons an in-flight act(), after which every later
+// render in the FILE produces nothing, so one slow spawn failed five sibling
+// tests with it.
+//
+// So rAF is replaced by a pump that delivers frames only when asked, with the
+// timestamps we choose. The component, its loop, its spawner and its handlers
+// are all the real ones; the only thing the test takes over is WHEN a frame
+// happens. Twenty logic ticks now cost 0ms of wall clock instead of 667ms,
+// and nothing in here can be starved by a busy machine.
+const FRAME_MS = 16 // ~60Hz, what a browser hands the loop
+let pump
+let restoreRaf
+
+const installFramePump = () => {
+  const realRaf = window.requestAnimationFrame
+  const realCaf = window.cancelAnimationFrame
+  let pending = new Map()
+  let handle = 0
+  let now = 0
+  window.requestAnimationFrame = (cb) => {
+    pending.set(++handle, cb)
+    return handle
+  }
+  window.cancelAnimationFrame = (h) => pending.delete(h)
+  restoreRaf = () => {
+    window.requestAnimationFrame = realRaf
+    window.cancelAnimationFrame = realCaf
+  }
+  // Deliver `frames` frames. Callbacks registered DURING a frame run on the
+  // next one, exactly as a browser schedules a self-rescheduling loop.
+  return (frames = 1) => {
+    for (let i = 0; i < frames; i++) {
+      const due = [...pending.values()]
+      pending.clear()
+      now += FRAME_MS
+      for (const cb of due) cb(now)
+    }
+  }
+}
+
 let container
 let root
+
+// Node 22 exposes an experimental global `localStorage` getter that resolves
+// to undefined unless the process is launched with --localstorage-file. Vitest
+// copies that value into jsdom, shadowing jsdom's own Storage implementation.
+// Give this browser test an explicit, per-test store so game persistence is
+// deterministic in local runs and the same Node 22 environment used by CI.
+const installMemoryStorage = () => {
+  const values = new Map()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      get length() { return values.size },
+      clear: () => values.clear(),
+      getItem: (key) => values.has(String(key)) ? values.get(String(key)) : null,
+      key: (index) => [...values.keys()][index] ?? null,
+      removeItem: (key) => values.delete(String(key)),
+      setItem: (key, value) => values.set(String(key), String(value)),
+    },
+  })
+}
 
 const mount = async (el) => {
   container = document.createElement('div')
@@ -25,10 +93,16 @@ const mount = async (el) => {
   await act(async () => root.render(el))
 }
 
+beforeEach(() => {
+  installMemoryStorage()
+  pump = installFramePump()
+})
+
 afterEach(async () => {
   if (root) await act(async () => root.unmount())
   if (container) document.body.removeChild(container)
   container = root = null
+  restoreRaf() // after unmount, so the loop's cancelAnimationFrame is still ours
   window.location.hash = ''
   if (window.localStorage) window.localStorage.clear()
   vi.restoreAllMocks()
@@ -171,6 +245,7 @@ describe('accessibility and input', () => {
     const canvas = container.querySelector('canvas')
     expect(canvas.getAttribute('tabindex')).toBe('0')
     const label = canvas.getAttribute('aria-label')
+    expect(label).toMatch(/Enter/i)
     expect(label).toMatch(/P pauses/i)
   })
 

@@ -8,7 +8,7 @@ import { composeSignals, providerStatus } from '../server/providers.js'
 // really-connected Garmin whose watch hadn't synced yet fed the plan a seeded
 // "Evening Run" while the Connections tab said stale, demo: false.
 
-const GARMIN_ENV = ['GARMIN_CLIENT_ID', 'GARMIN_CLIENT_SECRET', 'GARMIN_REDIRECT_URI']
+const GARMIN_ENV = ['GARMIN_CLIENT_ID', 'GARMIN_CLIENT_SECRET', 'GARMIN_REDIRECT_URI', 'GARMIN_INTEGRATION_VERIFIED']
 const saved = {}
 
 beforeAll(() => {
@@ -23,7 +23,7 @@ afterAll(() => {
 
 const setGarminEnv = (on) => {
   for (const k of GARMIN_ENV) {
-    if (on) process.env[k] = 'x'
+    if (on) process.env[k] = k === 'GARMIN_INTEGRATION_VERIFIED' ? 'true' : 'x'
     else delete process.env[k]
   }
 }

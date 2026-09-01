@@ -40,7 +40,7 @@ import {
   expiryFrom as ouraExpiryFrom,
 } from './integrations/oura.js'
 import {
-  garminConfigured,
+  garminReleaseReady,
   pkcePair as garminPkcePair,
   authorizeUrl as garminAuthorizeUrl,
   exchangeCode as garminExchangeCode,
@@ -48,17 +48,42 @@ import {
   expiryFrom as garminExpiryFrom,
   fetchGarminUserId,
 } from './integrations/garmin.js'
-import { computeAdjustedTargets, computeRecommendation } from './plan.js'
+import { computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
 import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
-import { getOrComputeAfpPlan, addDaysToYmd } from './afp/plan.js'
+import { getOrComputeAfpPlan, addDaysToYmd, withCanonicalPlannedWorkout } from './afp/plan.js'
+import { ensureCanonicalAfpProfile, isAfpProfileReady } from './afp/migration.js'
 import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 import { registerAgentRoutes } from './agent.js'
+import { legalStatus, renderLegalDocument, renderLegalUnavailablePage } from './legal.js'
+import { alphaAccessStatus, configuredInviteDigest, inviteUnavailableError } from './alphaAccess.js'
+import {
+  clientRateLimitKey,
+  loginCredentialLimiter,
+  loginIpLimiter,
+  sendRateLimit,
+  signupIpLimiter,
+} from './authRateLimit.js'
+import { securityHeaders } from './securityHeaders.js'
 
 const app = express()
+app.disable('x-powered-by')
+app.use(securityHeaders())
+// Render terminates TLS and forwards one trusted client-address hop. Express
+// must understand that hop or every production login shares the proxy's IP
+// bucket. Local development keeps the direct socket address.
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1)
+// Authenticated health/nutrition responses must not be cached by a browser,
+// service worker, CDN, or shared proxy. Vary documents the cookie dependency
+// for any intermediary that ignores no-store.
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, private')
+  res.vary('Cookie')
+  next()
+})
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
 // A malformed JSON body (or one over the 15mb limit above) throws INSIDE
@@ -108,8 +133,8 @@ app.use((req, res, next) => {
     .catch(next)
 })
 
-const asyncH = (fn) => (req, res) =>
-  Promise.resolve(fn(req, res)).catch((err) => {
+const asyncH = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch((err) => {
     const status = err.status || 500
     // 4xx messages are ours (validation, "not found", etc.) and safe to
     // return as-is. A 500 means something unanticipated — often a raw
@@ -131,7 +156,7 @@ app.get('/api/health', asyncH(async (req, res) => {
     ocr: ocrConfigured() ? 'configured' : 'not-configured',
     usda: usdaConfigured() ? 'configured' : 'not-configured',
     oura: ouraConfigured() ? 'legacy-token' : ouraOAuthConfigured() ? 'oauth' : 'not-configured',
-    garmin: garminConfigured() ? 'oauth' : 'not-configured',
+    garmin: garminReleaseReady() ? 'oauth' : 'not-configured',
     time: new Date().toISOString(),
   })
 }))
@@ -145,17 +170,86 @@ app.get('/api/version', (req, res) => {
   res.json({ sha: process.env.GIT_SHA || 'unknown' })
 })
 
+// Public legal capability and documents. Missing operator/jurisdiction/review
+// configuration fails closed: never publish templates with placeholders and
+// never silently route these URLs into the authenticated SPA shell.
+app.get('/api/legal/status', (req, res) => {
+  const status = legalStatus()
+  const alpha = alphaAccessStatus()
+  res.json({
+    ready: status.ready,
+    signupEnabled: status.signupEnabled && alpha.signupEnabled,
+    inviteRequired: alpha.inviteRequired,
+    version: status.version,
+    privacyUrl: status.privacyUrl,
+    termsUrl: status.termsUrl,
+    missing: status.missing,
+  })
+})
+
+for (const kind of ['privacy', 'terms']) {
+  app.get(`/${kind}`, (req, res) => {
+    const html = renderLegalDocument(kind)
+    // Keep the launch gate immediately revocable; a CDN must not keep serving
+    // a previously approved document after configuration/review is withdrawn.
+    res.set('Cache-Control', 'no-store')
+    res.status(html ? 200 : 503).type('html').send(html || renderLegalUnavailablePage())
+  })
+}
+
 // --- auth (public) ----------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function currentLegalAcceptanceRequired(user, legal = legalStatus()) {
+  return Boolean(
+    user && legal.ready && (!user.legal_accepted_at || user.legal_version !== legal.version),
+  )
+}
+
+function publicUser(user, legal = legalStatus()) {
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    legalAcceptanceRequired: currentLegalAcceptanceRequired(user, legal),
+  }
+}
+
 app.post('/api/auth/signup', asyncH(async (req, res) => {
+  const legal = legalStatus()
+  if (!legal.signupEnabled) {
+    return res.status(503).json({ error: 'New accounts are temporarily unavailable while the Privacy Policy and Terms of Service are finalized.' })
+  }
+  const alpha = alphaAccessStatus()
+  if (!alpha.signupEnabled) {
+    return res.status(503).json({ error: 'New accounts are temporarily unavailable.' })
+  }
+  if (req.body?.acceptLegal !== true) {
+    return res.status(400).json({ error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy.' })
+  }
+  const signupLimit = signupIpLimiter.consume(clientRateLimitKey(req))
+  if (!signupLimit.allowed) return sendRateLimit(res, [signupLimit])
   const email = String(req.body?.email || '').trim().toLowerCase()
   const password = String(req.body?.password || '')
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' })
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' })
-  if (await store.getUserByEmail(email)) return res.status(409).json({ error: 'An account with that email already exists.' })
+  const inviteCodeDigest = alpha.inviteRequired ? configuredInviteDigest(req.body?.inviteCode) : null
+  if (alpha.inviteRequired && !inviteCodeDigest) throw inviteUnavailableError()
+  // Preserve the established 409 in ordinary open-signup mode. In invite
+  // mode the atomic create below maps BOTH a used code and a duplicate email
+  // to the invitation response so possession of a code cannot become an
+  // account-enumeration oracle.
+  if (!alpha.inviteRequired && await store.getUserByEmail(email)) {
+    return res.status(409).json({ error: 'An account with that email already exists.' })
+  }
   const password_hash = await hashPassword(password)
-  const user = await store.createUser({ email, password_hash })
+  let user
+  try {
+    user = await store.createUser({ email, password_hash, legal_version: legal.version, invite_code_digest: inviteCodeDigest })
+  } catch (err) {
+    if (alpha.inviteRequired && (err.status === 409 || err.code === 'INVITE_UNAVAILABLE')) throw inviteUnavailableError()
+    throw err
+  }
   // This box may already hold data logged before multi-user accounts existed
   // (entries, targets, connected integrations with no owner). The first
   // person to sign up on it is that data's only plausible owner — there's no
@@ -166,7 +260,7 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
     await store.migrateLegacyDataToUser(user.id)
   }
   setSessionCookie(res, user.id)
-  res.status(201).json({ user: { id: user.id, email: user.email } })
+  res.status(201).json({ user: { id: user.id, email: user.email, legalAcceptanceRequired: false } })
 }))
 
 // A well-formed but arbitrary salt:hash pair, matching hashPassword's shape
@@ -177,6 +271,12 @@ const NO_SUCH_USER_HASH = `${'0'.repeat(32)}:${'0'.repeat(128)}`
 app.post('/api/auth/login', asyncH(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase()
   const password = String(req.body?.password || '')
+  const clientKey = clientRateLimitKey(req)
+  const credentialKey = `${clientKey}\u0000${email}`
+  const limitStates = [loginIpLimiter.status(clientKey), loginCredentialLimiter.status(credentialKey)]
+  if (limitStates.some((state) => !state.allowed)) return sendRateLimit(res, limitStates)
+  loginIpLimiter.consume(clientKey)
+  loginCredentialLimiter.consume(credentialKey)
   const user = await store.getUserByEmail(email)
   // Same response body whether the email doesn't exist or the password is
   // wrong — a distinct "no such account" message would let anyone enumerate
@@ -187,8 +287,9 @@ app.post('/api/auth/login', asyncH(async (req, res) => {
   // oracle — always run the same hash comparison either way.
   const ok = await verifyPassword(password, user?.password_hash || NO_SUCH_USER_HASH)
   if (!user || !ok) return res.status(401).json({ error: 'Incorrect email or password.' })
+  loginCredentialLimiter.clear(credentialKey)
   setSessionCookie(res, user.id)
-  res.json({ user: { id: user.id, email: user.email } })
+  res.json({ user: publicUser(user) })
 }))
 
 app.post('/api/auth/logout', (req, res) => {
@@ -202,7 +303,25 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', asyncH(async (req, res) => {
   if (req.userId == null) return res.json({ user: null })
   const user = await store.getUserById(req.userId)
-  res.json({ user: user ? { id: user.id, email: user.email } : null })
+  res.json({ user: publicUser(user) })
+}))
+
+// Existing accounts are not silently grandfathered into a newly published
+// legal version. This endpoint is authenticated, requires an explicit current
+// acknowledgement, and stores the server's version (never a client-supplied
+// version string).
+app.post('/api/auth/legal-acceptance', requireAuth, asyncH(async (req, res) => {
+  const legal = legalStatus()
+  if (!legal.ready) return res.status(503).json({ error: 'The legal documents are temporarily unavailable.' })
+  if (req.body?.acceptLegal !== true) {
+    return res.status(400).json({ error: 'You must agree to the Terms of Service and acknowledge the Privacy Policy.' })
+  }
+  const user = await store.acceptLegalVersion(req.userId, legal.version)
+  if (!user) {
+    clearSessionCookie(res)
+    return res.status(401).json({ error: 'Sign in required.' })
+  }
+  res.json({ user: publicUser(user, legal) })
 }))
 
 // --- agent-to-agent (A2A) read surface — public, read-only ------------------
@@ -226,8 +345,71 @@ registerAgentRoutes(app, { asyncH, localYmd, dayRange, sumIntake, timingSafeStri
 // all) or a broken-looking page (an OAuth redirect getting a JSON body
 // instead of being sent back to login).
 const requireAuthRouter = express.Router()
-requireAuthRouter.use(requireAuth)
+requireAuthRouter.use((req, res, next) => {
+  const isCallback = req.method === 'GET' && (req.path === '/oura/callback' || req.path === '/garmin/callback')
+  const isGarminWebhook = req.method === 'POST' && req.path === '/garmin/webhook'
+  // These handlers are registered on `app` below and authenticate with a
+  // signed one-time OAuth state or Garmin's pushed user mapping, not a browser
+  // session. Exit this router entirely so its blanket session gate does not
+  // preempt those handlers. Apple ingest already resolves its per-account
+  // token into req.userId before this point and intentionally stays inside.
+  if (isCallback || isGarminWebhook) return next('router')
+  requireAuth(req, res, next)
+})
+// A valid stateless cookie is not enough: an account deleted from this or any
+// other device must lose access immediately. This existence check also gives
+// sensitive account routes an authoritative current email without trusting
+// client state. The lookup intentionally returns no password hash.
+requireAuthRouter.use(asyncH(async (req, res, next) => {
+  const user = await store.getUserById(req.userId)
+  if (!user) {
+    clearSessionCookie(res)
+    return res.status(401).json({ error: 'Not signed in.' })
+  }
+  req.user = user
+  next()
+}))
 app.use('/api', requireAuthRouter)
+
+// --- account data lifecycle -------------------------------------------------
+requireAuthRouter.get('/account/export', asyncH(async (req, res) => {
+  const data = await store.exportUserData(req.userId)
+  const day = new Date().toISOString().slice(0, 10)
+  res.set('Content-Disposition', `attachment; filename="omnifuel-export-${day}.json"`)
+  res.json(data)
+}))
+
+requireAuthRouter.post('/account/delete', asyncH(async (req, res) => {
+  const password = String(req.body?.password || '')
+  const confirmation = String(req.body?.confirmation || '')
+  if (!password) return res.status(400).json({ error: 'Enter your current password.' })
+  if (confirmation !== req.user.email) {
+    return res.status(400).json({ error: 'Type your account email exactly to confirm deletion.' })
+  }
+  const authUser = await store.getUserByEmail(req.user.email)
+  if (!authUser || !(await verifyPassword(password, authUser.password_hash))) {
+    return res.status(401).json({ error: 'Password is incorrect.' })
+  }
+  const deleted = await store.deleteUser(req.userId)
+  if (!deleted) return res.status(404).json({ error: 'Account not found.' })
+  clearSessionCookie(res)
+  res.status(204).end()
+}))
+
+// Re-consent is enforced at the API boundary, not only by the React shell.
+// Keep export and deletion above this middleware so a person never has to
+// accept new terms merely to exercise their data rights. Auth/me, logout,
+// acceptance itself, and the public documents are registered before this
+// router and remain available as well.
+requireAuthRouter.use((req, res, next) => {
+  if (currentLegalAcceptanceRequired(req.user)) {
+    return res.status(428).json({
+      error: 'Review and accept the current Terms of Service and Privacy Policy to continue.',
+      code: 'LEGAL_ACCEPTANCE_REQUIRED',
+    })
+  }
+  next()
+})
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------
 requireAuthRouter.get('/lookup/:barcode', asyncH(async (req, res) => {
@@ -672,6 +854,7 @@ app.get('/api/oura/callback', asyncH(async (req, res) => {
   ouraConnectPending.delete(nonce)
   const userId = pending && pending.exp >= Date.now() ? pending.userId : req.userId
   if (userId == null) return res.redirect('/?oura=error') // no session AND no pinned initiator — can't attribute this connection to anyone
+  if (!(await store.getUserById(userId))) return res.redirect('/?oura=error')
   const tokens = await ouraExchangeCode(String(code))
   const info = await ouraPersonalInfo(tokens.access_token)
   const account = await store.saveOuraAccount(userId, {
@@ -752,7 +935,7 @@ const garminPkce = new Map()
 
 app.get('/api/garmin/connect', (req, res) => {
   if (req.userId == null) return res.redirect('/?error=not_signed_in')
-  if (!garminConfigured()) return res.status(501).send('Garmin OAuth is not configured on the server.')
+  if (!garminReleaseReady()) return res.status(501).send('Garmin is not enabled on this server.')
   const state = crypto.randomBytes(16).toString('hex')
   const { verifier, challenge } = garminPkcePair()
   garminPkce.set(state, { verifier, userId: req.userId, exp: Date.now() + 10 * 60 * 1000 })
@@ -764,6 +947,8 @@ app.get('/api/garmin/callback', asyncH(async (req, res) => {
   const entry = garminPkce.get(String(state || ''))
   garminPkce.delete(String(state || ''))
   if (error || !code || !entry || entry.exp < Date.now()) return res.redirect('/?garmin=error')
+  if (!garminReleaseReady()) return res.redirect('/?garmin=error')
+  if (!(await store.getUserById(entry.userId))) return res.redirect('/?garmin=error')
   const tokens = await garminExchangeCode({ code: String(code), verifier: entry.verifier })
   // VERIFY (see integrations/garmin.js): the id fetched here is what a later
   // PUSHED webhook uses to route back to this account — there's no session
@@ -804,6 +989,12 @@ const GARMIN_KNOWN_PUSH_TYPES = [
   'manuallyUpdatedActivities', 'moveIQActivities', 'bloodPressures', 'skinTemp',
 ]
 app.post('/api/garmin/webhook', asyncH(async (req, res) => {
+  // This endpoint has no browser session. Until the approved-partner webhook
+  // contract (including any origin/signature verification Garmin requires) is
+  // confirmed, do not accept a user id supplied by an unauthenticated caller.
+  if (!garminReleaseReady()) {
+    return res.status(503).json({ error: 'Garmin webhook is not enabled.' })
+  }
   const dailies = Array.isArray(req.body?.dailies) ? req.body.dailies : []
   const accountCache = new Map() // garmin_user_id -> account | null, avoid a lookup per daily in one batch
   for (const d of dailies) {
@@ -848,7 +1039,7 @@ requireAuthRouter.get('/garmin/accounts', asyncH(async (req, res) => {
   const accounts = (await store.listGarminAccounts(req.userId)).map((a) => ({
     id: a.id, label: a.label, expires_at: a.expires_at, created_at: a.created_at,
   }))
-  res.json({ oauth: garminConfigured(), accounts })
+  res.json({ oauth: garminReleaseReady(), accounts })
 }))
 
 requireAuthRouter.delete('/garmin/accounts/:id', asyncH(async (req, res) => {
@@ -860,7 +1051,7 @@ requireAuthRouter.delete('/garmin/accounts/:id', asyncH(async (req, res) => {
 // Stored Garmin expenditure for a day (served from pushed data, not a live pull).
 requireAuthRouter.get('/garmin/summary', asyncH(async (req, res) => {
   const accounts = await store.listGarminAccounts(req.userId)
-  if (!accounts.length) return res.json({ configured: garminConfigured(), activity: null })
+  if (!accounts.length) return res.json({ configured: garminReleaseReady(), activity: null })
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
   const row = await store.getGarminDaily(accounts[0].id, day)
   const activity = row
@@ -881,6 +1072,25 @@ function dayRange(ymd) {
   const end = new Date(start)
   end.setDate(end.getDate() + 1)
   return { from: start.toISOString(), to: end.toISOString() }
+}
+
+function requestBounds(query) {
+  const { from, to } = query || {}
+  return typeof from === 'string' && typeof to === 'string' && !isNaN(Date.parse(from)) && !isNaN(Date.parse(to))
+    ? { from, to }
+    : null
+}
+
+function requestedDayIsCurrent(date, bounds, nowDate) {
+  if (!bounds) return date === localYmd(nowDate)
+  const now = nowDate.getTime()
+  return now >= Date.parse(bounds.from) && now < Date.parse(bounds.to)
+}
+
+function localHourForRequest(nowDate, bounds) {
+  if (!bounds) return nowDate.getHours() + nowDate.getMinutes() / 60
+  const elapsedHours = (nowDate.getTime() - Date.parse(bounds.from)) / 3600000
+  return elapsedHours >= 0 && elapsedHours < 24 ? elapsedHours : nowDate.getHours() + nowDate.getMinutes() / 60
 }
 
 // Calendar-day math anchored to a client-supplied UTC offset (Date#
@@ -914,7 +1124,9 @@ requireAuthRouter.get('/today/summary', asyncH(async (req, res) => {
     const s = Number(e.servings_consumed) || 0
     for (const k of NUTRIENT_KEYS) totals[k] += (Number(e.food?.[k]) || 0) * s
   }
-  const targets = await store.getLatestTargets(req.userId)
+  await ensureCanonicalAfpProfile(store, req.userId)
+  const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd() })
+  const targets = row.plan?.ok ? row.plan.targets : null
   const remaining = { calories: targets?.calories != null ? Number(targets.calories) - totals.calories : null }
   res.json({ date, totals, targets, remaining })
 }))
@@ -965,30 +1177,79 @@ async function planInfluence(userId) {
   return { readiness: true, sleep: true, workouts: true, ...(row.settings?.influence || {}) }
 }
 
-async function buildPlan(userId, date, nowDate) {
-  const baseline = await store.getLatestTargets(userId)
-  // Real Oura/Garmin/Apple data now reflects the DAY being viewed (owner, 25
-  // Aug 2026), not always the live current day — see composeSignals's own
-  // comment. Noon anchor avoids any DST/timezone edge landing `date` on the
-  // wrong calendar day.
-  const signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`))
+function adaptiveRationale(plan) {
+  if (!plan?.ok) return []
+  const items = [{
+    factor: 'baseline',
+    effect: `${Math.round(plan.energy.baselineNonTraining)} kcal baseline`,
+    detail: `Resting energy plus your non-training activity establishes the day before training and goal adjustments.`,
+    source: 'profile',
+    demo: false,
+  }]
+  if (plan.energy.exercise > 0) items.push({
+    factor: 'workout',
+    effect: `+${Math.round(plan.energy.exercise)} kcal training`,
+    detail: `Today's planned or synced training is counted once as exercise energy and also sets the carbohydrate periodization band.`,
+    source: 'training',
+    demo: false,
+  })
+  if (plan.energy.goalAdjustment !== 0) items.push({
+    factor: 'goal',
+    effect: `${plan.energy.goalAdjustment > 0 ? '+' : ''}${Math.round(plan.energy.goalAdjustment)} kcal goal`,
+    detail: `Your selected goal is applied after baseline and training energy, within the plan's safety guardrails.`,
+    source: 'profile',
+    demo: false,
+  })
+  for (const warning of plan.warnings || []) items.push({
+    factor: 'safety', effect: 'guardrail', detail: warning.message, source: 'plan', demo: false,
+  })
+  return items
+}
+
+async function buildPlan(userId, date, nowDate, bounds = null) {
+  const canonicalProfile = await ensureCanonicalAfpProfile(store, userId)
+  const today = requestedDayIsCurrent(date, bounds, nowDate) ? date : localYmd(nowDate)
+  const { row, recomputed } = await getOrComputeAfpPlan(store, userId, date, { today })
+  const adaptive = row.plan
+  const plannedRows = await store.getPlannedWorkoutsForDay(userId, date)
+  // Real Oura/Garmin/Apple data reflects the viewed day. The canonical planned
+  // session is then layered in only when no real completed workout exists.
+  let signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`))
+  signals = withCanonicalPlannedWorkout(signals, plannedRows, nowDate)
   const influence = await planInfluence(userId)
-  const { adjusted, rationale, rulesVersion } = computeAdjustedTargets(baseline, signals, { influence })
-  return { date, baseline, adjusted, rationale, signals, influence, rulesVersion }
+  return {
+    date,
+    baseline: adaptive?.ok ? adaptive.computedTargets : null,
+    adjusted: adaptive?.ok ? adaptive.targets : null,
+    rationale: adaptiveRationale(adaptive),
+    signals,
+    influence,
+    rulesVersion: adaptive?.engineVersion || null,
+    adaptive,
+    profileReady: canonicalProfile.ready,
+    recomputed,
+    frozen: !recomputed && date !== today,
+  }
 }
 
 async function todayComposite(userId, date, nowDate, bounds = null) {
-  const plan = await buildPlan(userId, date, nowDate)
+  const plan = await buildPlan(userId, date, nowDate, bounds)
   const { from, to } = bounds || dayRange(date)
   const entries = await store.listEntries(userId, { from, to })
   const intake = sumIntake(entries)
-  const nowHour = nowDate.getHours() + nowDate.getMinutes() / 60
-  const recommendation = computeRecommendation({
+  const nowHour = localHourForRequest(nowDate, bounds)
+  const recommendation = plan.adaptive?.ok ? computeRecommendation({
     baseline: plan.baseline, adjusted: plan.adjusted, intake, signals: plan.signals, nowHour, influence: plan.influence,
-  })
+  }) : null
   // Snapshot the plan so "why?" is reproducible for the day.
-  await store.savePlan(userId, date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
-  return { date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signals: plan.signals, recommendation, entries, generatedAt: nowDate.toISOString() }
+  if (plan.adaptive?.ok) {
+    await store.savePlan(userId, date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  }
+  return {
+    date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale,
+    signals: plan.signals, recommendation, entries, generatedAt: nowDate.toISOString(),
+    plan: plan.adaptive, profileReady: plan.profileReady, frozen: plan.frozen,
+  }
 }
 
 // Composite for the Today screen (context + recommendation + progress + log).
@@ -998,19 +1259,17 @@ async function todayComposite(userId, date, nowDate, bounds = null) {
 // list the client fetches for the very same calendar day.
 requireAuthRouter.get('/today', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
-  const { from, to } = req.query
-  const bounds =
-    typeof from === 'string' && typeof to === 'string' && !isNaN(Date.parse(from)) && !isNaN(Date.parse(to))
-      ? { from, to }
-      : null
+  const bounds = requestBounds(req.query)
   res.json(await todayComposite(req.userId, date, new Date(), bounds))
 }))
 
 // Plan for a day: baseline vs. adjusted targets + rationale + signals used.
 requireAuthRouter.get('/plan/today', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
-  const plan = await buildPlan(req.userId, date, new Date())
-  await store.savePlan(req.userId, date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  const plan = await buildPlan(req.userId, date, new Date(), requestBounds(req.query))
+  if (plan.adaptive?.ok) {
+    await store.savePlan(req.userId, date, { baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale, signal_snapshot: plan.signals, rulesVersion: plan.rulesVersion })
+  }
   res.json(plan)
 }))
 
@@ -1122,18 +1381,17 @@ requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
   res.status(ok ? 204 : 404).end()
 }))
 
-// --- Adaptive Fuel Plan ----------------------------------------------------
-// A separate, additive feature (server/afp/engine.js + server/afp/plan.js) —
-// its own profile, its own planned-workout list, its own daily-plan
-// snapshots. It never reads or writes daily_targets/daily_plans/profile
-// above, so nothing here can regress the existing Plan tab.
+// --- Canonical daily fuel plan --------------------------------------------
+// AFP is the source of truth for profile, planned training, and targets.
+// Older target/plan routes remain temporarily as compatibility adapters, but
+// Today and the visible Plan tab both consume this engine.
 requireAuthRouter.get('/afp/profile', asyncH(async (req, res) => {
-  res.json({ profile: await store.getAfpProfile(req.userId) })
+  res.json(await ensureCanonicalAfpProfile(store, req.userId))
 }))
 
 requireAuthRouter.put('/afp/profile', validateBody(AfpProfilePatchSchema), asyncH(async (req, res) => {
   const profile = await store.setAfpProfile(req.userId, req.body)
-  res.json({ profile })
+  res.json({ profile, ready: isAfpProfileReady(profile), migrated: false })
 }))
 
 // Planned training sessions. `from`/`to` default to a two-week-ahead window
@@ -1166,10 +1424,13 @@ requireAuthRouter.delete('/afp/workouts/:id', asyncH(async (req, res) => {
 // against today's actual logged intake — progress is never frozen, even for
 // a past day whose TARGETS are (see docs/adaptive-fuel-plan.md).
 requireAuthRouter.get('/afp/plan', asyncH(async (req, res) => {
-  const today = localYmd()
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : today
+  const serverToday = localYmd()
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : serverToday
+  const bounds = requestBounds(req.query)
+  const today = requestedDayIsCurrent(date, bounds, new Date()) ? date : serverToday
+  await ensureCanonicalAfpProfile(store, req.userId)
   const { row, recomputed } = await getOrComputeAfpPlan(store, req.userId, date, { today })
-  const { from, to } = dayRange(date)
+  const { from, to } = bounds || dayRange(date)
   const entries = await store.listEntries(req.userId, { from, to })
   const intake = sumIntake(entries)
   const progress = row.plan?.ok ? computeProgress(row.plan.targets, intake) : null
@@ -1436,17 +1697,14 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const start = localMidnightAtOffset(now, tzOffsetMinutes, -(window - 1))
   const end = localMidnightAtOffset(now, tzOffsetMinutes, 1)
   const entries = await store.listEntries(req.userId, { from: start.toISOString(), to: end.toISOString() })
-  // hasTargets distinguishes real, chosen numbers from the silent
-  // DEFAULT_TARGETS fallback getLatestTargets always returns otherwise (see
-  // server/db.js and the GET /targets route above, which exists for exactly
-  // this reason) — the signal the two NEW "real target" displays below
-  // (protein-consistency chart, Energy chart's target line) need so neither
-  // one draws a reference line against a number the user never actually set.
-  // onTargetDays below intentionally does NOT gate on this — it's an
-  // existing computation this change must not alter — but a caller that
-  // reads `targets.hasTargets` can still tell whether that count means
-  // anything.
-  const [targets, hasTargets] = await Promise.all([store.getLatestTargets(req.userId), store.hasTargets(req.userId)])
+  // Insights uses the same canonical AFP target as Today and Plan. The old
+  // daily_targets fallback could make the trend line say 2,000 kcal while the
+  // rest of the app said something entirely different for the same account.
+  const clientToday = ymdAtOffset(now, tzOffsetMinutes)
+  const canonicalProfile = await ensureCanonicalAfpProfile(store, req.userId)
+  const { row: currentPlan } = await getOrComputeAfpPlan(store, req.userId, clientToday, { today: clientToday })
+  const targets = currentPlan.plan?.ok ? currentPlan.plan.targets : null
+  const hasTargets = canonicalProfile.ready && !!currentPlan.plan?.ok
 
   const byDay = new Map()
   for (const e of entries) {
@@ -1459,8 +1717,8 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const days = [...byDay.entries()].map(([date, totals]) => ({ date, totals })).sort((a, b) => (a.date < b.date ? -1 : 1))
   const tracked = days.length
   const avg = (k) => (tracked ? Math.round(days.reduce((a, d) => a + d.totals[k], 0) / tracked) : null)
-  const calTarget = Number(targets?.calories) || 0
-  const proteinTarget = Number(targets?.protein_g) || 0
+  const calTarget = hasTargets ? Number(targets?.calories) || 0 : 0
+  const proteinTarget = hasTargets ? Number(targets?.protein_g) || 0 : 0
 
   // Within ±10% of the calorie target — the ONE place this tolerance check
   // exists. onTargetDays (the existing summary count) and onTargetDetail (the
@@ -1519,15 +1777,11 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     window,
     insufficientData: tracked < 3,
     nutrition: { trackedDays: tracked, consistency: window ? tracked / window : 0, avgCalories: avg('calories'), avgProtein: avg('protein_g'), onTargetDays },
-    // Real target values, plus whether they're real: getLatestTargets always
-    // returns SOMETHING (DEFAULT_TARGETS when nothing was ever chosen), so
-    // the numbers alone can't tell a caller a target was actually set —
-    // hasTargets is what onboarding itself gates on (src/App.jsx) and is the
-    // only honest signal for that. calories/protein_g ride here unconditionally
-    // (same numbers onTargetDays above already uses) so a caller can still
-    // show what the app WOULD compare against; hasTargets is what decides
-    // whether it's honest to label that comparison "your target" out loud.
-    targets: { calories: calTarget, protein_g: proteinTarget, hasTargets },
+    // The chart reference is today's canonical AFP target. Historical
+    // per-day target comparisons are a separate snapshot-aware enhancement;
+    // until then this field is explicit about its basis rather than implying
+    // that the current target was reconstructed independently for every day.
+    targets: { calories: calTarget, protein_g: proteinTarget, hasTargets, basis: 'current_afp_plan' },
     days,
     // Per-day on-target detail for the FULL window (see isOnTarget above) —
     // the Insights dot-row's source of truth. `onTarget` is null for a day

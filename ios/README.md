@@ -19,7 +19,7 @@ and syncs them to your own backend*; it does not reimplement the nutrition UI.
  HealthKitManager ──► [HealthSample] + HealthPermissions
         │
         ▼  POST {base}/api/apple/ingest   (x-ingest-token)
- Backend  ─► wearable_signals ─► providers.js (provider-neutral) ─► /api/today, /api/plan/today
+ Backend  ─► wearable_signals ─► providers.js (provider-neutral) ─► canonical AFP ─► /api/today
         │                                                              │
         │  GET /api/today  (x-ingest-token)                            ▼
         └────────────────────────────► PlanSummary ──WatchConnectivity──► Apple Watch (glance)
@@ -68,6 +68,11 @@ cd ios && xcodegen generate && open Fuel.xcodeproj
 
 Then, before it will build & run, fill in every `// TODO:` / `# TODO:`:
 
+Run `npm run verify:ios-config` from the repository root before generating the
+project. It fails with the exact signing/bundle/App Group placeholders that
+still need operator-owned values; a passing check is necessary but does not
+replace building and signing with Xcode.
+
 1. **Team & bundle ids** — `project.yml` `DEVELOPMENT_TEAM` and the three
    `PRODUCT_BUNDLE_IDENTIFIER`s. The watch app id must be `<iOS id>.watchkitapp`
    and the complication `<watch id>.complication`; `FuelWatch/Info.plist`'s
@@ -75,8 +80,9 @@ Then, before it will build & run, fill in every `// TODO:` / `# TODO:`:
 2. **App Group** — set a real id in `FuelWatch/Store/SummaryPersistence.swift`
    and enable the same group on the watch app **and** the complication (so the
    persisted `PlanSummary` is shared with the complication).
-3. **Background task ids** — the ids in `FuelCompanion/Info.plist`
-   (`BGTaskSchedulerPermittedIdentifiers`) must match `Background/BackgroundSync.swift`.
+3. **Background task ids** — these are derived automatically from the iOS
+   product bundle identifier in both `FuelCompanion/Info.plist` and
+   `Background/BackgroundSync.swift`.
 4. **Server URL** — set at runtime in the app's **Health** tab, or the default
    in `Settings/AppConfig.swift`.
 5. **Ingest token** — generate one from the signed-in web app's Connections tab

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createSpawner, stepSpawner, mulberry32 } from '../src/spawner.js'
-import { stepFrame, threatAt, nearestThreatToDeity } from '../src/loop.js'
+import { stepFrame, threatAt, nearestThreatToDeity, createFrameClock } from '../src/loop.js'
 import { createInitialState, pause, FIELD_RADIUS, levelForIndex } from '../src/game/index.js'
 
 const runTicks = (state, spawner, n) => {
@@ -105,5 +105,67 @@ describe('loop', () => {
     expect(threatAt({ threats }, 6, 0).id).toBe('near')
     expect(threatAt({ threats }, 40, 0, 18)).toBeNull()
     expect(threatAt({ threats }, 0, 37, 18)).toBeNull()
+  })
+})
+
+// The loop's accumulator, on its own. It shipped seeded from performance.now()
+// while every later reading came from the rAF timestamp — two clocks that a
+// browser happens to share a time origin for and jsdom does not. Under vitest
+// the gap was the worker's age (1413-1712 ms measured, 30 Aug 2026): the first
+// frame handed the accumulator that much negative time, and the game stood
+// still for ~1.4s of real clock on every mount while it paid the debt off at
+// 16ms per frame. game-view.test.jsx drives the loop through its own frame
+// pump now and so cannot see this — these are the tests that hold the fix.
+describe('frame clock', () => {
+  const STEP = 1000 / 30
+
+  it('takes its origin from the FIRST frame, whatever that timestamp reads', () => {
+    const stepsFor = createFrameClock(STEP)
+    // A timestamp nowhere near any other clock's zero — the jsdom case, where
+    // rAF counts from the window and performance.now() counts from the
+    // process. Seeding from a second clock made this first delta hugely
+    // negative; taking the origin from the frame itself makes it structurally
+    // impossible.
+    expect(stepsFor(1_000_000)).toBe(0) // origin only, never a step off a made-up delta
+    expect(stepsFor(1_000_000 + STEP * 3)).toBe(3) // and the very next frame is already earning
+  })
+
+  it('control: no debt is carried out of that first frame', () => {
+    const stepsFor = createFrameClock(STEP)
+    stepsFor(1_000_000)
+    // One step's worth of time must buy exactly one step. If the first frame
+    // had banked -1_000_000ms this returns 0 here and for the next 30_000
+    // frames, which is precisely the bug: a game that renders but never moves.
+    expect(stepsFor(1_000_000 + STEP)).toBe(1)
+  })
+
+  it('accrues fractional time instead of dropping it', () => {
+    const stepsFor = createFrameClock(STEP)
+    stepsFor(0)
+    // 16ms frames against 33.3ms steps. Two frames buy the first step; the
+    // 14.7ms left over is kept, so from then on a step falls every other
+    // frame. Rounding the remainder away instead would earn nothing, ever.
+    const earned = [16, 32, 48, 64, 80, 96].map((t) => stepsFor(t))
+    expect(earned).toEqual([0, 0, 1, 0, 1, 0])
+    expect(earned.reduce((a, b) => a + b, 0)).toBe(2) // 96ms of frames -> 2 steps
+  })
+
+  it('caps catch-up so a backgrounded tab does not fast-forward the shift', () => {
+    const stepsFor = createFrameClock(STEP, 250)
+    stepsFor(0)
+    // Ten minutes in another tab. Without the cap this returns 18_000 steps
+    // and the whole shift resolves in one frame.
+    expect(stepsFor(600_000)).toBe(Math.floor(250 / STEP))
+  })
+
+  it('control: a clock that jumps backwards costs the loop nothing', () => {
+    const stepsFor = createFrameClock(STEP)
+    stepsFor(1000)
+    expect(stepsFor(400)).toBe(0) // no steps off negative time...
+    // ...and no debt banked against the next frame either. 50ms is one step
+    // plus change rather than exactly STEP: a frame landing on the boundary
+    // is a float coin-flip, and that is the test's own artifact, not a claim
+    // about the clock.
+    expect(stepsFor(450)).toBe(1)
   })
 })

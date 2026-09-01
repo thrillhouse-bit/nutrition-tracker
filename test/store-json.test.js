@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { JsonStore, DEFAULT_PROFILE } from '../server/db.js'
+import { digestInviteCode } from '../server/alphaAccess.js'
 
 // JsonStore behavioral contract tests. The JSON store is the dev fallback for
 // PgStore and the two must behave identically (routes only ever see `store`).
@@ -46,6 +47,47 @@ describe('JsonStore persist() after a failed write', () => {
     expect(food.name).toBe('Rice')
     const onDisk = JSON.parse(await fs.readFile(good, 'utf8'))
     expect(onDisk.foods.map((f) => f.name)).toContain('Rice')
+  })
+})
+
+describe('JsonStore alpha invitation redemption', () => {
+  it('stores only a digest and allows exactly one concurrent claim', async () => {
+    const file = path.join(dir, 'store.json')
+    const s = new JsonStore(file)
+    const plaintext = 'AlphaInvite01_abcdefghijklmnop'
+    const digest = digestInviteCode(plaintext)
+    const results = await Promise.allSettled([
+      s.createUser({ email: 'alpha-one@example.test', password_hash: 'hash-one', legal_version: 'v1', invite_code_digest: digest }),
+      s.createUser({ email: 'alpha-two@example.test', password_hash: 'hash-two', legal_version: 'v1', invite_code_digest: digest }),
+    ])
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')[0].reason).toMatchObject({ status: 403, code: 'INVITE_UNAVAILABLE' })
+
+    const raw = await fs.readFile(file, 'utf8')
+    expect(raw).not.toContain(plaintext)
+    const stored = JSON.parse(raw)
+    expect(stored.alpha_invite_redemptions).toHaveLength(1)
+    expect(stored.alpha_invite_redemptions[0].code_digest).toBe(digest)
+  })
+
+  it('does not make an invitation reusable after its account is deleted', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const digest = digestInviteCode('AlphaInvite02_abcdefghijklmnop')
+    const user = await s.createUser({ email: 'alpha-delete@example.test', password_hash: 'hash', invite_code_digest: digest })
+    await s.deleteUser(user.id)
+    await expect(s.createUser({ email: 'alpha-reuse@example.test', password_hash: 'hash', invite_code_digest: digest }))
+      .rejects.toMatchObject({ status: 403, code: 'INVITE_UNAVAILABLE' })
+    const stored = JSON.parse(await fs.readFile(path.join(dir, 'store.json'), 'utf8'))
+    expect(stored.alpha_invite_redemptions).toEqual([expect.objectContaining({ code_digest: digest, user_id: null })])
+  })
+
+  it('records current legal acceptance for an existing user', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const user = await s.createUser({ email: 'reconsent@example.test', password_hash: 'hash', legal_version: 'v1' })
+    const accepted = await s.acceptLegalVersion(user.id, 'v2')
+    expect(accepted).toMatchObject({ legal_version: 'v2' })
+    expect(Date.parse(accepted.legal_accepted_at)).not.toBeNaN()
+    expect(await s.getUserById(user.id)).toMatchObject({ legal_version: 'v2' })
   })
 })
 
@@ -534,6 +576,89 @@ describe('JsonStore biometric profile (singleton)', () => {
     await s.setProfile(USER, { height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
     const reopened = new JsonStore(file)
     expect(await reopened.getProfile(USER)).toMatchObject({ height_cm: 175, weight_kg: 70, sex: 'female', age_years: 33, activity_level: 'active', goal: 'endurance' })
+  })
+})
+
+describe('JsonStore account export and hard deletion', () => {
+  async function seededAccounts() {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const one = await s.createUser({ email: 'one@example.com', password_hash: 'hash-one', legal_version: 'v1' })
+    const two = await s.createUser({ email: 'two@example.com', password_hash: 'hash-two', legal_version: 'v1' })
+    const food = await s.createFood({ name: 'Shared oats', calories: 150, raw_api_response: { supplier: 'shared' } })
+    await s.addEntry(one.id, { food_id: food.id, logged_at: '2026-08-20T12:00:00.000Z' })
+    await s.addEntry(two.id, { food_id: food.id, logged_at: '2026-08-21T12:00:00.000Z' })
+    await s.setTargets(one.id, { calories: 2100 })
+    await s.setTargets(two.id, { calories: 1900 })
+    await s.setProfile(one.id, { height_cm: 180 })
+    await s.setProfile(two.id, { height_cm: 165 })
+    await s.setIntegration(one.id, 'apple', { settings: { ingest_token: 'apple-secret-one', device: 'watch' } })
+    await s.setIntegration(two.id, 'apple', { settings: { ingest_token: 'apple-secret-two', device: 'phone' } })
+    const ouraOne = await s.saveOuraAccount(one.id, { access_token: 'oura-access-one', refresh_token: 'oura-refresh-one' })
+    const ouraTwo = await s.saveOuraAccount(two.id, { access_token: 'oura-access-two', refresh_token: 'oura-refresh-two' })
+    await s.saveOuraWorkouts(ouraOne.id, [{ id: 'one-workout', day: '2026-08-20', activity: 'running' }])
+    await s.saveOuraWorkouts(ouraTwo.id, [{ id: 'two-workout', day: '2026-08-21', activity: 'cycling' }])
+    const garminOne = await s.saveGarminAccount(one.id, { access_token: 'garmin-access-one', refresh_token: 'garmin-refresh-one', garmin_user_id: 'g-one' })
+    const garminTwo = await s.saveGarminAccount(two.id, { access_token: 'garmin-access-two', refresh_token: 'garmin-refresh-two', garmin_user_id: 'g-two' })
+    await s.upsertGarminDaily({ account_id: garminOne.id, day: '2026-08-20', steps: 10_000 })
+    await s.upsertGarminDaily({ account_id: garminTwo.id, day: '2026-08-21', steps: 8_000 })
+    await s.replaceAppleSignals(one.id, '2026-08-20', [{ metric: 'steps', value: 10_000 }])
+    await s.replaceAppleSignals(two.id, '2026-08-21', [{ metric: 'steps', value: 8_000 }])
+    await s.savePlan(one.id, '2026-08-20', { baseline: { calories: 2100 } })
+    await s.savePlan(two.id, '2026-08-21', { baseline: { calories: 1900 } })
+    await s.setAfpProfile(one.id, { weight_kg: 80 })
+    await s.setAfpProfile(two.id, { weight_kg: 60 })
+    await s.savePlannedWorkout(one.id, { date: '2026-08-20', sport: 'run', duration_min: 45, intensity: 'moderate' })
+    await s.savePlannedWorkout(two.id, { date: '2026-08-21', sport: 'ride', duration_min: 60, intensity: 'easy' })
+    await s.saveAfpDailyPlan(one.id, '2026-08-20', { engineVersion: 1, inputSnapshot: {}, plan: { target: 2100 } })
+    await s.saveAfpDailyPlan(two.id, '2026-08-21', { engineVersion: 1, inputSnapshot: {}, plan: { target: 1900 } })
+    return { s, one, two, food }
+  }
+
+  it('exports all account-owned categories without any credential/token keys or shared raw food cache', async () => {
+    const { s, one } = await seededAccounts()
+    const exported = await s.exportUserData(one.id)
+    expect(exported.account.email).toBe('one@example.com')
+    expect(exported.nutrition_logs).toHaveLength(1)
+    expect(exported.wearable_data.oura_workouts[0].oura_id).toBe('one-workout')
+    expect(exported.planning.workouts).toHaveLength(1)
+    expect(exported.provider_connections.settings[0].settings).toEqual({ device: 'watch' })
+    expect(exported.source_attribution.garmin).toBe('Garmin')
+
+    const forbidden = new Set(['password_hash', 'access_token', 'refresh_token', 'ingest_token', 'raw_api_response'])
+    const keys = []
+    const visit = (value) => {
+      if (!value || typeof value !== 'object') return
+      for (const [key, child] of Object.entries(value)) { keys.push(key); visit(child) }
+    }
+    visit(exported)
+    expect(keys.filter((key) => forbidden.has(key))).toEqual([])
+    expect(JSON.stringify(exported)).not.toContain('hash-one')
+    expect(JSON.stringify(exported)).not.toContain('oura-access-one')
+    expect(JSON.stringify(exported)).not.toContain('apple-secret-one')
+  })
+
+  it('deletes only one user and every owned record while preserving the other account and shared foods', async () => {
+    const { s, one, two, food } = await seededAccounts()
+    await expect(s.deleteUser(one.id)).resolves.toBe(true)
+    expect(await s.getUserById(one.id)).toBeNull()
+    expect(await s.getUserById(two.id)).toMatchObject({ email: 'two@example.com' })
+    expect(await s.getFood(food.id)).toMatchObject({ name: 'Shared oats' })
+    expect((await s.exportUserData(two.id)).nutrition_logs).toHaveLength(1)
+
+    const disk = JSON.parse(await fs.readFile(path.join(dir, 'store.json'), 'utf8'))
+    expect(disk.entries.some((row) => row.user_id === one.id)).toBe(false)
+    expect(disk.targets.some((row) => row.user_id === one.id)).toBe(false)
+    expect((disk.wearable_signals || []).some((row) => row.user_id === one.id)).toBe(false)
+    expect((disk.planned_workouts || []).some((row) => row.user_id === one.id)).toBe(false)
+    expect(Object.values(disk.integrations || {}).some((row) => row.user_id === one.id)).toBe(false)
+    expect(Object.values(disk.daily_plans || {}).some((row) => row.user_id === one.id)).toBe(false)
+    expect(Object.values(disk.afp_daily_plans || {}).some((row) => row.user_id === one.id)).toBe(false)
+    expect(disk.foods).toHaveLength(1)
+  })
+
+  it('returns false without mutating the store when the user does not exist', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    await expect(s.deleteUser(999)).resolves.toBe(false)
   })
 })
 
