@@ -321,10 +321,11 @@ export const ACT5_CONVERSATIONS = deepFreeze({
       'choose-witness': {
         choices: [
           { id: 'ianthe-testimony', text: 'Ianthe reads Elia\'s unedited refusal.', when: [{ kind: 'flag', flagId: 'revealed-ianthe', value: true }], effects: [{ kind: 'flag', id: 'act5-ianthe-testified', value: true }], next: 'elia-condition' },
-          { id: 'keeper-testimony', text: 'Melite enters the neutral Keeper testimony.', effects: [{ kind: 'flag', id: 'act5-neutral-keeper-testified', value: true }], next: 'elia-condition' },
+          { id: 'keeper-testimony', text: 'Melite enters the neutral Keeper testimony.', effects: [{ kind: 'flag', id: 'act5-neutral-keeper-testified', value: true }], next: 'keeper-condition' },
         ],
       },
       'elia-condition': { speakerId: 'kallias', text: 'Elia did not ask to erase the gods. She asked that refusal remain inside every future agreement.', cameraCue: 'reveal', effects: [{ kind: 'flag', id: 'act5-regent-testimony-heard', value: true }] },
+      'keeper-condition': { speakerId: 'kallias', text: 'Melite kept both terms in the neutral record: power may offer a covenant, and every witness may refuse it without disappearing.', cameraCue: 'reveal', effects: [{ kind: 'flag', id: 'act5-regent-testimony-heard', value: true }] },
     },
   },
   'act5-epilogue': {
