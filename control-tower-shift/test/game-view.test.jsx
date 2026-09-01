@@ -86,6 +86,25 @@ const installMemoryStorage = () => {
   })
 }
 
+const makeCanvasContext = () => {
+  const noop = () => {}
+  const gradient = { addColorStop: noop }
+  return new Proxy({
+    canvas: { width: 1280, height: 720 },
+    createLinearGradient: () => gradient,
+    createRadialGradient: () => gradient,
+    measureText: () => ({ width: 0 }),
+  }, {
+    get(target, key) {
+      return key in target ? target[key] : noop
+    },
+    set(target, key, value) {
+      target[key] = value
+      return true
+    },
+  })
+}
+
 const mount = async (el) => {
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -327,6 +346,28 @@ describe('accessibility and input', () => {
       canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
     expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
+  })
+
+  it('the mounted frame clock advances the authored encounter after its intro beat', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(makeCanvasContext())
+    await mount(<ControlTowerShift />)
+    const canvas = container.querySelector('canvas')
+    const score = () => Number(container.querySelector('[data-testid="score"]')?.textContent || 0)
+
+    // Rendering ages the deliberate level card; simulation remains frozen
+    // behind it, then the same rAF timestamps drive createFrameClock.
+    await act(async () => pump(220))
+    let frames = 0
+    while (score() === 0 && frames < 700) {
+      frames += 1
+      await act(async () => {
+        pump(1)
+        canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      })
+    }
+
+    expect(score()).toBeGreaterThan(0)
+    expect(frames).toBeLessThan(700)
   })
 
   it('control: Enter on an empty field scores nothing (not a free point)', async () => {
