@@ -1534,3 +1534,12 @@ check-in (still `f7e9515`). Live site also unchanged: same version,
 same `/api/health`, and the new-signups-blocked Info item from last
 pass still holds (`/api/legal/status` unchanged — legal env vars still
 not configured in production). No fixes needed this pass.
+
+## 2026-09-01 — Check-in pass (recurring, 12:45 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `bfba4aa`). Live site also unchanged: same version,
+same `/api/health`, and `/api/legal/status` still reports
+`signupEnabled: false` — new signups remain blocked pending the
+owner's legal-config deploy, same as the last two passes. No fixes
+needed this pass.
