@@ -62,6 +62,14 @@ async function clickWorldTarget(label) {
   await act(async () => { await Promise.resolve() })
 }
 
+async function waitForContent(text, attempts = 50) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (container?.textContent.includes(text)) return
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 5)))
+  }
+  expect(container?.textContent).toContain(text)
+}
+
 const send = (state, type, payload = {}) => applyEvent(state, { type, ...payload })
 
 // Build the real Act V boss boundary through public story events. Only the
@@ -514,7 +522,7 @@ describe('Acts III–V shared playable UI', () => {
     const encounter = map.exits.find((exit) => exit.id === 'combat-act5-night-stair')
     await mountRPG({ ...saved, status: 'playing', world: { ...saved.world, position: { x: encounter.x, y: encounter.y } } })
     await clickWorldTarget(encounter.accessibleLabel)
-    expect(container.textContent).toContain('Erasure on the Stair')
+    await waitForContent('Erasure on the Stair')
     expect(container.textContent).toContain('Begin encounter')
 
     await unmountRPG()
