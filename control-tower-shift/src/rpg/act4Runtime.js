@@ -87,6 +87,8 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'athena-march-captain', kind: 'npc', x: 410, y: 330, name: 'Athena', label: 'Hear the precise route' },
       { id: 'ares-march-captain', kind: 'npc', x: 456, y: 340, name: 'Ares', label: 'Hear the direct breach' },
       { id: 'mortal-draft-table', kind: 'choice', x: 540, y: 382, name: 'Mortal-Authored Draft', label: 'Ratify the mortal draft', objectiveId: 'ratify-mortal-draft', choiceIds: ['licensed-flame', 'guild-stewardship', 'revocable-hearths'] },
+      { id: 'slag-road-cedar', kind: 'resource', x: 700, y: 340, name: 'March Cedar', label: 'Cut the fire-scarred march cedar', skillId: 'woodcutting', itemId: 'cedar-log', level: 30, xp: 45 },
+      { id: 'doros-march-quartermaster', kind: 'shop', shopId: 'forge-march-quartermaster', x: 620, y: 400, name: 'Doros', label: 'Trade campaign goods with Doros' },
     ],
     exits: [
       { id: 'plan-athena-first-edge', x: 920, y: 238, toMapId: 'bronze-foundry', spawnId: 'from-slag-road', returnSpawnId: 'from-foundry', kind: 'foot', planId: 'athena-precise-route', label: 'Take Athena\'s relief route', gate: [] },
@@ -124,6 +126,8 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'pressure-valve-1', kind: 'pressure-valve', x: 298, y: 350, name: 'Lane I Pressure Valve', label: 'Cycle lane-one pressure' },
       { id: 'pressure-valve-2', kind: 'pressure-valve', x: 480, y: 350, name: 'Lane II Pressure Valve', label: 'Cycle lane-two pressure' },
       { id: 'pressure-valve-3', kind: 'pressure-valve', x: 662, y: 350, name: 'Lane III Pressure Valve', label: 'Cycle lane-three pressure' },
+      { id: 'foundry-charred-ember', kind: 'resource', x: 240, y: 380, name: 'Lawful Furnace Embers', label: 'Gather a charred ember from the cooled furnace', skillId: 'foraging', itemId: 'charred-ember', level: 20, xp: 36 },
+      { id: 'bronze-foundry-forge', kind: 'station', stationId: 'bronze-forge', x: 720, y: 380, name: 'Bronze Foundry Forge', label: 'Work metal at the foundry forge' },
     ],
     exits: [
       { id: 'foundry-to-slag-road', x: 38, y: 270, toMapId: 'slag-road', spawnId: 'from-foundry', returnSpawnId: 'from-slag-road', kind: 'foot', label: 'Return to the Slag Road', gate: [] },

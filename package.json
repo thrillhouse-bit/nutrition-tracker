@@ -18,6 +18,8 @@
     "test:oathbearer": "vitest run control-tower-shift",
     "verify:oathbearer": "npm run test:oathbearer && npm run build",
     "verify:oathbearer:beta": "node scripts/verify-oathbearer-beta.mjs && npm run verify:oathbearer",
+    "report:oathbearer:complete": "node scripts/verify-oathbearer-complete-game.mjs --report",
+    "verify:oathbearer:complete": "node scripts/verify-oathbearer-complete-game.mjs && npm run verify:oathbearer",
     "test:watch": "vitest"
   },
   "dependencies": {

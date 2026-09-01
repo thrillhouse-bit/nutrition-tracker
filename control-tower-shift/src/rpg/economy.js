@@ -24,6 +24,52 @@ export const SHOP_DEFS = Object.freeze({
       'copper-ore': Object.freeze({ itemId: 'copper-ore', buyPrice: 18, sellPrice: 7, baseStock: 8, maxStock: 20, restockAmount: 1 }),
     }),
   }),
+  'pelagos-chandler': Object.freeze({
+    id: 'pelagos-chandler',
+    name: 'Thaleia’s Harbor Chandlery',
+    merchantName: 'Thaleia',
+    mapIds: Object.freeze(['pelagos-harbor']),
+    listings: Object.freeze({
+      'olive-plank': Object.freeze({ itemId: 'olive-plank', buyPrice: 38, sellPrice: 15, baseStock: 8, maxStock: 20, restockAmount: 2 }),
+      'cedar-keel': Object.freeze({ itemId: 'cedar-keel', buyPrice: 220, sellPrice: 85, baseStock: 2, maxStock: 6, restockAmount: 1 }),
+      'tuna-stew': Object.freeze({ itemId: 'tuna-stew', buyPrice: 90, sellPrice: 34, baseStock: 6, maxStock: 12, restockAmount: 1 }),
+    }),
+  }),
+  'wheat-village-exchange': Object.freeze({
+    id: 'wheat-village-exchange',
+    name: 'Eirene’s Household Exchange',
+    merchantName: 'Eirene',
+    mapIds: Object.freeze(['wheat-village']),
+    listings: Object.freeze({
+      'grain-pottage': Object.freeze({ itemId: 'grain-pottage', buyPrice: 20, sellPrice: 8, baseStock: 10, maxStock: 24, restockAmount: 2 }),
+      'herb-cake': Object.freeze({ itemId: 'herb-cake', buyPrice: 38, sellPrice: 14, baseStock: 8, maxStock: 18, restockAmount: 2 }),
+      'herbal-salve': Object.freeze({ itemId: 'herbal-salve', buyPrice: 120, sellPrice: 45, baseStock: 4, maxStock: 10, restockAmount: 1 }),
+      'kiln-fired-vessel': Object.freeze({ itemId: 'kiln-fired-vessel', buyPrice: 150, sellPrice: 55, baseStock: 3, maxStock: 8, restockAmount: 1 }),
+    }),
+  }),
+  'forge-march-quartermaster': Object.freeze({
+    id: 'forge-march-quartermaster',
+    name: 'Doros’s March Ledger',
+    merchantName: 'Doros',
+    mapIds: Object.freeze(['slag-road']),
+    listings: Object.freeze({
+      'bronze-fittings': Object.freeze({ itemId: 'bronze-fittings', buyPrice: 75, sellPrice: 28, baseStock: 8, maxStock: 18, restockAmount: 2 }),
+      'bronze-ingot': Object.freeze({ itemId: 'bronze-ingot', buyPrice: 110, sellPrice: 42, baseStock: 6, maxStock: 14, restockAmount: 1 }),
+      'sacred-flame-brand': Object.freeze({ itemId: 'sacred-flame-brand', buyPrice: 300, sellPrice: 115, baseStock: 2, maxStock: 6, restockAmount: 1 }),
+    }),
+  }),
+  'nyx-witness-exchange': Object.freeze({
+    id: 'nyx-witness-exchange',
+    name: 'Asteria’s Witness Exchange',
+    merchantName: 'Asteria',
+    mapIds: Object.freeze(['nyx-foothold']),
+    listings: Object.freeze({
+      'ash-blessing': Object.freeze({ itemId: 'ash-blessing', buyPrice: 520, sellPrice: 200, baseStock: 2, maxStock: 4, restockAmount: 1 }),
+      'laurel-loom-fiber': Object.freeze({ itemId: 'laurel-loom-fiber', buyPrice: 280, sellPrice: 105, baseStock: 3, maxStock: 8, restockAmount: 1 }),
+      'linen-weave': Object.freeze({ itemId: 'linen-weave', buyPrice: 190, sellPrice: 72, baseStock: 4, maxStock: 10, restockAmount: 1 }),
+      'moly-tonic': Object.freeze({ itemId: 'moly-tonic', buyPrice: 360, sellPrice: 135, baseStock: 3, maxStock: 8, restockAmount: 1 }),
+    }),
+  }),
 })
 
 export const SHOP_IDS = Object.freeze(Object.keys(SHOP_DEFS))

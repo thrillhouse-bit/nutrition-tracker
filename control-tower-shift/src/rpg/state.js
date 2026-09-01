@@ -612,7 +612,7 @@ function gather(state, event) {
   if (state.status !== 'playing') return state
   const map = mapById(state.world.mapId)
   const resource = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'resource')
-  if (!resource || !ITEM_DEFS[resource.itemId]) return state
+  if (!resource || !ALL_ITEM_DEFS[resource.itemId]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
   if (levelForXp(xp) < (resource.level || 1)) return state
   const quantity = positiveIntegerQuantity(resource.quantity || 1)
@@ -952,10 +952,24 @@ function dialogueEnd(state, event) {
     : setFlag(applyConversationEffects(state, collectConversationEffects(convo)), completedFlag, true)
   // Dialogue done → restore gameplay.
   next = { ...next, status: 'playing', flags: dropFlags(next.flags, [ACTIVE_CONVO_FLAG, ACTIVE_CONVO_NPC_FLAG]) }
-  // A completed conversation may satisfy a main-quest talk objective.
+  // A completed conversation may satisfy a main-quest talk objective. Order-
+  // free multi-talk objectives are recorded against the NPC who actually
+  // opened this dialogue; registering authored conversations must never make
+  // the older TALK fallback the only way to advance them.
   const mainTalk = currentObjective(next)
   if (mainTalk?.kind === 'talk' && mainTalk.conversationId === convoId && (!mainTalk.npcId || mainTalk.npcId === resolvedNpcId)) {
     next = advanceMain(next)
+  } else if (
+    mainTalk?.kind === 'multi-talk'
+    && resolvedNpcId
+    && resolvedNpcId === activeNpcId
+    && (mainTalk.speakerIds || mainTalk.npcIds || []).includes(resolvedNpcId)
+    && convo.speakerIds?.includes(resolvedNpcId)
+  ) {
+    next = recordObjectiveEntity(next, next.mainQuestId, {
+      ...mainTalk,
+      entityIds: mainTalk.speakerIds || mainTalk.npcIds,
+    }, resolvedNpcId)
   }
   // ...or an optional-quest talk objective.
   const side = registeredQuestIds().find((id) => {

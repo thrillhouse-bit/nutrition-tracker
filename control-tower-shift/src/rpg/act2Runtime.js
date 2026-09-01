@@ -83,6 +83,9 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'oath-post', kind: 'interact', x: 280, y: 330, name: 'Harbor Oath-Post', label: 'Inspect the oath-post' },
       { id: 'poseidon-shrine', kind: 'shrine', x: 328, y: 174, name: 'Poseidon Shrine', label: 'Honor the keeper of harbors', deityId: 'poseidon', savePointId: 'shrine-pelagos-poseidon' },
       { id: 'salt-covenant-table', kind: 'choice', x: 442, y: 246, name: 'Salt Covenant Table', label: 'Ratify the Salt Covenant', choiceIds: ['harbor-first', 'boundary-first', 'shared-crossing'] },
+      { id: 'pelagos-woodwork-bench', kind: 'station', stationId: 'woodwork-bench', x: 560, y: 340, name: 'Pelagos Woodwork Bench', label: 'Shape harbor timber' },
+      { id: 'pelagos-shipwright', kind: 'station', stationId: 'shipwright', x: 740, y: 340, name: 'Pelagos Shipwright', label: 'Work at the harbor shipwright' },
+      { id: 'thaleia-harbor-chandler', kind: 'shop', shopId: 'pelagos-chandler', x: 620, y: 250, name: 'Thaleia', label: 'Trade at the harbor chandlery' },
     ],
     exits: [
       { id: 'harbor-to-breakwater', x: 920, y: 278, toMapId: 'breakwater-road', spawnId: 'from-harbor', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
@@ -164,6 +167,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'nereid-enclave', kind: 'marker', x: 778, y: 210, name: 'Nereid Enclave', label: 'Enter the enclave' },
       { id: 'echo-cavern', kind: 'marker', x: 452, y: 444, name: 'Echo Cavern', label: 'Follow the remembered song' },
       { id: 'unmoored-heart-invitation', kind: 'interact', x: 414, y: 414, name: 'Unmoored Heart Echo', label: 'Listen to the unmoored heart', sideQuest: 'sq-act2-unmoored-heart' },
+      { id: 'nereid-tin-vein', kind: 'resource', x: 820, y: 260, name: 'Nereid Tin Vein', label: 'Mine the sea-washed tin vein', skillId: 'quarrying', itemId: 'tin-ore', level: 5, xp: 20 },
     ],
     exits: [
       { id: 'caves-to-breakwater', x: 38, y: 284, toMapId: 'breakwater-road', spawnId: 'from-caves', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
@@ -198,6 +202,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     },
     entities: [
       { id: 'rope-lift', kind: 'rope-lift', x: 720, y: 174, name: 'Archive Rope Lift', label: 'Raise the archive pennant' },
+      { id: 'anchorage-tuna-run', kind: 'resource', x: 240, y: 320, name: 'Storm Tuna Run', label: 'Fish the storm tuna run', skillId: 'fishing', itemId: 'tuna', level: 30, xp: 45 },
     ],
     exits: [
       { id: 'anchorage-to-caves', x: 38, y: 286, toMapId: 'nereid-caves', spawnId: 'from-anchorage', returnSpawnId: 'from-caves', kind: 'foot', gate: [] },

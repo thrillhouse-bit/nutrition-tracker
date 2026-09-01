@@ -45,9 +45,13 @@ import {
 import {
   DEFAULT_LOCOMOTION_CONFIG,
   createLocomotionPose,
-  locomotionPresentation,
   stepLocomotion,
 } from './rpg/locomotion.js'
+import {
+  createCharacterAnimationState,
+  resolveCharacterAnimationFrame,
+  selectCharacterAnimation,
+} from './rpg/characterAnimation.js'
 import { EQUIPMENT_SLOTS, SKILL_DEFS, carriedItemQuantity, levelForXp, xpForLevel } from './rpg/progression.js'
 import { ALL_ITEM_DEFS } from './rpg/crafting.js'
 import { deriveCombatModifiers, equipmentDecision } from './rpg/equipment.js'
@@ -88,12 +92,20 @@ const WORLD_INTERACTION_RADIUS = 56
 // take several minutes. This is authored-world pixels per second.
 // Deliberate traversal pace: fast enough to cross a plaza without waiting,
 // slow enough for the distance-driven gait and authored landmarks to read.
-const MOVE_SPEED = 120
+const MOVE_SPEED = 96
 const WORLD_LOCOMOTION_CONFIG = Object.freeze({
   ...DEFAULT_LOCOMOTION_CONFIG,
   walkSpeed: MOVE_SPEED,
-  acceleration: 720,
-  deceleration: 960,
+  acceleration: 384,
+  deceleration: 560,
+  gaitCyclesPerWorldUnit: 0.0125,
+})
+// Generated directional frames can be introduced by adding imports and clips
+// here; movement, collision and persistence remain independent. Until then the
+// existing authored cutout is a deliberate static fallback.
+const KALLIAS_ANIMATION_MANIFEST = Object.freeze({
+  fallback: kalliasWorldSprite,
+  clips: Object.freeze({}),
 })
 const EMPTY_DIRECTIONAL_INPUT = Object.freeze({ up: false, down: false, left: false, right: false, dash: false })
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '])
@@ -452,12 +464,17 @@ export default function ControlTowerRPG() {
   const canvasRef = useRef(null)
   const stageRef = useRef(null)
   const playerSpriteRef = useRef(null)
+  const playerSpriteImageRef = useRef(null)
   const worldAnchorRefs = useRef(new Map())
   const worldRef = useRef(worldFxRef())
   const inputRef = useRef({ ...EMPTY_DIRECTIONAL_INPUT })
   const touchRef = useRef({ ...EMPTY_DIRECTIONAL_INPUT })
   const pathRef = useRef([])
   const visualWorldRef = useRef(createLocomotionPose({ ...state.world.position, facing: state.world.facing }))
+  const characterAnimationRef = useRef(createCharacterAnimationState({
+    facing: state.world.facing,
+    reducedMotion: worldRef.current.reduceMotion,
+  }))
   const lastMoveCommitRef = useRef(0)
   const pendingInteractionRef = useRef(null)
   const keysRef = useRef(new Set())
@@ -585,15 +602,29 @@ export default function ControlTowerRPG() {
     if (!projection.valid) return
     if (sprite) {
       const playerPoint = projectPoint(projection, visual)
-      sprite.style.transform = playerSpriteTransform(playerPoint, visual.facing)
-      const gait = locomotionPresentation(visual)
       const reduced = worldRef.current.reduceMotion
-      sprite.dataset.moving = visual.moving && !reduced ? 'true' : 'false'
-      sprite.style.setProperty('--rpg-body-bob', `${reduced ? 0 : gait.bodyBob * 4.5}px`)
-      sprite.style.setProperty('--rpg-body-lean', `${reduced ? 0 : gait.bodyLean * 9}deg`)
-      sprite.style.setProperty('--rpg-stride-sway', `${reduced ? 0 : Math.sin(visual.gaitPhase || 0) * 2.2}deg`)
-      sprite.style.setProperty('--rpg-shadow-scale', `${reduced ? 1 : gait.shadowScale}`)
-      sprite.style.setProperty('--rpg-footfall-alpha', `${reduced || !visual.moving ? 0 : Math.max(0, 0.28 - gait.footLift * 0.25)}`)
+      const animation = selectCharacterAnimation(visual, characterAnimationRef.current, {
+        reducedMotion: reduced,
+        config: { walkSpeed: MOVE_SPEED },
+      })
+      characterAnimationRef.current = animation
+      const frame = resolveCharacterAnimationFrame(KALLIAS_ANIMATION_MANIFEST, animation, kalliasWorldSprite)
+      sprite.style.transform = playerSpriteTransform(playerPoint, frame.directional ? 0 : visual.facing)
+      sprite.dataset.moving = animation.moving && !reduced ? 'true' : 'false'
+      sprite.dataset.animation = animation.animation
+      sprite.dataset.direction = animation.direction
+      sprite.dataset.contactFoot = animation.contactFoot
+      sprite.dataset.animationFrame = String(frame.frameIndex)
+      sprite.style.setProperty('--rpg-body-bob', `${animation.bodyBob}px`)
+      sprite.style.setProperty('--rpg-body-lean', `${animation.bodyLean}deg`)
+      sprite.style.setProperty('--rpg-weight-shift', `${animation.weightShift}deg`)
+      sprite.style.setProperty('--rpg-shadow-scale', `${animation.shadowScale}`)
+      const contactAlpha = animation.moving && !reduced ? animation.plantStrength * 0.34 : 0
+      sprite.style.setProperty('--rpg-left-contact-alpha', `${animation.contactFoot === 'left' ? contactAlpha : 0}`)
+      sprite.style.setProperty('--rpg-right-contact-alpha', `${animation.contactFoot === 'right' ? contactAlpha : 0}`)
+      sprite.style.setProperty('--rpg-frame-flip', frame.flipX ? '-1' : '1')
+      const frameImage = playerSpriteImageRef.current
+      if (frameImage && frame.src && frameImage.getAttribute('src') !== frame.src) frameImage.setAttribute('src', frame.src)
     }
     for (const node of worldAnchorRefs.current.values()) {
       const worldPoint = { x: Number(node.dataset.worldX), y: Number(node.dataset.worldY) }
@@ -607,6 +638,10 @@ export default function ControlTowerRPG() {
   useEffect(() => {
     const current = stateRef.current.world
     visualWorldRef.current = createLocomotionPose({ ...current.position, facing: current.facing })
+    characterAnimationRef.current = createCharacterAnimationState({
+      facing: current.facing,
+      reducedMotion: worldRef.current.reduceMotion,
+    })
     lastMoveCommitRef.current = 0
     const frame = requestAnimationFrame(() => paintWorldProjection())
     const stage = stageRef.current
@@ -693,6 +728,7 @@ export default function ControlTowerRPG() {
             walkSpeed: MOVE_SPEED * DASH_MULT,
             acceleration: MOVE_SPEED * DASH_MULT * 12,
             deceleration: MOVE_SPEED * DASH_MULT * 14,
+            gaitCyclesPerWorldUnit: WORLD_LOCOMOTION_CONFIG.gaitCyclesPerWorldUnit * 0.6,
           }
         : WORLD_LOCOMOTION_CONFIG
       if (fx.dash.active) {
@@ -1472,7 +1508,11 @@ export default function ControlTowerRPG() {
     clearSave(store)
     const fresh = rpgInitial()
     stateRef.current = fresh
-    visualWorldRef.current = { ...fresh.world.position, facing: fresh.world.facing }
+    visualWorldRef.current = createLocomotionPose({ ...fresh.world.position, facing: fresh.world.facing })
+    characterAnimationRef.current = createCharacterAnimationState({
+      facing: fresh.world.facing,
+      reducedMotion: worldRef.current.reduceMotion,
+    })
     setState(fresh)
     setSession(null)
     setCombatReady(false)
@@ -1725,6 +1765,10 @@ export default function ControlTowerRPG() {
               aria-hidden="true"
               data-testid="kallias-world-sprite"
               data-moving="false"
+              data-animation="idle"
+              data-direction="east"
+              data-contact-foot="both"
+              data-animation-frame="0"
               className="rpg-world-sprite rpg-world-player"
               style={{
                 left: 0,
@@ -1735,6 +1779,7 @@ export default function ControlTowerRPG() {
               <span className="rpg-player-footfall rpg-player-footfall-left" />
               <span className="rpg-player-footfall rpg-player-footfall-right" />
               <img
+                ref={playerSpriteImageRef}
                 src={kalliasWorldSprite}
                 alt=""
                 draggable="false"

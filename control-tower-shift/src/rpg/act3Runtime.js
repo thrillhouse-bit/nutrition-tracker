@@ -95,6 +95,9 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
       { id: 'frozen-villagers', kind: 'marker', x: 612, y: 382, name: 'Frozen Villagers', label: 'Witness the stilled year' },
       { id: 'return-covenant-table', kind: 'choice', x: 474, y: 246, name: 'Return Covenant', label: 'Join the Return covenant', choiceIds: ['continuity-kept', 'departure-protected', 'witnessed-cycle'] },
       { id: 'first-thaw', kind: 'marker', x: 474, y: 282, name: 'First Thaw', label: 'Witness the first thaw' },
+      { id: 'wheat-village-hearth', kind: 'station', stationId: 'hearth', x: 340, y: 400, name: 'Wheat Village Hearth', label: 'Cook at the village hearth' },
+      { id: 'wheat-village-kiln', kind: 'station', stationId: 'kiln', x: 780, y: 360, name: 'Wheat Village Kiln', label: 'Fire clay in the village kiln' },
+      { id: 'eirene-household-steward', kind: 'shop', shopId: 'wheat-village-exchange', x: 670, y: 410, name: 'Eirene', label: 'Trade household goods with Eirene' },
     ],
     exits: [
       exit('village-to-orchard', 922, 286, 'winter-orchard', 'from-village', 'from-orchard'),
@@ -131,6 +134,7 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
       { id: 'cup-between-seasons-invitation', kind: 'interact', x: 408, y: 418, name: 'Vine-Wrapped Invitation', label: 'Follow Dionysus into the vineyard', sideQuest: 'sq-act3-cup-between-seasons' },
       { id: 'ceremonial-cup', kind: 'interact', x: 536, y: 430, name: 'Ceremonial Cup', label: 'Recover the ceremonial cup' },
       { id: 'seasonal-rite-table', kind: 'choice', x: 610, y: 420, name: 'Household Rite', label: 'Resolve the ritual dispute', choiceIds: ['rite-renewed', 'rite-released'] },
+      { id: 'orchard-cypress', kind: 'resource', x: 800, y: 300, name: 'Mourning Cypress', label: 'Cut the mourning cypress', skillId: 'woodcutting', itemId: 'cypress-log', level: 15, xp: 28 },
     ],
     exits: [
       exit('orchard-to-village', 38, 286, 'wheat-village', 'from-orchard', 'from-village'),
@@ -167,6 +171,7 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
       { id: 'pomegranate-seal-3', kind: 'interact', x: 552, y: 248, name: 'Third Pomegranate Seal', label: 'Turn the third seal', sequence: 3 },
       { id: 'pomegranate-seal-4', kind: 'interact', x: 670, y: 344, name: 'Fourth Pomegranate Seal', label: 'Turn the fourth seal', sequence: 4 },
       { id: 'descent-gate', kind: 'marker', x: 820, y: 286, name: 'Descent Gate', label: 'Descend toward Asphodel' },
+      { id: 'kore-alchemy-lab', kind: 'station', stationId: 'alchemy-lab', x: 360, y: 380, name: 'Kore Alchemy Laboratory', label: 'Brew among Kore\'s preserved herbs' },
     ],
     exits: [
       exit('sanctuary-to-orchard', 38, 286, 'winter-orchard', 'from-sanctuary', 'from-orchard'),
