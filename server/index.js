@@ -200,14 +200,18 @@ for (const kind of ['privacy', 'terms']) {
 // --- auth (public) ----------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function currentLegalAcceptanceRequired(user, legal = legalStatus()) {
+  return Boolean(
+    user && legal.ready && (!user.legal_accepted_at || user.legal_version !== legal.version),
+  )
+}
+
 function publicUser(user, legal = legalStatus()) {
   if (!user) return null
   return {
     id: user.id,
     email: user.email,
-    legalAcceptanceRequired: Boolean(
-      legal.ready && (!user.legal_accepted_at || user.legal_version !== legal.version),
-    ),
+    legalAcceptanceRequired: currentLegalAcceptanceRequired(user, legal),
   }
 }
 
@@ -391,6 +395,21 @@ requireAuthRouter.post('/account/delete', asyncH(async (req, res) => {
   clearSessionCookie(res)
   res.status(204).end()
 }))
+
+// Re-consent is enforced at the API boundary, not only by the React shell.
+// Keep export and deletion above this middleware so a person never has to
+// accept new terms merely to exercise their data rights. Auth/me, logout,
+// acceptance itself, and the public documents are registered before this
+// router and remain available as well.
+requireAuthRouter.use((req, res, next) => {
+  if (currentLegalAcceptanceRequired(req.user)) {
+    return res.status(428).json({
+      error: 'Review and accept the current Terms of Service and Privacy Policy to continue.',
+      code: 'LEGAL_ACCEPTANCE_REQUIRED',
+    })
+  }
+  next()
+})
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------
 requireAuthRouter.get('/lookup/:barcode', asyncH(async (req, res) => {

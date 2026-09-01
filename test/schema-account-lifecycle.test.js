@@ -22,4 +22,14 @@ describe('Postgres account lifecycle schema', () => {
     expect(schema).toMatch(/alter table garmin_accounts add column if not exists garmin_user_id text/i)
     expect(schema).toMatch(/unique index if not exists garmin_accounts_garmin_user_id_idx/i)
   })
+
+  it('keeps an invite redemption ledger after account deletion and enforces digest uniqueness', async () => {
+    const schema = await readFile(new URL('../schema.sql', import.meta.url), 'utf8')
+    expect(schema).toMatch(/invite_code_digest\s+text\s+unique/i)
+    expect(schema).toMatch(/unique index if not exists users_invite_code_digest_idx/i)
+    const ledger = schema.match(/create table if not exists alpha_invite_redemptions \([\s\S]*?\n\);/i)?.[0]
+    expect(ledger).toBeTruthy()
+    expect(ledger).toMatch(/code_digest\s+text\s+primary key/i)
+    expect(ledger).toMatch(/references users \(id\) on delete set null/i)
+  })
 })

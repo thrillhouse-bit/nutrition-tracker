@@ -32,6 +32,41 @@ describe('PgStore.createUser — concurrent-duplicate-signup race', () => {
   })
 })
 
+describe('PgStore alpha invitation redemption', () => {
+  it('creates the user and durable redemption in one database transaction', async () => {
+    const store = new PgStore('postgres://unused')
+    const row = { id: 9, email: 'alpha@example.test', legal_version: 'v1', legal_accepted_at: '2026-08-31T00:00:00.000Z' }
+    const sql = () => []
+    sql.transaction = async (build) => {
+      const queries = build((strings, ...params) => ({ text: strings.join('?'), params }))
+      expect(queries).toHaveLength(2)
+      expect(queries[0].text).toMatch(/not exists[\s\S]*alpha_invite_redemptions/i)
+      expect(queries[1].text).toMatch(/insert into alpha_invite_redemptions/i)
+      return [[row], [{ code_digest: 'digest' }]]
+    }
+    store.sql = sql
+    await expect(store.createUser({ email: row.email, password_hash: 'hash', legal_version: 'v1', invite_code_digest: 'digest' })).resolves.toEqual(row)
+  })
+
+  it('returns the same generic invitation error when the durable ledger already contains the digest', async () => {
+    const store = new PgStore('postgres://unused')
+    const sql = () => []
+    sql.transaction = async () => [[], []]
+    store.sql = sql
+    await expect(store.createUser({ email: 'other@example.test', password_hash: 'hash', invite_code_digest: 'used-digest' }))
+      .rejects.toMatchObject({ status: 403, code: 'INVITE_UNAVAILABLE', message: 'This invitation is invalid or has already been used.' })
+  })
+})
+
+describe('PgStore.acceptLegalVersion', () => {
+  it('returns the updated user without exposing credential fields', async () => {
+    const store = new PgStore('postgres://unused')
+    const row = { id: 1, email: 'person@example.test', legal_version: 'v2', legal_accepted_at: '2026-08-31T00:00:00.000Z' }
+    store.sql = () => [row]
+    await expect(store.acceptLegalVersion(1, 'v2')).resolves.toEqual(row)
+  })
+})
+
 describe('PgStore.listWeightEntries — manual vs. Apple-sync merge', () => {
   it('a manual entry wins over an Apple-synced reading for the same day, never both', async () => {
     const store = new PgStore('postgres://unused')

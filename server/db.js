@@ -20,6 +20,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { inviteUnavailableError } from './alphaAccess.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -151,15 +152,40 @@ export class PgStore {
   // 25 Aug 2026 — flagged as a residual risk; already a named open item in
   // docs/qa-qc-report.md). JsonStore's createUser already throws this same
   // clean 409 defensively; this brings PgStore to parity.
-  async createUser({ email, password_hash, legal_version = null }) {
+  async createUser({ email, password_hash, legal_version = null, invite_code_digest = null }) {
     const sql = await this.ready()
     try {
+      if (invite_code_digest) {
+        // The non-interactive Neon transaction still executes these in order.
+        // The first query creates no user when the durable ledger already has
+        // the digest; the second records a successful claim. Any uniqueness
+        // failure aborts both queries, so concurrent requests cannot strand a
+        // user or redeem one code twice.
+        const [createdRows, redemptionRows] = await sql.transaction((txn) => [
+          txn`
+            insert into users (email, password_hash, legal_version, legal_accepted_at, invite_code_digest)
+            select ${email}, ${password_hash}, ${legal_version}, ${legal_version ? new Date().toISOString() : null}, ${invite_code_digest}
+            where not exists (
+              select 1 from alpha_invite_redemptions where code_digest = ${invite_code_digest}
+            )
+            returning id, email, legal_version, legal_accepted_at, created_at`,
+          txn`
+            insert into alpha_invite_redemptions (code_digest, user_id)
+            select ${invite_code_digest}, id from users where invite_code_digest = ${invite_code_digest}
+            returning code_digest`,
+        ])
+        if (!createdRows[0] || !redemptionRows[0]) throw inviteUnavailableError()
+        return createdRows[0]
+      }
       const rows = await sql`
         insert into users (email, password_hash, legal_version, legal_accepted_at)
         values (${email}, ${password_hash}, ${legal_version}, ${legal_version ? new Date().toISOString() : null})
         returning id, email, legal_version, legal_accepted_at, created_at`
       return rows[0]
     } catch (err) {
+      if (err.code === 'INVITE_UNAVAILABLE' || (err.code === '23505' && invite_code_digest)) {
+        throw inviteUnavailableError()
+      }
       if (err.code === '23505') {
         const dup = new Error('An account with that email already exists.')
         dup.status = 409
@@ -178,7 +204,16 @@ export class PgStore {
 
   async getUserById(id) {
     const sql = await this.ready()
-    const rows = await sql`select id, email, created_at from users where id = ${id} limit 1`
+    const rows = await sql`select id, email, legal_version, legal_accepted_at, created_at from users where id = ${id} limit 1`
+    return rows[0] || null
+  }
+
+  async acceptLegalVersion(userId, legalVersion) {
+    const sql = await this.ready()
+    const rows = await sql`
+      update users set legal_version = ${legalVersion}, legal_accepted_at = now()
+      where id = ${userId}
+      returning id, email, legal_version, legal_accepted_at, created_at`
     return rows[0] || null
   }
 
@@ -946,6 +981,7 @@ export class JsonStore {
     this.file = file
     this.data = null
     this.writing = Promise.resolve()
+    this.userCreation = Promise.resolve()
   }
 
   async load() {
@@ -964,7 +1000,7 @@ export class JsonStore {
         console.error(`[nutrition-tracker] Failed to read/parse ${this.file} — refusing to silently start from an empty store. Fix or remove the file to continue.`, err)
         throw err
       }
-      this.data = { foods: [], entries: [], targets: [], users: [], seq: { food: 0, entry: 0, target: 0, user: 0 } }
+      this.data = { foods: [], entries: [], targets: [], users: [], alpha_invite_redemptions: [], seq: { food: 0, entry: 0, target: 0, user: 0 } }
     }
     // Older on-disk stores predate `users`/per-row user_id — nothing to
     // migrate automatically here (unlike a real ALTER TABLE, a missing key
@@ -973,6 +1009,7 @@ export class JsonStore {
     // exists for symmetry with PgStore and for the same explicit one-time
     // backfill path.
     this.data.users = this.data.users || []
+    this.data.alpha_invite_redemptions = this.data.alpha_invite_redemptions || []
     this.data.seq = this.data.seq || {}
     this.data.seq.user = this.data.seq.user || 0
     return this.data
@@ -999,25 +1036,41 @@ export class JsonStore {
   }
 
   // --- users -------------------------------------------------------------
-  async createUser({ email, password_hash, legal_version = null }) {
-    const d = await this.load()
-    if (d.users.find((u) => u.email === email)) {
-      const err = new Error('An account with that email already exists.')
-      err.status = 409
-      throw err
+  async createUser({ email, password_hash, legal_version = null, invite_code_digest = null }) {
+    // Signup is the one JSON mutation that has two independent uniqueness
+    // keys (email and invitation digest). Serialize the complete check + push
+    // + durable write so simultaneous requests against a fresh file cannot
+    // both pass before either redemption becomes visible.
+    const create = async () => {
+      const d = await this.load()
+      if (invite_code_digest && d.alpha_invite_redemptions.some((row) => row.code_digest === invite_code_digest)) {
+        throw inviteUnavailableError()
+      }
+      if (d.users.find((u) => u.email === email)) {
+        const err = new Error('An account with that email already exists.')
+        err.status = 409
+        throw err
+      }
+      const now = new Date().toISOString()
+      const row = {
+        id: ++d.seq.user,
+        email,
+        password_hash,
+        legal_version,
+        legal_accepted_at: legal_version ? now : null,
+        invite_code_digest: invite_code_digest || null,
+        created_at: now,
+      }
+      d.users.push(row)
+      if (invite_code_digest) {
+        d.alpha_invite_redemptions.push({ code_digest: invite_code_digest, user_id: row.id, redeemed_at: now })
+      }
+      await this.persist()
+      return { id: row.id, email: row.email, created_at: row.created_at }
     }
-    const now = new Date().toISOString()
-    const row = {
-      id: ++d.seq.user,
-      email,
-      password_hash,
-      legal_version,
-      legal_accepted_at: legal_version ? now : null,
-      created_at: now,
-    }
-    d.users.push(row)
-    await this.persist()
-    return { id: row.id, email: row.email, created_at: row.created_at }
+    const operation = this.userCreation.then(create, create)
+    this.userCreation = operation.then(() => undefined, () => undefined)
+    return operation
   }
 
   async getUserByEmail(email) {
@@ -1028,7 +1081,17 @@ export class JsonStore {
   async getUserById(id) {
     const d = await this.load()
     const u = d.users.find((u) => u.id === Number(id))
-    return u ? { id: u.id, email: u.email, created_at: u.created_at } : null
+    return u ? { id: u.id, email: u.email, legal_version: u.legal_version || null, legal_accepted_at: u.legal_accepted_at || null, created_at: u.created_at } : null
+  }
+
+  async acceptLegalVersion(userId, legalVersion) {
+    const d = await this.load()
+    const u = d.users.find((row) => row.id === Number(userId))
+    if (!u) return null
+    u.legal_version = legalVersion
+    u.legal_accepted_at = new Date().toISOString()
+    await this.persist()
+    return { id: u.id, email: u.email, legal_version: u.legal_version, legal_accepted_at: u.legal_accepted_at, created_at: u.created_at }
   }
 
   async countUsers() {
@@ -1733,6 +1796,9 @@ export class JsonStore {
     const ouraAccountIds = new Set((d.oura_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
     const garminAccountIds = new Set((d.garmin_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
     d.users = d.users.filter((u) => u.id !== uid)
+    for (const redemption of d.alpha_invite_redemptions || []) {
+      if (redemption.user_id === uid) redemption.user_id = null
+    }
     d.entries = d.entries.filter((row) => row.user_id !== uid)
     d.targets = d.targets.filter((row) => row.user_id !== uid)
     d.oura_accounts = (d.oura_accounts || []).filter((row) => row.user_id !== uid)

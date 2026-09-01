@@ -479,6 +479,21 @@ login, and 5 signup attempts per client address per hour. Override with
 before running multiple API replicas, replace or supplement it with a shared
 edge/Redis limiter so limits cannot be bypassed by replica rotation.
 
+For a private first-ten-person alpha, set `ALPHA_INVITE_ONLY=true` and provide
+exactly ten distinct high-entropy codes in comma-separated
+`ALPHA_INVITE_CODES` (24–128 letters, numbers, `_`, or `-`). Misconfiguration
+fails closed. Public status exposes only whether an invite is required;
+plaintext codes are never logged or persisted. Postgres atomically enforces
+single redemption and retains the digest ledger after account deletion. Apply
+`schema.sql` before enabling this additional gate; it never bypasses the legal
+launch gate.
+
+After deployment and secret configuration, run the read-only alpha gate:
+
+```bash
+EXPECTED_SHA="$(git rev-parse HEAD)" scripts/verify_alpha.sh https://omnifuelapp.tech
+```
+
 ```bash
 npm run build && npm start      # serves dist/ + /api on PORT (default 3001)
 ```
