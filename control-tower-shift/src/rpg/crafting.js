@@ -86,9 +86,11 @@ export const ITEM_EXTENSIONS = Object.freeze({
   'cypress-helm': {
     id: 'cypress-helm',
     name: 'Cypress Helm',
-    category: 'wood',
+    category: 'armor',
+    equipmentSlot: 'head',
     stackable: false,
     tier: 2,
+    combatModifiers: Object.freeze({ defenseBonus: 10, maxHealthBonus: 5 }),
   },
   'olive-figurehead': {
     id: 'olive-figurehead',

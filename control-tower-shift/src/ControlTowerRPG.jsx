@@ -48,8 +48,10 @@ import {
   locomotionPresentation,
   stepLocomotion,
 } from './rpg/locomotion.js'
-import { SKILL_DEFS, levelForXp, xpForLevel } from './rpg/progression.js'
+import { EQUIPMENT_SLOTS, SKILL_DEFS, carriedItemQuantity, levelForXp, xpForLevel } from './rpg/progression.js'
 import { ALL_ITEM_DEFS } from './rpg/crafting.js'
+import { deriveCombatModifiers, equipmentDecision } from './rpg/equipment.js'
+import { resourceNodeStatus } from './rpg/resources.js'
 import RPGSystemsPanel from './rpg/RPGSystemsPanel.jsx'
 import RPGShopPanel from './rpg/RPGShopPanel.jsx'
 import {
@@ -522,6 +524,16 @@ export default function ControlTowerRPG() {
     if (opts.persist !== false) enqueueSave(next)
   }, [enqueueSave])
 
+  // Persisted playtime is the deterministic clock for renewable nodes and
+  // merchant restocks. Batch it once per second to avoid a 30 Hz React render.
+  useEffect(() => {
+    if (!started || paused || !['playing', 'in-combat'].includes(state.status)) return undefined
+    const timer = window.setInterval(() => {
+      dispatch({ type: 'TICK', n: TICK_RATE }, { persist: false })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [started, paused, state.status, dispatch])
+
   const closePanel = useCallback(() => {
     if (panelOpenRef.current === 'shop') dispatch({ type: 'CLOSE_SHOP' }, { persist: false })
     setPanelOpen(null)
@@ -942,6 +954,19 @@ export default function ControlTowerRPG() {
     if (near.kind === 'entity') {
       const ent = near.ent
       if (ent.kind === 'resource') {
+        const node = resourceNodeStatus({
+          resources: st.resources,
+          mapId: st.world.mapId,
+          entityId: ent.id,
+          capacity: ent.capacity,
+          respawnTicks: ent.respawnTicks,
+          playtimeTicks: st.playtimeTicks,
+        })
+        if (!node?.available) {
+          const seconds = Math.max(1, Math.ceil((node?.waitTicks || 0) / TICK_RATE))
+          setSaveNote(`${ent.name} is depleted. It renews in about ${seconds} seconds of active play.`)
+          return
+        }
         const xp = st.progression.skills?.[ent.skillId]?.xp || 0
         const level = levelForXp(xp)
         if (level < (ent.level || 1)) {
@@ -987,8 +1012,12 @@ export default function ControlTowerRPG() {
   useEffect(() => {
     if (!skillAction) return undefined
     const timer = window.setTimeout(() => {
+      const before = carriedItemQuantity(stateRef.current.inventory, skillAction.itemId, ALL_ITEM_DEFS)
       dispatch({ type: 'GATHER', entityId: skillAction.entityId })
-      setSaveNote(`${ALL_ITEM_DEFS[skillAction.itemId]?.name || skillAction.name} added to your backpack.`)
+      const after = carriedItemQuantity(stateRef.current.inventory, skillAction.itemId, ALL_ITEM_DEFS)
+      setSaveNote(after > before
+        ? `${ALL_ITEM_DEFS[skillAction.itemId]?.name || skillAction.name} added to your backpack. The node is now depleted.`
+        : `${skillAction.name} could not be harvested.`)
       setSkillAction(null)
     }, skillAction.duration)
     return () => window.clearTimeout(timer)
@@ -1363,6 +1392,7 @@ export default function ControlTowerRPG() {
       ? { id: state.flags['act4:pressure-state'] || map.pressure?.initialStateId || 'safe', label: 'Pressure' }
       : null
   const act5Light = act5LightPresentation(state, map)
+  const equipmentStats = deriveCombatModifiers(state.inventory.equipment, ALL_ITEM_DEFS)
   const completedAct = questDef?.act || 1
   const nextAct = completedAct < 5 ? completedAct + 1 : null
   const nextRegion = nextAct ? rpgRegionByAct(nextAct) : null
@@ -1405,6 +1435,19 @@ export default function ControlTowerRPG() {
     setShrineOpen(false)
   }
   const resumeGame = () => { setPaused(false) }
+  const equipFromPack = (itemId) => {
+    const name = ALL_ITEM_DEFS[itemId]?.name || itemId
+    const before = stateRef.current.inventory.equipment
+    dispatch({ type: 'EQUIP_ITEM', itemId })
+    setSaveNote(stateRef.current.inventory.equipment !== before ? `${name} equipped.` : `${name} could not be equipped.`)
+  }
+  const unequipToPack = (slot) => {
+    const itemId = stateRef.current.inventory.equipment?.[slot]
+    const name = ALL_ITEM_DEFS[itemId]?.name || itemId || slot
+    const before = stateRef.current.inventory.equipment
+    dispatch({ type: 'UNEQUIP_ITEM', slot })
+    setSaveNote(stateRef.current.inventory.equipment !== before ? `${name} moved to your backpack.` : `${name} could not be unequipped.`)
+  }
   const armCombat = () => {
     const current = sessionRef.current
     if (!current || current.settled || stateRef.current.status !== 'in-combat') return
@@ -1612,21 +1655,37 @@ export default function ControlTowerRPG() {
 
         {state.status === 'playing' && map && !panelOpen && !skillAction && (
           <div className="pointer-events-none absolute inset-0 z-[4]" aria-label="World targets">
-            {(map.entities || []).map((ent) => (
-              <button
-                key={`entity:${ent.id}`}
-                ref={(node) => registerWorldAnchor(`entity:${ent.id}`, node)}
-                type="button"
-                aria-label={ent.accessibleLabel || ent.label || ent.name || `Interact with ${ent.id}`}
-                data-world-x={ent.x}
-                data-world-y={ent.y}
-                className="rpg-world-target"
-                style={{ left: '-9999px', top: '-9999px' }}
-                onClick={(event) => onWorldTargetClick(event, { kind: 'entity', ent, distance: 0 })}
-              >
-                <span aria-hidden="true" className="rpg-world-target-reticle" />
-              </button>
-            ))}
+            {(map.entities || []).map((ent) => {
+              const node = ent.kind === 'resource' ? resourceNodeStatus({
+                resources: state.resources,
+                mapId: map.id,
+                entityId: ent.id,
+                capacity: ent.capacity,
+                respawnTicks: ent.respawnTicks,
+                playtimeTicks: state.playtimeTicks,
+              }) : null
+              const depleted = node && !node.available
+              const baseLabel = ent.accessibleLabel || ent.label || ent.name || `Interact with ${ent.id}`
+              const label = depleted
+                ? `Depleted: ${baseLabel}. Renews in about ${Math.max(1, Math.ceil(node.waitTicks / TICK_RATE))} seconds of active play.`
+                : baseLabel
+              return (
+                <button
+                  key={`entity:${ent.id}`}
+                  ref={(element) => registerWorldAnchor(`entity:${ent.id}`, element)}
+                  type="button"
+                  aria-label={label}
+                  data-world-x={ent.x}
+                  data-world-y={ent.y}
+                  data-resource-state={node ? (depleted ? 'depleted' : 'available') : undefined}
+                  className={`rpg-world-target${depleted ? ' is-depleted' : ''}`}
+                  style={{ left: '-9999px', top: '-9999px' }}
+                  onClick={(event) => onWorldTargetClick(event, { kind: 'entity', ent, distance: 0 })}
+                >
+                  <span aria-hidden="true" className="rpg-world-target-reticle" />
+                </button>
+              )
+            })}
             {(map.exits || []).map((ex) => (
               <button
                 key={`exit:${ex.id}`}
@@ -1723,9 +1782,32 @@ export default function ControlTowerRPG() {
 
             {panelOpen === 'inventory' && (
               <>
-                <div className="rpg-equipment-line">
-                  <span><b>Primary</b> {ALL_ITEM_DEFS[state.inventory.equipment?.weapon]?.name || 'Unarmed'}</span>
-                  <span><b>Body</b> {ALL_ITEM_DEFS[state.inventory.equipment?.body]?.name || 'Unarmored'}</span>
+                <div className="rpg-equipment-ledger" aria-label="Equipped gear">
+                  <div className="rpg-equipment-stats">
+                    <strong>Combat loadout</strong>
+                    <span>Damage ×{equipmentStats.attackDamageMultiplier.toFixed(2)}</span>
+                    <span>Incoming ×{equipmentStats.incomingDamageMultiplier.toFixed(2)}</span>
+                    <span>Health +{equipmentStats.maxHealthBonus}</span>
+                  </div>
+                  <div className="rpg-equipment-grid">
+                    {EQUIPMENT_SLOTS.map((slot) => {
+                      const itemId = state.inventory.equipment?.[slot]
+                      const item = ALL_ITEM_DEFS[itemId]
+                      return (
+                        <div key={slot} className="rpg-equipment-slot" data-equipment-slot={slot}>
+                          <span>
+                            <b>{slot === 'weapon' ? 'Primary' : slot === 'body' ? 'Body' : slot}</b>{' '}
+                            {item?.name || 'Empty'}
+                          </span>
+                          {item && (
+                            <button type="button" onClick={() => unequipToPack(slot)} aria-label={`Unequip ${item.name}`}>
+                              Unequip
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
                 <div className="rpg-inventory-summary"><span>{state.inventory.slots?.length || 0} / {state.inventory.capacity || 28} slots</span><span>{state.inventory.currency || 0} drachmae</span></div>
                 <div className="rpg-inventory-grid" aria-label="28 slot inventory">
@@ -1743,7 +1825,25 @@ export default function ControlTowerRPG() {
                         data-item-category={item?.category}
                         data-item-quantity={entry?.quantity}
                       >
-                        {item ? <><span aria-hidden="true">{item.category === 'food' ? '◒' : item.category === 'ore' ? '◆' : item.category === 'wood' ? '╱' : '◇'}</span><small>{item.name}</small>{entry.quantity > 1 && <b>{entry.quantity}</b>}</> : null}
+                        {item ? <>
+                          <span aria-hidden="true">{item.category === 'food' ? '◒' : item.category === 'ore' ? '◆' : item.category === 'wood' ? '╱' : item.category === 'armor' ? '⬡' : item.category === 'weapon' ? '†' : '◇'}</span>
+                          <small>{item.name}</small>
+                          {entry.quantity > 1 && <b>{entry.quantity}</b>}
+                          {item.equipmentSlot && (() => {
+                            const decision = equipmentDecision(state.inventory, item.id, ALL_ITEM_DEFS)
+                            return (
+                              <button
+                                type="button"
+                                className="rpg-item-action"
+                                disabled={!decision.allowed}
+                                onClick={() => equipFromPack(item.id)}
+                                aria-label={`Equip ${item.name}`}
+                              >
+                                Equip
+                              </button>
+                            )
+                          })()}
+                        </> : null}
                       </div>
                     )
                   })}
@@ -1772,6 +1872,24 @@ export default function ControlTowerRPG() {
               <>
                 <div className="rpg-inventory-summary"><span>{state.inventory.bank?.slots?.length || 0} / {state.inventory.bank?.capacity || 400} bank slots</span><span>{state.inventory.slots?.length || 0} / {state.inventory.capacity || 28} carried</span></div>
                 <button type="button" className="rpg-btn rpg-btn-secondary w-full" onClick={() => dispatch({ type: 'BANK_DEPOSIT_MATERIALS' })}>Deposit all materials</button>
+                <div className="rpg-bank-list" aria-label="Carried items available to deposit">
+                  {(state.inventory.slots || []).map((entry, index) => {
+                    const item = ALL_ITEM_DEFS[entry.itemId]
+                    const itemName = item?.name || entry.itemId
+                    return (
+                      <div key={`${entry.itemId}:${index}`} className="rpg-bank-entry">
+                        <div><strong>{itemName}</strong><small>{entry.quantity} carried</small></div>
+                        <button
+                          type="button"
+                          aria-label={`Deposit 1 ${itemName}`}
+                          onClick={() => dispatch({ type: 'BANK_DEPOSIT', itemId: entry.itemId, quantity: 1 })}
+                        >
+                          Deposit 1
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
                 <div className="rpg-bank-list" aria-label="Banked materials">
                   {(state.inventory.bank?.slots || []).length === 0 ? (
                     <p className="rpg-panel-note">No materials banked. Gather thyme, olive timber, copper, or fish, then deposit them here.</p>

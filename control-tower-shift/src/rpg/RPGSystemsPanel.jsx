@@ -7,10 +7,15 @@
 // Engage only requests it via onEngageEnemy.
 import React, { useMemo, useState } from 'react'
 import './systems-panel.css'
-import { ALL_ITEM_DEFS, RECIPES, canCraft } from './crafting.js'
+import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
+import {
+  CRAFTING_SOURCE_MODES,
+  quoteCraftingLedger,
+} from './craftingLedger.js'
 import { REGIONS, ENEMY_DEFS_BY_ID, combatLevelForSkills, protectedItemCount } from './wilderness.js'
 import { levelForXp, SKILL_DEF_BY_ID } from './progression.js'
 import { craftingAccessDecision, wildernessAccessDecision } from './systemAccess.js'
+import { rpgMapById } from './registry.js'
 
 const TABS = Object.freeze([
   { id: 'wilderness', label: 'Wilderness' },
@@ -24,6 +29,8 @@ const CRAFT_REASON_TEXT = Object.freeze({
   level_too_low: 'Skill level too low.',
   insufficient_materials: 'Missing ingredients.',
   insufficient_inventory_capacity: 'Not enough backpack space.',
+  bank_access_required: 'Bank materials require a physical bank beside this station.',
+  invalid_source_mode: 'That material source is unavailable.',
 })
 
 function itemName(itemId) {
@@ -48,19 +55,26 @@ function stationLabel(stationId) {
 
 function craftStatusMessage(lastResult) {
   if (!lastResult) return ''
-  return lastResult.ok
-    ? `Crafted ×${lastResult.quantity} (+${lastResult.xpAwarded} XP).`
-    : craftUnavailableReason(lastResult)
+  if (!lastResult.ok) return craftUnavailableReason(lastResult)
+  const provenance = (lastResult.deductions || [])
+    .map((entry) => `${itemName(entry.itemId)}: ${entry.carried} carried, ${entry.bank} bank`)
+    .join('; ')
+  return `Crafted ×${lastResult.quantity} (+${lastResult.xpAwarded} XP).${provenance ? ` Materials — ${provenance}.` : ''}`
 }
 
 export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
   const [activeTab, setActiveTab] = useState('wilderness')
+  const [useBankMaterials, setUseBankMaterials] = useState(false)
 
   const skills = state?.progression?.skills
   const inventory = state?.inventory
   const wilderness = state?.wilderness || {}
   const crafting = state?.crafting || {}
   const mapId = state?.world?.mapId
+  const bankAvailable = Boolean(rpgMapById(mapId)?.entities?.some((entity) => entity.kind === 'bank'))
+  const sourceMode = useBankMaterials && bankAvailable
+    ? CRAFTING_SOURCE_MODES.CARRIED_AND_BANK
+    : CRAFTING_SOURCE_MODES.CARRIED_ONLY
 
   const combatLevel = useMemo(() => combatLevelForSkills(skills), [skills])
 
@@ -104,7 +118,7 @@ export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
   const handleCloseStation = () => dispatch({ type: 'CLOSE_CRAFTING' })
   const handleCraft = (recipeId) => {
     if (!activeCraftingAccess?.available) return
-    dispatch({ type: 'CRAFT', recipeId, quantity: 1 })
+    dispatch({ type: 'CRAFT', recipeId, quantity: 1, sourceMode })
   }
   const handleEngage = () => {
     if (!onEngageEnemy || !wilderness.pendingEnemyId) return
@@ -313,6 +327,25 @@ export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
           ) : (
             <div className="rsp-station-active">
               <p className="rsp-station-name">{stationLabel(crafting.stationId)}</p>
+              <label className="rsp-source-toggle">
+                <input
+                  type="checkbox"
+                  aria-label="Use bank materials"
+                  aria-describedby={!bankAvailable ? 'rsp-bank-source-unavailable' : 'rsp-bank-source-note'}
+                  checked={useBankMaterials && bankAvailable}
+                  disabled={!bankAvailable}
+                  onChange={(event) => setUseBankMaterials(event.target.checked)}
+                />
+                <span>Use Storehouse materials</span>
+              </label>
+              <p id="rsp-bank-source-note" className="rsp-panel-note">
+                Carried materials are used first; the Storehouse supplies only the exact remainder.
+              </p>
+              {!bankAvailable && (
+                <p id="rsp-bank-source-unavailable" className="rsp-panel-note rsp-access-note">
+                  Bank sourcing requires a physical bank beside this station.
+                </p>
+              )}
               {!activeCraftingAccess?.available && (
                 <p id="rsp-active-station-access" className="rsp-panel-note rsp-access-note" role="status">
                   {activeCraftingAccess?.reason || 'This station is no longer reachable from the current location.'}
@@ -321,7 +354,12 @@ export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
               <ul className="rsp-recipe-list">
                 {recipesAtStation.map((recipe) => {
                   const currentLevel = levelForXp(skills?.[recipe.skillId]?.xp || 0)
-                  const check = canCraft({ inventory, skills, stationId: crafting.stationId }, recipe.id, 1)
+                  const check = quoteCraftingLedger({
+                    inventory,
+                    skills,
+                    stationId: crafting.stationId,
+                    sourceMode,
+                  }, recipe.id, 1)
                   const physicallyAvailable = activeCraftingAccess?.available === true
                   const canUseRecipe = physicallyAvailable && check.ok
                   const reasonId = `rsp-craft-reason-${recipe.id}`

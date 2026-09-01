@@ -18,7 +18,7 @@
 | Visual direction and original-IP boundary | `GAME-DIRECTION.md` | Product/design brief | 2026-08-31 |
 | Arena combat, powers, maps, enemy identities | `src/game/` exported registries | Runtime domain contract | 2026-08-31 |
 | Persistence schema and recovery | `src/rpg/save.js`, `src/rpg/state.js` | Runtime schema | 2026-08-31 |
-| Billing / payment | Not applicable; no commerce | Scope statement | 2026-08-31 |
+| Billing / payment | Not applicable; in-game drachma trading only, with no real-money commerce | Scope statement | 2026-09-01 |
 | Legal / regulatory copy | `GAME-DIRECTION.md` original-IP boundary | Product brief | 2026-08-31 |
 
 ## Visual contract
@@ -39,12 +39,15 @@
 | Form | Not applicable | no text-entry form | none | static audit |
 | Scrollbar | Application global stylesheet / native forced-colors | `src/index.css` | overlay overflow only | computed style + narrow browser |
 | Toast | Inline persistent save alert | `ControlTowerRPG` save status | error only | save-failure component test |
-| Persistence | `rpg/save.js` | versioned envelope with v1→v2 migration | new / continue / recover | storage matrix + E2E |
+| Persistence | `rpg/save.js` | versioned envelope with v1→v2→v3 migration | new / continue / recover | storage matrix + E2E |
 | Dialogue | `ControlTowerRPG` + content registry | `rpg/content.js` | next / deterministic skip | keyboard + skip-equivalence tests |
 | Combat result | `ControlTowerRPG` + reducer | encounter outcome event | win / defeat | browser + exactly-once tests |
 | World navigation | `rpg/pathfinding.js` + semantic target buttons | map bounds/collisions/traversal lanes | ground destination / approach-and-act | path unit tests + browser coordinates |
 | Skills | `rpg/progression.js` | stored XP + derived 1–99 curve | combat / divine / gathering / artisan / world | curve + award + save tests |
 | Inventory | `rpg/progression.js` | 28-slot inventory and item registry | physical / stackable / quest record | capacity + normalization + browser panel |
+| Equipment | `rpg/equipment.js` + Pack ledger | 11 canonical slots and immutable combat snapshot | equip / replace / unequip | domain + arena + browser tests |
+| Resource nodes | `rpg/resources.js` + authored map entities | stable map/entity identity and play ticks | available / depleted / renewed | reducer + save + browser tests |
+| Crafting provenance | `rpg/craftingLedger.js` + physical station/bank access | carried-only default; explicit carried-plus-bank | carried / local Storehouse | atomic ledger + reducer + browser tests |
 | Quest journal | registered quest definitions + reducer progress | registry and current save | main / side / completed | reducer + browser panel |
 | Shop / Trading | `rpg/economy.js` + physical merchant entity | immutable shop registry + scalar drachma wallet | buy / sell | atomic domain + reducer + browser tests |
 
@@ -88,6 +91,9 @@
 | Buy | Merchant ledger quantity action | one replay-safe reducer event | same merchant ledger | exact item, quantity, and drachma total in live status | insufficient funds/stock/space leaves wallet, item, and stock unchanged | activated quantity action | `src/rpg/economy.js` |
 | Sell | Merchant ledger quantity action | one replay-safe reducer event | same merchant ledger | exact item, quantity, and drachma total in live status | insufficient carried quantity leaves inventory, wallet, and stock unchanged | activated quantity action | `src/rpg/economy.js` |
 | Close shop | Close button or Escape | immediate reducer close | exploration at the merchant | world targets return | reload/travel also clears live merchant state | merchant world context | `src/rpg/state.js` |
+| Gather resource | Approach a resource target | fixed interaction action | same world with node depleted | item + exact skill XP; dashed depleted reticle | full pack/level/depletion leaves node and XP unchanged | resource target | `src/rpg/resources.js` |
+| Equip gear | Pack Equip action | one atomic reducer event | same Pack ledger | item moves into canonical slot and combat totals update | invalid/full replacement leaves inventory unchanged | equipment slot | `src/rpg/equipment.js` |
+| Craft with materials | Physical station action | atomic quote and settlement | same station ledger | exact output, XP, carried/bank provenance | all failures preserve inventory and XP | recipe action | `src/rpg/craftingLedger.js` |
 
 ## Navigation and responsive behavior
 
@@ -114,6 +120,9 @@
 - Mutation default (pessimistic/optimistic/queued): Pure local reducer transition followed by immediate boundary persistence.
 - Routine in-game trades do not require confirmation. The pure economy resolver atomically preflights currency, carried quantity, backpack capacity, finite stock, safe arithmetic, and physical map access before settling a buy or sell.
 - Shop stock restocks from deterministic `playtimeTicks`; wall-clock time, reloads, and reopening cannot accelerate it. Processed transaction IDs are bounded in the save and prevent duplicate settlement.
+- Resource renewal also uses deterministic `playtimeTicks`; depleted nodes persist sparsely and cannot be accelerated by reload or wall-clock changes.
+- Crafting consumes carried materials first. Bank sourcing is explicit and reducer-enforced only when the active station map also contains a physical bank.
+- Equipment modifiers are snapshotted when an encounter begins; hot-swapping during combat is rejected and cannot mutate an active session.
 - Idempotency and duplicate-submit policy: Encounter, dialogue effect, reward, and objective events are guarded by stable IDs and current-state match.
 - Auto-save/draft recovery: Boundary-only versioned saves; no mid-combat/projectile persistence.
 - Offline/read-stale/write behavior: Fully offline-capable; storage denial shows persistent save warning while play continues.
@@ -126,7 +135,7 @@
 
 ## Validation
 
-- Schema/validation layer: Explicit v1→v2 migration and current normalization in `src/rpg/save.js`; canonical IDs come from content/game registries.
+- Schema/validation layer: Explicit v1→v2→v3 migration and current normalization in `src/rpg/save.js`; canonical IDs come from content/game registries.
 - Trigger timing: Validate before exposing Continue and again on load.
 - Error summary/inline policy: Corrupt/future/unavailable save state is stated on the entry surface with recovery actions.
 - Server error mapping: Not applicable.

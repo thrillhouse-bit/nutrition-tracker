@@ -238,7 +238,12 @@ describe('RPGSystemsPanel — Crafting tab', () => {
     expect(craftBtn).toBeTruthy()
     expect(craftBtn.disabled).toBe(false)
     await click(craftBtn)
-    expect(dispatch).toHaveBeenCalledWith({ type: 'CRAFT', recipeId: 'copper-bar', quantity: 1 })
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'CRAFT',
+      recipeId: 'copper-bar',
+      quantity: 1,
+      sourceMode: 'carried-only',
+    })
   })
 
   it('disables an unavailable recipe with a readable reason', async () => {

@@ -13,13 +13,13 @@ The game is not an arena-wave game. It is a persistent character RPG built from 
 | World interaction | Click ground to pathfind; click a semantic person, resource, enemy, object, or gate to approach and act; keyboard/touch alternatives remain available | Accepted across the five-act public-UI playthrough |
 | Skill progression | 22 independent skills, levels 1–99, classic accelerating XP curve, unlock requirements, total level and total XP | Foundation implemented |
 | Inventory | 28 physical slots; ordinary materials and food consume one slot each; explicitly stackable currencies/ammunition stack | Foundation implemented |
-| Equipment | 11 stable slots; the Oath-Spear is Kallias's primary weapon and lightning occupies the divine/off-hand combat role | Foundation implemented; item actions pending |
+| Equipment | 11 stable slots; the Oath-Spear is Kallias's primary weapon and lightning occupies the divine/off-hand combat role | Equip/unequip, persistent empty slots, combat damage/resilience, and craftable Cypress Helm implemented |
 | Bank | Persistent 400-slot material bank accessed from authored settlements and sanctuaries | Beacon Storehouse deposit/withdraw accepted in live browser |
 | Quest journal | Main and side oaths, ordered objectives, explicit rewards, completion state, region prerequisites | Implemented over the five-act quest registry |
 | Quest XP | Main and side oaths grant deterministic Oathkeeping and Wayfinding XP exactly once | Implemented |
 | Combat XP | Accepted encounters grant Spearcraft, Might, Guard, Vitality, and Stormcalling XP exactly once | Implemented at victory boundary; per-action allocation pending |
-| Gathering | Quarrying, Woodcutting, Fishing, Foraging, and Stewardship nodes use level gates, finite interaction time, inventory capacity, and deterministic XP/yields | Thyme, olive, copper, and shore-fishing loop implemented; thyme accepted in live browser |
-| Production | Bronzework, Carpentry, Cooking, Alchemy, Weaving, and Hearthkeeping transform bank/inventory materials through level-gated recipes | 24 recipes and 9 physically placed station types implemented; exact material/XP rules tested |
+| Gathering | Quarrying, Woodcutting, Fishing, Foraging, and Stewardship nodes use level gates, finite interaction time, inventory capacity, deterministic XP/yields, depletion, and play-tick renewal | Renewable node state, exact-once yield/XP, save normalization, and depleted target feedback implemented |
+| Production | Bronzework, Carpentry, Cooking, Alchemy, Weaving, and Hearthkeeping transform carried or explicitly local-banked materials through level-gated recipes | 24 recipes, 9 placed station types, carried-first provenance, atomic settlement, and local-Storehouse opt-in implemented |
 | Wilderness | Named risk bands outside civic sanctuaries; stronger enemies and rarer materials with recoverable death drops and protected equipment | Five regions implemented with deterministic encounters, loot, protected items, and recoverable defeat |
 | Economy | Drachmae, shops, value bands, repair/supply sinks, bank deposit/withdraw, material exchange without real-money monetization | Currency exists; full loop pending |
 | Open-world structure | Settlements act as safe hubs; roads and wilderness connect authored regions; quests and skill checks unlock routes rather than waves | Five regions / 23 maps and the full critical path are playable; optional systemic density remains alpha-level |
@@ -53,8 +53,10 @@ Every skill begins at level 1. XP is stored, never a mutable displayed level. Th
 3. Quest XP and item rewards resolve once at the existing quest-completion boundary.
 4. A level unlocks capabilities; it does not automatically insert items into inventory.
 5. Gathering fails safely when the backpack is full and never deletes another item to make space.
-6. Bank contents, equipment, XP, quest state, and durable unlocks save together at accepted boundaries.
-7. Wilderness defeat may expose carried items according to the risk band. Equipped primary gear and a small protected-item allowance remain recoverable; quest items and epithet fragments are never dropped.
+6. Resource charges deplete only after the complete yield fits; renewal is deterministic active-play time and survives save/reload.
+7. Bank contents, equipment, resource nodes, XP, quest state, and durable unlocks save together at accepted boundaries.
+8. Crafting defaults to carried materials. A local bank must be physically present before an explicit Storehouse opt-in can draw the exact remainder.
+9. Wilderness defeat may expose carried items according to the risk band. Equipped primary gear and a small protected-item allowance remain recoverable; quest items and epithet fragments are never dropped.
 
 ## Act I vertical-slice acceptance
 

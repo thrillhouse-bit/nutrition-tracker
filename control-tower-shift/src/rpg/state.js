@@ -27,11 +27,22 @@ import {
   awardSkillXpBundle,
   createInitialInventory,
   createInitialSkills,
+  depositBankItem,
   depositAllMaterials,
   levelForXp,
   withdrawBankItem,
 } from './progression.js'
-import { ALL_ITEM_DEFS, RECIPES, craft as resolveCraft } from './crafting.js'
+import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
+import {
+  CRAFTING_SOURCE_MODES,
+  executeCraftingLedger,
+} from './craftingLedger.js'
+import { equipItem, unequipItem } from './equipment.js'
+import {
+  advanceResourceNodes,
+  createInitialResourceNodes,
+  harvestResourceNode,
+} from './resources.js'
 import { craftingAccessDecision, wildernessAccessDecision } from './systemAccess.js'
 import {
   buyFromShop,
@@ -47,7 +58,7 @@ import {
   wildernessCombatRewards,
 } from './wilderness.js'
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 // Stable, documented spawn for a new schema-v2 save.
 export const START_MAP = 'beacon-overlook'
@@ -116,6 +127,7 @@ export function createInitialState(opts = {}) {
     quests,
     flags: {},
     inventory: createInitialInventory(),
+    resources: createInitialResourceNodes(),
     progression: { rank: 0, powerUnlocks: [], shrineIds: [], skills: createInitialSkills(), totalXp: 0 },
     wilderness: {
       regionId: null,
@@ -415,6 +427,8 @@ export function applyEvent(state, event) {
         ? { ...state, inventory: addInventoryItem(state.inventory, event.itemId, quantity, ALL_ITEM_DEFS).inventory }
         : state
     }
+    case 'EQUIP_ITEM': return equipAtRest(state, event)
+    case 'UNEQUIP_ITEM': return unequipAtRest(state, event)
     case 'GATHER': return gather(state, event)
     case 'WILDERNESS_ENTER': return wildernessEnter(state, event)
     case 'WILDERNESS_STEP': return wildernessStep(state, event)
@@ -432,6 +446,12 @@ export function applyEvent(state, event) {
     case 'BANK_DEPOSIT_MATERIALS': return state.status === 'playing' && bankIsPhysicallyAvailable(state)
       ? { ...state, inventory: depositAllMaterials(state.inventory, ALL_ITEM_DEFS) }
       : state
+    case 'BANK_DEPOSIT': {
+      const quantity = positiveIntegerQuantity(event.quantity)
+      return state.status === 'playing' && bankIsPhysicallyAvailable(state) && quantity
+        ? { ...state, inventory: depositBankItem(state.inventory, event.itemId, quantity, ALL_ITEM_DEFS) }
+        : state
+    }
     case 'BANK_WITHDRAW': {
       const quantity = positiveIntegerQuantity(event.quantity)
       return state.status === 'playing' && bankIsPhysicallyAvailable(state) && quantity
@@ -444,7 +464,12 @@ export function applyEvent(state, event) {
       const increment = positiveIntegerQuantity(event.n ?? 1)
       if (!increment || !Number.isSafeInteger(state.playtimeTicks) || state.playtimeTicks > Number.MAX_SAFE_INTEGER - increment) return state
       const playtimeTicks = state.playtimeTicks + increment
-      return { ...state, playtimeTicks, economy: restockEconomy(state.economy, playtimeTicks) }
+      return {
+        ...state,
+        playtimeTicks,
+        economy: restockEconomy(state.economy, playtimeTicks),
+        resources: advanceResourceNodes(state.resources, playtimeTicks),
+      }
     }
     default: return state
   }
@@ -590,9 +615,37 @@ function gather(state, event) {
   if (!resource || !ITEM_DEFS[resource.itemId]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
   if (levelForXp(xp) < (resource.level || 1)) return state
-  const result = addInventoryItem(state.inventory, resource.itemId, resource.quantity || 1)
-  if (!result.added) return state
-  return awardSkillXp({ ...state, inventory: result.inventory }, resource.skillId, resource.xp || 10)
+  const quantity = positiveIntegerQuantity(resource.quantity || 1)
+  if (!quantity) return state
+  const node = harvestResourceNode({
+    resources: state.resources,
+    mapId: state.world.mapId,
+    entityId: resource.id,
+    quantity,
+    capacity: resource.capacity,
+    respawnTicks: resource.respawnTicks,
+    playtimeTicks: state.playtimeTicks,
+  })
+  if (!node.changed) return state
+  const result = addInventoryItem(state.inventory, resource.itemId, quantity, ALL_ITEM_DEFS)
+  if (result.added !== quantity) return state
+  return awardSkillXp({
+    ...state,
+    inventory: result.inventory,
+    resources: node.resources,
+  }, resource.skillId, resource.xp || 10)
+}
+
+function equipAtRest(state, event) {
+  if (state.status !== 'playing') return state
+  const outcome = equipItem(state.inventory, event.itemId, ALL_ITEM_DEFS)
+  return outcome.changed ? { ...state, inventory: outcome.inventory } : state
+}
+
+function unequipAtRest(state, event) {
+  if (state.status !== 'playing') return state
+  const outcome = unequipItem(state.inventory, event.slot, ALL_ITEM_DEFS)
+  return outcome.changed ? { ...state, inventory: outcome.inventory } : state
 }
 
 function wildernessEnter(state, event) {
@@ -735,11 +788,28 @@ function craftAtStation(state, event) {
   if (!craftingAccessDecision(state.world?.mapId, state.crafting.stationId)?.available) {
     return { ...state, crafting: { stationId: null, lastResult: null } }
   }
-  const outcome = resolveCraft({
+  const sourceMode = event.sourceMode ?? CRAFTING_SOURCE_MODES.CARRIED_ONLY
+  if (
+    sourceMode === CRAFTING_SOURCE_MODES.CARRIED_AND_BANK
+    && !bankIsPhysicallyAvailable(state)
+  ) {
+    return {
+      ...state,
+      crafting: {
+        ...state.crafting,
+        lastResult: {
+          ok: false,
+          reason: 'bank_access_required',
+          detail: { sourceMode, mapId: state.world.mapId },
+        },
+      },
+    }
+  }
+  const outcome = executeCraftingLedger({
     inventory: state.inventory,
     skills: state.progression.skills,
-    progression: state.progression,
     stationId: state.crafting.stationId,
+    sourceMode,
   }, event.recipeId, event.quantity ?? 1)
   if (!outcome.result.ok) {
     return { ...state, crafting: { ...state.crafting, lastResult: outcome.result } }
@@ -747,7 +817,11 @@ function craftAtStation(state, event) {
   return {
     ...state,
     inventory: outcome.inventory,
-    progression: outcome.progression,
+    progression: awardSkillXp(
+      { ...state, inventory: outcome.inventory },
+      outcome.result.skillId,
+      outcome.result.xpAwarded,
+    ).progression,
     crafting: { ...state.crafting, lastResult: outcome.result },
   }
 }

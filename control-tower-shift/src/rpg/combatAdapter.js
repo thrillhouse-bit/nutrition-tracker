@@ -19,11 +19,32 @@ import { rpgEncounterById as encounterById } from './registry.js'
 import { TIER1_PATRON_IDS } from './content.js'
 import { seedForEncounter } from './state.js'
 import { ENEMY_DEFS_BY_ID } from './wilderness.js'
+import { deriveCombatModifiers } from './equipment.js'
 
 // Terminal outcome of a combat session.
 export const OUTCOME_NONE = 'none'
 export const OUTCOME_WON = 'won'
 export const OUTCOME_FAILED = 'failed'
+
+// Apply the persisted equipment snapshot once at encounter construction.
+// RPG gear affects deliberate spear attacks and contact resilience without
+// rewriting patron powers or the shared arena engine.
+export function createEquippedArena(rpgState, patron, levelIndex = 0) {
+  const arena = createInitialState({ god: patron, levelIndex })
+  const equipmentModifiers = deriveCombatModifiers(rpgState?.inventory?.equipment)
+  const maxHealth = arena.deity.maxHealth + equipmentModifiers.maxHealthBonus
+  return {
+    ...arena,
+    config: {
+      ...arena.config,
+      autoAttackDamage: arena.config.autoAttackDamage * equipmentModifiers.attackDamageMultiplier,
+      autoAttackRange: arena.config.autoAttackRange + equipmentModifiers.accuracyBonus,
+      threatDamage: arena.config.threatDamage * equipmentModifiers.incomingDamageMultiplier,
+    },
+    deity: { ...arena.deity, health: maxHealth, maxHealth },
+    equipmentModifiers: Object.freeze({ ...equipmentModifiers }),
+  }
+}
 
 export function campaignIndexForLevelId(levelId) {
   return CAMPAIGN.findIndex((l) => l.id === levelId)
@@ -74,7 +95,7 @@ export function startEncounter(rpgState, encounterId) {
   // Arena initial state: the chosen patron's god + the encounter's campaign
   // level. createInitialState starts at level 0; we re-seat it to the authored
   // encounter level so the composition (not wave pacing) is what plays.
-  const arena = createInitialState({ god: patron, levelIndex })
+  const arena = createEquippedArena(rpgState, patron, levelIndex)
   arena.levelIndex = levelIndex
   arena.threatsRemainingInLevel = level ? encounterSize(level) : authoredOrder.length
 
@@ -161,7 +182,7 @@ export function startWildernessEncounter(rpgState, { enemyId, encounterKey } = {
   if (!enemy || pendingEnemyId !== enemyId || !TIER1_PATRON_IDS.includes(patron) || !monsterType || !encounterKey) return null
 
   const seed = seedForEncounter(`wilderness:${encounterKey}`)
-  const arena = createInitialState({ god: patron, levelIndex: 0 })
+  const arena = createEquippedArena(rpgState, patron, 0)
   arena.levelIndex = 0
   arena.threatsRemainingInLevel = 1
   const spawner = createSpawner(seed)
