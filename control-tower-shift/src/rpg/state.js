@@ -34,15 +34,22 @@ import {
 import { ALL_ITEM_DEFS, RECIPES, craft as resolveCraft } from './crafting.js'
 import { craftingAccessDecision, wildernessAccessDecision } from './systemAccess.js'
 import {
+  buyFromShop,
+  createInitialEconomy,
+  restockEconomy,
+  sellToShop,
+  shopAccessDecision,
+} from './economy.js'
+import {
   REGIONS_BY_ID as WILDERNESS_REGIONS_BY_ID,
   planDeathDrop,
   rollWildernessEncounter,
   wildernessCombatRewards,
 } from './wilderness.js'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
-// Stable, documented spawn for a new schema-v1 save.
+// Stable, documented spawn for a new schema-v2 save.
 export const START_MAP = 'beacon-overlook'
 export const START_SPAWN = 'start'
 export const ACT2_TIDE_FLAG = 'act2:tide-state'
@@ -121,6 +128,7 @@ export function createInitialState(opts = {}) {
       lastDeathDrop: null,
     },
     crafting: { stationId: null, lastResult: null },
+    economy: createInitialEconomy(0),
     combatSnapshot: null,
     playtimeTicks: 0,
     // No clock reads in the reducer: savedAt is stamped at the persistence
@@ -269,8 +277,8 @@ function applyRewards(state, effects) {
     } else if (fx.kind === 'flag') {
       next = setFlag(next, fx.id, fx.value ?? true)
     } else if (fx.kind === 'item') {
-      if (ITEM_DEFS[fx.id]) {
-        next = { ...next, inventory: addInventoryItem(next.inventory, fx.id, fx.quantity || 1).inventory }
+      if (ALL_ITEM_DEFS[fx.id]) {
+        next = { ...next, inventory: addInventoryItem(next.inventory, fx.id, fx.quantity || 1, ALL_ITEM_DEFS).inventory }
       } else {
         next = { ...next, inventory: { ...next.inventory, questItems: [...(next.inventory.questItems || []), fx.id] } }
       }
@@ -334,8 +342,8 @@ function applyConversationEffects(state, effects) {
     else if (fx.kind === 'marker') next = { ...next, flags: { ...next.flags, [`marker:${fx.mapId}:${fx.entityId}`]: true } }
     else if (fx.kind === 'epithet') next = collectEpithet(next, fx.id)
     else if (fx.kind === 'item') {
-      next = ITEM_DEFS[fx.id]
-        ? { ...next, inventory: addInventoryItem(next.inventory, fx.id, fx.quantity || 1).inventory }
+      next = ALL_ITEM_DEFS[fx.id]
+        ? { ...next, inventory: addInventoryItem(next.inventory, fx.id, fx.quantity || 1, ALL_ITEM_DEFS).inventory }
         : { ...next, inventory: { ...next.inventory, questItems: [...(next.inventory.questItems || []), fx.id] } }
     } else if (fx.kind === 'xp') next = awardSkillXp(next, fx.skillId, fx.amount)
   }
@@ -403,8 +411,8 @@ export function applyEvent(state, event) {
     case 'GAIN_XP': return awardSkillXp(state, event.skillId, event.amount)
     case 'ADD_ITEM': {
       const quantity = positiveIntegerQuantity(event.quantity)
-      return ITEM_DEFS[event.itemId] && quantity
-        ? { ...state, inventory: addInventoryItem(state.inventory, event.itemId, quantity).inventory }
+      return ALL_ITEM_DEFS[event.itemId] && quantity
+        ? { ...state, inventory: addInventoryItem(state.inventory, event.itemId, quantity, ALL_ITEM_DEFS).inventory }
         : state
     }
     case 'GATHER': return gather(state, event)
@@ -417,25 +425,38 @@ export function applyEvent(state, event) {
     case 'OPEN_CRAFTING': return openCrafting(state, event)
     case 'CRAFT': return craftAtStation(state, event)
     case 'CLOSE_CRAFTING': return closeCrafting(state)
-    case 'BANK_DEPOSIT_MATERIALS': return state.status === 'playing'
+    case 'OPEN_SHOP': return openShop(state, event)
+    case 'CLOSE_SHOP': return closeShop(state)
+    case 'SHOP_BUY': return tradeAtShop(state, event, 'buy')
+    case 'SHOP_SELL': return tradeAtShop(state, event, 'sell')
+    case 'BANK_DEPOSIT_MATERIALS': return state.status === 'playing' && bankIsPhysicallyAvailable(state)
       ? { ...state, inventory: depositAllMaterials(state.inventory, ALL_ITEM_DEFS) }
       : state
     case 'BANK_WITHDRAW': {
       const quantity = positiveIntegerQuantity(event.quantity)
-      return state.status === 'playing' && quantity
+      return state.status === 'playing' && bankIsPhysicallyAvailable(state) && quantity
         ? { ...state, inventory: withdrawBankItem(state.inventory, event.itemId, quantity, ALL_ITEM_DEFS) }
         : state
     }
     case 'PAUSE': return state.status === 'playing' ? { ...state, status: 'paused' } : state
     case 'RESUME': return state.status === 'paused' ? { ...state, status: 'playing' } : state
-    case 'TICK': return { ...state, playtimeTicks: state.playtimeTicks + Math.max(0, event.n || 1) }
+    case 'TICK': {
+      const increment = positiveIntegerQuantity(event.n ?? 1)
+      if (!increment || !Number.isSafeInteger(state.playtimeTicks) || state.playtimeTicks > Number.MAX_SAFE_INTEGER - increment) return state
+      const playtimeTicks = state.playtimeTicks + increment
+      return { ...state, playtimeTicks, economy: restockEconomy(state.economy, playtimeTicks) }
+    }
     default: return state
   }
 }
 
 function positiveIntegerQuantity(quantity) {
-  const value = Number(quantity ?? 1)
-  return Number.isFinite(value) && Number.isInteger(value) && value > 0 ? value : null
+  const value = quantity ?? 1
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null
+}
+
+function bankIsPhysicallyAvailable(state) {
+  return Boolean(mapById(state.world?.mapId)?.entities?.some((entity) => entity.kind === 'bank'))
 }
 
 // Active conversation is stored in flags so the documented schema stays intact.
@@ -736,6 +757,45 @@ function closeCrafting(state) {
   return { ...state, crafting: { stationId: null, lastResult: state.crafting.lastResult } }
 }
 
+function openShop(state, event) {
+  if (state.status !== 'playing' || !shopAccessDecision(state.world?.mapId, event.shopId)?.available) return state
+  return {
+    ...state,
+    economy: {
+      ...restockEconomy(state.economy, state.playtimeTicks),
+      openShopId: event.shopId,
+      lastResult: null,
+    },
+  }
+}
+
+function closeShop(state) {
+  if (!state.economy?.openShopId) return state
+  return { ...state, economy: { ...state.economy, openShopId: null } }
+}
+
+function tradeAtShop(state, event, operation) {
+  const shopId = state.economy?.openShopId
+  if (state.status !== 'playing' || !shopId) return state
+  if (!shopAccessDecision(state.world?.mapId, shopId)?.available) {
+    return { ...state, economy: { ...state.economy, openShopId: null, lastResult: null } }
+  }
+  const quantity = positiveIntegerQuantity(event.quantity)
+  if (!quantity) return state
+  const resolve = operation === 'buy' ? buyFromShop : sellToShop
+  const outcome = resolve({
+    economy: state.economy,
+    inventory: state.inventory,
+    shopId,
+    itemId: event.itemId,
+    quantity,
+    transactionId: event.transactionId,
+    playtimeTicks: state.playtimeTicks,
+  })
+  if (outcome.economy === state.economy && outcome.inventory === state.inventory) return state
+  return { ...state, economy: outcome.economy, inventory: outcome.inventory }
+}
+
 function talk(state, event) {
   if (state.status !== 'playing') return state
   // Later-act scaffolds can author a talk objective before its line graph is
@@ -891,7 +951,7 @@ function interact(state, event) {
 
   // Pelagos' tide is deterministic and player-driven. Only authored wells
   // may cycle it; dialogue/combat cannot reach this branch, and the string
-  // flag survives schema-v1 save normalization unchanged.
+  // flag survives save normalization unchanged.
   if (ent?.kind === 'tide-well' && ACT2_TIDE_RULES.wells.includes(ent.id)) {
     const current = currentTideStateId(state)
     const index = ACT2_TIDE_ORDER.indexOf(current)
@@ -1088,6 +1148,8 @@ function traverse(state, event) {
   if (!spawn) return state
   let next = {
     ...state,
+    crafting: state.crafting?.stationId ? { stationId: null, lastResult: state.crafting.lastResult } : state.crafting,
+    economy: state.economy?.openShopId ? { ...state.economy, openShopId: null } : state.economy,
     world: {
       regionId: dest.region,
       mapId: dest.id,

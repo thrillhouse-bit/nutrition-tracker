@@ -11,7 +11,7 @@
 //   - Deity keys demeter, persephone, hades, dionysus, hera, artemis
 //   - Act II completion prerequisites: `mq-act2-salt-covenant` completed and
 //     `act2-salt-covenant-ratified`
-//   - Save contract stays schema-v1; this module adds known content IDs only.
+//   - Save contract remains versioned; this module adds known content IDs only.
 
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {

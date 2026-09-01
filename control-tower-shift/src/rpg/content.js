@@ -69,6 +69,7 @@ export const MAPS = {
       // Thessa, the pragmatic keeper of the Accord — Act I guide.
       { id: 'thessa', kind: 'npc', x: 662, y: 280, name: 'Thessa', label: 'Talk to Thessa', conversationId: 'act1-thessa-overlook' },
       { id: 'beacon-bank', kind: 'bank', x: 548, y: 424, name: 'Beacon Storehouse', label: 'Open the Beacon Storehouse' },
+      { id: 'myrrine-provisioner', kind: 'shop', shopId: 'beacon-provisioner', x: 650, y: 410, name: 'Myrrine', label: 'Trade with Myrrine' },
       { id: 'wild-thyme', kind: 'resource', x: 238, y: 338, name: 'Wild Thyme', label: 'Gather wild thyme', skillId: 'foraging', itemId: 'thyme', level: 1, xp: 12 },
       { id: 'olive-tree', kind: 'resource', x: 188, y: 258, name: 'Olive Tree', label: 'Cut the olive tree', skillId: 'woodcutting', itemId: 'olive-log', level: 1, xp: 14 },
       { id: 'copper-seam', kind: 'resource', x: 780, y: 408, name: 'Copper Seam', label: 'Mine the copper seam', skillId: 'quarrying', itemId: 'copper-ore', level: 1, xp: 16 },

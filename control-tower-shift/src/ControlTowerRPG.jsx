@@ -51,6 +51,7 @@ import {
 import { SKILL_DEFS, levelForXp, xpForLevel } from './rpg/progression.js'
 import { ALL_ITEM_DEFS } from './rpg/crafting.js'
 import RPGSystemsPanel from './rpg/RPGSystemsPanel.jsx'
+import RPGShopPanel from './rpg/RPGShopPanel.jsx'
 import {
   levelById,
   powersForGod, powerReady, POWER_DEFS,
@@ -521,6 +522,16 @@ export default function ControlTowerRPG() {
     if (opts.persist !== false) enqueueSave(next)
   }, [enqueueSave])
 
+  const closePanel = useCallback(() => {
+    if (panelOpenRef.current === 'shop') dispatch({ type: 'CLOSE_SHOP' }, { persist: false })
+    setPanelOpen(null)
+  }, [dispatch])
+
+  const toggleRecordPanel = useCallback((panelId) => {
+    if (panelOpenRef.current === 'shop') dispatch({ type: 'CLOSE_SHOP' }, { persist: false })
+    setPanelOpen((current) => current === panelId ? null : panelId)
+  }, [dispatch])
+
   const queueCombatAction = useCallback((action) => {
     combatActionRef.current = { ...combatActionRef.current, ...action }
   }, [])
@@ -781,7 +792,7 @@ export default function ControlTowerRPG() {
         return
       }
       if (panelOpenRef.current) {
-        if (e.key === 'Escape') setPanelOpen(null)
+        if (e.key === 'Escape') closePanel()
         return
       }
       if (stateRef.current.status === 'playing' && k === 'e') {
@@ -813,7 +824,7 @@ export default function ControlTowerRPG() {
       window.removeEventListener('keyup', up)
       clearTransientInput()
     }
-  }, [dispatch, queueCombatAction, syncKeyboardInput, clearTransientInput, started, skillAction])
+  }, [dispatch, queueCombatAction, syncKeyboardInput, clearTransientInput, closePanel, started, skillAction])
 
   // Modal/non-playable states do not need input polling or retained movement.
   // Input is event-driven above, so there is no background 16 ms interval.
@@ -944,6 +955,9 @@ export default function ControlTowerRPG() {
         setSkillAction({ entityId: ent.id, name: ent.name, itemId: ent.itemId, skillId: ent.skillId, duration: 850 })
       } else if (ent.kind === 'bank') {
         setPanelOpen('bank')
+      } else if (ent.kind === 'shop') {
+        dispatch({ type: 'OPEN_SHOP', shopId: ent.shopId }, { persist: false })
+        if (stateRef.current.economy?.openShopId === ent.shopId) setPanelOpen('shop')
       } else if (ent.kind === 'shrine') {
         setShrineOpen(true)
         dispatch({ type: 'INTERACT', entityId: ent.id }, { persist: false })
@@ -1527,10 +1541,10 @@ export default function ControlTowerRPG() {
         <div className="rpg-hud-actions" aria-label="Story controls">
           {state.status === 'playing' && (
             <>
-              <button type="button" aria-pressed={panelOpen === 'skills'} onClick={() => setPanelOpen(panelOpen === 'skills' ? null : 'skills')} className="rpg-hud-btn">Skills</button>
-              <button type="button" aria-pressed={panelOpen === 'inventory'} onClick={() => setPanelOpen(panelOpen === 'inventory' ? null : 'inventory')} className="rpg-hud-btn">Pack</button>
-              <button type="button" aria-pressed={panelOpen === 'quests'} onClick={() => setPanelOpen(panelOpen === 'quests' ? null : 'quests')} className="rpg-hud-btn">Journal</button>
-              <button type="button" aria-pressed={panelOpen === 'systems'} onClick={() => setPanelOpen(panelOpen === 'systems' ? null : 'systems')} className="rpg-hud-btn">Systems</button>
+              <button type="button" aria-pressed={panelOpen === 'skills'} onClick={() => toggleRecordPanel('skills')} className="rpg-hud-btn">Skills</button>
+              <button type="button" aria-pressed={panelOpen === 'inventory'} onClick={() => toggleRecordPanel('inventory')} className="rpg-hud-btn">Pack</button>
+              <button type="button" aria-pressed={panelOpen === 'quests'} onClick={() => toggleRecordPanel('quests')} className="rpg-hud-btn">Journal</button>
+              <button type="button" aria-pressed={panelOpen === 'systems'} onClick={() => toggleRecordPanel('systems')} className="rpg-hud-btn">Systems</button>
             </>
           )}
           <button
@@ -1673,13 +1687,13 @@ export default function ControlTowerRPG() {
         )}
 
         {panelOpen && state.status === 'playing' && (
-          <section className="rpg-side-panel" aria-label={`${panelOpen === 'inventory' ? 'Backpack' : panelOpen === 'bank' ? 'Storehouse bank' : panelOpen.charAt(0).toUpperCase() + panelOpen.slice(1)} panel`}>
+          <section className="rpg-side-panel" aria-label={`${panelOpen === 'inventory' ? 'Backpack' : panelOpen === 'bank' ? 'Storehouse bank' : panelOpen === 'shop' ? 'Merchant trade' : panelOpen.charAt(0).toUpperCase() + panelOpen.slice(1)} panel`}>
             <div className="rpg-side-panel-head">
               <div>
                 <div className="rpg-side-kicker">Oathbearer record</div>
-                <h2 className="rpg-serif">{panelOpen === 'inventory' ? 'Backpack' : panelOpen === 'quests' ? 'Quest Journal' : panelOpen === 'bank' ? 'Beacon Storehouse' : panelOpen === 'systems' ? 'Wilderness & Crafting' : 'Skills'}</h2>
+                <h2 className="rpg-serif">{panelOpen === 'inventory' ? 'Backpack' : panelOpen === 'quests' ? 'Quest Journal' : panelOpen === 'bank' ? 'Beacon Storehouse' : panelOpen === 'shop' ? 'Myrrine’s Provision Table' : panelOpen === 'systems' ? 'Wilderness & Crafting' : 'Skills'}</h2>
               </div>
-              <button type="button" aria-label={`Close ${panelOpen} panel`} onClick={() => setPanelOpen(null)} className="rpg-panel-close">×</button>
+              <button type="button" aria-label={`Close ${panelOpen} panel`} onClick={closePanel} className="rpg-panel-close">×</button>
             </div>
 
             {panelOpen === 'skills' && (() => {
@@ -1790,6 +1804,10 @@ export default function ControlTowerRPG() {
                 dispatch={dispatch}
                 onEngageEnemy={state.protagonist.activePatronId ? beginWildernessCombat : undefined}
               />
+            )}
+
+            {panelOpen === 'shop' && (
+              <RPGShopPanel state={state} dispatch={dispatch} />
             )}
           </section>
         )}
