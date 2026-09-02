@@ -112,7 +112,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
-| Skills | 22 definitions; Devotion now has a genuine repeatable first loop (votive-stand offerings), closing one of three skills that previously had zero obtainable XP source anywhere in the game — Guile and Beastbond still do; several other skills still lack repeatable actions | 22 complete loops |
+| Skills | 22 definitions; Devotion (repeatable votive-stand offerings) and Guile (an exact-once locked-chest pick) now have real first loops, closing two of three skills that previously had zero obtainable XP source anywhere in the game — Beastbond still does; several other skills still lack repeatable actions | 22 complete loops |
 | Items | 77 | 200 useful |
 | Recipes | 45; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
@@ -126,7 +126,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Banks | 5 — one per act (Beacon Overlook, Pelagos Harbor, Wheat Village, Slag Road, Nyx Foothold); all share one account-wide bank, gated by physical presence | 8 |
 | Merchants | 7 — the 5 regional hub specializations plus two gap-closing traders: Philyra (Olive Road, tin ore) and Straton (Storm Anchorage, iron ore *and* cypress-log), which close a real progression gap where bronze-bar and every iron-tier recipe had no obtainable ingredient — cypress-log included — before Act II/III/IV | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 89 / 305 release-ready; 216 legacy warnings | all released records ready |
+| Production authoring readiness | 90 / 306 release-ready; 216 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |

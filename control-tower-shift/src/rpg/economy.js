@@ -71,6 +71,7 @@ export const SHOP_DEFS = Object.freeze({
     mapIds: Object.freeze(['olive-road']),
     listings: Object.freeze({
       'tin-ore': Object.freeze({ itemId: 'tin-ore', buyPrice: 24, sellPrice: 9, baseStock: 6, maxStock: 14, restockAmount: 1 }),
+      lockpick: Object.freeze({ itemId: 'lockpick', buyPrice: 16, sellPrice: 6, baseStock: 8, maxStock: 16, restockAmount: 2 }),
     }),
   }),
   'anchorage-garrison-quartermaster': Object.freeze({

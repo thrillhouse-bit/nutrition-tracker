@@ -344,6 +344,23 @@ export const MAPS = {
         }),
       },
       {
+        id: 'olive-road-locked-chest', kind: 'locked-chest', x: 650, y: 300, name: 'Locked Chest', label: 'Pick the locked chest',
+        skillId: 'guile', level: 1, xp: 20,
+        requiresFlag: 'guile:opened:olive-road:olive-road-locked-chest',
+        cost: [{ itemId: 'lockpick', quantity: 1 }],
+        reward: { currency: 45 },
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Kallias risk a lockpick on a roadside chest, or does Guile stay a definition with nothing to actually train it?',
+          systemsUsed: ['crafting', 'guile', 'inventory'],
+          durableReward: 'A successful pick permanently opens the chest, awards Guile XP, and pays out 45 drachmae — Guile previously had no obtainable XP source anywhere in the game.',
+          downstreamConsequence: 'It gives Guile a genuine first loop and demonstrates the exact-once, level-gated, atomic-cost lockpicking contract other locked containers can reuse later.',
+          recoveryBehavior: 'A failed or interrupted attempt leaves the lockpick and currency untouched; a picked chest cannot be picked again.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain roadside-cache and lockpicking motifs; this exact-once Guile training contract is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'shore-fishing', kind: 'resource', x: 292, y: 404, name: 'Shore Fishing Spot', label: 'Fish the Aegean shallows', skillId: 'fishing', itemId: 'sardine', level: 1, xp: 13,
         authoring: act1Authoring({
           category: 'gathering-resource',

@@ -978,3 +978,77 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      real settled/civic framing already established in their authored
      text), not by forcing shops into puzzle/combat zones for the count
      alone.
+
+## Recovery checkpoint — 2026-09-02T16:3x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `3ff2dd5`
+  (Devotion loop, pushed).
+- **This checkpoint**: direct continuation of the prior checkpoint's own
+  milestone 1 — built Guile's first loop, the second of the three
+  completely dead skills discovered last checkpoint (Guile, Devotion,
+  Beastbond all had zero obtainable XP anywhere before this session).
+- **Design, deliberately different from Devotion's**: a locked chest at
+  Olive Road, picked with a purchased `lockpick` for a **fixed, one-time**
+  currency payout (45 drachmae) and Guile XP — not a repeatable action
+  like Devotion's offerings, since a picked chest stays picked. This
+  needed a genuinely new reducer event (`PICK_LOCK` in `state.js`) rather
+  than reusing the crafting ledger, because there is no item output to
+  account for and the ledger's plumbing is built around
+  ingredients-in/items-out. Modeled directly on `restoreLand` (Stewardship's
+  own exact-once, level-gated, atomic-cost pattern) — same shape, same
+  invariants, easy to review against a known-good sibling.
+  - `lockpick` (material) sold at Philyra's Roadside Stall (Olive
+    Road) — deliberately not added to Myrrine's, which was getting
+    crowded with 8 listings; spreads content across existing merchants
+    instead of piling onto one, and "traveling trader sells useful
+    odds and ends" fits Philyra's established role better than
+    Myrrine's food/herb provisioner framing.
+  - Full UI wiring in `ControlTowerRPG.jsx`: a new `interactWith`
+    branch (mirrors Stewardship's restore branch — checks
+    already-opened, level gate, and lockpick availability before
+    dispatching, with real `setSaveNote` feedback for every outcome
+    including the payout amount), plus state-aware labels in both the
+    nearby-interaction prompt and the accessible world-target overlay
+    (`(already opened)` / `(opened)` once picked, `data-resource-state:
+    'opened'`) — the same class of "don't let a static label lie about
+    what a keypress does" fix Stewardship needed.
+  - Placement (Olive Road, paired near Philyra so buying and picking
+    are physically close) verified with the same throwaway-probe-script
+    method as every prior checkpoint (never committed). Full
+    `act1Authoring` metadata added.
+  - New test file `test/rpg-guile-locked-chest.test.js` (10 tests):
+    item/obtainability, placement/reachability/distinctness,
+    `PICK_LOCK` reducer behavior (refuses without a lockpick, refuses
+    off-map, exact cost/XP/payout accounting, exact-once even with
+    surplus lockpicks carried, surplus lockpicks left untouched), and a
+    full real-reducer playthrough (buy a lockpick at Philyra's, pick the
+    chest) proving the closure end to end.
+  - Content-integrity fallout: Act I records 33→34 (Olive Road entities
+    4→5), whole-registry total 305→306, legacy unchanged 216,
+    release-ready 89→90 — no new station or resource, so no other counts
+    moved. `FULL-GAME-CONTRACT.md` Skills and authoring-readiness rows
+    updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1044/1044 passed** (79
+    files, up from 1034/78).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `items` 87→88.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same reasoning as every
+    pure backend/content checkpoint since Stewardship tier 1.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Devotion checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. **Beastbond is the last completely dead skill** ("track, calm, and
+     call mythic creatures") — the most design-heavy of the three, since
+     a genuine tracking/taming loop likely wants a creature/companion
+     entity type that doesn't exist yet in this codebase. Worth scoping
+     carefully before building (a minimal v1 — e.g. "track and calm a
+     wild creature for XP and a one-time reward," skipping any
+     persistent companion mechanic — is probably the right first slice,
+     matching how Devotion/Guile each shipped a bounded first loop
+     rather than the skill's full thematic breadth).
+  2. Land the still-open Stewardship browser-acceptance evidence.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.

@@ -90,7 +90,7 @@ describe('Act I canonical production-authoring template', () => {
       .filter((record) => record.status === 'release-ready')
       .map(recordKey))
 
-    expect(expected.size).toBe(33)
+    expect(expected.size).toBe(34)
     for (const key of expected) expect(readyKeys.has(key), key).toBe(true)
   })
 
@@ -158,7 +158,7 @@ describe('Act I canonical production-authoring template', () => {
     expect(MAPS['beacon-overlook'].bounds).toEqual({ w: 900, h: 470 })
     expect(MAPS['olive-road'].bounds).toEqual({ w: 900, h: 470 })
     expect(MAPS['beacon-overlook'].entities).toHaveLength(13)
-    expect(MAPS['olive-road'].entities).toHaveLength(4)
+    expect(MAPS['olive-road'].entities).toHaveLength(5)
     expect(MAPS['beacon-overlook'].exits.map((exit) => exit.id)).toEqual(['to-olive-road', 'to-sun-court'])
     expect(MAPS['olive-road'].exits.map((exit) => exit.id)).toEqual(['to-beacon', 'to-entry-court'])
 

@@ -442,6 +442,7 @@ export function applyEvent(state, event) {
       : prepareConsumable(state, event.itemId, ALL_ITEM_DEFS)
     case 'GATHER': return gather(state, event)
     case 'RESTORE_LAND': return restoreLand(state, event)
+    case 'PICK_LOCK': return pickLock(state, event)
     case 'WILDERNESS_ENTER': return wildernessEnter(state, event)
     case 'WILDERNESS_STEP': return wildernessStep(state, event)
     case 'WILDERNESS_COMBAT_START': return wildernessCombatStart(state, event)
@@ -706,6 +707,44 @@ function restoreLand(state, event) {
     inventory,
     flags: { ...state.flags, [flagId]: true },
   }, resource.skillId, resource.restore.xp || 10)
+}
+
+// Guile had no obtainable XP source anywhere in the game. A locked-chest
+// entity gives it a first loop shaped like restoreLand above: level-gated,
+// atomic-cost, exact-once via a persisted flag — but the payoff is a fixed
+// one-time reward (currency and/or an item) rather than unlocking repeat
+// gathering, since a picked chest stays picked.
+function pickLock(state, event) {
+  if (state.status !== 'playing') return state
+  const map = mapById(state.world.mapId)
+  const chest = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'locked-chest')
+  if (!chest) return state
+  const flagId = chest.requiresFlag
+  if (!flagId || state.flags[flagId]) return state
+  const xp = state.progression?.skills?.[chest.skillId]?.xp || 0
+  if (levelForXp(xp) < (chest.level || 1)) return state
+  const cost = chest.cost || []
+  for (const ingredient of cost) {
+    if (carriedItemQuantity(state.inventory, ingredient.itemId, ALL_ITEM_DEFS) < (ingredient.quantity || 0)) return state
+  }
+  let inventory = state.inventory
+  for (const ingredient of cost) {
+    const outcome = removeInventoryItem(inventory, ingredient.itemId, ingredient.quantity, ALL_ITEM_DEFS)
+    if (outcome.removed !== ingredient.quantity) return state
+    inventory = outcome.inventory
+  }
+  if (chest.reward?.itemId) {
+    const rewardQuantity = chest.reward.quantity || 1
+    const added = addInventoryItem(inventory, chest.reward.itemId, rewardQuantity, ALL_ITEM_DEFS)
+    if (added.added !== rewardQuantity) return state
+    inventory = added.inventory
+  }
+  const currencyGain = chest.reward?.currency || 0
+  return awardSkillXp({
+    ...state,
+    inventory: { ...inventory, currency: (inventory.currency || 0) + currencyGain },
+    flags: { ...state.flags, [flagId]: true },
+  }, chest.skillId, chest.xp || 10)
 }
 
 function equipAtRest(state, event) {

@@ -110,6 +110,7 @@ export const ITEM_DEFS = Object.freeze({
   'water-cask': { id: 'water-cask', name: 'Water Cask', category: 'material', stackable: false, tier: 15 },
   'sea-fig': { id: 'sea-fig', name: 'Sea Fig', category: 'grain', stackable: false, tier: 15 },
   'votive-oil': { id: 'votive-oil', name: 'Votive Oil', category: 'material', stackable: false, tier: 1 },
+  lockpick: { id: 'lockpick', name: 'Lockpick', category: 'material', stackable: false, tier: 1 },
   drachma: { id: 'drachma', name: 'Drachma', category: 'currency', stackable: true, tier: 1 },
 })
 
