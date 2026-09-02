@@ -443,6 +443,7 @@ export function applyEvent(state, event) {
     case 'GATHER': return gather(state, event)
     case 'RESTORE_LAND': return restoreLand(state, event)
     case 'PICK_LOCK': return pickLock(state, event)
+    case 'CALM_CREATURE': return calmCreature(state, event)
     case 'WILDERNESS_ENTER': return wildernessEnter(state, event)
     case 'WILDERNESS_STEP': return wildernessStep(state, event)
     case 'WILDERNESS_COMBAT_START': return wildernessCombatStart(state, event)
@@ -713,17 +714,17 @@ function restoreLand(state, event) {
 // entity gives it a first loop shaped like restoreLand above: level-gated,
 // atomic-cost, exact-once via a persisted flag — but the payoff is a fixed
 // one-time reward (currency and/or an item) rather than unlocking repeat
-// gathering, since a picked chest stays picked.
-function pickLock(state, event) {
+// gathering, since a picked chest stays picked. Shared by pickLock and
+// calmCreature below (Guile and Beastbond's first loops), and structured so
+// any future exact-once "pay a cost at a physical target for a fixed
+// one-time reward" loop can reuse it too.
+function claimExactOnceReward(state, target) {
   if (state.status !== 'playing') return state
-  const map = mapById(state.world.mapId)
-  const chest = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'locked-chest')
-  if (!chest) return state
-  const flagId = chest.requiresFlag
-  if (!flagId || state.flags[flagId]) return state
-  const xp = state.progression?.skills?.[chest.skillId]?.xp || 0
-  if (levelForXp(xp) < (chest.level || 1)) return state
-  const cost = chest.cost || []
+  const flagId = target?.requiresFlag
+  if (!target || !flagId || state.flags[flagId]) return state
+  const xp = state.progression?.skills?.[target.skillId]?.xp || 0
+  if (levelForXp(xp) < (target.level || 1)) return state
+  const cost = target.cost || []
   for (const ingredient of cost) {
     if (carriedItemQuantity(state.inventory, ingredient.itemId, ALL_ITEM_DEFS) < (ingredient.quantity || 0)) return state
   }
@@ -733,18 +734,34 @@ function pickLock(state, event) {
     if (outcome.removed !== ingredient.quantity) return state
     inventory = outcome.inventory
   }
-  if (chest.reward?.itemId) {
-    const rewardQuantity = chest.reward.quantity || 1
-    const added = addInventoryItem(inventory, chest.reward.itemId, rewardQuantity, ALL_ITEM_DEFS)
+  if (target.reward?.itemId) {
+    const rewardQuantity = target.reward.quantity || 1
+    const added = addInventoryItem(inventory, target.reward.itemId, rewardQuantity, ALL_ITEM_DEFS)
     if (added.added !== rewardQuantity) return state
     inventory = added.inventory
   }
-  const currencyGain = chest.reward?.currency || 0
+  const currencyGain = target.reward?.currency || 0
   return awardSkillXp({
     ...state,
     inventory: { ...inventory, currency: (inventory.currency || 0) + currencyGain },
     flags: { ...state.flags, [flagId]: true },
-  }, chest.skillId, chest.xp || 10)
+  }, target.skillId, target.xp || 10)
+}
+
+function pickLock(state, event) {
+  const map = mapById(state.world.mapId)
+  const chest = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'locked-chest')
+  return claimExactOnceReward(state, chest)
+}
+
+// Beastbond had no obtainable XP source anywhere in the game, the same
+// severity Guile and Devotion had. Calming a wild creature reuses the exact
+// same exact-once contract as picking a lock — a fixed one-time payoff, not
+// a persistent companion system (out of scope for a first loop).
+function calmCreature(state, event) {
+  const map = mapById(state.world.mapId)
+  const creature = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'wild-creature')
+  return claimExactOnceReward(state, creature)
 }
 
 function equipAtRest(state, event) {

@@ -112,9 +112,9 @@ game and must not be described, tagged, deployed, or marketed as one.
 
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
-| Skills | 22 definitions; Devotion (repeatable votive-stand offerings) and Guile (an exact-once locked-chest pick) now have real first loops, closing two of three skills that previously had zero obtainable XP source anywhere in the game — Beastbond still does; several other skills still lack repeatable actions | 22 complete loops |
-| Items | 77 | 200 useful |
-| Recipes | 45; all ingredients have legitimate sources | 100 reachable |
+| Skills | 22 definitions; Devotion (repeatable votive-stand offerings), Guile (an exact-once locked-chest pick), and now Beastbond (an exact-once wild-creature calming, the Sacred Hind at Beacon Overlook) all have real first loops, closing all three skills that previously had zero obtainable XP source anywhere in the game; several other skills still lack repeatable actions | 22 complete loops |
+| Items | 88; closes honeyed-figs, a pre-defined food consumable that had no obtainable source anywhere until Myrrine's stall began selling it for the Beastbond loop | 200 useful |
+| Recipes | 50; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
 | Quests | 10 | 70 total |
@@ -126,7 +126,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Banks | 5 — one per act (Beacon Overlook, Pelagos Harbor, Wheat Village, Slag Road, Nyx Foothold); all share one account-wide bank, gated by physical presence | 8 |
 | Merchants | 7 — the 5 regional hub specializations plus two gap-closing traders: Philyra (Olive Road, tin ore) and Straton (Storm Anchorage, iron ore *and* cypress-log), which close a real progression gap where bronze-bar and every iron-tier recipe had no obtainable ingredient — cypress-log included — before Act II/III/IV | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 90 / 306 release-ready; 216 legacy warnings | all released records ready |
+| Production authoring readiness | 91 / 307 release-ready; 216 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |

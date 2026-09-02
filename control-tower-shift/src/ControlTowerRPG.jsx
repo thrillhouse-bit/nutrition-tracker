@@ -1141,29 +1141,36 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         dispatch({ type: 'INTERACT', entityId: ent.id }, { persist: false })
       } else if (ent.kind === 'npc') {
         startConversation(ent)
-      } else if (ent.kind === 'locked-chest') {
+      } else if (ent.kind === 'locked-chest' || ent.kind === 'wild-creature') {
+        // Guile's locked chests and Beastbond's wild creatures share the
+        // same exact-once, level-gated, atomic-cost contract as the reducer
+        // (see claimExactOnceReward in state.js) — only the verbs differ.
+        const isCreature = ent.kind === 'wild-creature'
+        const verb = isCreature ? 'calm' : 'pick'
+        const alreadyLabel = isCreature ? 'already calmed' : 'already open'
+        const successVerb = isCreature ? 'is calmed' : 'opens'
         if (ent.requiresFlag && st.flags[ent.requiresFlag]) {
-          setSaveNote(`${ent.name} is already open.`)
+          setSaveNote(`${ent.name} is ${alreadyLabel}.`)
           return
         }
         const skillName = SKILL_DEFS.find((skill) => skill.id === ent.skillId)?.name || ent.skillId
         const xp = st.progression.skills?.[ent.skillId]?.xp || 0
         if (levelForXp(xp) < (ent.level || 1)) {
-          setSaveNote(`${ent.name} requires ${skillName} level ${ent.level} to pick.`)
+          setSaveNote(`${ent.name} requires ${skillName} level ${ent.level} to ${verb}.`)
           return
         }
         const missing = (ent.cost || []).find((ingredient) =>
           carriedItemQuantity(st.inventory, ingredient.itemId, ALL_ITEM_DEFS) < ingredient.quantity)
         if (missing) {
-          setSaveNote(`Picking ${ent.name} needs ${missing.quantity}x ${ALL_ITEM_DEFS[missing.itemId]?.name || missing.itemId}.`)
+          setSaveNote(`${verb === 'calm' ? 'Calming' : 'Picking'} ${ent.name} needs ${missing.quantity}x ${ALL_ITEM_DEFS[missing.itemId]?.name || missing.itemId}.`)
           return
         }
         const before = st.inventory.currency || 0
-        dispatch({ type: 'PICK_LOCK', entityId: ent.id })
+        dispatch({ type: isCreature ? 'CALM_CREATURE' : 'PICK_LOCK', entityId: ent.id })
         const after = stateRef.current.inventory.currency || 0
         setSaveNote(after > before
-          ? `${ent.name} opens! You find ${after - before} drachmae.`
-          : `${ent.name} could not be picked.`)
+          ? `${ent.name} ${successVerb}! You find ${after - before} drachmae.`
+          : `${ent.name} could not be ${isCreature ? 'calmed' : 'picked'}.`)
       } else if (ent.kind === 'marker') {
         dispatch({ type: 'REACH', mapId: st.world.mapId, markerId: ent.id })
       } else if (ent.kind === 'choice') {
@@ -1627,6 +1634,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
       const ent = near.ent
       const needsRestore = ent.kind === 'resource' && ent.requiresFlag && !state.flags[ent.requiresFlag]
       if (ent.kind === 'locked-chest' && ent.requiresFlag && state.flags[ent.requiresFlag]) return `${ent.name} (opened)`
+      if (ent.kind === 'wild-creature' && ent.requiresFlag && state.flags[ent.requiresFlag]) return `${ent.name} (calmed)`
       return (needsRestore && ent.restore?.label) || ent.label || ent.name
     }
     const destination = rpgMapById(near.ex.toMapId)
@@ -2009,6 +2017,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
             {(map.entities || []).map((ent) => {
               const needsRestore = ent.kind === 'resource' && ent.requiresFlag && !state.flags[ent.requiresFlag]
               const chestOpened = ent.kind === 'locked-chest' && ent.requiresFlag && Boolean(state.flags[ent.requiresFlag])
+              const creatureCalmed = ent.kind === 'wild-creature' && ent.requiresFlag && Boolean(state.flags[ent.requiresFlag])
               const node = ent.kind === 'resource' && !needsRestore ? resourceNodeStatus({
                 resources: state.resources,
                 mapId: map.id,
@@ -2024,7 +2033,9 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                 ? `Depleted: ${baseLabel}. Renews in about ${Math.max(1, Math.ceil(node.waitTicks / TICK_RATE))} seconds of active play.`
                 : chestOpened
                   ? `${baseLabel} (already opened)`
-                  : baseLabel
+                  : creatureCalmed
+                    ? `${baseLabel} (already calmed)`
+                    : baseLabel
               return (
                 <button
                   key={`entity:${ent.id}`}
@@ -2033,7 +2044,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                   aria-label={label}
                   data-world-x={ent.x}
                   data-world-y={ent.y}
-                  data-resource-state={needsRestore ? 'needs-restore' : (chestOpened ? 'opened' : (node ? (depleted ? 'depleted' : 'available') : undefined))}
+                  data-resource-state={needsRestore ? 'needs-restore' : (chestOpened ? 'opened' : (creatureCalmed ? 'calmed' : (node ? (depleted ? 'depleted' : 'available') : undefined)))}
                   className={`rpg-world-target${depleted ? ' is-depleted' : ''}`}
                   style={{ left: '-9999px', top: '-9999px' }}
                   onClick={(event) => onWorldTargetClick(event, { kind: 'entity', ent, distance: 0 })}

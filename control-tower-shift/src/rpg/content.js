@@ -170,6 +170,23 @@ export const MAPS = {
         }),
       },
       {
+        id: 'beacon-sacred-hind', kind: 'wild-creature', x: 150, y: 150, name: 'Sacred Hind', label: 'Calm the sacred hind',
+        skillId: 'beastbond', level: 1, xp: 18,
+        requiresFlag: 'beastbond:calmed:beacon-overlook:beacon-sacred-hind',
+        cost: [{ itemId: 'honeyed-figs', quantity: 1 }],
+        reward: { currency: 30 },
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Kallias earn a wild creature’s trust through patient offering, or does Beastbond stay a definition with nothing to actually train it?',
+          systemsUsed: ['beastbond', 'inventory'],
+          durableReward: 'A successful calming permanently bonds the hind, awards Beastbond XP, and pays out 30 drachmae — Beastbond previously had no obtainable XP source anywhere in the game.',
+          downstreamConsequence: 'It gives Beastbond a genuine first loop, reusing the same exact-once, level-gated, atomic-cost contract Guile’s locked chest already proved out.',
+          recoveryBehavior: 'A failed or interrupted attempt leaves the offering and currency untouched; an already-calmed hind cannot be calmed again.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses the public-domain Greek sacred-hind motif (an Artemis-associated deer, not any protected character); this exact-once Beastbond training contract is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'beacon-votive-stand', kind: 'station', stationId: 'votive-stand', x: 250, y: 80, name: 'Votive Stand', label: 'Leave a votive offering',
         authoring: act1Authoring({
           category: 'world-entity',

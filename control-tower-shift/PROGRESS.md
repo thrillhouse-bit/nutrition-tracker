@@ -1052,3 +1052,93 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   2. Land the still-open Stewardship browser-acceptance evidence.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T16:4x (turnover hour ~1)
+
+- **Branch/HEAD at start**: `codex/oathbearer-complete-game` @ `a6fd80a`
+  (Guile locked-chest checkpoint).
+- **What changed**: Beastbond's first loop — the third and last
+  completely dead skill ("track, calm, and call mythic creatures"),
+  which previously had zero obtainable XP source anywhere in the game,
+  the same severity Devotion and Guile had before their own fixes this
+  session. Deliberately scoped as a minimal v1 (an exact-once wild-
+  creature calming), skipping any persistent companion/tracking
+  mechanic — matching how Devotion and Guile each shipped a bounded
+  first loop rather than the skill's full thematic breadth, per this
+  checkpoint's own previously-recorded plan.
+  - New physical entity `beacon-sacred-hind` (`kind: 'wild-creature'`,
+    a brand-new entity kind) at Beacon Overlook (150, 150) — calmed
+    with 1 honeyed figs for 18 Beastbond XP and a 30-drachmae payout.
+    Full `act1Authoring` metadata added. Placement verified reachable
+    from every spawn and ≥60px distinct from all 13 pre-existing
+    Beacon Overlook targets with the same throwaway-probe-script
+    method as every prior checkpoint (never committed).
+  - New reducer path in `state.js`: extracted `pickLock`'s exact-once/
+    level-gated/atomic-cost/reward logic into a shared
+    `claimExactOnceReward(state, target)` helper (`pickLock` is now a
+    thin wrapper around it), and added `calmCreature` as a second thin
+    wrapper finding `kind: 'wild-creature'` entities. New
+    `CALM_CREATURE` event wired into `applyEvent`. This is a genuine
+    refactor-while-extending, not a parallel copy: Guile and Beastbond
+    now share one audited contract instead of two near-duplicate
+    implementations that could drift.
+  - Closed an independent pre-existing gap as a side effect: honeyed
+    figs (`honeyed-figs`) already had a real `food(36)` consumable
+    effect defined in `itemEffects.js` but no obtainable source
+    anywhere (no recipe output, no shop listing) — added to Myrrine's
+    Provision Table (`beacon-provisioner`) listings in `economy.js`.
+  - Full UI wiring in `ControlTowerRPG.jsx`: generalized the existing
+    locked-chest `interactWith` branch to `ent.kind === 'locked-chest'
+    || ent.kind === 'wild-creature'` with an `isCreature` flag driving
+    verb/message differences ("pick"/"calm", "already open"/"already
+    calmed", dispatching `PICK_LOCK`/`CALM_CREATURE`); generalized the
+    nearby-interaction prompt and the accessible world-target overlay
+    label/`data-resource-state` logic the same way (`creatureCalmed`
+    alongside the existing `chestOpened`) — the same class of "don't
+    let a static label lie about what a keypress does" fix Guile and
+    Stewardship both needed.
+  - New test file `test/rpg-beastbond-sacred-hind.test.js` (10 tests),
+    mirroring `rpg-guile-locked-chest.test.js`'s structure exactly:
+    item/obtainability, placement/reachability/distinctness,
+    `CALM_CREATURE` reducer behavior (refuses without honeyed figs,
+    refuses off-map, exact cost/XP/payout accounting, exact-once even
+    with surplus figs carried, surplus figs left untouched), and a full
+    real-reducer playthrough (buy honeyed figs at Myrrine's, calm the
+    hind) proving the closure end to end.
+  - Content-integrity fallout, all mechanically reconciled: Act I
+    records 34→35 (Beacon Overlook entities 13→14), whole-registry
+    total 306→307, legacy unchanged 216, release-ready 90→91. No new
+    station or resource-kind entity, so no other counts moved.
+    `FULL-GAME-CONTRACT.md` Skills, Items, and authoring-readiness rows
+    updated to match.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1054/1054 passed** (80
+    files, up from 1044/79).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 88/200 (honeyed-figs now obtainable, no new
+    item definitions this checkpoint); `completeSkillLoops` still
+    truthfully 0/22 — Beastbond's loop is real and tested but this
+    figure is manually curated release evidence requiring genuine
+    human/browser acceptance, which remains blocked this session (see
+    below), not something a passing test suite may bump on its own.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — the `visibilityState:
+    "hidden"` blocker documented in the Stewardship checkpoint is an
+    environment property of this session, not something retrying here
+    would fix; still filed via `SendFeedback`, not silently dropped.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Guile checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. All three previously-dead skills (Devotion, Guile, Beastbond) now
+     have real first loops. Next highest-value skill-floor work is
+     widening the *shallowest* of the remaining loops (e.g.
+     Hearthkeeping's second station, or another skill with only a
+     single level-1 action) toward the contract's "at least five
+     useful level bands" floor, rather than opening a fourth brand-new
+     loop from scratch.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.
