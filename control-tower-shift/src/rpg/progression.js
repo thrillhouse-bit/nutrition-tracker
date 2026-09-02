@@ -105,6 +105,8 @@ export const ITEM_DEFS = Object.freeze({
   asphodel: { id: 'asphodel', name: 'Asphodel', category: 'herb', stackable: false, tier: 30 },
   moly: { id: 'moly', name: 'Moly', category: 'herb', stackable: false, tier: 55 },
   'ambrosia-bloom': { id: 'ambrosia-bloom', name: 'Ambrosia Bloom', category: 'herb', stackable: false, tier: 80 },
+  compost: { id: 'compost', name: 'Compost', category: 'material', stackable: false, tier: 1 },
+  'barley-sheaf': { id: 'barley-sheaf', name: 'Barley Sheaf', category: 'grain', stackable: false, tier: 1 },
   drachma: { id: 'drachma', name: 'Drachma', category: 'currency', stackable: true, tier: 1 },
 })
 

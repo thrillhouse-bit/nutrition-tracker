@@ -446,6 +446,22 @@ export const ITEM_EXTENSIONS = Object.freeze({
     tier: 2,
     toolBonus: Object.freeze({ skillId: 'fishing', yieldBonus: 2 }),
   },
+  'bronze-hoe': {
+    id: 'bronze-hoe',
+    name: 'Bronze Hoe',
+    category: 'tool',
+    stackable: false,
+    tier: 1,
+    toolBonus: Object.freeze({ skillId: 'stewardship', yieldBonus: 1 }),
+  },
+  'iron-hoe': {
+    id: 'iron-hoe',
+    name: 'Iron Hoe',
+    category: 'tool',
+    stackable: false,
+    tier: 2,
+    toolBonus: Object.freeze({ skillId: 'stewardship', yieldBonus: 2 }),
+  },
 })
 
 const ITEM_DEFS_WITH_EFFECTS = { ...ITEM_DEFS, ...ITEM_EXTENSIONS }
@@ -548,6 +564,19 @@ const RECIPE_DEFS = [
     outputs: [{ itemId: 'bronze-fishing-rod', quantity: 1 }],
   }),
   Object.freeze({
+    id: 'bronze-hoe',
+    name: 'Forge Bronze Hoe',
+    skillId: 'bronzework',
+    stationId: 'bronze-forge',
+    level: 3,
+    xp: 20,
+    ingredients: [
+      { itemId: 'bronze-bar', quantity: 1 },
+      { itemId: 'olive-plank', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'bronze-hoe', quantity: 1 }],
+  }),
+  Object.freeze({
     id: 'bronze-ingot',
     name: 'Hammer Bronze Ingot',
     skillId: 'bronzework',
@@ -631,6 +660,19 @@ const RECIPE_DEFS = [
       { itemId: 'cypress-plank', quantity: 1 },
     ],
     outputs: [{ itemId: 'iron-fishing-rod', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'iron-hoe',
+    name: 'Forge Iron Hoe',
+    skillId: 'bronzework',
+    stationId: 'bronze-forge',
+    level: 15,
+    xp: 95,
+    ingredients: [
+      { itemId: 'iron-ore', quantity: 2 },
+      { itemId: 'cypress-plank', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'iron-hoe', quantity: 1 }],
   }),
   Object.freeze({
     id: 'bronze-aspis',

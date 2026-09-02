@@ -150,7 +150,7 @@ describe('recipe lookup helpers', () => {
 
   it('recipesForSkill returns recipes in registry order (ascending level)', () => {
     const bronzework = recipesForSkill('bronzework')
-    expect(bronzework.length).toBe(19)
+    expect(bronzework.length).toBe(21)
     for (let i = 1; i < bronzework.length; i++) {
       expect(bronzework[i].level).toBeGreaterThanOrEqual(bronzework[i - 1].level)
     }
@@ -174,9 +174,9 @@ describe('recipe lookup helpers', () => {
     // bronze-forge available recipes at bronzework level 3:
     // copper-bar (lvl1), bronze-bar (lvl2), bronze-quarry-pick (lvl3),
     // bronze-herb-sickle (lvl3), bronze-felling-axe (lvl3), bronze-fishing-rod
-    // (lvl3) — bronze-ingot needs lvl5
+    // (lvl3), bronze-hoe (lvl3) — bronze-ingot needs lvl5
     const forge = recipesAvailableAt({ skills }, 'bronze-forge')
-    expect(forge.map((r) => r.id)).toEqual(['copper-bar', 'bronze-bar', 'bronze-quarry-pick', 'bronze-herb-sickle', 'bronze-felling-axe', 'bronze-fishing-rod'])
+    expect(forge.map((r) => r.id)).toEqual(['copper-bar', 'bronze-bar', 'bronze-quarry-pick', 'bronze-herb-sickle', 'bronze-felling-axe', 'bronze-fishing-rod', 'bronze-hoe'])
   })
 
   it('recipesAvailableAt returns only recipes whose station matches', () => {
@@ -195,7 +195,7 @@ describe('recipe lookup helpers', () => {
     const skills = makeSkills({ bronzework: 99 })
     const prog = { progression: { skills, totalXp: 0 } }
     const result = recipesAvailableAt(prog, 'bronze-forge')
-    expect(result.length).toBe(19)
+    expect(result.length).toBe(21)
   })
 
   it('recipesAvailableAt accepts null/undefined skills safely (defaults to level 1)', () => {

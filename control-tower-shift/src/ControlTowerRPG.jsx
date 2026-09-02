@@ -1086,6 +1086,27 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
     if (near.kind === 'entity') {
       const ent = near.ent
       if (ent.kind === 'resource') {
+        const skillName = SKILL_DEFS.find((skill) => skill.id === ent.skillId)?.name || ent.skillId
+        const needsRestore = ent.requiresFlag && !st.flags[ent.requiresFlag]
+        if (needsRestore) {
+          const restore = ent.restore || {}
+          const xp = st.progression.skills?.[ent.skillId]?.xp || 0
+          if (levelForXp(xp) < (restore.level || 1)) {
+            setSaveNote(`${ent.name} requires ${skillName} level ${restore.level} to restore.`)
+            return
+          }
+          const missing = (restore.cost || []).find((ingredient) =>
+            carriedItemQuantity(st.inventory, ingredient.itemId, ALL_ITEM_DEFS) < ingredient.quantity)
+          if (missing) {
+            setSaveNote(`Restoring ${ent.name} needs ${missing.quantity}x ${ALL_ITEM_DEFS[missing.itemId]?.name || missing.itemId}.`)
+            return
+          }
+          setSkillAction({
+            entityId: ent.id, name: restore.label || `Restore ${ent.name}`, skillId: ent.skillId,
+            restoreAction: true, flagId: ent.requiresFlag, duration: 850,
+          })
+          return
+        }
         const node = resourceNodeStatus({
           resources: st.resources,
           mapId: st.world.mapId,
@@ -1102,7 +1123,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         const xp = st.progression.skills?.[ent.skillId]?.xp || 0
         const level = levelForXp(xp)
         if (level < (ent.level || 1)) {
-          setSaveNote(`${ent.name} requires ${SKILL_DEFS.find((skill) => skill.id === ent.skillId)?.name || ent.skillId} level ${ent.level}.`)
+          setSaveNote(`${ent.name} requires ${skillName} level ${ent.level}.`)
           return
         }
         if ((st.inventory.slots?.length || 0) >= (st.inventory.capacity || 28)) {
@@ -1144,6 +1165,15 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
   useEffect(() => {
     if (!skillAction) return undefined
     const timer = window.setTimeout(() => {
+      if (skillAction.restoreAction) {
+        dispatch({ type: 'RESTORE_LAND', entityId: skillAction.entityId })
+        const restored = Boolean(stateRef.current.flags[skillAction.flagId])
+        setSaveNote(restored
+          ? `${skillAction.name} — it can now be tended.`
+          : `${skillAction.name} could not be completed.`)
+        setSkillAction(null)
+        return
+      }
       const before = carriedItemQuantity(stateRef.current.inventory, skillAction.itemId, ALL_ITEM_DEFS)
       dispatch({ type: 'GATHER', entityId: skillAction.entityId })
       const after = carriedItemQuantity(stateRef.current.inventory, skillAction.itemId, ALL_ITEM_DEFS)
@@ -1570,7 +1600,11 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
     if (state.status === 'in-combat') return ''
     const near = nearestInteractable()
     if (!near) return ''
-    if (near.kind === 'entity') return near.ent.label || near.ent.name
+    if (near.kind === 'entity') {
+      const ent = near.ent
+      const needsRestore = ent.kind === 'resource' && ent.requiresFlag && !state.flags[ent.requiresFlag]
+      return (needsRestore && ent.restore?.label) || ent.label || ent.name
+    }
     const destination = rpgMapById(near.ex.toMapId)
     return near.ex.label || `Travel to ${destination?.name || near.ex.toMapId}`
   })()
@@ -1949,7 +1983,8 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         {state.status === 'playing' && map && !panelOpen && !skillAction && (
           <div className="pointer-events-none absolute inset-0 z-[4]" aria-label="World targets">
             {(map.entities || []).map((ent) => {
-              const node = ent.kind === 'resource' ? resourceNodeStatus({
+              const needsRestore = ent.kind === 'resource' && ent.requiresFlag && !state.flags[ent.requiresFlag]
+              const node = ent.kind === 'resource' && !needsRestore ? resourceNodeStatus({
                 resources: state.resources,
                 mapId: map.id,
                 entityId: ent.id,
@@ -1958,7 +1993,8 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                 playtimeTicks: state.playtimeTicks,
               }) : null
               const depleted = node && !node.available
-              const baseLabel = ent.accessibleLabel || ent.label || ent.name || `Interact with ${ent.id}`
+              const baseLabel = (needsRestore && (ent.restore?.label || ent.accessibleLabel))
+                || ent.accessibleLabel || ent.label || ent.name || `Interact with ${ent.id}`
               const label = depleted
                 ? `Depleted: ${baseLabel}. Renews in about ${Math.max(1, Math.ceil(node.waitTicks / TICK_RATE))} seconds of active play.`
                 : baseLabel
@@ -1970,7 +2006,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                   aria-label={label}
                   data-world-x={ent.x}
                   data-world-y={ent.y}
-                  data-resource-state={node ? (depleted ? 'depleted' : 'available') : undefined}
+                  data-resource-state={needsRestore ? 'needs-restore' : (node ? (depleted ? 'depleted' : 'available') : undefined)}
                   className={`rpg-world-target${depleted ? ' is-depleted' : ''}`}
                   style={{ left: '-9999px', top: '-9999px' }}
                   onClick={(event) => onWorldTargetClick(event, { kind: 'entity', ent, distance: 0 })}

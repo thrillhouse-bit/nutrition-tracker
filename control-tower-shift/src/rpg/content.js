@@ -195,6 +195,26 @@ export const MAPS = {
           originalityNotes: 'Uses public-domain Bronze Age Aegean metallurgy; the overlook seam and its connected crafting graph are original Oathbearer design.',
         }),
       },
+      {
+        id: 'steward-fallow-field', kind: 'resource', x: 380, y: 420, name: 'Fallow Field', label: 'Tend the fallow field',
+        skillId: 'stewardship', itemId: 'barley-sheaf', level: 1, xp: 15,
+        requiresFlag: 'steward:restored:beacon-overlook:steward-fallow-field',
+        restore: {
+          level: 1, xp: 12,
+          cost: [{ itemId: 'compost', quantity: 2 }],
+          label: 'Restore the fallow field',
+        },
+        authoring: act1Authoring({
+          category: 'gathering-resource',
+          dramaticQuestion: 'Will the player choose to restore a neglected plot before it can be tended, rather than finding it already productive?',
+          systemsUsed: ['inventory', 'resource-respawn', 'stewardship', 'trading'],
+          durableReward: 'A one-time restoration persists permanently; afterward each available charge awards one barley sheaf and 15 Stewardship XP.',
+          downstreamConsequence: 'Barley sheaves feed Myrrine’s provision trade, and the restored field introduces Stewardship as a genuine restore-then-tend loop rather than a plain harvest node.',
+          recoveryBehavior: 'Restoration is exact-once and its compost cost is atomic; once restored the field behaves like any other resource node, with inventory-full gathering atomic and depletion surviving reload.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Mediterranean fallow-field and compost-restoration farming practice; the restore-then-tend Stewardship contract is original Oathbearer design.',
+        }),
+      },
     ],
     exits: [
       { id: 'to-olive-road', x: 884, y: 404, toMapId: 'olive-road', spawnId: 'from-beacon', label: 'The Olive Road' },

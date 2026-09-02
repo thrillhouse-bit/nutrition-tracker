@@ -31,6 +31,7 @@ import {
   depositBankItem,
   depositAllMaterials,
   levelForXp,
+  removeInventoryItem,
   withdrawBankItem,
 } from './progression.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
@@ -440,6 +441,7 @@ export function applyEvent(state, event) {
       ? consumeCombatInventoryItem(state, event.itemId, event.useId, ALL_ITEM_DEFS, event.encounterId)
       : prepareConsumable(state, event.itemId, ALL_ITEM_DEFS)
     case 'GATHER': return gather(state, event)
+    case 'RESTORE_LAND': return restoreLand(state, event)
     case 'WILDERNESS_ENTER': return wildernessEnter(state, event)
     case 'WILDERNESS_STEP': return wildernessStep(state, event)
     case 'WILDERNESS_COMBAT_START': return wildernessCombatStart(state, event)
@@ -635,11 +637,17 @@ function gatherToolBonus(inventory, skillId) {
   return bonus
 }
 
+// A resource entity may declare `requiresFlag`, naming a persistent flag that
+// must already be set before it can ever be gathered (see `restoreLand`
+// below). This lets one physical node model a genuine restore-then-tend
+// loop — e.g. Stewardship's fallow field — rather than being harvestable
+// from the moment it is authored, without inventing a parallel node system.
 function gather(state, event) {
   if (state.status !== 'playing') return state
   const map = mapById(state.world.mapId)
   const resource = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'resource')
   if (!resource || !ALL_ITEM_DEFS[resource.itemId]) return state
+  if (resource.requiresFlag && !state.flags[resource.requiresFlag]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
   if (levelForXp(xp) < (resource.level || 1)) return state
   const baseQuantity = positiveIntegerQuantity(resource.quantity || 1)
@@ -666,6 +674,38 @@ function gather(state, event) {
     inventory: result.inventory,
     resources: node.resources,
   }, resource.skillId, resource.xp || 10)
+}
+
+// One-time restoration of a `requiresFlag`-gated resource entity: level-gated
+// and paid for with an atomic multi-ingredient cost (every ingredient is
+// verified carried before any is removed, so a partial cost can never be
+// charged). Exact-once via the persisted flag — a second attempt after the
+// flag is set is a no-op, matching the atomicity/exact-once invariants every
+// other economy action in this reducer already holds to.
+function restoreLand(state, event) {
+  if (state.status !== 'playing') return state
+  const map = mapById(state.world.mapId)
+  const resource = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'resource' && entity.restore)
+  if (!resource) return state
+  const flagId = resource.requiresFlag
+  if (!flagId || state.flags[flagId]) return state
+  const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
+  if (levelForXp(xp) < (resource.restore.level || 1)) return state
+  const cost = resource.restore.cost || []
+  for (const ingredient of cost) {
+    if (carriedItemQuantity(state.inventory, ingredient.itemId, ALL_ITEM_DEFS) < (ingredient.quantity || 0)) return state
+  }
+  let inventory = state.inventory
+  for (const ingredient of cost) {
+    const outcome = removeInventoryItem(inventory, ingredient.itemId, ingredient.quantity, ALL_ITEM_DEFS)
+    if (outcome.removed !== ingredient.quantity) return state
+    inventory = outcome.inventory
+  }
+  return awardSkillXp({
+    ...state,
+    inventory,
+    flags: { ...state.flags, [flagId]: true },
+  }, resource.skillId, resource.restore.xp || 10)
 }
 
 function equipAtRest(state, event) {

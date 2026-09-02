@@ -22,6 +22,8 @@ export const SHOP_DEFS = Object.freeze({
       thyme: Object.freeze({ itemId: 'thyme', buyPrice: 9, sellPrice: 3, baseStock: 16, maxStock: 32, restockAmount: 3 }),
       'olive-log': Object.freeze({ itemId: 'olive-log', buyPrice: 14, sellPrice: 5, baseStock: 10, maxStock: 24, restockAmount: 2 }),
       'copper-ore': Object.freeze({ itemId: 'copper-ore', buyPrice: 18, sellPrice: 7, baseStock: 8, maxStock: 20, restockAmount: 1 }),
+      compost: Object.freeze({ itemId: 'compost', buyPrice: 8, sellPrice: 3, baseStock: 12, maxStock: 24, restockAmount: 2 }),
+      'barley-sheaf': Object.freeze({ itemId: 'barley-sheaf', buyPrice: 14, sellPrice: 5, baseStock: 6, maxStock: 16, restockAmount: 2 }),
     }),
   }),
   'pelagos-chandler': Object.freeze({

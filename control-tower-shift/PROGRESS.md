@@ -223,3 +223,135 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   integration contract (NPC availability, quest-choice reducer
   integration, portraits/display-name assembly, reachability, exact-once
   tests, browser acceptance) — do not register or wire it in as-is.
+
+## Recovery checkpoint — 2026-09-02T14:2x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `047e775`
+  (Jackson landed the fishing-checkpoint recovery-notes commit himself
+  after the harness's Bash permission classifier blocked my own
+  `git commit`/`git push`; he granted standing permission to proceed).
+- **This checkpoint (uncommitted at time of writing, about to commit)**:
+  Priority 1 — first Stewardship skill-loop vertical slice, a genuine
+  new mechanic rather than a clone of the resource-node pattern already
+  used by fishing/quarrying/foraging/woodcutting, per the turnover's
+  explicit guidance that Stewardship "needs deliberate resource/event/UI
+  design rather than cosmetic metadata."
+  - **Design**: a physical Beacon Overlook entity (`steward-fallow-field`,
+    kind `resource`) that is inert until restored. A new `RESTORE_LAND`
+    event (`state.js`) is level-gated, atomically consumes a multi-
+    ingredient cost (compost ×2; the atomicity check verifies every
+    ingredient is carried before removing any, so a partial cost can
+    never be charged), and sets a persistent `flags['steward:restored:…']`
+    exact-once. `gather()` now honors an optional `resource.requiresFlag`
+    gate, so the same physical node becomes an ordinary tend-able
+    resource node (existing depletion/respawn/tool-bonus machinery,
+    unmodified) only after restoration — this is the "restore land, tend
+    crops" contract the skill's own description promises, not a plain
+    harvest node with different flavor text.
+  - **New items**: `compost` (material, purchasable from Myrrine at
+    Beacon Overlook — a genuine economy sink/source, not a free grant),
+    `barley-sheaf` (grain, the tended crop; sellable back to Myrrine —
+    closes the trade loop). New tiered tool line matching every other
+    gathering skill's pattern: `bronze-hoe`/`iron-hoe` (bronzework/
+    bronze-forge recipes at level 3/15, same cost shape as the fishing
+    rods), `toolBonus` yield +1/+2.
+  - **UI** (`ControlTowerRPG.jsx`): the nearby-interaction prompt, the
+    off-screen accessible world-target label, and the click-to-approach
+    handler all now compute a state-aware label/action — "Restore the
+    fallow field" before the flag is set, the ordinary tend prompt after
+    — instead of a static authored string that would silently lie about
+    which action a keypress performs.
+  - **Content-integrity fallout reconciled** (same class of issue as the
+    Fishing checkpoint's Act II authoring collision): the new resource
+    entity needed real Act I authoring metadata
+    (dramaticQuestion/systemsUsed/durableReward/downstreamConsequence/
+    recoveryBehavior/originalityNotes) to land release-ready rather than
+    legacy, which shifted `rpg-act1-authoring-readiness.test.js` (28→29
+    Act I records, 8→9 Beacon Overlook entities) and, downstream,
+    `rpg-act2-authoring-readiness.test.js` and `rpg-authoring-schema.test.js`
+    (293→294 total, 82→83 release-ready, legacy unchanged at 211).
+    `rpg-content-validation.test.js` and `rpg-crafting.test.js` updated
+    for the new resource/recipe counts (21→22 resources, 19→21 bronzework
+    recipes), same pattern as the Fishing reconciliation.
+  - **New test file**: `test/rpg-stewardship-fallow-field.test.js` (20
+    tests) — item/recipe registration, world placement + reachability +
+    distinctness, `RESTORE_LAND` atomicity/level-gate/exact-once, `GATHER`
+    before/after restoration including tool-bonus stacking and inventory-
+    full atomicity, and bank + Myrrine buy/sell economy interaction.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **978/978 passed** (74
+    files, up from 958/73).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `resourceNodes` 21→22, `items` 79→83, `recipes` 47→49, and
+    **`completeSkillLoops` deliberately left at 0/22** — see below.
+  - `git diff --check` → clean.
+  - **Partial live-browser evidence, not a full playthrough** — recorded
+    honestly rather than papered over:
+    - Created a real account and started a New Story against the actual
+      production build (`npm run build` output served via `vite preview`
+      with a temporary local `preview.proxy` added to `vite.config.js`
+      to reach the API, then reverted before this commit — the dev
+      server on :5173 could not be used because one specific unrelated
+      file, `src/components/LogView.jsx` — part of the pre-existing
+      nutrition-tracker app, not touched by this session — consistently
+      failed to load only inside the browser tab (curl and a fresh
+      no-cache `fetch()` both diverged from what the tab reported),
+      breaking the whole module graph before the RPG route could even
+      mount. Worth a `/run-skill-generator` pass later; noted here so
+      the next session doesn't rediscover it from scratch).
+    - Confirmed live, via the accessibility tree against the running
+      production build: the fallow field's interaction target correctly
+      reads **"Restore the fallow field"** before restoration — i.e. the
+      new state-aware label logic is genuinely wired into the shipped
+      UI, not just passing in isolation.
+    - Confirmed live: the general gather mechanism (wild thyme at Beacon
+      Overlook — the same code path Stewardship's post-restoration tend
+      step reuses) completed end-to-end with real feedback ("Wild Thyme
+      added to your backpack. The node is now depleted.") and a real
+      inventory/XP change persisted to the account save.
+    - Could not complete a full walk-there-and-restore-and-tend
+      playthrough in this session: this automated tab's
+      `document.visibilityState` was `"hidden"` throughout (confirmed via
+      direct JS inspection, not inferred from a blank screenshot), which
+      freezes the character-movement animation loop in this build
+      (movement dispatches ride `requestAnimationFrame`, which Chrome
+      clamps to near-zero for hidden documents) even though discrete,
+      event-driven state changes (clicks, gathers, panel toggles) kept
+      working normally. Confirmed by reading `world.position` directly
+      out of the persisted account save rather than trusting the
+      screenshot: position stopped advancing at all across an 8-second
+      wait after a click-to-move. This reproduced consistently across a
+      fresh tab, `resize_window`, and repeated reloads — a property of
+      this browser-automation session, not of the game.
+  - **Because of the above, `completeSkillLoops` was deliberately left
+    truthfully at 0/22.** The reducer contract, atomicity, exact-once
+    behavior, and economy interaction are proven by 20 dedicated tests
+    plus the full suite, and the live UI wiring is proven by the
+    accessible-label check above, but the turnover's bar for a "complete
+    skill loop" explicitly requires human/browser acceptance of the full
+    loop, which this session could not finish live. **Do not bump this
+    number without either a real interactive playthrough (Jackson, or a
+    session where the tab is genuinely foregrounded/visible) or an
+    equivalent, honestly-documented substitute.**
+- **Active subagents**: none — solo lead work again; this was reducer +
+  shared-UI + content authoring, all lead-owned per the turnover's team
+  topology.
+- **Next three ordered milestones**:
+  1. Get a real interactive (or Jackson-run) browser pass on the Beacon
+     Overlook fallow field: buy 2 compost from Myrrine (starting
+     currency is 0 — sell a gathered copper-ore/olive-log/thyme first),
+     restore it, tend it once, confirm the UI copy switches correctly
+     from "Restore…" to the ordinary tend prompt after restoration, then
+     truthfully set `completeSkillLoops` to 1/22 in
+     `full-game-release.json`'s `evidence` block and record the exact
+     evidence in this file.
+  2. Continue Priority 1: a second gathering-tier skill loop (or extend
+     Stewardship into Act II/III to build out its own multi-tier curve
+     the way Fishing/Quarrying/Foraging/Woodcutting already have) is
+     the next highest-value lane, since one verified loop out of 22
+     alone doesn't move the release gate materially.
+  3. Priority 2 — economy/equipment network (banks 1/8, merchants 5/15).
+  4. Reconcile the remaining stale `FULL-GAME-CONTRACT.md` "Current
+     audited baseline" rows noted in the previous checkpoint (unrelated
+     to this one; still deferred).
