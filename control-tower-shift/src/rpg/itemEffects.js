@@ -28,6 +28,7 @@ export const ITEM_EFFECTS = Object.freeze({
   'moly-tonic': preparation('tonic', { incomingDamageMultiplier: 0.85, statusWard: 'Moly ward' }),
   'ambrosia-distillate': preparation('tonic', { maxHealthBonus: 25, statusWard: 'Ambrosial vigor' }),
   'ash-blessing': preparation('blessing', { attackDamageMultiplier: 1.18 }),
+  'votive-favor': preparation('blessing', { incomingDamageMultiplier: 0.9 }),
 })
 
 export const CONSUMABLE_LOADOUT_SLOTS = Object.freeze(['salve', 'tonic', 'blessing'])

@@ -361,6 +361,13 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 4,
   },
+  'votive-favor': {
+    id: 'votive-favor',
+    name: 'Votive Favor',
+    category: 'herb',
+    stackable: false,
+    tier: 1,
+  },
   'clay-brick': {
     id: 'clay-brick',
     name: 'Clay Brick',
@@ -906,6 +913,26 @@ const RECIPE_DEFS = [
       { itemId: 'ambrosia-bloom', quantity: 1 },
     ],
     outputs: [{ itemId: 'moly-tonic', quantity: 1 }],
+  }),
+
+  // ── Devotion ──
+  // Devotion had no obtainable XP source anywhere in the game before this
+  // recipe. Leaving a votive offering trains it and yields a Votive Favor —
+  // a genuine "blessing"-slot consumable (see itemEffects.js), giving
+  // players a real reason to keep making offerings rather than a token
+  // reward. Reuses the existing crafting ledger (atomic ingredient
+  // consumption, XP award, physical station access) exactly like
+  // Hearthkeeping's shrine-fire recipe already does for worship-adjacent
+  // crafting.
+  Object.freeze({
+    id: 'votive-offering',
+    name: 'Make a Votive Offering',
+    skillId: 'devotion',
+    stationId: 'votive-stand',
+    level: 1,
+    xp: 15,
+    ingredients: [{ itemId: 'votive-oil', quantity: 1 }],
+    outputs: [{ itemId: 'votive-favor', quantity: 1 }],
   }),
 
   // ── Weaving ──

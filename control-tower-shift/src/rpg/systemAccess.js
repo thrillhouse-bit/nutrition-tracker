@@ -90,6 +90,11 @@ const CRAFTING_PLACEMENT = {
     mapIds: ['beacon-overlook', 'nyx-foothold'],
     accessLabel: 'Consecrate the offering at a tended shrine fire',
   },
+  'votive-stand': {
+    label: 'Votive Stand',
+    mapIds: ['beacon-overlook'],
+    accessLabel: 'Leave a votive offering',
+  },
 }
 
 export const WILDERNESS_ACCESS_BY_REGION = deepFreeze(Object.fromEntries(

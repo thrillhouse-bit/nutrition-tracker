@@ -18,6 +18,11 @@ import { awardSkillXp } from '../src/rpg/progression.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
+// Every skill with at least one recipe in RECIPE_DEFS. Mostly the six
+// Artisan-group skills, plus Devotion — its one votive-offering recipe has
+// no item output (pure XP for consuming votive-oil), reusing the crafting
+// ledger exactly like Hearthkeeping's shrine-fire recipe already does for
+// worship-adjacent crafting.
 const SKILL_IDS = [
   'bronzework',
   'carpentry',
@@ -25,6 +30,7 @@ const SKILL_IDS = [
   'alchemy',
   'weaving',
   'hearthkeeping',
+  'devotion',
 ]
 
 function skillsAt(skillMap, level) {

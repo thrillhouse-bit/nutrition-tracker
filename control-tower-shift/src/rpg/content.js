@@ -170,6 +170,19 @@ export const MAPS = {
         }),
       },
       {
+        id: 'beacon-votive-stand', kind: 'station', stationId: 'votive-stand', x: 250, y: 80, name: 'Votive Stand', label: 'Leave a votive offering',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Can Kallias build real standing with the divine through small, repeatable devotion, or does favor only ever arrive as a scripted story beat?',
+          systemsUsed: ['crafting', 'devotion', 'inventory'],
+          durableReward: 'Each votive offering permanently and repeatably trains Devotion — the skill previously had no obtainable XP source anywhere in the game — and yields a Votive Favor blessing consumable.',
+          downstreamConsequence: 'It gives Devotion a genuine player-driven progression loop, standing apart from the shrine’s own one-time patron-selection and checkpoint role, which this stand never touches.',
+          recoveryBehavior: 'Offering attempts revalidate map access, the votive-oil cost, and quantity before changing inventory; an interrupted offering leaves inventory unchanged.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Greek votive-offering practice; a dedicated stand for repeatable player-driven devotion training is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'beacon-kiln', kind: 'station', stationId: 'kiln', x: 620, y: 120, name: 'Beacon Kiln', label: 'Fire clay at the Beacon kiln',
         authoring: act1Authoring({
           category: 'world-entity',

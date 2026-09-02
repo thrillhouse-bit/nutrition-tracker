@@ -878,3 +878,103 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      reachable from Act I — it may be very close to "complete loop"
      shape already, pending only the same browser-acceptance evidence
      every other loop is waiting on).
+
+## Recovery checkpoint — 2026-09-02T15:3x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `c2cb6a5`
+  (kiln/hearthkeeping fix, pushed).
+- **This checkpoint**: went looking for a new merchant location (this
+  checkpoint's own prior milestone 2), surveyed several Act II/III
+  satellite maps (`nereid-caves`, `winter-orchard`), and concluded most
+  of them are puzzle/combat/traversal zones with no civic framing —
+  forcing a shop or bank into them to move the count would be exactly
+  the "games a threshold" anti-pattern the turnover explicitly warns
+  against, not a genuine improvement. Recorded that conclusion and
+  pivoted to a materially higher-value discovery instead: while
+  reviewing which of the 22 skills actually have a functioning XP path
+  at all, found that **Guile, Devotion, and Beastbond have zero
+  obtainable XP source anywhere in the codebase** — no resource node, no
+  recipe, no quest reward, nothing. These are not "reachable late" gaps
+  like bronze-forge/alchemy-lab/kiln were; they are completely
+  non-functional skills, the most severe version of "incomplete skill
+  loop" possible.
+- Built Devotion's first loop (chosen over Guile/Beastbond for the
+  cleanest, lowest-risk implementation path): a `votive-stand` station
+  at Beacon Overlook that reuses the existing crafting ledger exactly
+  like Hearthkeeping's shrine-fire recipe already does for
+  worship-adjacent crafting — no new reducer event needed, maximum
+  reuse of a well-tested pipeline (atomic ingredient consumption, XP
+  award, physical-access gating).
+  - New items: `votive-oil` (material, sold at Myrrine's) is the
+    offering cost; `votive-favor` (a real "blessing"-slot consumable,
+    see `itemEffects.js` — `incomingDamageMultiplier: 0.9`, a distinct
+    defensive counterpart to Hearthkeeping's offensive `ash-blessing`)
+    is the reward, also sellable back at Myrrine's.
+  - New recipe `votive-offering`: level 1, 15 XP, 1 votive-oil in,
+    1 votive-favor out. Deliberately **not** a restore-then-tend design
+    like Stewardship — Devotion is repeatable with no cap, proven by a
+    dedicated test crafting 3 offerings in one call.
+  - **A design correction found by the test suite itself, not planning**:
+    first tried `outputs: []` (pure XP, no item) reasoning that Devotion
+    "has no artisan output of its own." The crafting ledger handled an
+    empty `outputs` array completely safely (confirmed: the loop over
+    `outputs` in `craftingLedger.js` is a no-op on `[]`), but
+    `rpg-crafting.test.js`'s general recipe-registry invariant
+    (`outputs.length > 0` for every recipe, true for all 21 prior
+    recipes) correctly caught that this would be the only recipe in the
+    game breaking that invariant. Rather than weaken a general
+    invariant for one special case, gave the offering a real output
+    item instead — a better design anyway, since it gives devotion
+    training a tangible reward matching every other artisan skill.
+  - Placement verified with the same throwaway-probe-script method as
+    every prior checkpoint (never committed); full `act1Authoring`
+    metadata added, explicitly noting the votive-stand never touches
+    the existing shrine's own one-time patron-selection/checkpoint
+    logic (a wholly separate new entity, not a modification of the
+    already-critical, well-tested shrine flow).
+  - New test file `test/rpg-devotion-votive-offering.test.js` (13
+    tests): item/recipe registration, the consumable effect itself,
+    zero content-validation errors including zero `INERT_CRAFTED_OUTPUT`
+    warnings, placement/reachability/distinctness (explicitly checked
+    against the unrelated patron shrine too), CRAFT reducer behavior
+    (refuses without material, refuses off-map, exact ingredient/XP/
+    output accounting, and proven repeatable), Myrrine buy/sell economy
+    interaction, and — the strongest proof — a crafted Votive Favor
+    actually prepared as a pre-encounter blessing through the real
+    `USE_ITEM` reducer path.
+  - Content-integrity fallout: `stations` 9→10 (a genuinely new station
+    *type*, not just a new placement), `stationPlacements` 12→13, Act I
+    records 32→33, whole-registry total 304→305, legacy unchanged 216,
+    release-ready 88→89. `rpg-crafting.test.js`'s local `SKILL_IDS`
+    fixture (previously "the six Artisan skills") widened to include
+    `devotion`, with a comment explaining why. `FULL-GAME-CONTRACT.md`
+    Skills and authoring-readiness rows updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1034/1034 passed** (78
+    files, up from 1021/77).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `items` 85→87, `recipes` 49→50.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same reasoning as every
+    pure backend/content checkpoint; the real-`USE_ITEM`-reducer test
+    is the strongest non-browser proof available that the consumable
+    genuinely functions end-to-end.
+- **Active subagents**: none — solo lead work, pivoted from a
+  low-value merchant search to a much higher-value discovery within the
+  same checkpoint.
+- **Next three ordered milestones**:
+  1. Land the still-open Stewardship browser-acceptance evidence.
+  2. Priority 1: **Guile and Beastbond are still completely dead
+     skills** (zero obtainable XP anywhere) — the same severity Devotion
+     just had. Guile ("stealth, locks, traps, misdirection") likely has
+     the next-cleanest implementation path, e.g. a lockable
+     container/door interaction with a level-gated success chance.
+     Beastbond ("track, calm, and call mythic creatures") is probably
+     the most design-heavy of the three, since it may want a creature/
+     companion entity type that doesn't exist yet.
+  3. Priority 2: merchants 7/15, banks 5/8 — still worth pursuing, but
+     only at genuinely civic locations (act hubs, or satellite maps with
+     real settled/civic framing already established in their authored
+     text), not by forcing shops into puzzle/combat zones for the count
+     alone.
