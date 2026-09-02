@@ -1623,3 +1623,30 @@ No fixes made directly by this pass — nothing found affecting the core
 app, and the game's own internal content/balance is out of this
 report's scope. Live site: `GET /api/version` already matches current
 `main` HEAD (`cf486fd`) exactly — no deploy lag to report.
+
+## 2026-09-02 — Check-in pass (recurring, 00:36 UTC)
+
+Two more Oathbearer PRs since the last check-in (#145 "physical
+merchant economy," #146 "renewable nodes, gear, and bank crafting") —
+3,394 insertions, continuing the same session's work from last pass.
+Confirmed via diff before running anything: `git diff
+34ff9d9..f9f8374 --name-only` shows every changed file under
+`control-tower-shift/` — zero files outside the game's own directory
+this time, an easier pass than last check-in's route-isolation/PWA
+review since there was nothing outside the game to verify.
+
+`npm test`: 107 files, 1751/1751 passing (up from 1660 — 91 new tests
+for the new economy/crafting/equipment systems). `npm run build`:
+clean, RPG chunk grew modestly (330KB vs 303KB) but still ships as its
+own lazy chunk, PWA precache 1,177 KiB (was 1,147 KiB) — normal
+incremental growth, not re-flagging the asset-budget note from last
+pass since nothing structural changed. Live-verified with Playwright:
+same script as last pass — main app root renders normally, RPG route
+loads with zero `pageerror`/5xx events. Live site: `GET /api/version`
+already matches current `main` HEAD (`f9f8374`) exactly — no deploy
+lag. `/api/legal/status` unchanged from every prior pass this week
+(`signupEnabled: false`) — not re-flagged again, still open per the
+existing Info item.
+
+No fixes made directly by this pass — nothing found affecting the
+core app.
