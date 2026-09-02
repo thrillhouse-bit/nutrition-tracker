@@ -1671,3 +1671,73 @@ since the last check-in (still `26e31d6`). Live site remains only
 this report's own accumulated docs-only merges behind (`f9f8374`) —
 still zero app-code difference. `/api/legal/status` unchanged. No
 fixes needed this pass.
+
+## 2026-09-02 — Check-in pass (recurring, 20:36 UTC)
+
+PR #148 ("Oathbearer complete game") landed since the last check-in —
+6 commits, 8,918 insertions. Unlike the prior three Oathbearer passes,
+this one is **not** fully self-contained: it adds account-linked
+cross-device save/restore for the game, which meant touching real
+core-app surfaces for the first time — `schema.sql`, `server/db.js`,
+`server/index.js`, a new `server/rpgSave.js`, `src/api/client.js`, and
+`src/components/Auth.jsx`. That combination (new tables, new
+authenticated routes, auth-component reuse) crosses from "isolated
+side feature" into "touches user data and auth," so this pass reviewed
+the diff directly rather than treating it as pre-cleared by the
+earlier passes' isolation findings.
+
+**Data model.** `rpg_saves` (one authoritative row per `user_id`,
+`revision` for optimistic concurrency) and `rpg_save_history` (last 20
+snapshots, pruned in the same statement that writes a new revision)
+both key strictly off `user_id references users(id) on delete
+cascade` — an account deletion removes its save data through the same
+mechanism as every other account-owned table, no separate cleanup path
+to forget.
+
+**Ownership — read the code, not just the comment.** `server/rpgSave.js`
+validates the PUT/restore request bodies against an exact allowed-key
+set (`isDeepStrictEqual` on sorted keys — an extra field, including
+any attempt to smuggle a `userId`, is rejected outright, not silently
+ignored), rejects non-finite numbers/circular references/deeply-nested
+payloads, and caps the body at 512KB. The routes themselves
+(`server/index.js`) take ownership only from `req.userId` (the
+session), never from the request body. Verified this isn't just a
+comment's claim: booted the server locally with legal env vars set (so
+signup would work in this sandbox), signed up two real accounts, and
+exercised the actual API — fresh account reads `save: null`; a PUT at
+`expectedRevision: 0` succeeds and returns `revision: 1`; a second PUT
+still claiming `expectedRevision: 0` correctly 409s
+(`RPG_SAVE_REVISION_CONFLICT`, `currentRevision: 1`) instead of
+silently overwriting; a 600KB payload correctly 413s; and — the
+specific thing worth checking given this pass's account-isolation
+history — account 2's `GET /api/rpg/save` returned `null`, not account
+1's data. All five behaved exactly as the code claims.
+
+**Legal/auth gate — no bypass path.** The four new routes are
+registered after the `LEGAL_ACCEPTANCE_REQUIRED` gate in
+`server/index.js` (same position as ordinary routes, not exempted like
+`/account/export`/`/account/delete` are), so they inherit the same
+legal-consent enforcement as the rest of the app. The in-game sign-in
+screen (`RPGAccountGate.jsx`, new) reuses the existing `Auth`/
+`LegalReconsent` components with a new `surface` prop that only
+changes display copy ("Oathbearer" branding vs. "OmniFuel Tech") — the
+actual signup/login/legal-consent logic is the same code path as the
+main app, so it inherits the same server-side alpha/legal gating
+automatically rather than needing (or risking) a second implementation.
+
+**Independently verified, not just trusted:** `npm test` — 131 files,
+1899/1899 passing (up from 1751 — 148 new tests). `npm run build`:
+clean; RPG chunk grew to 435KB (was 330KB, reflecting the large
+content/crafting/combat expansion also in this PR), PWA precache now
+1,284 KiB / 18 entries. Not separately live-verified with Playwright
+this pass — the direct API-level verification above covers the
+security-relevant surface more precisely than a browser click-through
+would.
+
+No fixes made directly by this pass — the save/restore design is
+sound and its ownership claims held up under direct testing. No Open
+Items table changes. Live site: not yet redeployed to this commit as
+of this check (still `f9f8374`, now including real app-code — the
+`rpg_saves`/`rpg_save_history` tables and new routes — so this is
+worth watching next pass rather than folded into the "docs-only, not
+tracked" note used the last two passes).
