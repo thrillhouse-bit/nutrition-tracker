@@ -20,9 +20,15 @@ import { applyEvent, createInitialState } from '../src/rpg/state.js'
 // shape: alchemy-lab was only physically accessible at Act III's Kore
 // Sanctuary, with no narrative justification for the exclusivity (unlike the
 // Act V Silent Loom's `loom` station, which genuinely is a one-of-a-kind,
-// flag-gated "restored" location and was deliberately left alone). This file
-// proves every gap is closed: the missing materials are now purchasable
-// early, and both stations are now reachable from the Act I hub.
+// flag-gated "restored" location and was deliberately left alone). Closing
+// iron-ore's gap then surfaced a second-order one: every iron-tier recipe
+// also needs cypress-plank (a carpentry output of cypress-log), and
+// cypress-log only existed on a single Act III resource node — so the
+// recipes were still unreachable even after iron-ore and the forge itself
+// became available earlier. This file proves every gap is closed: the
+// missing materials are now purchasable early, both stations are now
+// reachable from the Act I hub, and a full iron-tier tool can be assembled
+// start to finish without ever reaching Act III or IV.
 
 function atMap(state, mapId, position) {
   const map = rpgMapById(mapId)
@@ -189,5 +195,55 @@ describe('alchemy-lab access widened to the Act I hub', () => {
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
     expect(state.inventory.slots.some((entry) => entry.itemId === 'dried-herbs')).toBe(true)
     expect(state.inventory.slots.some((entry) => entry.itemId === 'thyme')).toBe(false)
+  })
+})
+
+// Fixing iron-ore's reachability wasn't enough on its own: every iron-tier
+// recipe also needs cypress-plank (a carpentry output), which needs
+// cypress-log — and cypress-log only existed on a single Act III resource
+// node. bronze-forge/iron-ore being reachable from Act II didn't matter if
+// the other half of the recipe still couldn't be assembled until Act III.
+describe('cypress-log now purchasable alongside iron-ore', () => {
+  it('is sold at Straton’s Garrison Stores', () => {
+    let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 200 } }
+    state = atMap(state, 'storm-anchorage')
+    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'anchorage-garrison-quartermaster' })
+    const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'cypress-log', quantity: 2, transactionId: 'gap-closure:cypress' })
+    expect(bought.inventory.slots.filter((entry) => entry.itemId === 'cypress-log')).toHaveLength(2)
+  })
+
+  it('lets a real player assemble a full iron-tier tool without ever reaching Act III: buy iron-ore and cypress-log at Storm Anchorage, plank it at the Pelagos woodwork bench, forge Iron Hoe at Beacon Overlook', () => {
+    const base = createInitialState()
+    let state = {
+      ...base,
+      inventory: { ...base.inventory, currency: 300 },
+      progression: {
+        ...base.progression,
+        skills: { ...base.progression.skills, bronzework: { xp: xpForLevel(15) }, carpentry: { xp: xpForLevel(10) } },
+      },
+    }
+
+    state = atMap(state, 'storm-anchorage')
+    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'anchorage-garrison-quartermaster' })
+    state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'iron-ore', quantity: 2, transactionId: 'iron-hoe-chain:ore' })
+    state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'cypress-log', quantity: 2, transactionId: 'iron-hoe-chain:log' })
+    expect(state.inventory.slots.filter((entry) => entry.itemId === 'iron-ore')).toHaveLength(2)
+    expect(state.inventory.slots.filter((entry) => entry.itemId === 'cypress-log')).toHaveLength(2)
+
+    state = atMap(state, 'pelagos-harbor')
+    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'woodwork-bench' })
+    expect(state.crafting.stationId).toBe('woodwork-bench')
+    state = applyEvent(state, { type: 'CRAFT', recipeId: 'cypress-plank', quantity: 1 })
+    expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
+    expect(state.inventory.slots.some((entry) => entry.itemId === 'cypress-plank')).toBe(true)
+
+    state = atMap(state, 'beacon-overlook')
+    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    expect(state.crafting.stationId).toBe('bronze-forge')
+    state = applyEvent(state, { type: 'CRAFT', recipeId: 'iron-hoe', quantity: 1 })
+    expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
+    expect(state.inventory.slots.some((entry) => entry.itemId === 'iron-hoe')).toBe(true)
+    expect(state.inventory.slots.some((entry) => entry.itemId === 'cypress-plank')).toBe(false)
+    expect(state.inventory.slots.filter((entry) => entry.itemId === 'iron-ore')).toHaveLength(0)
   })
 })

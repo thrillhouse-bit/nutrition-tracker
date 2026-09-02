@@ -78,6 +78,7 @@ export const SHOP_DEFS = Object.freeze({
     mapIds: Object.freeze(['storm-anchorage']),
     listings: Object.freeze({
       'iron-ore': Object.freeze({ itemId: 'iron-ore', buyPrice: 60, sellPrice: 22, baseStock: 5, maxStock: 12, restockAmount: 1 }),
+      'cypress-log': Object.freeze({ itemId: 'cypress-log', buyPrice: 45, sellPrice: 17, baseStock: 6, maxStock: 14, restockAmount: 1 }),
     }),
   }),
   'nyx-witness-exchange': Object.freeze({

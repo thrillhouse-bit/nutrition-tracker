@@ -726,3 +726,75 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      get its own first real loop — Stewardship having 2/5 plausible
      tiers is a reasonable place to pause that particular skill and
      spread coverage across more of the 22 before deepening one further.
+
+## Recovery checkpoint — 2026-09-02T15:2x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `677c121`
+  (Stewardship Act II tier, pushed). One user-driven browser-verification
+  retry attempted and confirmed inconclusive in between (see below) —
+  no code changed by that attempt.
+- **Browser-verification retry**: re-attempted the still-open Stewardship
+  live-playthrough evidence with a fresh tab, a fresh `vite preview` +
+  API server pair, and the same temporary `preview.proxy` approach that
+  worked for account creation earlier. `document.visibilityState` was
+  still `"hidden"` immediately on load (confirmed via direct JS
+  inspection, not a screenshot guess). This is now confirmed persistent
+  across the whole session, not a one-off — stopped retrying rather than
+  spending further effort on it. `vite.config.js`'s temporary
+  `preview.proxy` was reverted again before any commit, same as before.
+- **This checkpoint**: while re-reading the iron-ore fix for the browser
+  retry, noticed a second-order gap the earlier fix hadn't actually
+  closed: every iron-tier recipe needs **cypress-plank** (a carpentry
+  output), which needs **cypress-log** — and cypress-log only existed on
+  a single Act III resource node (`winter-orchard`). So even after
+  bronze-forge and iron-ore both became reachable from Act I/II, the
+  iron-tier tools *still* couldn't actually be assembled until Act III.
+  Fixed by adding `cypress-log` to Straton's Garrison Stores
+  (`storm-anchorage`) alongside the iron-ore already sold there — a
+  natural fit for a garrison quartermaster, and no new merchant entity
+  was needed (an existing shop's listing simply grew by one item, so the
+  `merchants` count correctly did not move this checkpoint).
+- **New test coverage**: extended `test/rpg-economy-gap-closures.test.js`
+  with a `cypress-log now purchasable alongside iron-ore` block —
+  confirms the listing, and proves the *entire* chain end-to-end through
+  the real reducer: buy iron-ore and cypress-log at Storm Anchorage,
+  plank the cypress-log at the Pelagos Harbor woodwork bench, then forge
+  a complete Iron Hoe at the Beacon Overlook bronze-forge — all without
+  ever setting foot in Act III or IV. 15 tests total in that file now
+  (up from 13), all passing on the first run.
+- **No content-integrity fallout this time**: unlike every prior
+  placement checkpoint, this was a pure shop-listing addition to an
+  *existing* merchant (no new entity, no new authoring record, no
+  resource/station count change) — `rpg-content-validation.test.js`,
+  the authoring-readiness tests, and `rpg-regional-economy.test.js`
+  (Straton isn't in that test's `MERCHANT_ENTITY_IDS`/
+  `REGIONAL_SHOP_IDS` scope) all passed unmodified. `FULL-GAME-CONTRACT.md`
+  merchants row updated to mention the addition truthfully without
+  changing the count.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1017/1017 passed** (77
+    files, up from 1015/77).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    no evidence numbers changed (expected — pure reachability fix, not
+    new content).
+  - `git diff --check` → clean.
+  - No new browser-acceptance evidence — same reasoning as the pure
+    backend/content checkpoints, fully covered by the real-reducer
+    integration test.
+- **Active subagents**: none — solo lead work, discovered while
+  re-verifying a previous fix rather than during new placement work.
+- **Next three ordered milestones** (unchanged from the prior
+  checkpoint's own list — this one was an unplanned but directly
+  relevant discovery, not a new priority):
+  1. Land the still-open Stewardship browser-acceptance evidence — now
+     confirmed to need a session where the tab is genuinely foregrounded
+     (Jackson's own machine, or a differently-configured automation
+     session), not further retries here.
+  2. Priority 2: merchants 7/15, banks 5/8 — a genuinely new merchant
+     (not another listing on an existing one) is the more direct next
+     step for the merchant count specifically.
+  3. Priority 1: a third Stewardship tier, or a first loop for a
+     different skill (Hearthkeeping/Alchemy/Weaving) — spreading
+     coverage across more of the 22 skills is probably higher-value
+     than deepening Stewardship further right now.
