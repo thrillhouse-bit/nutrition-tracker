@@ -105,6 +105,7 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'nyx-field-kitchen', kind: 'station', stationId: 'field-kitchen', x: 460, y: 400, name: 'Witness Camp Field Kitchen', label: 'Cook at the witness camp kitchen' },
       { id: 'nyx-shrine-fire', kind: 'station', stationId: 'shrine-fire', x: 180, y: 290, name: 'Nyx Shrine Fire', label: 'Consecrate an offering beneath primordial night' },
       { id: 'asteria-witness-broker', kind: 'shop', shopId: 'nyx-witness-exchange', x: 640, y: 390, name: 'Asteria', label: 'Trade witnessed crafts with Asteria' },
+      { id: 'nyx-foothold-bank', kind: 'bank', x: 420, y: 460, name: 'Witness Camp Cache', label: 'Open the witness camp cache', accessibleLabel: 'Open the witness camp cache, a physical bank' },
     ],
     exits: [
       { id: 'foothold-to-night-stair', x: 922, y: 276, toMapId: 'night-stair', spawnId: 'from-foothold', returnSpawnId: 'from-night-stair', kind: 'shadow-bridge', gate: [], accessibleLabel: 'Cross the shadow bridge to the Night Stair' },

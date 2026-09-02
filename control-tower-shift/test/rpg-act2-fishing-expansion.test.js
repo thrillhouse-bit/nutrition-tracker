@@ -258,10 +258,13 @@ describe('fishing expansion: red-mullet, sturgeon, and hippocamp-roe nodes', () 
     expect(itemQuantity(caught.inventory, 'red-mullet')).toBe(1)
 
     // Depositing away from any physical bank is a no-op.
-    const remoteDeposit = applyEvent(caught, { type: 'BANK_DEPOSIT', itemId: 'red-mullet', quantity: 1 })
-    expect(remoteDeposit).toBe(caught)
+    const remote = atMap(caught, 'breakwater-road')
+    const remoteDeposit = applyEvent(remote, { type: 'BANK_DEPOSIT', itemId: 'red-mullet', quantity: 1 })
+    expect(remoteDeposit).toBe(remote)
 
-    const atBank = atMap(caught, 'beacon-overlook')
+    // Pelagos Harbor now has its own regional bank (the Pelagos Storehouse) —
+    // no need to travel back to Beacon Overlook to secure a catch.
+    const atBank = caught
     const deposited = applyEvent(atBank, { type: 'BANK_DEPOSIT', itemId: 'red-mullet', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'red-mullet')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'red-mullet', quantity: 1 })

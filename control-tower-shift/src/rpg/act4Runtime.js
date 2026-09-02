@@ -89,6 +89,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'mortal-draft-table', kind: 'choice', x: 540, y: 382, name: 'Mortal-Authored Draft', label: 'Ratify the mortal draft', objectiveId: 'ratify-mortal-draft', choiceIds: ['licensed-flame', 'guild-stewardship', 'revocable-hearths'] },
       { id: 'slag-road-cedar', kind: 'resource', x: 700, y: 340, name: 'March Cedar', label: 'Cut the fire-scarred march cedar', skillId: 'woodcutting', itemId: 'cedar-log', level: 30, xp: 45 },
       { id: 'doros-march-quartermaster', kind: 'shop', shopId: 'forge-march-quartermaster', x: 620, y: 400, name: 'Doros', label: 'Trade campaign goods with Doros' },
+      { id: 'slag-road-muster-bank', kind: 'bank', x: 560, y: 440, name: 'March Muster Strongbox', label: 'Open the march muster strongbox' },
     ],
     exits: [
       { id: 'plan-athena-first-edge', x: 920, y: 238, toMapId: 'bronze-foundry', spawnId: 'from-slag-road', returnSpawnId: 'from-foundry', kind: 'foot', planId: 'athena-precise-route', label: 'Take Athena\'s relief route', gate: [] },

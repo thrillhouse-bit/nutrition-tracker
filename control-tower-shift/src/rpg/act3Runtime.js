@@ -99,6 +99,7 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
       { id: 'wheat-village-kiln', kind: 'station', stationId: 'kiln', x: 780, y: 360, name: 'Wheat Village Kiln', label: 'Fire clay in the village kiln' },
       { id: 'eirene-household-steward', kind: 'shop', shopId: 'wheat-village-exchange', x: 670, y: 410, name: 'Eirene', label: 'Trade household goods with Eirene' },
       { id: 'wheat-village-sage', kind: 'resource', x: 520, y: 120, name: 'Wheat Village Sage Row', label: 'Gather mountain sage', skillId: 'foraging', itemId: 'sage', level: 10, xp: 22 },
+      { id: 'wheat-village-granary-bank', kind: 'bank', x: 250, y: 410, name: 'Wheat Village Granary Store', label: 'Open the granary store' },
     ],
     exits: [
       exit('village-to-orchard', 922, 286, 'winter-orchard', 'from-village', 'from-orchard'),

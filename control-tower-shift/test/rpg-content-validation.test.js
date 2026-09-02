@@ -28,7 +28,7 @@ describe('complete Oathbearer content integrity report', () => {
       shopPlacements: 5,
       stations: 9,
       stationPlacements: 9,
-      banks: 1,
+      banks: 5,
     })
     expect(report.inventory.resources.map((entry) => entry.id)).toEqual([
       'accord-overlook:accord-overlook-ambrosial-ash',

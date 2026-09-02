@@ -355,3 +355,103 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   4. Reconcile the remaining stale `FULL-GAME-CONTRACT.md` "Current
      audited baseline" rows noted in the previous checkpoint (unrelated
      to this one; still deferred).
+
+## Recovery checkpoint — 2026-09-02T14:3x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `2ffeff2`
+  (Stewardship checkpoint, pushed).
+- **This checkpoint**: Priority 2 — closed the most acute economy gap
+  first: before this pass only Beacon Overlook (Act I) had a physical
+  bank, leaving every player in Acts II–V with zero account-safe
+  storage anywhere in three-quarters of the game. Added one regional
+  bank to each remaining act's hub map:
+  - Pelagos Storehouse — `pelagos-harbor` (Act II), with full
+    `act2Authoring` metadata (this act still has an authoring-readiness
+    contract test, so the new entity needed real authoring to land
+    release-ready rather than legacy — same reconciliation shape as the
+    two prior checkpoints).
+  - Wheat Village Granary Store — `wheat-village` (Act III).
+  - March Muster Strongbox — `slag-road` (Act IV).
+  - Witness Camp Cache — `nyx-foothold` (Act V).
+  - Acts III–V carry zero authoring metadata anywhere in the existing
+    codebase (confirmed by grep before touching anything) — they are
+    explicitly still legacy per the turnover's own roadmap, so the new
+    Act III/IV/V bank entities were left unauthored to match their
+    siblings, not "fixed" prematurely.
+- **How placement was verified before committing to coordinates**: wrote
+  a throwaway Node probe script (`_probe.mjs`, deleted before commit,
+  never staged) that calls the real `findWorldPath` against the real
+  registered maps for every spawn and every relevant route state
+  (Act II tide states; Act III seasons; Act IV pressure states; Act V
+  light-polarity states) before hand-picking any coordinates — this
+  caught that `wheat-village`'s existing, already-shipped Eirene shop is
+  itself only reachable in the map's `'winter'` route state (the other
+  three season states are not concurrently walkable during normal Act
+  III play — a genuine property of that map, not a bug), so the new
+  bank was placed to match that same, already-correct pattern rather
+  than chasing a false "reachable in every state" bar borrowed from Act
+  II's different (cyclically-active) tide mechanic.
+- **Reducer behavior confirmed, not assumed**: `bankIsPhysicallyAvailable`
+  (`state.js`) was already fully generic — it only checks whether *any*
+  `kind: 'bank'` entity exists on the current map — and bank storage
+  itself is one flat `inventory.bank` structure in the save, so every
+  regional bank shares one account-wide vault gated by physical
+  presence, exactly like Beacon Overlook's already did. No reducer
+  changes were needed; this was pure, low-risk content placement plus
+  test coverage proving the existing generic mechanism actually holds
+  at every new location.
+- **Existing test updated for a genuine behavior improvement**: the
+  Fishing checkpoint's own `rpg-act2-fishing-expansion.test.js` bank
+  test previously demonstrated "depositing away from any bank is a
+  no-op" by using Pelagos Harbor itself as the remote (bankless)
+  location, then traveling all the way back to Beacon Overlook to
+  actually deposit. That assumption is no longer true — Pelagos Harbor
+  now has its own bank — so the test now deposits directly at Pelagos
+  Harbor (a strictly better, shorter economy loop for a real player)
+  and demonstrates the no-op case from `breakwater-road` instead.
+- **Content-integrity fallout reconciled** (same shape as both prior
+  checkpoints): `rpg-content-validation.test.js` banks count 1→5;
+  `rpg-act2-authoring-readiness.test.js` Act II records 54→55, whole-
+  registry total 294→298, legacy 211→214 (+3 for the three unauthored
+  Act III–V banks), release-ready 83→84 (+1 for the authored Act II
+  bank), recomputed Act II behavior digest (legitimately changes — a
+  new bank is new gameplay data, not an authoring-only edit);
+  `rpg-authoring-schema.test.js` matching counts. `FULL-GAME-CONTRACT.md`
+  banks row and authoring-readiness row updated to match (the latter
+  had also drifted one checkpoint behind — the Stewardship commit bumped
+  the real counts but I forgot to update this doc then; fixed now).
+- **New test file**: `test/rpg-regional-banks.test.js` (9 tests) — each
+  bank's placement/fields, reachability from every spawn across every
+  relevant route state, physical distinctness from siblings, zero new
+  content-validation errors, deposit/withdraw at each new bank with a
+  genuinely bankless map proving the remote no-op, and one test proving
+  the shared-account-bank behavior explicitly (deposit at Wheat Village,
+  withdraw at Nyx Foothold).
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **987/987 passed** (75
+    files, up from 978/74).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `banks` 1→5.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted this checkpoint — this was
+    pure backend/content work with full reducer-generic reuse and no
+    new UI surface, so the same tab-visibility limitation from the
+    Stewardship checkpoint wasn't in play, but a real save/reload/
+    deposit-withdraw browser pass across at least one new regional bank
+    is still worth doing whenever a live session is available.
+- **Active subagents**: none — solo lead work; bounded content-placement
+  task with generic reducer reuse, low risk, straightforward to do
+  directly rather than delegate.
+- **Next three ordered milestones**:
+  1. Land the still-open Stewardship browser-acceptance evidence (see
+     previous checkpoint) — needs a genuinely interactive session.
+  2. Continue Priority 2: merchants are the next-largest raw economy gap
+     (5/15) — add regional merchants to Acts II–V's remaining maps
+     (each act's hub already has one shop; satellite maps like
+     `breakwater-road`, `nereid-caves`, `winter-orchard`, `bronze-foundry`,
+     `atlas-vault`, `night-stair`, `false-constellation` have none), or
+     push banks from 5→8 by adding 1–2 more per region to satellite maps
+     using the same verified-placement method as this checkpoint.
+  3. Continue Priority 1: close a second skill loop (see previous
+     checkpoint's milestone 2).

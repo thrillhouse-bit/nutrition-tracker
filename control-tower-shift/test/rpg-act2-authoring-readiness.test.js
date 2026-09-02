@@ -109,7 +109,7 @@ function behaviorDigest() {
 }
 
 describe('Act II production authoring readiness', () => {
-  it('makes exactly the 54 collected Act II records ready while preserving the accepted Act I template', () => {
+  it('makes exactly the 55 collected Act II records ready while preserving the accepted Act I template', () => {
     const report = validateRPGContent()
     const act1 = act1RecordKeys()
     const act2 = act2RecordKeys()
@@ -118,14 +118,14 @@ describe('Act II production authoring readiness', () => {
       .map(recordKey))
 
     expect(act1.size).toBe(29)
-    expect(act2.size).toBe(54)
+    expect(act2.size).toBe(55)
     expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 294, legacy: 211, incomplete: 0, releaseReady: 83 })
+    expect(report.authoredDepth.counts).toEqual({ total: 298, legacy: 214, incomplete: 0, releaseReady: 84 })
     expect(report.summary).toEqual({
       errors: 0,
-      warnings: 211,
-      total: 211,
-      byCode: { LEGACY_AUTHORING_RECORD: 211 },
+      warnings: 214,
+      total: 214,
+      byCode: { LEGACY_AUTHORING_RECORD: 214 },
     })
   })
 
@@ -165,14 +165,14 @@ describe('Act II production authoring readiness', () => {
     const unowned = report.authoredDepth.records.filter((record) => !owned.has(recordKey(record)))
     const merchants = report.authoredDepth.records.filter((record) => record.kind === 'merchant')
 
-    expect(unowned.length).toBe(211)
+    expect(unowned.length).toBe(214)
     expect(new Set(unowned.map((record) => record.status))).toEqual(new Set(['legacy']))
     expect(merchants).toHaveLength(Object.keys(SHOP_DEFS).length)
     expect(new Set(merchants.map((record) => record.status))).toEqual(new Set(['legacy']))
   })
 
   it('changes no accepted Act II behavior data outside authoring fields', () => {
-    expect(behaviorDigest()).toBe('ffce2abac629042316fa8f7e9404ae50c21596a55ce4456584efcf039729b564')
+    expect(behaviorDigest()).toBe('33d7ce8d237b17031757fa6a694a1abfde5bc04b921258422ccb6ee5e00a9c4f')
     expect(ACT2_MAIN_QUEST.objectives.map((objective) => objective.id)).toEqual([
       'reach-pelagos-keeper', 'witness-first-surge', 'free-nereid-witnesses',
       'separate-boundary-names', 'secure-storm-anchorage', 'board-archive-barge',
