@@ -122,11 +122,11 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Conversations | 15 / 927 words | 50,000 words; zero fallbacks |
 | Story encounters | 20 | 80 configurations |
 | Named bosses | 5 | 12 |
-| Resource nodes | 18 across all five acts; quarrying, foraging, and woodcutting now span full 5-tier curves with a rare/mastery node each, plus two tool tiers per tool-bearing skill (quarrying pick, foraging sickle, woodcutting axe); fishing and stewardship still lack a tiered-tool loop | 150 across all regions |
+| Resource nodes | 21 across all five acts; quarrying, foraging, and woodcutting now span full 5-tier curves with a rare/mastery node each; fishing now spans four level tiers (sardine/tuna plus new red-mullet, sturgeon, hippocamp-roe) with its own two-tier rod line (bronze/iron), matching quarrying pick, foraging sickle, and woodcutting axe; stewardship still lacks a tiered-tool loop | 150 across all regions |
 | Banks | 1 | 8 |
 | Merchants | 5 regional specializations | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 79 / 290 release-ready; 211 legacy warnings | all released records ready |
+| Production authoring readiness | 82 / 293 release-ready; 211 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |

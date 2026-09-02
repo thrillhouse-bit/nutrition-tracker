@@ -1,5 +1,7 @@
 # Oathbearer complete-game handoff to Claude Code
 
+> **Live operating directive (2026-09-02):** Read [`CLAUDE-96H-TURNOVER.md`](./CLAUDE-96H-TURNOVER.md) first. It contains the current `06055fb` baseline, verified dirty Fishing checkpoint, quarantined Act IV dialogue files, adaptive Claude team topology, recovery protocol, and autonomous 96-hour execution loop. Where this older handoff describes an earlier dirty wave or checkpoint, the live turnover plus repository evidence supersede it.
+
 ## Mission
 
 Take primary ownership of completing **Oathbearer**, an original Greek-mythology open-world skill RPG with the legible interaction grammar and systemic depth of a classic point-and-click MMORPG. The player should feel grounded in the world rather than gliding, and the finished game must combine a measured roughly 40-hour five-act main story with persistent account saves, gathering, crafting, equipment, trade, banking, wilderness risk, combat progression, quests, and post-story play.
@@ -10,7 +12,7 @@ Jackson wants the **full game completed as one coherent release**, not a success
 
 ## Recommended operating model
 
-Use **Claude Sonnet at high effort** as lead integrator. It is the recommended balance of coding reliability, context endurance, and Pro-plan usage. Use Opus only for a genuinely difficult architecture/reliability review after Sonnet has concrete evidence it cannot resolve the issue. Do not use Haiku for shared-state implementation; it is acceptable for narrow inventory/counting/read-only tasks.
+Use **Claude Sonnet at high effort** as lead integrator. It is the recommended balance of coding reliability, context endurance, and Pro-plan usage. Delegate bounded mechanical work to the fastest capable lower-cost Claude model exposed by the current CLI (for example Fable), while retaining shared-state and integration work in Sonnet. Use Opus only for a genuinely difficult architecture/reliability review after Sonnet has concrete evidence it cannot resolve the issue. Do not use lightweight models for shared-state implementation; they are appropriate for narrow inventory/counting/read-only tasks.
 
 Use multiple Claude Code agents aggressively where work is non-overlapping. The lead agent remains the only integration owner.
 

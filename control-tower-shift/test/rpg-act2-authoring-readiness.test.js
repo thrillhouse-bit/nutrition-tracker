@@ -109,7 +109,7 @@ function behaviorDigest() {
 }
 
 describe('Act II production authoring readiness', () => {
-  it('makes exactly the 51 collected Act II records ready while preserving the accepted Act I template', () => {
+  it('makes exactly the 54 collected Act II records ready while preserving the accepted Act I template', () => {
     const report = validateRPGContent()
     const act1 = act1RecordKeys()
     const act2 = act2RecordKeys()
@@ -118,9 +118,9 @@ describe('Act II production authoring readiness', () => {
       .map(recordKey))
 
     expect(act1.size).toBe(28)
-    expect(act2.size).toBe(51)
+    expect(act2.size).toBe(54)
     expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 290, legacy: 211, incomplete: 0, releaseReady: 79 })
+    expect(report.authoredDepth.counts).toEqual({ total: 293, legacy: 211, incomplete: 0, releaseReady: 82 })
     expect(report.summary).toEqual({
       errors: 0,
       warnings: 211,
@@ -172,7 +172,7 @@ describe('Act II production authoring readiness', () => {
   })
 
   it('changes no accepted Act II behavior data outside authoring fields', () => {
-    expect(behaviorDigest()).toBe('c9a76d4353e0308ec375278b43e0a4dc897dd3a29d144ee710782069bcc5cb12')
+    expect(behaviorDigest()).toBe('ffce2abac629042316fa8f7e9404ae50c21596a55ce4456584efcf039729b564')
     expect(ACT2_MAIN_QUEST.objectives.map((objective) => objective.id)).toEqual([
       'reach-pelagos-keeper', 'witness-first-surge', 'free-nereid-witnesses',
       'separate-boundary-names', 'secure-storm-anchorage', 'board-archive-barge',

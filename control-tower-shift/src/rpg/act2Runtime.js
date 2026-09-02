@@ -170,6 +170,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     recovery: 'Craft attempts revalidate map access, ingredients, quantity, and capacity before changing inventory.',
     originality: 'Uses public-domain Greek shipwright traditions; the station’s systemic closure role is original Oathbearer design.',
   }),
+  'pelagos-harbor:pelagos-red-mullet-run': authoredEntity({
+    question: 'Can a working quay support a mid-level fishing run without pulling attention from the covenant crisis at its center?', systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
+    reward: 'Each available charge awards one red mullet and 27 Fishing XP at the authored level gate.', consequence: 'Red mullet supplies the mid-level ingredient bridge between shore sardine and the storm-anchorage tuna run.',
+    recovery: 'Failed level or capacity checks are atomic; depletion persists and respawns from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 15, levelMax: 20,
+    originality: 'Uses public-domain Mediterranean red-mullet fishing; the harbor-run placement and progression role are original.',
+  }),
   'breakwater-road:tide-well-harbor': authoredEntity({
     question: 'Will Kallias deliberately turn the covenant tide toward the harbor instead of waiting for an invisible timer?', systemsUsed: ['interaction', 'tide-traversal'],
     reward: 'Activation deterministically advances and persists the canonical tide state.', consequence: 'The changed state alters which causeway lanes are traversable without drowning timers.',
@@ -266,6 +272,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     recovery: 'Failed level or capacity checks are atomic; depletion persists and respawns from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 30, levelMax: 35,
     originality: 'Uses public-domain Mediterranean tuna fishing; the storm-anchorage run and its progression role are original.',
   }),
+  'storm-anchorage:anchorage-sturgeon-run': authoredEntity({
+    question: 'Does the cleared anchorage keep rewarding return visits with a catch worth the earlier fight?', systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
+    reward: 'Each available charge awards one sturgeon and 72 Fishing XP at the authored level gate.', consequence: 'Sturgeon supplies the advanced ingredient tier feeding regional cooking and later trade demand.',
+    recovery: 'Failed level or capacity checks are atomic; depletion persists and respawns from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 50, levelMax: 55,
+    originality: 'Uses public-domain Black Sea sturgeon fishing; the deepwater anchorage run and its late-Act-II role are original.',
+  }),
   'archive-barge-deck:cipher-folio-1': authoredEntity({
     question: 'What did the covenant promise at Arrival before the archive split it from Return?', systemsUsed: ['interaction', 'questing'],
     reward: 'The Arrival folio records one exact persistent half of the recovered covenant evidence.', consequence: 'Together with the Return folio it enables the Leviathan objective and later ratification.',
@@ -296,6 +308,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     recovery: 'The launch respects prerequisites and ready state; defeat returns to the authored pre-boss checkpoint with folios intact.',
     originality: 'Uses public-domain sea-monster holds and shipboard arenas; this evidence-preserving boss threshold is original.',
   }),
+  'archive-barge-deck:archive-hippocamp-shoal': authoredEntity({
+    question: 'Can the warded shoal reward patient, rare-tier harvest without turning the guarded archive deck into an ordinary fishing spot?', systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
+    reward: 'Its single slow-cycling charge awards one hippocamp roe and 135 Fishing XP at the authored level gate.', consequence: 'Hippocamp roe supplies the rare top-tier ingredient reserved for the archive’s warded waters.',
+    recovery: 'Failed level or capacity checks are atomic; the long respawn cadence persists across reload from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 75, levelMax: 80,
+    originality: 'Uses the public-domain hippocamp of Greek myth; harvesting its roe as a warded rare-fishing resource is original Oathbearer design.',
+  }),
 })
 
 export const ACT2_RUNTIME_MAPS = deepFreeze({
@@ -316,6 +334,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'pelagos-woodwork-bench', kind: 'station', stationId: 'woodwork-bench', x: 560, y: 340, name: 'Pelagos Woodwork Bench', label: 'Shape harbor timber' },
       { id: 'pelagos-shipwright', kind: 'station', stationId: 'shipwright', x: 740, y: 340, name: 'Pelagos Shipwright', label: 'Work at the harbor shipwright' },
       { id: 'thaleia-harbor-chandler', kind: 'shop', shopId: 'pelagos-chandler', x: 620, y: 250, name: 'Thaleia', label: 'Trade at the harbor chandlery' },
+      { id: 'pelagos-red-mullet-run', kind: 'resource', x: 300, y: 400, name: 'Pelagos Red Mullet Run', label: 'Fish the harbor red mullet run', skillId: 'fishing', itemId: 'red-mullet', level: 15, xp: 27 },
     ],
     exits: [
       { id: 'harbor-to-breakwater', x: 920, y: 278, toMapId: 'breakwater-road', spawnId: 'from-harbor', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
@@ -433,6 +452,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     entities: [
       { id: 'rope-lift', kind: 'rope-lift', x: 720, y: 174, name: 'Archive Rope Lift', label: 'Raise the archive pennant' },
       { id: 'anchorage-tuna-run', kind: 'resource', x: 240, y: 320, name: 'Storm Tuna Run', label: 'Fish the storm tuna run', skillId: 'fishing', itemId: 'tuna', level: 30, xp: 45 },
+      { id: 'anchorage-sturgeon-run', kind: 'resource', x: 620, y: 310, name: 'Deepwater Sturgeon Run', label: 'Fish the deepwater sturgeon run', skillId: 'fishing', itemId: 'sturgeon', level: 50, xp: 72 },
     ],
     exits: [
       { id: 'anchorage-to-caves', x: 38, y: 286, toMapId: 'nereid-caves', spawnId: 'from-anchorage', returnSpawnId: 'from-caves', kind: 'foot', gate: [] },
@@ -470,6 +490,11 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'archive-crates', kind: 'marker', x: 262, y: 350, name: 'Archive Crates', label: 'Search the archive crates' },
       { id: 'mast-hazard', kind: 'marker', x: 492, y: 176, name: 'Leviathan Mast', label: 'Avoid the falling mast' },
       { id: 'leviathan-arena', kind: 'marker', x: 596, y: 270, name: 'Leviathan Arena', label: 'Enter the archive hold' },
+      {
+        id: 'archive-hippocamp-shoal', kind: 'resource', x: 300, y: 420, name: 'Archive Hippocamp Shoal',
+        label: 'Draw roe from the warded hippocamp shoal', skillId: 'fishing', itemId: 'hippocamp-roe', level: 75, xp: 135,
+        capacity: 1, respawnTicks: 1100,
+      },
     ],
     exits: [
       { id: 'barge-to-harbor', x: 38, y: 188, toMapId: 'pelagos-harbor', spawnId: 'from-barge', returnSpawnId: 'from-harbor', kind: 'skiff', gate: [] },
