@@ -23,7 +23,7 @@ describe('complete Oathbearer content integrity report', () => {
       conversations: Object.keys(REGISTERED_CONVERSATIONS).length,
       encounters: Object.keys(REGISTERED_ENCOUNTERS).length,
       recipes: RECIPES.length,
-      resources: 10,
+      resources: 17,
       shops: 5,
       shopPlacements: 5,
       stations: 9,
@@ -31,15 +31,22 @@ describe('complete Oathbearer content integrity report', () => {
       banks: 1,
     })
     expect(report.inventory.resources.map((entry) => entry.id)).toEqual([
+      'asphodel-gate:asphodel-gate-bloom',
+      'atlas-vault:vault-orichalcum-cache',
       'beacon-overlook:copper-seam',
       'beacon-overlook:olive-tree',
       'beacon-overlook:wild-thyme',
       'bronze-foundry:foundry-charred-ember',
+      'false-constellation:constellation-silver-seam',
+      'kore-sanctuary:kore-sanctuary-moly',
+      'name-press:name-press-iron-vein',
       'nereid-caves:nereid-tin-vein',
       'nyx-foothold:nyx-laurel',
       'olive-road:shore-fishing',
       'slag-road:slag-road-cedar',
       'storm-anchorage:anchorage-tuna-run',
+      'threshing-circle:threshing-circle-ambrosia',
+      'wheat-village:wheat-village-sage',
       'winter-orchard:orchard-cypress',
     ])
   })

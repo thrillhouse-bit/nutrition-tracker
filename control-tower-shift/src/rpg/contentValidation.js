@@ -398,6 +398,7 @@ function validateItemsRecipesAndSources(issues, inventory) {
       || Boolean(definition?.equipmentSlot)
       || Boolean(definition?.consumeEffect)
       || Boolean(definition?.useEffect)
+      || Boolean(definition?.toolBonus)
     if (!hasUse) {
       issues.push(issue('INERT_CRAFTED_OUTPUT', 'warning', `items.${itemId}`, itemId, 'Crafted output has no recipe sink, shop listing, equipment slot, or use effect.'))
     }

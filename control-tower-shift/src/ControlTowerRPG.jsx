@@ -1147,8 +1147,10 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
       const before = carriedItemQuantity(stateRef.current.inventory, skillAction.itemId, ALL_ITEM_DEFS)
       dispatch({ type: 'GATHER', entityId: skillAction.entityId })
       const after = carriedItemQuantity(stateRef.current.inventory, skillAction.itemId, ALL_ITEM_DEFS)
-      setSaveNote(after > before
-        ? `${ALL_ITEM_DEFS[skillAction.itemId]?.name || skillAction.name} added to your backpack. The node is now depleted.`
+      const gained = after - before
+      const itemName = ALL_ITEM_DEFS[skillAction.itemId]?.name || skillAction.name
+      setSaveNote(gained > 0
+        ? `${gained > 1 ? `${gained}x ${itemName}` : itemName} added to your backpack. The node is now depleted.`
         : `${skillAction.name} could not be harvested.`)
       setSkillAction(null)
     }, skillAction.duration)

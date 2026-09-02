@@ -165,6 +165,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'pressure-relief-1', kind: 'pressure-valve', x: 326, y: 342, name: 'West Pressure Relief', label: 'Open the west pressure relief' },
       { id: 'pressure-relief-2', kind: 'pressure-valve', x: 634, y: 342, name: 'East Pressure Relief', label: 'Open the east pressure relief' },
       { id: 'prometheus-brazier', kind: 'interact', x: 480, y: 376, name: 'Prometheus\'s Lawful Brazier', label: 'Return the stolen fire' },
+      { id: 'name-press-iron-vein', kind: 'resource', x: 760, y: 400, name: 'Forge March Iron Vein', label: 'Mine the forge march iron vein', skillId: 'quarrying', itemId: 'iron-ore', level: 10, xp: 24 },
     ],
     exits: [
       { id: 'name-press-to-foundry', x: 38, y: 270, toMapId: 'bronze-foundry', spawnId: 'from-name-press', returnSpawnId: 'from-foundry', kind: 'foot', label: 'Return to the Bronze Foundry', gate: [] },
@@ -212,6 +213,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'cell-smith-2', kind: 'interact', x: 770, y: 326, name: 'Eastern Smith Cell', label: 'Release the second smith' },
       { id: 'atlas-npc', kind: 'npc', x: 566, y: 342, name: 'Atlas', label: 'Speak with Atlas', identityRole: 'coerced-witness' },
       { id: 'single-crown-parley', kind: 'choice', x: 812, y: 246, name: 'Zeus\'s Single Crown', label: 'Reject the single crown', objectiveId: 'reject-single-crown', choiceIds: ['rejection-firm', 'rejection-mournful'] },
+      { id: 'vault-orichalcum-cache', kind: 'resource', x: 740, y: 230, name: 'Atlas Vault Orichalcum Cache', label: 'Pry loose the orichalcum cache', skillId: 'quarrying', itemId: 'orichalcum', level: 60, xp: 110, capacity: 1, respawnTicks: 1200 },
     ],
     exits: [
       { id: 'vault-to-name-press', x: 38, y: 272, toMapId: 'name-press', spawnId: 'from-vault', returnSpawnId: 'from-name-press', kind: 'foot', label: 'Return to the Name-Press', gate: [] },
@@ -247,6 +249,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
     entities: [
       { id: 'bronze-firmament', kind: 'marker', x: 480, y: 150, name: 'Bronze Firmament', label: 'Witness the false sky' },
       { id: 'colossus-arena', kind: 'marker', x: 574, y: 270, name: 'Colossus Arena', label: 'Enter the Colossus arena' },
+      { id: 'constellation-silver-seam', kind: 'resource', x: 480, y: 420, name: 'Bronze Firmament Silver Seam', label: 'Mine the firmament silver seam', skillId: 'quarrying', itemId: 'silver-ore', level: 20, xp: 38 },
     ],
     exits: [
       { id: 'constellation-to-vault', x: 38, y: 270, toMapId: 'atlas-vault', spawnId: 'from-false-constellation', returnSpawnId: 'from-vault', kind: 'foot', label: 'Descend to the Atlas Vault', gate: [] },

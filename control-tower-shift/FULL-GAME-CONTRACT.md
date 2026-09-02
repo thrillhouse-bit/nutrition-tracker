@@ -113,8 +113,8 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
 | Skills | 22 definitions; several lack repeatable actions | 22 complete loops |
-| Items | 71 | 200 useful |
-| Recipes | 39; all ingredients have legitimate sources | 100 reachable |
+| Items | 73 | 200 useful |
+| Recipes | 41; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
 | Quests | 10 | 70 total |
@@ -122,11 +122,11 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Conversations | 15 / 927 words | 50,000 words; zero fallbacks |
 | Story encounters | 20 | 80 configurations |
 | Named bosses | 5 | 12 |
-| Resource nodes | 10 across all five acts | 150 across all regions |
+| Resource nodes | 17 across all five acts; quarrying and foraging now span a full 5-tier curve with one rare/mastery node each and a first tool tier | 150 across all regions |
 | Banks | 1 | 8 |
 | Merchants | 5 regional specializations | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 79 / 282 release-ready; 203 legacy warnings | all released records ready |
+| Production authoring readiness | 79 / 289 release-ready; 210 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |

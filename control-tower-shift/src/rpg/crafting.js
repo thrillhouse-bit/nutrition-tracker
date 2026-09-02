@@ -382,6 +382,22 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 3,
   },
+  'bronze-quarry-pick': {
+    id: 'bronze-quarry-pick',
+    name: 'Bronze Quarry Pick',
+    category: 'tool',
+    stackable: false,
+    tier: 1,
+    toolBonus: Object.freeze({ skillId: 'quarrying', yieldBonus: 1 }),
+  },
+  'bronze-herb-sickle': {
+    id: 'bronze-herb-sickle',
+    name: 'Bronze Herb Sickle',
+    category: 'tool',
+    stackable: false,
+    tier: 1,
+    toolBonus: Object.freeze({ skillId: 'foraging', yieldBonus: 1 }),
+  },
 })
 
 const ITEM_DEFS_WITH_EFFECTS = { ...ITEM_DEFS, ...ITEM_EXTENSIONS }
@@ -430,6 +446,32 @@ const RECIPE_DEFS = [
       { itemId: 'tin-ore', quantity: 1 },
     ],
     outputs: [{ itemId: 'bronze-bar', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'bronze-quarry-pick',
+    name: 'Forge Bronze Quarry Pick',
+    skillId: 'bronzework',
+    stationId: 'bronze-forge',
+    level: 3,
+    xp: 20,
+    ingredients: [
+      { itemId: 'bronze-bar', quantity: 1 },
+      { itemId: 'olive-plank', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'bronze-quarry-pick', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'bronze-herb-sickle',
+    name: 'Forge Bronze Herb Sickle',
+    skillId: 'bronzework',
+    stationId: 'bronze-forge',
+    level: 3,
+    xp: 20,
+    ingredients: [
+      { itemId: 'bronze-bar', quantity: 1 },
+      { itemId: 'olive-plank', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'bronze-herb-sickle', quantity: 1 }],
   }),
   Object.freeze({
     id: 'bronze-ingot',

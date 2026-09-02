@@ -25,6 +25,7 @@ import {
   addInventoryItem,
   awardSkillXp,
   awardSkillXpBundle,
+  carriedItemQuantity,
   createInitialInventory,
   createInitialSkills,
   depositBankItem,
@@ -617,6 +618,23 @@ function move(state, event) {
   }
 }
 
+// Carrying a matching gathering tool anywhere in the backpack grants extra
+// items per successful harvest (never extra node charges consumed, and never
+// extra XP). With only one tool per skill authored today this reduces to
+// "that tool's bonus or 0", but scanning for the max across every matching
+// carried tool keeps later, higher tiers of the same skill's tool additive-
+// safe without further reducer changes.
+function gatherToolBonus(inventory, skillId) {
+  let bonus = 0
+  for (const item of Object.values(ALL_ITEM_DEFS)) {
+    if (item?.toolBonus?.skillId !== skillId) continue
+    if (carriedItemQuantity(inventory, item.id, ALL_ITEM_DEFS) > 0) {
+      bonus = Math.max(bonus, item.toolBonus.yieldBonus || 0)
+    }
+  }
+  return bonus
+}
+
 function gather(state, event) {
   if (state.status !== 'playing') return state
   const map = mapById(state.world.mapId)
@@ -624,20 +642,25 @@ function gather(state, event) {
   if (!resource || !ALL_ITEM_DEFS[resource.itemId]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
   if (levelForXp(xp) < (resource.level || 1)) return state
-  const quantity = positiveIntegerQuantity(resource.quantity || 1)
-  if (!quantity) return state
+  const baseQuantity = positiveIntegerQuantity(resource.quantity || 1)
+  if (!baseQuantity) return state
+  // The node's authored quantity governs charge consumption only. A carried
+  // tool's yield bonus must never inflate what is drawn from the node itself,
+  // or a capacity-1 node would fail the whole harvest whenever a tool is
+  // carried (harvestResourceNode rejects a request above remaining charges).
   const node = harvestResourceNode({
     resources: state.resources,
     mapId: state.world.mapId,
     entityId: resource.id,
-    quantity,
+    quantity: baseQuantity,
     capacity: resource.capacity,
     respawnTicks: resource.respawnTicks,
     playtimeTicks: state.playtimeTicks,
   })
   if (!node.changed) return state
-  const result = addInventoryItem(state.inventory, resource.itemId, quantity, ALL_ITEM_DEFS)
-  if (result.added !== quantity) return state
+  const yieldQuantity = baseQuantity + gatherToolBonus(state.inventory, resource.skillId)
+  const result = addInventoryItem(state.inventory, resource.itemId, yieldQuantity, ALL_ITEM_DEFS)
+  if (result.added !== yieldQuantity) return state
   return awardSkillXp({
     ...state,
     inventory: result.inventory,

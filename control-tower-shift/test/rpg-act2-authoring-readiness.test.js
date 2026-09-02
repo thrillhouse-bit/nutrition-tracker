@@ -120,12 +120,12 @@ describe('Act II production authoring readiness', () => {
     expect(act1.size).toBe(28)
     expect(act2.size).toBe(51)
     expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 282, legacy: 203, incomplete: 0, releaseReady: 79 })
+    expect(report.authoredDepth.counts).toEqual({ total: 289, legacy: 210, incomplete: 0, releaseReady: 79 })
     expect(report.summary).toEqual({
       errors: 0,
-      warnings: 203,
-      total: 203,
-      byCode: { LEGACY_AUTHORING_RECORD: 203 },
+      warnings: 210,
+      total: 210,
+      byCode: { LEGACY_AUTHORING_RECORD: 210 },
     })
   })
 
@@ -165,7 +165,7 @@ describe('Act II production authoring readiness', () => {
     const unowned = report.authoredDepth.records.filter((record) => !owned.has(recordKey(record)))
     const merchants = report.authoredDepth.records.filter((record) => record.kind === 'merchant')
 
-    expect(unowned.length).toBe(203)
+    expect(unowned.length).toBe(210)
     expect(new Set(unowned.map((record) => record.status))).toEqual(new Set(['legacy']))
     expect(merchants).toHaveLength(Object.keys(SHOP_DEFS).length)
     expect(new Set(merchants.map((record) => record.status))).toEqual(new Set(['legacy']))
