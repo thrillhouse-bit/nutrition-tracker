@@ -137,3 +137,89 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   camera/input, optimized route assets, safe Act V light traversal, and the
   mandatory final witness/ending sequence. See `AUDIT-AND-ROADMAP.md` for the
   current verification baseline and remaining systems/art/release work.
+- 2026-09-02 — **96-hour interim-engineer takeover begins.** See
+  `CLAUDE-96H-TURNOVER.md` for the operating charter, question policy, and
+  execution loop. First checkpoint below.
+
+## Recovery checkpoint — 2026-09-02T13:2x (turnover hour ~0)
+
+- **Branch**: `codex/oathbearer-complete-game`. **Local HEAD**: `d94a174`
+  ("feat(oathbearer): integrate fishing tool tier and Act II fishing
+  expansion"), committed on top of the turnover baseline `06055fb`.
+- **Push status**: `d94a174` was pushed successfully to
+  `origin/codex/oathbearer-complete-game` after the already-authorized
+  central lead performed the permission-gated Git write. The Claude lead
+  may continue implementation without treating this as a product blocker.
+- **Clean/dirty state**: working tree is clean except the quarantine
+  (untracked, intentionally unregistered):
+  - `control-tower-shift/src/rpg/act4Conversations.js`
+  - `control-tower-shift/test/rpg-act4-conversations.test.js`
+  - `control-tower-shift/artifacts/hermes-dialogue/`
+- **What `d94a174` did** (Priority 0 — Fishing checkpoint integration):
+  - Reconciled the two stale assertions the turnover doc named:
+    `rpg-content-validation.test.js` (resource total 18→21 + new IDs) and
+    `rpg-crafting.test.js` (bronzework/bronze-forge recipe totals 17→19,
+    level-3 list gains `bronze-fishing-rod`).
+  - Found and fixed a **third, undocumented** stale-assertion collision the
+    turnover list missed: the three new Act II fishing resource entities
+    (`pelagos-red-mullet-run`, `anchorage-sturgeon-run`,
+    `archive-hippocamp-shoal`) landed on Act II maps with no release-ready
+    authoring metadata, which the Act II authoring-readiness contract
+    requires for every non-shop Act II map entity. Added original
+    dramaticQuestion/systemsUsed/durableReward/downstreamConsequence/
+    recoveryBehavior/originalityNotes for each (matching the existing
+    `anchorage-tuna-run` entry's pattern) so they land release-ready
+    instead of legacy — not a threshold tweak, real authoring content.
+  - Updated `rpg-act2-authoring-readiness.test.js` and
+    `rpg-authoring-schema.test.js` to the resulting truthful counts (54
+    Act II records; 82/293 release-ready; legacy unchanged at 211) and the
+    recomputed Act II behavior digest (legitimately changes — these are
+    new gameplay resource nodes, not authoring-only edits).
+  - Updated `FULL-GAME-CONTRACT.md`'s resource-node and
+    authoring-readiness rows to match reality.
+- **Verification evidence for `d94a174`**:
+  - Focused: `rpg-gathering-tools-fishing.test.js`,
+    `rpg-act2-fishing-expansion.test.js`, `rpg-content-validation.test.js`,
+    `rpg-crafting.test.js`, `rpg-act2-authoring-readiness.test.js`,
+    `rpg-authoring-schema.test.js` → 112/112 passed.
+  - Full suite: `npm run test:oathbearer` → **958/958 passed** (73 files).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**,
+    no thresholds altered. Current truthful counts from this run:
+    completeSkillLoops 0/22, items 79/200, recipes 47/100, maps 23/60,
+    quests 10/70 (main 5/20, side 5/35, character 0/10, mastery 0/5),
+    dialogueWords 927/50000, conversations 15/60, encounters 20/80
+    (bosses 5/12), namedNpcs 16/60, resourceNodes 21/150, merchants 5/15,
+    banks 1/8, reactiveChoices 0/20, delayedConsequences 0/8, plus every
+    human/browser release-evidence field still absent.
+  - `git diff --check` → clean.
+- **Active subagents**: none yet this checkpoint — worked solo on the
+  bounded reconciliation task before spawning anything, per the turnover's
+  "begin with at most two subagents plus the lead" guidance.
+- **Discovered but deliberately deferred** (not fixed this checkpoint, to
+  keep it bounded and reviewable): `FULL-GAME-CONTRACT.md`'s "Current
+  audited baseline" table has other stale rows predating this session
+  (items shown as 77 vs. the report's actual 79; recipes shown as 45 vs.
+  actual 47; objectives shown as 55, unverified) — likely drift from the
+  equipment-ladder/Act II-authoring/combat-progression integration commit
+  (`11a31e8`) that was never reconciled against the table. Worth a single
+  bounded "truthful contract table" pass later; not fixed now because it
+  is unrelated to the Fishing lane and touches numbers I did not just
+  independently verify end-to-end.
+- **Next three ordered milestones** (per turnover Priority order):
+  1. Priority 1 — close a complete skill loop. Gate shows
+     `completeSkillLoops: 0/22`; Stewardship is flagged in the turnover
+     doc as the next new-contract skill after Fishing and needs deliberate
+     resource/event/UI design, not cosmetic metadata. This is the next
+     lead task; a bounded non-overlapping delegated lane (content/schema
+     enumeration for Stewardship's node/tool/output set) can run in
+     parallel once the lead has sketched the loop shape.
+  2. Priority 2 — economy/equipment network (banks 1/8, merchants 5/15
+     are the largest raw gaps after skill-loop closure).
+  3. Reconcile the remaining stale audited-baseline rows against executable
+     report evidence without changing or lowering release thresholds.
+- **Assumptions a fresh lead must preserve**: the quarantine is untouched
+  and must stay untouched until a lead designs a correct Act IV dialogue
+  integration contract (NPC availability, quest-choice reducer
+  integration, portraits/display-name assembly, reachability, exact-once
+  tests, browser acceptance) — do not register or wire it in as-is.
