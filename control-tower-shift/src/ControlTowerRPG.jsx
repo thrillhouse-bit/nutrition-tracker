@@ -31,7 +31,13 @@ import {
 } from './rpg/state.js'
 import { ACT5_LIGHT_POLARITY_RULES, ACT5_LIGHT_POLARITY_STATES } from './rpg/act5Content.js'
 import { saveRPG, loadRPG, clearSave } from './rpg/save.js'
-import { startEncounter, startWildernessEncounter, stepCombat, arenaHealth, arenaProgress, sessionEliteName, sessionPhaseLabel, OUTCOME_WON, OUTCOME_FAILED } from './rpg/combatAdapter.js'
+import {
+  confirmLegacyRpgImport,
+  createAccountSaveCoordinator,
+  inspectLegacyRpgSave,
+} from './rpg/accountSave.js'
+import { api as defaultApi } from '../../src/api/client.js'
+import { startEncounter, startWildernessEncounter, stepCombat, arenaHealth, arenaProgress, sessionEliteName, sessionPhaseLabel, resolveCombatConsumableUse, OUTCOME_WON, OUTCOME_FAILED } from './rpg/combatAdapter.js'
 import { drawWorld, WORLD_VIEW_W, WORLD_VIEW_H, worldBounds } from './rpg/world.js'
 import { findWorldPath } from './rpg/pathfinding.js'
 import {
@@ -54,6 +60,7 @@ import {
 } from './rpg/characterAnimation.js'
 import { EQUIPMENT_SLOTS, SKILL_DEFS, carriedItemQuantity, levelForXp, xpForLevel } from './rpg/progression.js'
 import { ALL_ITEM_DEFS } from './rpg/crafting.js'
+import { consumableEffect, pendingConsumableLoadout, prepareConsumableDecision } from './rpg/itemEffects.js'
 import { deriveCombatModifiers, equipmentDecision } from './rpg/equipment.js'
 import { resourceNodeStatus } from './rpg/resources.js'
 import RPGSystemsPanel from './rpg/RPGSystemsPanel.jsx'
@@ -236,6 +243,7 @@ const SAVE_ERROR_COPY = {
   corrupt: 'Your last checkpoint is unreadable.',
   future: 'Your last checkpoint was saved by a newer build and cannot be loaded here.',
   unknown: 'Your last checkpoint was saved by a newer build and cannot be loaded here.',
+  offline: 'Cloud saving is offline. Progress will stay in this account’s device cache until the connection returns.',
 }
 
 function prefersReducedMotion() {
@@ -428,9 +436,13 @@ const ACT_TRANSITIONS = Object.freeze({
 })
 
 // ─── Main component ────────────────────────────────────────────
-export default function ControlTowerRPG() {
+export default function ControlTowerRPG({ accountUser = null, accountSaveApi = defaultApi, accountStorage = null }) {
+  const accountMode = accountUser?.id !== undefined && accountUser?.id !== null
   // World (story) state + save.
   const [boot] = useState(() => {
+    if (accountMode) {
+      return { state: rpgInitial(), hasStoredSave: false, saveError: 'none' }
+    }
     const { save, error } = loadRPG(typeof window !== 'undefined' ? window.localStorage : null)
     return {
       state: save || rpgInitial(),
@@ -442,6 +454,11 @@ export default function ControlTowerRPG() {
   const [started, setStarted] = useState(false)
   const [hasStoredSave, setHasStoredSave] = useState(boot.hasStoredSave)
   const [saveError, setSaveError] = useState(boot.saveError)
+  const [accountBootStatus, setAccountBootStatus] = useState(accountMode ? 'loading' : 'ready')
+  const [saveConflict, setSaveConflict] = useState(null)
+  const [legacyInspection, setLegacyInspection] = useState(null)
+  const [confirmNewStory, setConfirmNewStory] = useState(false)
+  const accountCoordinatorRef = useRef(null)
   const stateRef = useRef(state)
   stateRef.current = state
   const saveQueuedRef = useRef(false)
@@ -480,6 +497,7 @@ export default function ControlTowerRPG() {
   const keysRef = useRef(new Set())
   const pointerDownRef = useRef(false)
   const combatActionRef = useRef({ attack: false, powerId: null })
+  const consumableUseSerialRef = useRef(0)
   // A newly mounted encounter is a visible, frozen staging boundary. The
   // simulation is armed only by an explicit player action, so browser/tool or
   // attention latency between seeing the controls and using them is never
@@ -510,14 +528,86 @@ export default function ControlTowerRPG() {
   panelOpenRef.current = panelOpen
   const [skillAction, setSkillAction] = useState(null)
 
+  useEffect(() => {
+    if (!accountMode) return undefined
+    let active = true
+    const storage = accountStorage || (typeof window !== 'undefined' ? window.localStorage : null)
+    const coordinator = createAccountSaveCoordinator({
+      api: accountSaveApi,
+      storage,
+      userId: accountUser.id,
+    })
+    accountCoordinatorRef.current = coordinator
+    setAccountBootStatus('loading')
+    setSaveConflict(null)
+    coordinator.boot().then((result) => {
+      if (!active) return
+      if (result.status === 'conflict') {
+        setSaveConflict(result.conflict)
+        setAccountBootStatus('ready')
+        return
+      }
+      if (result.status === 'error') {
+        setAccountBootStatus('error')
+        return
+      }
+      const loaded = result.state || rpgInitial()
+      stateRef.current = loaded
+      visualWorldRef.current = createLocomotionPose({ ...loaded.world.position, facing: loaded.world.facing })
+      characterAnimationRef.current = createCharacterAnimationState({
+        facing: loaded.world.facing,
+        reducedMotion: worldRef.current.reduceMotion,
+      })
+      setState(loaded)
+      setHasStoredSave(Boolean(result.state))
+      setSaveError(result.source === 'offline-cache' || result.status === 'offline-empty' ? 'offline' : 'none')
+      setLegacyInspection(!result.state ? inspectLegacyRpgSave(storage) : null)
+      setAccountBootStatus('ready')
+    }).catch(() => {
+      if (active) setAccountBootStatus('error')
+    })
+    return () => {
+      active = false
+      if (accountCoordinatorRef.current === coordinator) accountCoordinatorRef.current = null
+    }
+  }, [accountMode, accountSaveApi, accountStorage, accountUser?.id])
+
   const flushSave = useCallback((s) => {
+    if (accountMode) {
+      const coordinator = accountCoordinatorRef.current
+      if (!coordinator) {
+        setSaveNote('Cloud save is not ready.')
+        return
+      }
+      setHasStoredSave(true)
+      coordinator.save(s).then((result) => {
+        if (result.status === 'conflict') {
+          setPaused(true)
+          setSaveConflict(result.conflict)
+          return
+        }
+        if (result.status === 'pending') {
+          setSaveError('offline')
+          setSaveNote('Saved to this account’s device cache. Cloud sync is pending.')
+          return
+        }
+        if (result.status === 'saved' || result.status === 'idempotent') {
+          setSaveError('none')
+          return
+        }
+        setSaveNote('Cloud save unavailable.')
+      })
+      return
+    }
     const ok = saveRPG(typeof window !== 'undefined' ? window.localStorage : null, s)
     if (ok) {
       setHasStoredSave(true)
       setSaveError('none')
     }
-    setSaveNote(ok ? '' : 'Save unavailable')
-  }, [])
+    // Successful persistence must not erase the gameplay result announced by
+    // the action that triggered it (equip, consume, craft, etc.).
+    if (!ok) setSaveNote('Save unavailable')
+  }, [accountMode])
 
   const enqueueSave = useCallback((s) => {
     saveQueuedRef.current = s
@@ -943,7 +1033,9 @@ export default function ControlTowerRPG() {
       setSaveNote('This encounter cannot begin safely.')
       return
     }
-    dispatch({ type: 'ENTER_ENCOUNTER', encounterId }, { persist: false })
+    // Persist the reconstructible encounter boundary so prepared loadout items
+    // cannot return after a refresh. The combat frame itself remains local.
+    dispatch({ type: 'ENTER_ENCOUNTER', encounterId })
     setCombatReady(false)
     setPaused(false)
     setSession(s)
@@ -959,7 +1051,7 @@ export default function ControlTowerRPG() {
         : 'Choose a patron at a shrine before entering wilderness combat.')
       return
     }
-    dispatch({ type: 'WILDERNESS_COMBAT_START', enemyId, encounterKey }, { persist: false })
+    dispatch({ type: 'WILDERNESS_COMBAT_START', enemyId, encounterKey })
     setPanelOpen(null)
     setCombatReady(false)
     setPaused(false)
@@ -1429,6 +1521,7 @@ export default function ControlTowerRPG() {
       : null
   const act5Light = act5LightPresentation(state, map)
   const equipmentStats = deriveCombatModifiers(state.inventory.equipment, ALL_ITEM_DEFS)
+  const preparedConsumables = pendingConsumableLoadout(state)
   const completedAct = questDef?.act || 1
   const nextAct = completedAct < 5 ? completedAct + 1 : null
   const nextRegion = nextAct ? rpgRegionByAct(nextAct) : null
@@ -1484,6 +1577,35 @@ export default function ControlTowerRPG() {
     dispatch({ type: 'UNEQUIP_ITEM', slot })
     setSaveNote(stateRef.current.inventory.equipment !== before ? `${name} moved to your backpack.` : `${name} could not be unequipped.`)
   }
+  const prepareFromPack = (itemId) => {
+    const item = ALL_ITEM_DEFS[itemId]
+    const before = stateRef.current
+    const decision = prepareConsumableDecision(before, itemId, ALL_ITEM_DEFS)
+    dispatch({ type: 'USE_ITEM', itemId })
+    setSaveNote(stateRef.current !== before
+      ? `${item?.name || itemId} prepared for the next encounter.`
+      : decision.reason || `${item?.name || itemId} could not be used.`)
+  }
+  const useFoodInCombat = (itemId) => {
+    const current = sessionRef.current
+    const item = ALL_ITEM_DEFS[itemId]
+    const useId = `${current?.encounterId || 'encounter'}:${consumableUseSerialRef.current + 1}`
+    const resolved = resolveCombatConsumableUse(stateRef.current, current, itemId, useId, ALL_ITEM_DEFS)
+    if (!resolved.allowed) {
+      setSaveNote(resolved.reason || `${item?.name || itemId} could not be used.`)
+      return
+    }
+    const before = stateRef.current
+    dispatch({ type: 'USE_ITEM', itemId, useId, encounterId: current.encounterId })
+    if (stateRef.current === before) {
+      setSaveNote(`${item?.name || itemId} is not in your backpack.`)
+      return
+    }
+    consumableUseSerialRef.current += 1
+    sessionRef.current = resolved.session
+    setSession(resolved.session)
+    setSaveNote(`${item?.name || itemId} restored ${resolved.healed} health.`)
+  }
   const armCombat = () => {
     const current = sessionRef.current
     if (!current || current.settled || stateRef.current.status !== 'in-combat') return
@@ -1503,9 +1625,9 @@ export default function ControlTowerRPG() {
     return `${Math.min(q.objectiveIndex, def.objectives.length)} / ${def.objectives.length}`
   })()
 
-  const beginNewStory = () => {
+  const resetToFreshStory = () => {
     const store = typeof window !== 'undefined' ? window.localStorage : null
-    clearSave(store)
+    if (!accountMode) clearSave(store)
     const fresh = rpgInitial()
     stateRef.current = fresh
     visualWorldRef.current = createLocomotionPose({ ...fresh.world.position, facing: fresh.world.facing })
@@ -1521,11 +1643,103 @@ export default function ControlTowerRPG() {
     setShrineOpen(false)
     setCombatEnd(null)
     setSaveError('none')
+    setLegacyInspection(null)
+    setConfirmNewStory(false)
     flushSave(fresh)
     setStarted(true)
   }
 
+  const beginNewStory = () => {
+    if (hasStoredSave && !confirmNewStory) {
+      setConfirmNewStory(true)
+      return
+    }
+    resetToFreshStory()
+  }
+
+  const importLegacyStory = async () => {
+    const storage = accountStorage || (typeof window !== 'undefined' ? window.localStorage : null)
+    const imported = confirmLegacyRpgImport({
+      storage,
+      userId: accountUser?.id,
+      inspection: legacyInspection,
+      confirmed: true,
+    })
+    if (!imported.imported) {
+      setSaveNote('That legacy journey could not be imported.')
+      return
+    }
+    const loaded = imported.cache.payload
+    stateRef.current = loaded
+    visualWorldRef.current = createLocomotionPose({ ...loaded.world.position, facing: loaded.world.facing })
+    setState(loaded)
+    setHasStoredSave(true)
+    setLegacyInspection(null)
+    const result = await accountCoordinatorRef.current?.retryPending()
+    if (result?.status === 'conflict') setSaveConflict(result.conflict)
+    else if (result?.status === 'pending') setSaveError('offline')
+    else setSaveError('none')
+  }
+
+  const resolveAccountConflict = async (resolution) => {
+    const coordinator = accountCoordinatorRef.current
+    if (!coordinator || !saveConflict) return
+    const result = await coordinator.resolveConflict(saveConflict, resolution)
+    if (result.status === 'conflict') {
+      setSaveConflict(result.conflict)
+      return
+    }
+    if (!result.state) {
+      setSaveNote('The save conflict could not be resolved safely.')
+      return
+    }
+    stateRef.current = result.state
+    visualWorldRef.current = createLocomotionPose({ ...result.state.world.position, facing: result.state.world.facing })
+    setState(result.state)
+    setHasStoredSave(true)
+    setSaveConflict(null)
+    setSaveError(result.status === 'pending' ? 'offline' : 'none')
+    setPaused(false)
+  }
+
   // ─── Title / continue surface ────────────────────────────────
+  if (accountMode && accountBootStatus === 'loading') {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#090d16] px-6 text-[#f2e8d4]" aria-busy="true">
+        <div className="max-w-sm text-center">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d8aa4d]">Oathbearer</div>
+          <h1 className="mt-3 text-3xl font-semibold">Opening your chronicle…</h1>
+          <p className="mt-3 text-sm text-[#b8b0a3]">Loading the save owned by {accountUser.email || 'this account'}.</p>
+        </div>
+      </main>
+    )
+  }
+  if (accountMode && accountBootStatus === 'error') {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#090d16] px-6 text-[#f2e8d4]">
+        <div className="max-w-md border border-[#765f37] bg-[#111827] p-6 text-center">
+          <h1 className="text-2xl font-semibold">Your chronicle could not be opened safely.</h1>
+          <p className="mt-3 text-sm text-[#c7c0b5]">No local or cloud progress was changed. Retry after reconnecting or signing in again.</p>
+          <button type="button" onClick={() => window.location.reload()} className="rpg-btn rpg-btn-secondary mt-5">Retry</button>
+        </div>
+      </main>
+    )
+  }
+  if (accountMode && saveConflict) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#090d16] px-6 text-[#f2e8d4]">
+        <div role="alertdialog" aria-modal="true" aria-labelledby="rpg-save-conflict-title" className="max-w-lg border border-[#a67c38] bg-[#111827] p-6">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d8aa4d]">Two chronicles diverged</div>
+          <h1 id="rpg-save-conflict-title" className="mt-3 text-2xl font-semibold">Choose which progress survives.</h1>
+          <p className="mt-3 text-sm leading-relaxed text-[#c7c0b5]">Cloud revision {saveConflict.currentRevision ?? 'unknown'} changed after this device loaded. Nothing will be overwritten until you choose.</p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => resolveAccountConflict('remote')} disabled={!saveConflict.remoteState} className="rpg-btn rpg-btn-secondary">Use cloud progress</button>
+            <button type="button" onClick={() => resolveAccountConflict('local')} className="rpg-btn rpg-btn-primary">Keep this device</button>
+          </div>
+        </div>
+      </main>
+    )
+  }
   if (!started) {
     const errorCopy = SAVE_ERROR_COPY[saveError] || ''
     return (
@@ -1555,8 +1769,26 @@ export default function ControlTowerRPG() {
               {errorCopy} Start a new story to begin again, or continue if the checkpoint loads.
             </p>
           )}
+          {accountMode && legacyInspection?.available && (
+            <div className="rpg-title-savenote" role="status">
+              <p>A journey from the earlier device-only build is available. It will not be attached to {accountUser.email || 'this account'} unless you explicitly import it.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={importLegacyStory} className="rpg-btn rpg-btn-secondary">Import legacy journey</button>
+                <button type="button" onClick={() => setLegacyInspection(null)} className="rpg-btn rpg-btn-quiet">Do not import</button>
+              </div>
+            </div>
+          )}
+          {confirmNewStory && (
+            <div className="rpg-title-savenote" role="alert">
+              <p>Starting over will replace the current account chronicle at its next successful sync.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={resetToFreshStory} className="rpg-btn rpg-btn-primary">Replace with a new story</button>
+                <button type="button" onClick={() => setConfirmNewStory(false)} className="rpg-btn rpg-btn-quiet">Keep current story</button>
+              </div>
+            </div>
+          )}
           <div className="rpg-title-actions">
-            <button type="button" onClick={beginNewStory} className="rpg-btn rpg-btn-primary rpg-cut">
+            <button type="button" onClick={beginNewStory} disabled={confirmNewStory} className="rpg-btn rpg-btn-primary rpg-cut">
               New Story
             </button>
             <button
@@ -1833,6 +2065,9 @@ export default function ControlTowerRPG() {
                     <span>Damage ×{equipmentStats.attackDamageMultiplier.toFixed(2)}</span>
                     <span>Incoming ×{equipmentStats.incomingDamageMultiplier.toFixed(2)}</span>
                     <span>Health +{equipmentStats.maxHealthBonus}</span>
+                    {Object.values(preparedConsumables).filter(Boolean).length > 0 && (
+                      <span>Prepared {Object.values(preparedConsumables).filter(Boolean).map((itemId) => ALL_ITEM_DEFS[itemId]?.name || itemId).join(' · ')}</span>
+                    )}
                   </div>
                   <div className="rpg-equipment-grid">
                     {EQUIPMENT_SLOTS.map((slot) => {
@@ -1885,6 +2120,21 @@ export default function ControlTowerRPG() {
                                 aria-label={`Equip ${item.name}`}
                               >
                                 Equip
+                              </button>
+                            )
+                          })()}
+                          {item.consumableEffect && (() => {
+                            const decision = prepareConsumableDecision(state, item.id, ALL_ITEM_DEFS)
+                            return (
+                              <button
+                                type="button"
+                                className="rpg-item-action"
+                                disabled={!decision.allowed}
+                                onClick={() => prepareFromPack(item.id)}
+                                aria-label={`Use ${item.name}${decision.allowed ? '' : `. ${decision.reason}`}`}
+                                title={decision.allowed ? `Prepare ${item.name} for the next encounter` : decision.reason}
+                              >
+                                Use
                               </button>
                             )
                           })()}
@@ -2015,6 +2265,11 @@ export default function ControlTowerRPG() {
                 {sessionPhaseLabel(session)}
               </div>
             )}
+            {session.arena.consumableModifiers?.itemIds?.length > 0 && (
+              <div className="text-[10px] uppercase tracking-wider text-[#b8a888]">
+                Prepared aid · {session.arena.consumableModifiers.itemIds.map((itemId) => ALL_ITEM_DEFS[itemId]?.name || itemId).join(' · ')}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <div className="h-2 flex-1 overflow-hidden rounded-full border border-[#2a2318] bg-[#0b0a06]/80">
                 <div
@@ -2033,6 +2288,26 @@ export default function ControlTowerRPG() {
 
         {state.status === 'in-combat' && session && !combatEnd && (
           <div className="pointer-events-auto absolute inset-x-0 bottom-3 z-10 flex flex-wrap items-end justify-end gap-2 pl-[178px] pr-3 md:justify-center md:px-3" aria-label="Combat controls">
+            {Array.from(new Set((state.inventory.slots || [])
+              .map((entry) => entry.itemId)
+              .filter((itemId) => consumableEffect(itemId)?.activation === 'combat')))
+              .map((itemId) => {
+                const item = ALL_ITEM_DEFS[itemId]
+                const quantity = carriedItemQuantity(state.inventory, itemId, ALL_ITEM_DEFS)
+                const fullHealth = session.arena.deity.health >= session.arena.deity.maxHealth
+                return (
+                  <button
+                    key={itemId}
+                    type="button"
+                    className="min-h-12 rounded border border-[#6f7e54] bg-[#18231b]/95 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#dce8bd] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!combatReady || fullHealth || quantity < 1}
+                    onClick={() => useFoodInCombat(itemId)}
+                    aria-label={`Use ${item?.name || itemId}, ${quantity} remaining${!combatReady ? '. Begin encounter first' : fullHealth ? '. Health is already full' : ''}`}
+                  >
+                    Use {item?.name || itemId} <span className="ml-1 text-[9px]">×{quantity}</span>
+                  </button>
+                )
+              })}
             <button type="button" aria-label="Melee attack" disabled={!combatReady} onPointerDown={() => queueCombatAction({ attack: true })} className="min-h-12 rounded border border-[#e8b64c] bg-[#7d2b1f]/95 px-5 py-2 text-xs font-bold uppercase tracking-widest text-[#fff1d0] disabled:cursor-not-allowed disabled:opacity-40">
               Attack <span className="ml-1 text-[9px] text-[#e8c995]">J</span>
             </button>
@@ -2380,7 +2655,7 @@ export default function ControlTowerRPG() {
 
       {/* save note */}
       {saveNote && (
-        <div className="absolute bottom-2 right-2 z-50 rounded border border-[#b3241c]/50 bg-[#0b0a06]/90 px-2 py-1 text-[10px] text-[#e8a08a]">{saveNote}</div>
+        <div role="status" aria-live="polite" className="absolute bottom-2 right-2 z-50 rounded border border-[#b3241c]/50 bg-[#0b0a06]/90 px-2 py-1 text-[10px] text-[#e8a08a]">{saveNote}</div>
       )}
     </div>
   )

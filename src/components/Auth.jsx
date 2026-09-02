@@ -8,7 +8,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // tour or guest mode — just sign in or create the one account this device
 // will use. Mirrors the server's own validation (auth.js / index.js) so a bad
 // submission never round-trips to learn something the client already knows.
-export default function Auth({ onAuthed }) {
+export default function Auth({ onAuthed, surface = 'omnifuel' }) {
   const [mode, setMode] = useState('login') // 'login' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,6 +19,7 @@ export default function Auth({ onAuthed }) {
   const [acceptedLegal, setAcceptedLegal] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
   const [showInviteCode, setShowInviteCode] = useState(false)
+  const oathbearer = surface === 'oathbearer'
 
   useEffect(() => {
     let alive = true
@@ -53,14 +54,18 @@ export default function Auth({ onAuthed }) {
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16">
       <header className="mb-8">
-        <div className="eyebrow mb-2 text-cobalt">OmniFuel Tech</div>
+        <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Oathbearer' : 'OmniFuel Tech'}</div>
         <h1 className="serif text-4xl leading-none text-ink">
           {mode === 'signup' ? 'Create your account' : 'Sign in'}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted">
           {mode === 'signup'
-            ? 'One account, one plan — your log, targets, and connected wearables live here.'
-            : 'Your log, targets, and connected wearables — nowhere else.'}
+            ? oathbearer
+              ? 'One account owns your chronicle, characters, inventory, choices, and cross-device progress.'
+              : 'One account, one plan — your log, targets, and connected wearables live here.'
+            : oathbearer
+              ? 'Return to your chronicle without exposing it to another account on this device.'
+              : 'Your log, targets, and connected wearables — nowhere else.'}
         </p>
       </header>
 
@@ -162,17 +167,18 @@ export default function Auth({ onAuthed }) {
       )}
 
       <p className="mt-5 text-center text-xs leading-relaxed text-faint">
-        Review OmniFuel's <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
+        Review {oathbearer ? "Oathbearer's" : "OmniFuel's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
         {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms">Terms of Service</a>.
       </p>
     </div>
   )
 }
 
-export function LegalReconsent({ user, onAccepted, onLogout }) {
+export function LegalReconsent({ user, onAccepted, onLogout, surface = 'omnifuel' }) {
   const [acknowledged, setAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const product = surface === 'oathbearer' ? 'Oathbearer' : 'OmniFuel'
 
   const submit = async (event) => {
     event.preventDefault()
@@ -195,7 +201,7 @@ export function LegalReconsent({ user, onAccepted, onLogout }) {
         <div className="eyebrow mb-2 text-cobalt">Account update</div>
         <h1 className="serif text-4xl leading-none text-ink">Review the current terms</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          Before continuing as {user.email}, review OmniFuel&apos;s current legal documents and confirm your acceptance.
+          Before continuing as {user.email}, review {product}&apos;s current legal documents and confirm your acceptance.
         </p>
       </header>
       <form onSubmit={submit} className="space-y-5" noValidate>

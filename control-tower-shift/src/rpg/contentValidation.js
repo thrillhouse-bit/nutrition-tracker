@@ -6,6 +6,7 @@
 // tests and release tooling.
 
 import { CAMPAIGN } from '../game/campaign.js'
+import { createAuthoredDepthReport } from './authoringSchema.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
 import { SHOP_DEFS } from './economy.js'
 import { createInitialInventory, SKILL_DEF_BY_ID } from './progression.js'
@@ -61,6 +62,58 @@ function entityIndex() {
     }
   }
   return { byId, entries }
+}
+
+function collectAuthoringRecords() {
+  const records = []
+  for (const questId of sortedIds(REGISTERED_QUESTS)) {
+    const quest = REGISTERED_QUESTS[questId]
+    records.push({ kind: 'quest', id: questId, path: `quests.${questId}`, value: quest })
+    for (const [index, objective] of (quest.objectives || []).entries()) {
+      const objectiveId = typeof objective?.id === 'string' ? objective.id : `objective-${index + 1}`
+      records.push({
+        kind: 'objective',
+        id: `${questId}:${objectiveId}`,
+        path: `quests.${questId}.objectives.${objectiveId}`,
+        value: objective,
+      })
+    }
+  }
+  for (const conversationId of sortedIds(REGISTERED_CONVERSATIONS)) {
+    records.push({
+      kind: 'conversation',
+      id: conversationId,
+      path: `conversations.${conversationId}`,
+      value: REGISTERED_CONVERSATIONS[conversationId],
+    })
+  }
+  for (const mapId of sortedIds(REGISTERED_MAPS)) {
+    const map = REGISTERED_MAPS[mapId]
+    records.push({ kind: 'map', id: mapId, path: `maps.${mapId}`, value: map })
+    for (const [index, entity] of (map.entities || []).entries()) {
+      if (entity.kind === 'shop') continue // Merchant policy is authored once at SHOP_DEFS.
+      const entityId = typeof entity?.id === 'string' ? entity.id : `entity-${index + 1}`
+      const kind = entity.kind === 'resource' ? 'resource' : 'entity'
+      records.push({
+        kind,
+        id: `${mapId}:${entityId}`,
+        path: `maps.${mapId}.entities.${entityId}`,
+        value: entity,
+      })
+    }
+  }
+  for (const encounterId of sortedIds(REGISTERED_ENCOUNTERS)) {
+    records.push({
+      kind: 'encounter',
+      id: encounterId,
+      path: `encounters.${encounterId}`,
+      value: REGISTERED_ENCOUNTERS[encounterId],
+    })
+  }
+  for (const shopId of sortedIds(SHOP_DEFS)) {
+    records.push({ kind: 'merchant', id: shopId, path: `shops.${shopId}`, value: SHOP_DEFS[shopId] })
+  }
+  return records
 }
 
 function collectInventory() {
@@ -361,6 +414,18 @@ export function validateRPGContent() {
   validateConversations(issues)
   validateEncounters(issues)
   const obtainableItemIds = validateItemsRecipesAndSources(issues, inventory)
+  const authoredDepth = createAuthoredDepthReport(collectAuthoringRecords())
+  for (const record of authoredDepth.records) {
+    if (record.status === 'release-ready') continue
+    const missing = record.missingFields.length ? ` Missing: ${record.missingFields.join(', ')}.` : ''
+    issues.push(issue(
+      record.status === 'legacy' ? 'LEGACY_AUTHORING_RECORD' : 'INCOMPLETE_AUTHORING_RECORD',
+      'warning',
+      record.path,
+      record.id,
+      `${record.kind} is not release-ready under authoring schema v${authoredDepth.schemaVersion}.${missing}`,
+    ))
+  }
   issues.sort(compareIssues)
 
   const byCode = {}
@@ -369,6 +434,7 @@ export function validateRPGContent() {
   return {
     inventory,
     obtainableItemIds,
+    authoredDepth,
     issues,
     summary: {
       errors: issues.filter((entry) => entry.severity === 'error').length,
@@ -378,4 +444,3 @@ export function validateRPGContent() {
     },
   }
 }
-

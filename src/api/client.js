@@ -40,6 +40,16 @@ export const api = {
   deleteAccount: (password, confirmation) =>
     req('/account/delete', { method: 'POST', body: JSON.stringify({ password, confirmation }) }),
 
+  // Oathbearer cross-device save. Revision 0 creates the first save; every
+  // later write must send the revision returned by the last successful GET or
+  // PUT so a stale tab cannot silently overwrite newer progress.
+  getRpgSave: () => req('/rpg/save'),
+  putRpgSave: ({ payload, gameSchemaVersion, expectedRevision }) =>
+    req('/rpg/save', {
+      method: 'PUT',
+      body: JSON.stringify({ payload, gameSchemaVersion, expectedRevision }),
+    }),
+
   // Barcode lookup: cache → Open Food Facts → USDA. Returns a normalized food.
   lookupBarcode: (barcode) => req(`/lookup/${encodeURIComponent(barcode)}`),
 

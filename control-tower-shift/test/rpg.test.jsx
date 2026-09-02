@@ -11,11 +11,24 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
+vi.mock('../../src/api/client.js', () => ({
+  api: {
+    me: vi.fn(async () => ({ user: { id: 91, email: 'rpg-route@example.test', legalAcceptanceRequired: false } })),
+    getRpgSave: vi.fn(async () => ({ save: null })),
+    putRpgSave: vi.fn(async ({ payload, gameSchemaVersion }) => ({
+      save: { payload, gameSchemaVersion, revision: 1 },
+      idempotent: false,
+    })),
+    logout: vi.fn(async () => ({})),
+  },
+}))
+
 const {
   default: GameGate, GAME_HASH, RPG_HASH, routeFor,
 } = await import('../src/GameGate.jsx')
 // Preload the lazy chunks so GameGate's Suspense resolves from module cache.
 await import('../src/ControlTowerShift.jsx')
+await import('../src/RPGAccountGate.jsx')
 const { default: ControlTowerRPG } = await import('../src/ControlTowerRPG.jsx')
 const {
   createInitialState, applyEvent, SCHEMA_VERSION,
@@ -86,8 +99,11 @@ describe('exact hash routing — arena, RPG, and main app stay independent', () 
 
     window.location.hash = RPG_HASH
     await mount(<GameGate app={<div data-testid="the-app">app</div>} />)
-    // The lazy RPG chunk must resolve (a couple of microtask flushes).
-    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve() })
+    // The route resolves both the account boundary and account-owned save
+    // before exposing title actions; neither loading layer may be bypassed.
+    for (let i = 0; i < 8 && !container.textContent.includes('Control Tower — Oathbearer'); i++) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    }
     expect(container.querySelector('[data-testid="the-app"]')).toBeNull()
     expect(container.textContent).toContain('Control Tower — Oathbearer')
     const newStory = [...container.querySelectorAll('button')].find((button) => button.textContent === 'New Story')

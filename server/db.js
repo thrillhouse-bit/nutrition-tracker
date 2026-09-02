@@ -21,6 +21,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inviteUnavailableError } from './alphaAccess.js'
+import { isIdempotentRpgSaveRetry, normalizeRpgSave } from './rpgSave.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -881,6 +882,43 @@ export class PgStore {
     return rows[0] || null
   }
 
+  // --- Oathbearer RPG save ---------------------------------------------------
+  async getRpgSave(userId) {
+    const sql = await this.ready()
+    const rows = await sql`
+      select payload, game_schema_version, revision, created_at, updated_at
+      from rpg_saves where user_id = ${userId} limit 1`
+    return normalizeRpgSave(rows[0])
+  }
+
+  async putRpgSave(userId, input) {
+    const sql = await this.ready()
+    let rows
+    if (input.expectedRevision === 0) {
+      rows = await sql`
+        insert into rpg_saves (user_id, payload, game_schema_version, revision)
+        values (${userId}, ${JSON.stringify(input.payload)}::jsonb, ${input.gameSchemaVersion}, 1)
+        on conflict (user_id) do nothing
+        returning payload, game_schema_version, revision, created_at, updated_at`
+    } else {
+      rows = await sql`
+        update rpg_saves
+        set payload = ${JSON.stringify(input.payload)}::jsonb,
+            game_schema_version = ${input.gameSchemaVersion},
+            revision = revision + 1,
+            updated_at = now()
+        where user_id = ${userId} and revision = ${input.expectedRevision}
+        returning payload, game_schema_version, revision, created_at, updated_at`
+    }
+    if (rows[0]) return { outcome: 'written', save: normalizeRpgSave(rows[0]) }
+    // A write can lose a race after its optimistic check. Read the winner's
+    // current row after the atomic INSERT/UPDATE so conflicts always report
+    // the authoritative revision, not a stale pre-write snapshot.
+    const current = await this.getRpgSave(userId)
+    if (isIdempotentRpgSaveRetry(current, input)) return { outcome: 'idempotent', save: current }
+    return { outcome: 'conflict', save: current }
+  }
+
   // Complete account-owned data export. Credentials, OAuth tokens, Apple
   // ingest tokens, password hashes, and the shared food lookup cache are
   // deliberately excluded. Nutrition values used by a log entry are joined
@@ -902,6 +940,7 @@ export class PgStore {
       afpProfileRows,
       plannedWorkouts,
       afpDailyPlans,
+      rpgSaveRows,
     ] = await Promise.all([
       sql`select id, email, legal_version, legal_accepted_at, created_at from users where id = ${userId}`,
       sql`select e.id, e.food_id, e.logged_at, e.servings_consumed, e.meal, e.created_at,
@@ -924,6 +963,7 @@ export class PgStore {
       sql`select * from afp_profile where user_id = ${userId}`,
       sql`select * from planned_workouts where user_id = ${userId} order by date asc, start_time asc nulls last, id asc`,
       sql`select * from afp_daily_plans where user_id = ${userId} order by date asc`,
+      sql`select payload, game_schema_version, revision, created_at, updated_at from rpg_saves where user_id = ${userId}`,
     ])
     return {
       schema_version: 1,
@@ -942,6 +982,7 @@ export class PgStore {
         workouts: plannedWorkouts,
         daily_plans: afpDailyPlans,
       },
+      rpg_save: normalizeRpgSave(rpgSaveRows[0]),
     }
   }
 
@@ -982,6 +1023,7 @@ export class JsonStore {
     this.data = null
     this.writing = Promise.resolve()
     this.userCreation = Promise.resolve()
+    this.rpgSaveWrites = Promise.resolve()
   }
 
   async load() {
@@ -1010,6 +1052,7 @@ export class JsonStore {
     // backfill path.
     this.data.users = this.data.users || []
     this.data.alpha_invite_redemptions = this.data.alpha_invite_redemptions || []
+    this.data.rpg_saves = this.data.rpg_saves || {}
     this.data.seq = this.data.seq || {}
     this.data.seq.user = this.data.seq.user || 0
     return this.data
@@ -1737,6 +1780,48 @@ export class JsonStore {
     return { ...row }
   }
 
+  // --- Oathbearer RPG save ---------------------------------------------------
+  async getRpgSave(userId) {
+    const d = await this.load()
+    return normalizeRpgSave(d.rpg_saves?.[Number(userId)])
+  }
+
+  async putRpgSave(userId, input) {
+    const run = async () => {
+      const d = await this.load()
+      const uid = Number(userId)
+      const current = d.rpg_saves?.[uid] || null
+      if (current) {
+        if (current.revision !== input.expectedRevision) {
+          const save = normalizeRpgSave(current)
+          return isIdempotentRpgSaveRetry(save, input)
+            ? { outcome: 'idempotent', save }
+            : { outcome: 'conflict', save }
+        }
+      } else if (input.expectedRevision !== 0) {
+        return { outcome: 'conflict', save: null }
+      }
+      const now = new Date().toISOString()
+      const row = {
+        user_id: uid,
+        payload: structuredClone(input.payload),
+        game_schema_version: input.gameSchemaVersion,
+        revision: current ? current.revision + 1 : 1,
+        created_at: current?.created_at || now,
+        updated_at: now,
+      }
+      d.rpg_saves[uid] = row
+      await this.persist()
+      return { outcome: 'written', save: normalizeRpgSave(row) }
+    }
+    // Serialize the compare + mutation, not only the disk write. Otherwise
+    // two simultaneous updates could both observe the same revision and both
+    // claim success before the persist queue ever sees them.
+    const result = this.rpgSaveWrites.then(run, run)
+    this.rpgSaveWrites = result.then(() => undefined, () => undefined)
+    return result
+  }
+
   async exportUserData(userId) {
     const d = await this.load()
     const uid = Number(userId)
@@ -1786,6 +1871,7 @@ export class JsonStore {
         workouts: (d.planned_workouts || []).filter(byUser),
         daily_plans: valuesForUser(d.afp_daily_plans),
       },
+      rpg_save: normalizeRpgSave(d.rpg_saves?.[uid]),
     }
   }
 
@@ -1807,6 +1893,7 @@ export class JsonStore {
     d.garmin_dailies = (d.garmin_dailies || []).filter((row) => !garminAccountIds.has(row.account_id))
     d.wearable_signals = (d.wearable_signals || []).filter((row) => row.user_id !== uid)
     d.planned_workouts = (d.planned_workouts || []).filter((row) => row.user_id !== uid)
+    if (d.rpg_saves) delete d.rpg_saves[uid]
     for (const name of ['profiles', 'afp_profiles']) {
       if (d[name]) delete d[name][uid]
     }

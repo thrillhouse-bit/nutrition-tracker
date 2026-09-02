@@ -68,6 +68,7 @@ import {
   signupIpLimiter,
 } from './authRateLimit.js'
 import { securityHeaders } from './securityHeaders.js'
+import { validateRpgSavePutBody } from './rpgSave.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -410,6 +411,27 @@ requireAuthRouter.use((req, res, next) => {
   }
   next()
 })
+
+// --- Oathbearer account save ------------------------------------------------
+// The authenticated session is the sole ownership input. The body deliberately
+// has no user-id field, and strict validation rejects one if a client attempts
+// to add it.
+requireAuthRouter.get('/rpg/save', asyncH(async (req, res) => {
+  res.json({ save: await store.getRpgSave(req.userId) })
+}))
+
+requireAuthRouter.put('/rpg/save', asyncH(async (req, res) => {
+  const input = validateRpgSavePutBody(req.body)
+  const result = await store.putRpgSave(req.userId, input)
+  if (result.outcome === 'conflict') {
+    return res.status(409).json({
+      error: 'RPG save revision conflict.',
+      code: 'RPG_SAVE_REVISION_CONFLICT',
+      currentRevision: result.save?.revision ?? 0,
+    })
+  }
+  res.json({ save: result.save, idempotent: result.outcome === 'idempotent' })
+}))
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------
 requireAuthRouter.get('/lookup/:barcode', asyncH(async (req, res) => {

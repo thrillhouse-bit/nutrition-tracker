@@ -34,6 +34,11 @@ import {
 } from './progression.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
 import {
+  consumeCombatInventoryItem,
+  consumePendingConsumableLoadout,
+  prepareConsumable,
+} from './itemEffects.js'
+import {
   CRAFTING_SOURCE_MODES,
   executeCraftingLedger,
 } from './craftingLedger.js'
@@ -429,6 +434,9 @@ export function applyEvent(state, event) {
     }
     case 'EQUIP_ITEM': return equipAtRest(state, event)
     case 'UNEQUIP_ITEM': return unequipAtRest(state, event)
+    case 'USE_ITEM': return state.status === 'in-combat'
+      ? consumeCombatInventoryItem(state, event.itemId, event.useId, ALL_ITEM_DEFS, event.encounterId)
+      : prepareConsumable(state, event.itemId, ALL_ITEM_DEFS)
     case 'GATHER': return gather(state, event)
     case 'WILDERNESS_ENTER': return wildernessEnter(state, event)
     case 'WILDERNESS_STEP': return wildernessStep(state, event)
@@ -693,10 +701,20 @@ function wildernessCombatStart(state, event) {
   if (event.enemyId !== state.wilderness.pendingEnemyId) return state
   const encounterKey = wildernessEncounterKey(state)
   if (!encounterKey || event.encounterKey !== encounterKey) return state
+  const prepared = consumePendingConsumableLoadout(state)
   return {
-    ...state,
+    ...prepared.state,
     status: 'in-combat',
     wilderness: { ...state.wilderness, activeEncounterKey: encounterKey },
+    combatSnapshot: {
+      encounterId: `wilderness:${encounterKey}`,
+      mapId: state.world.mapId,
+      seed: seedForEncounter(`wilderness:${encounterKey}`),
+      checkpoint: prepared.state,
+      consumableLoadout: prepared.loadout,
+      consumableUseIds: [],
+      wilderness: true,
+    },
   }
 }
 
@@ -711,7 +729,7 @@ function wildernessVictory(state, event) {
   const rewardKey = event.encounterKey || `${state.wilderness.regionId}:${state.wilderness.step}:${enemyId}`
   const rewardFlag = `wilderness:reward:${rewardKey}`
   if (state.flags[rewardFlag]) {
-    return { ...state, status: 'playing', wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null } }
+    return { ...state, status: 'playing', combatSnapshot: null, wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null } }
   }
   const rewards = wildernessCombatRewards({ enemyId, damageByStyle: event.damageByStyle, killCredit: true })
   if (!rewards) return state
@@ -723,6 +741,7 @@ function wildernessVictory(state, event) {
   let next = awardSkillXpBundle({
     ...state,
     status: 'playing',
+    combatSnapshot: null,
     flags: { ...state.flags, [rewardFlag]: true },
     inventory,
     wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null },
@@ -751,6 +770,7 @@ function wildernessDefeat(state, event) {
   return {
     ...state,
     status: 'playing',
+    combatSnapshot: null,
     inventory: {
       ...state.inventory,
       slots: drop.kept,
@@ -1276,15 +1296,18 @@ function enterEncounter(state, event) {
   // Must be entering from the encounter's authored activation map (the gate).
   if (state.world.mapId !== enc.activationMapId) return state
   const seed = seedForEncounter(enc.id)
+  const prepared = consumePendingConsumableLoadout(state)
   return {
-    ...state,
+    ...prepared.state,
     status: 'in-combat',
     combatSnapshot: {
       encounterId: enc.id,
       mapId: enc.returnMapId || enc.mapId,
       campaignLevelId: enc.campaignLevelId,
       seed,
-      checkpoint: state,
+      checkpoint: prepared.state,
+      consumableLoadout: prepared.loadout,
+      consumableUseIds: [],
     },
   }
 }

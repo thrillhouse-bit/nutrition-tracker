@@ -20,6 +20,13 @@ import { TIER1_PATRON_IDS } from './content.js'
 import { seedForEncounter } from './state.js'
 import { ENEMY_DEFS_BY_ID } from './wilderness.js'
 import { deriveCombatModifiers } from './equipment.js'
+import {
+  applyCombatConsumableEffect,
+  combatConsumableDecision,
+  consumeCombatInventoryItem,
+  deriveConsumableModifiers,
+  pendingConsumableLoadout,
+} from './itemEffects.js'
 
 // Terminal outcome of a combat session.
 export const OUTCOME_NONE = 'none'
@@ -32,18 +39,59 @@ export const OUTCOME_FAILED = 'failed'
 export function createEquippedArena(rpgState, patron, levelIndex = 0) {
   const arena = createInitialState({ god: patron, levelIndex })
   const equipmentModifiers = deriveCombatModifiers(rpgState?.inventory?.equipment)
-  const maxHealth = arena.deity.maxHealth + equipmentModifiers.maxHealthBonus
+  const consumableLoadout = rpgState?.combatSnapshot?.consumableLoadout
+    || pendingConsumableLoadout(rpgState)
+  const consumableModifiers = deriveConsumableModifiers(consumableLoadout)
+  const maxHealth = arena.deity.maxHealth
+    + equipmentModifiers.maxHealthBonus
+    + consumableModifiers.maxHealthBonus
   return {
     ...arena,
     config: {
       ...arena.config,
-      autoAttackDamage: arena.config.autoAttackDamage * equipmentModifiers.attackDamageMultiplier,
+      autoAttackDamage: arena.config.autoAttackDamage
+        * equipmentModifiers.attackDamageMultiplier
+        * consumableModifiers.attackDamageMultiplier,
       autoAttackRange: arena.config.autoAttackRange + equipmentModifiers.accuracyBonus,
-      threatDamage: arena.config.threatDamage * equipmentModifiers.incomingDamageMultiplier,
+      threatDamage: arena.config.threatDamage
+        * equipmentModifiers.incomingDamageMultiplier
+        * consumableModifiers.incomingDamageMultiplier,
     },
     deity: { ...arena.deity, health: maxHealth, maxHealth },
     equipmentModifiers: Object.freeze({ ...equipmentModifiers }),
+    consumableLoadout: Object.freeze({ ...consumableLoadout }),
+    consumableModifiers,
   }
+}
+
+// Pure encounter-domain action. Inventory settlement remains reducer-owned,
+// while this validates health/session/duplicate boundaries and applies only the
+// deterministic arena benefit accepted for the same use id.
+export function useCombatConsumable(session, itemId, useId) {
+  return applyCombatConsumableEffect(session, itemId, useId)
+}
+
+export function combatConsumableUseDecision(session, itemId, useId) {
+  return combatConsumableDecision(session, itemId, useId)
+}
+
+export function resolveCombatConsumableUse(rpgState, session, itemId, useId, itemDefs) {
+  if (!session?.encounterId || session.encounterId !== rpgState?.combatSnapshot?.encounterId) {
+    return Object.freeze({ allowed: false, reason: 'That encounter is no longer active.', state: rpgState, session })
+  }
+  const decision = combatConsumableDecision(session, itemId, useId)
+  if (!decision.allowed) return Object.freeze({ allowed: false, reason: decision.reason, state: rpgState, session })
+  const nextState = consumeCombatInventoryItem(rpgState, itemId, useId, itemDefs, session.encounterId)
+  if (nextState === rpgState) {
+    return Object.freeze({ allowed: false, reason: 'That item is not in the backpack.', state: rpgState, session })
+  }
+  return Object.freeze({
+    allowed: true,
+    reason: '',
+    healed: decision.healed,
+    state: nextState,
+    session: applyCombatConsumableEffect(session, itemId, useId),
+  })
 }
 
 export function campaignIndexForLevelId(levelId) {

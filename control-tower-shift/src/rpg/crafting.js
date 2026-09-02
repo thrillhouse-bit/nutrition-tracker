@@ -17,6 +17,7 @@ import {
   levelForXp,
   xpForLevel,
 } from './progression.js'
+import { ITEM_EFFECTS } from './itemEffects.js'
 
 // Re-export ITEM_DEFS so tests and integrators can import everything from
 // this module without reaching into progression.js directly.
@@ -248,7 +249,18 @@ export const ITEM_EXTENSIONS = Object.freeze({
   },
 })
 
-export const ALL_ITEM_DEFS = Object.freeze({ ...ITEM_DEFS, ...ITEM_EXTENSIONS })
+const ITEM_DEFS_WITH_EFFECTS = { ...ITEM_DEFS, ...ITEM_EXTENSIONS }
+
+// Consumable behavior is domain metadata, not a category guess in the UI.
+// Preserve every economy-facing field and add only the explicit effect contract.
+export const ALL_ITEM_DEFS = Object.freeze(Object.fromEntries(
+  Object.entries(ITEM_DEFS_WITH_EFFECTS).map(([itemId, definition]) => [
+    itemId,
+    ITEM_EFFECTS[itemId]
+      ? Object.freeze({ ...definition, consumableEffect: ITEM_EFFECTS[itemId] })
+      : definition,
+  ]),
+))
 
 // Unified item lookup: ITEM_DEFS takes priority, fall back to extensions.
 export function itemDef(itemId) {

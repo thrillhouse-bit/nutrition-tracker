@@ -7,8 +7,36 @@
 // `powersForGod(god)` at runtime — never duplicated here.
 
 import { GODS_TIER_1 } from '../game/characters.js'
+import { AUTHORING_SCHEMA_VERSION } from './authoringSchema.js'
 
 export const REGION_ID = 'asterion-reach'
+
+function act1Authoring({
+  category,
+  dramaticQuestion,
+  systemsUsed,
+  durableReward,
+  downstreamConsequence,
+  recoveryBehavior,
+  expectedMinutes,
+  originalityNotes,
+  levelMin = 1,
+  levelMax = 5,
+}) {
+  return {
+    schemaVersion: AUTHORING_SCHEMA_VERSION,
+    category,
+    dramaticQuestion,
+    systemsUsed,
+    durableReward,
+    downstreamConsequence,
+    recoveryBehavior,
+    expectedMinutes,
+    originalityNotes,
+    levelBand: { min: levelMin, max: levelMax },
+    regionBand: { regionIds: [REGION_ID], acts: { min: 1, max: 1 } },
+  }
+}
 
 // The first-playable patron roster: every Tier 1 god is a valid first patron.
 // The canonical roster object (characters.js) supplies name/domain; loadouts
@@ -54,6 +82,16 @@ export const MAPS = {
     hub: true,
     bounds: { w: 900, h: 470 },
     palette: PALETTE_BEACON,
+    authoring: act1Authoring({
+      category: 'region-map',
+      dramaticQuestion: 'Can a civic refuge remain useful while its founding oath and divine protection are being erased?',
+      systemsUsed: ['banking', 'combat', 'dialogue', 'gathering', 'movement', 'patron-choice', 'trading'],
+      durableReward: 'The hub retains the chosen patron, banked inventory, gathered-node state, and post-mission return state.',
+      downstreamConsequence: 'Its shrine, Thessa scenes, and Sun Court gate carry the player from onboarding through the Act II handoff.',
+      recoveryBehavior: 'The start and post-mission spawns provide stable returns; the shrine is a safe checkpoint and failed encounters return to exploration.',
+      expectedMinutes: 15,
+      originalityNotes: 'Uses public-domain Greek acropolis, oath-stone, and civic-shrine motifs; the broken epithet crisis and layered service hub are original Oathbearer expression.',
+    }),
     // `spawn` is the default fallback; `spawns` holds every named spawn.
     spawn: { id: 'start', x: 160, y: 400, facing: 0 },
     spawns: {
@@ -63,16 +101,100 @@ export const MAPS = {
     },
     entities: [
       // The broken treaty-stone: witnessing it is a tutorial/flag beat.
-      { id: 'treaty-stone', kind: 'interact', x: 430, y: 268, name: 'Broken Treaty-Stone', label: 'Examine the broken stone', firstOnly: true },
+      {
+        id: 'treaty-stone', kind: 'interact', x: 430, y: 268, name: 'Broken Treaty-Stone', label: 'Examine the broken stone', firstOnly: true,
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'What does a community lose when the public record of its promise is physically broken?',
+          systemsUsed: ['interaction', 'questing'],
+          durableReward: 'The first inspection is recorded once as witnessed world state.',
+          downstreamConsequence: 'It gives concrete context for Thessa’s explanation of the broken Accord without gating later travel.',
+          recoveryBehavior: 'The object remains visible after interruption; its first-only effect cannot be duplicated.',
+          expectedMinutes: 1,
+          originalityNotes: 'Draws on public-domain Greek boundary stones and inscribed civic decrees; the shattered treaty witness is original Oathbearer expression.',
+        }),
+      },
       // The first patron shrine (patron selection + checkpoint).
-      { id: 'shrine', kind: 'shrine', x: 320, y: 170, name: 'First Patron Shrine', label: 'Approach the shrine', patron: true },
+      {
+        id: 'shrine', kind: 'shrine', x: 320, y: 170, name: 'First Patron Shrine', label: 'Approach the shrine', patron: true,
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Which divine relationship will Kallias accept before crossing the Veil?',
+          systemsUsed: ['checkpoint', 'interaction', 'patron-choice'],
+          durableReward: 'The selected Tier I patron and its canonical power loadout persist in the save.',
+          downstreamConsequence: 'The choice determines the power available in both Act I encounters while preserving the classless progression path.',
+          recoveryBehavior: 'Selection occurs at a safe shrine boundary; reload restores the persisted patron without granting another choice effect.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Greek votive-shrine and divine-patron motifs; a mortal carrying one patron beyond the Veil is original Oathbearer expression.',
+        }),
+      },
       // Thessa, the pragmatic keeper of the Accord — Act I guide.
-      { id: 'thessa', kind: 'npc', x: 662, y: 280, name: 'Thessa', label: 'Talk to Thessa', conversationId: 'act1-thessa-overlook' },
-      { id: 'beacon-bank', kind: 'bank', x: 548, y: 424, name: 'Beacon Storehouse', label: 'Open the Beacon Storehouse' },
+      {
+        id: 'thessa', kind: 'npc', x: 662, y: 280, name: 'Thessa', label: 'Talk to Thessa', conversationId: 'act1-thessa-overlook',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Thessa trust an untested Oathbearer with the Reach’s remaining name?',
+          systemsUsed: ['dialogue', 'questing'],
+          durableReward: 'Her intro records thessa-met and her exit scene awards Far-Sighted and the Pelagos lead.',
+          downstreamConsequence: 'She frames the shrine and combat route, then turns the recovered fragment into the Act II objective.',
+          recoveryBehavior: 'Dialogue can resume or end through the same deterministic effect boundary; repeated completion cannot duplicate effects.',
+          expectedMinutes: 4,
+          originalityNotes: 'Uses the public-domain Greek keeper and civic-counselor tradition; Thessa, her pragmatic voice, and the epithet-restoration role are original.',
+        }),
+      },
+      {
+        id: 'beacon-bank', kind: 'bank', x: 548, y: 424, name: 'Beacon Storehouse', label: 'Open the Beacon Storehouse',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'What must Kallias carry now, and what should be secured for the road ahead?',
+          systemsUsed: ['banking', 'inventory'],
+          durableReward: 'Deposited items persist in the physical bank and can be withdrawn atomically.',
+          downstreamConsequence: 'It establishes the inventory-management loop used by gathering, crafting, death protection, and later travel.',
+          recoveryBehavior: 'Full-capacity and invalid-quantity operations are atomic; closing or reloading preserves both pack and bank state.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Greek storehouse practice; the Beacon’s player-facing exact-once bank role and presentation are original Oathbearer design.',
+        }),
+      },
       { id: 'myrrine-provisioner', kind: 'shop', shopId: 'beacon-provisioner', x: 650, y: 410, name: 'Myrrine', label: 'Trade with Myrrine' },
-      { id: 'wild-thyme', kind: 'resource', x: 238, y: 338, name: 'Wild Thyme', label: 'Gather wild thyme', skillId: 'foraging', itemId: 'thyme', level: 1, xp: 12 },
-      { id: 'olive-tree', kind: 'resource', x: 188, y: 258, name: 'Olive Tree', label: 'Cut the olive tree', skillId: 'woodcutting', itemId: 'olive-log', level: 1, xp: 14 },
-      { id: 'copper-seam', kind: 'resource', x: 780, y: 408, name: 'Copper Seam', label: 'Mine the copper seam', skillId: 'quarrying', itemId: 'copper-ore', level: 1, xp: 16 },
+      {
+        id: 'wild-thyme', kind: 'resource', x: 238, y: 338, name: 'Wild Thyme', label: 'Gather wild thyme', skillId: 'foraging', itemId: 'thyme', level: 1, xp: 12,
+        authoring: act1Authoring({
+          category: 'gathering-resource',
+          dramaticQuestion: 'Will the player notice that useful materials grow inside the story hub rather than behind a remote menu?',
+          systemsUsed: ['foraging', 'inventory', 'resource-respawn'],
+          durableReward: 'One thyme and 12 Foraging XP are awarded per available node charge.',
+          downstreamConsequence: 'Thyme supports the provisioner, herb-cake, dried-herb, and weaving recipe chains.',
+          recoveryBehavior: 'Inventory-full gathering is atomic; depletion survives reload and respawns from playtime ticks.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses thyme’s public-domain Mediterranean material culture; its placement and linked Oathbearer economy role are original.',
+        }),
+      },
+      {
+        id: 'olive-tree', kind: 'resource', x: 188, y: 258, name: 'Olive Tree', label: 'Cut the olive tree', skillId: 'woodcutting', itemId: 'olive-log', level: 1, xp: 14,
+        authoring: act1Authoring({
+          category: 'gathering-resource',
+          dramaticQuestion: 'Can a familiar sacred tree teach that regional materials have practical, repeatable uses?',
+          systemsUsed: ['inventory', 'resource-respawn', 'woodcutting'],
+          durableReward: 'One olive log and 14 Woodcutting XP are awarded per available node charge.',
+          downstreamConsequence: 'Olive logs feed carpentry and the regional merchant loop rather than existing as decorative loot.',
+          recoveryBehavior: 'Inventory-full gathering is atomic; depletion survives reload and respawns from playtime ticks.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses the public-domain sacred and domestic role of Greek olive trees; this node’s progression and economy placement are original.',
+        }),
+      },
+      {
+        id: 'copper-seam', kind: 'resource', x: 780, y: 408, name: 'Copper Seam', label: 'Mine the copper seam', skillId: 'quarrying', itemId: 'copper-ore', level: 1, xp: 16,
+        authoring: act1Authoring({
+          category: 'gathering-resource',
+          dramaticQuestion: 'Will the player connect raw ore at the edge of the refuge to later civic manufacture?',
+          systemsUsed: ['inventory', 'quarrying', 'resource-respawn'],
+          durableReward: 'One copper ore and 16 Quarrying XP are awarded per available node charge.',
+          downstreamConsequence: 'Copper ore begins the bronzework and hearthkeeping recipe chains used in later regions.',
+          recoveryBehavior: 'Inventory-full gathering is atomic; depletion survives reload and respawns from playtime ticks.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Bronze Age Aegean metallurgy; the overlook seam and its connected crafting graph are original Oathbearer design.',
+        }),
+      },
     ],
     exits: [
       { id: 'to-olive-road', x: 884, y: 404, toMapId: 'olive-road', spawnId: 'from-beacon', label: 'The Olive Road' },
@@ -94,12 +216,61 @@ export const MAPS = {
     hub: false,
     bounds: { w: 900, h: 470 },
     palette: PALETTE_OLIVE,
+    authoring: act1Authoring({
+      category: 'region-map',
+      dramaticQuestion: 'Will Kallias stay on the urgent road while still making room to preserve one nearly erased mortal witness?',
+      systemsUsed: ['combat', 'fishing', 'movement', 'side-quest'],
+      durableReward: 'The road preserves its resource depletion, optional tablet progress, and cleared entry-gate state.',
+      downstreamConsequence: 'It separates the optional witness recovery from the mandatory Acropolis entry encounter without making either remote.',
+      recoveryBehavior: 'Both authored exits return to known spawns; the optional detour never gates the main route and the encounter begins at a ready boundary.',
+      expectedMinutes: 10,
+      originalityNotes: 'Uses public-domain Greek olive-road, inscribed-tablet, and roadside-keeper motifs; the lost witness detour and spatial route are original.',
+    }),
     spawn: { id: 'from-beacon', x: 72, y: 240, facing: 0 },
+    spawns: {
+      'from-beacon': { id: 'from-beacon', x: 72, y: 240, facing: 0 },
+    },
     entities: [
       // Optional lost-witness detour — never blocks the main gate.
-      { id: 'tablet', kind: 'interact', x: 540, y: 372, name: 'Lost Witness Tablet', label: 'Read the tablet', sideQuest: 'sq-lost-witness', firstOnly: true },
-      { id: 'keeper', kind: 'npc', x: 760, y: 150, name: 'Amonides', label: 'Return the tablet to Amonides', conversationId: 'sq-lost-witness-return' },
-      { id: 'shore-fishing', kind: 'resource', x: 292, y: 404, name: 'Shore Fishing Spot', label: 'Fish the Aegean shallows', skillId: 'fishing', itemId: 'sardine', level: 1, xp: 13 },
+      {
+        id: 'tablet', kind: 'interact', x: 540, y: 372, name: 'Lost Witness Tablet', label: 'Read the tablet', sideQuest: 'sq-lost-witness', firstOnly: true,
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Is a damaged record of one ordinary witness worth preserving during a divine emergency?',
+          systemsUsed: ['interaction', 'side-quest'],
+          durableReward: 'The first reading activates and advances the Lost Witness quest exactly once.',
+          downstreamConsequence: 'It makes Amonides’s return conversation available while leaving the main combat route independent.',
+          recoveryBehavior: 'The first-only interaction cannot duplicate progress; abandoning the detour does not block Act I.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Greek inscribed witness tablets; the Unnamed’s attempted erasure and optional recovery beat are original.',
+        }),
+      },
+      {
+        id: 'keeper', kind: 'npc', x: 760, y: 150, name: 'Amonides', label: 'Return the tablet to Amonides', conversationId: 'sq-lost-witness-return',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Can a keeper honor a recovered witness without turning an optional task into another burden?',
+          systemsUsed: ['dialogue', 'side-quest'],
+          durableReward: 'Amonides resolves the tablet return into the quest completion flag and 25 drachmae.',
+          downstreamConsequence: 'His response closes the ledger story while explicitly returning Kallias to the main road.',
+          recoveryBehavior: 'Dialogue completion and quest rewards are exact-once; the NPC remains reachable if the conversation is interrupted.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses the public-domain role of Greek record keepers; Amonides, his restraint, and the witness-ledger exchange are original.',
+        }),
+      },
+      {
+        id: 'shore-fishing', kind: 'resource', x: 292, y: 404, name: 'Shore Fishing Spot', label: 'Fish the Aegean shallows', skillId: 'fishing', itemId: 'sardine', level: 1, xp: 13,
+        authoring: act1Authoring({
+          category: 'gathering-resource',
+          dramaticQuestion: 'Will the player recognize the coast as a working food source rather than decorative scenery?',
+          systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
+          durableReward: 'One sardine and 13 Fishing XP are awarded per available node charge.',
+          downstreamConsequence: 'The catch introduces Fishing as a repeatable regional skill and a future cooking input family.',
+          recoveryBehavior: 'Inventory-full gathering is atomic; depletion survives reload and respawns from playtime ticks.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Aegean shore-fishing practice; the node’s location, progression reward, and systems role are original.',
+        }),
+      },
     ],
     exits: [
       { id: 'to-beacon', x: 80, y: 96, toMapId: 'beacon-overlook', spawnId: 'start', label: 'Back to the Overlook' },
@@ -130,6 +301,16 @@ export const ENCOUNTERS = {
     completionFlag: 'enc-act1-entry-cleared',
     activation: 'quest',
     repeatable: false,
+    authoring: act1Authoring({
+      category: 'story-encounter',
+      dramaticQuestion: 'Can an untested patron bond carry Kallias through the guarded Acropolis threshold?',
+      systemsUsed: ['combat', 'patron-power', 'questing'],
+      durableReward: 'The enc-act1-entry-cleared flag advances the main quest and leaves the threshold encounter settled.',
+      downstreamConsequence: 'Victory returns Kallias to Beacon Overlook and makes the Sun Court objective current.',
+      recoveryBehavior: 'The explicit Begin gate freezes combat until ready; defeat returns to a recoverable exploration boundary without granting victory.',
+      expectedMinutes: 4,
+      originalityNotes: 'Uses public-domain Greek acropolis-guardian imagery; this patron trial, composition context, and oath-restoration purpose are original.',
+    }),
   },
   // The second Sun Court encounter, authored after the entry court. Reuses the
   // existing `sun-court` campaign level and its exact six-spawn composition;
@@ -148,6 +329,18 @@ export const ENCOUNTERS = {
     completionFlag: 'enc-act1-sun-cleared',
     activation: 'quest',
     repeatable: false,
+    authoring: act1Authoring({
+      category: 'boss-encounter',
+      dramaticQuestion: 'Can Kallias recover a divine epithet from a captain trained to erase names?',
+      systemsUsed: ['boss-combat', 'patron-power', 'questing'],
+      durableReward: 'The enc-act1-sun-cleared flag permits Thessa’s exit scene and the Far-Sighted epithet award.',
+      downstreamConsequence: 'Defeating the final captain reveals the seaward pull that sends the story toward Pelagos.',
+      recoveryBehavior: 'The explicit Begin gate, pause behavior, retry boundary, and exact-once settlement preserve a fair replay after defeat or reload.',
+      expectedMinutes: 6,
+      originalityNotes: 'Uses public-domain solar-court and Greek heroic-combat motifs; the Name-Cutter Captain and epithet-fragment climax are original Oathbearer expression.',
+      levelMin: 2,
+      levelMax: 6,
+    }),
     eliteOverlay: {
       id: 'name-cutter-captain',
       name: 'Name-Cutter Captain',
@@ -171,6 +364,16 @@ export const CONVERSATIONS = {
     id: 'act1-thessa-overlook',
     speakerIds: ['thessa', 'kallias'],
     start: 'n1',
+    authoring: act1Authoring({
+      category: 'conversation',
+      dramaticQuestion: 'Will Kallias accept responsibility for a place whose divine identity is already being erased?',
+      systemsUsed: ['dialogue', 'questing', 'world-markers'],
+      durableReward: 'The scene records thessa-met and points the player to the physical patron shrine.',
+      downstreamConsequence: 'It establishes the Unnamed, the Oathbearer role, and the ordered route through shrine, Olive Road, and Acropolis.',
+      recoveryBehavior: 'Skip and normal completion converge on the same exact-once effects; interruption leaves the NPC available to resume.',
+      expectedMinutes: 3,
+      originalityNotes: 'Uses public-domain Greek oath, epithet, and shrine concepts; Thessa’s warning, the Unnamed’s method, and all dialogue expression are original.',
+    }),
     nodes: {
       n1: {
         speakerId: 'thessa',
@@ -200,6 +403,16 @@ export const CONVERSATIONS = {
     id: 'act1-thessa-exit',
     speakerIds: ['thessa', 'kallias'],
     start: 'n1',
+    authoring: act1Authoring({
+      category: 'conversation',
+      dramaticQuestion: 'What should Kallias do with one recovered fragment when the larger name remains wounded?',
+      systemsUsed: ['dialogue', 'epithet-progression', 'questing'],
+      durableReward: 'The scene awards Far-Sighted and records revealed-ianthe exactly once.',
+      downstreamConsequence: 'The fragment’s seaward pull and Ianthe lead establish the playable transition into the Salt Covenant of Act II.',
+      recoveryBehavior: 'Skip and normal completion converge on the same effects; replay cannot duplicate the epithet or reveal flag.',
+      expectedMinutes: 2,
+      originalityNotes: 'Uses public-domain divine epithets and prophetic navigation motifs; the fragment-as-compass and Thessa exchange are original.',
+    }),
     nodes: {
       n1: {
         speakerId: 'thessa',
@@ -224,6 +437,16 @@ export const CONVERSATIONS = {
     id: 'sq-lost-witness-return',
     speakerIds: ['keeper', 'kallias'],
     start: 'n1',
+    authoring: act1Authoring({
+      category: 'conversation',
+      dramaticQuestion: 'How can Amonides honor a recovered witness without claiming the hero’s urgent attention?',
+      systemsUsed: ['dialogue', 'economy', 'side-quest'],
+      durableReward: 'The scene records the Lost Witness completion and grants the promised 25 drachmae through exact-once quest settlement.',
+      downstreamConsequence: 'It preserves one mortal record, closes the optional ledger thread, and redirects Kallias to the main road.',
+      recoveryBehavior: 'The return remains available after interruption; dialogue and quest reward settlement reject duplicate completion.',
+      expectedMinutes: 2,
+      originalityNotes: 'Uses public-domain Greek tablets and civic ledgers; Amonides’s voice, the half-erased witness, and the restrained reward scene are original.',
+    }),
     nodes: {
       n1: {
         speakerId: 'keeper',
@@ -257,14 +480,110 @@ export const QUEST_DEFS = {
     kind: 'main',
     act: 1,
     prerequisites: [],
+    authoring: act1Authoring({
+      category: 'main-quest',
+      dramaticQuestion: 'Can Kallias carry a freely chosen divine power through two occupied courts and keep Far-Sighted from erasure?',
+      systemsUsed: ['combat', 'dialogue', 'movement', 'patron-choice', 'questing'],
+      durableReward: 'Completion records the Act I flag; its exit scene awards Far-Sighted and reveals the Pelagos lead.',
+      downstreamConsequence: 'The restored fragment authorizes the main-story transition into Act II and remains visible in epithet progression.',
+      recoveryBehavior: 'Every objective is explicit and ordered; dialogue, patron choice, and combat settle exactly once, while defeat returns to safe exploration.',
+      expectedMinutes: 25,
+      originalityNotes: 'Uses public-domain Greek epithets, patron gods, and acropolis imagery; the Unnamed crisis, Oathbearer role, quest sequence, and prose are original.',
+    }),
     objectives: [
-      { id: 'reach-beacon-start', kind: 'reach', mapId: 'beacon-overlook', markerId: 'start' },
-      { id: 'talk-thessa', kind: 'talk', npcId: 'thessa', conversationId: 'act1-thessa-overlook' },
-      { id: 'choose-patron', kind: 'interact', entityId: 'beacon-overlook:shrine' },
-      { id: 'reach-olive-road', kind: 'reach', mapId: 'olive-road', markerId: 'from-beacon' },
-      { id: 'clear-entry', kind: 'clear-encounter', encounterId: 'enc-act1-entry' },
-      { id: 'clear-sun', kind: 'clear-encounter', encounterId: 'enc-act1-sun' },
-      { id: 'talk-thessa-exit', kind: 'talk', npcId: 'thessa', conversationId: 'act1-thessa-exit' },
+      {
+        id: 'reach-beacon-start', kind: 'reach', mapId: 'beacon-overlook', markerId: 'start',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Where has Kallias arrived, and what visibly demands his attention first?',
+          systemsUsed: ['movement', 'questing'],
+          durableReward: 'Reaching the authored start advances the main quest to Thessa.',
+          downstreamConsequence: 'The objective establishes physical movement before dialogue or menus can advance the story.',
+          recoveryBehavior: 'A fresh or recovered save uses the same stable start spawn and reach event.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses the public-domain overlook-as-arrival motif; its Beacon staging and movement-first onboarding are original.',
+        }),
+      },
+      {
+        id: 'talk-thessa', kind: 'talk', npcId: 'thessa', conversationId: 'act1-thessa-overlook',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Will Kallias hear the cost of the broken treaty before choosing divine power?',
+          systemsUsed: ['dialogue', 'questing'],
+          durableReward: 'The completed scene records thessa-met and advances the quest to patron choice.',
+          downstreamConsequence: 'Thessa’s shrine marker makes the next required world object explicit.',
+          recoveryBehavior: 'Only the matching Thessa conversation completes the objective; skip and normal completion share exact effects.',
+          expectedMinutes: 3,
+          originalityNotes: 'Uses public-domain Greek counselor and oath motifs; the ordered warning and Unnamed exposition are original.',
+        }),
+      },
+      {
+        id: 'choose-patron', kind: 'interact', entityId: 'beacon-overlook:shrine',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Which god’s power will Kallias freely carry into the occupied courts?',
+          systemsUsed: ['interaction', 'patron-choice', 'questing'],
+          durableReward: 'The chosen patron and canonical power loadout persist, and the objective advances once.',
+          downstreamConsequence: 'That loadout is used in both Act I encounters without locking later classless growth.',
+          recoveryBehavior: 'The shrine is safe; reload restores the choice and duplicate selection cannot re-award progression.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Olympian patronage; player-selected Veil-crossing power and its quest placement are original.',
+        }),
+      },
+      {
+        id: 'reach-olive-road', kind: 'reach', mapId: 'olive-road', markerId: 'from-beacon',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Will Kallias leave the refuge and commit to the road toward the occupied Acropolis?',
+          systemsUsed: ['movement', 'questing', 'world-travel'],
+          durableReward: 'Arrival at the named Olive Road spawn advances the quest to the Entry Court.',
+          downstreamConsequence: 'The road exposes gathering and the optional witness detour before the mandatory fight.',
+          recoveryBehavior: 'The authored exit and arrival spawn are reversible; returning to Beacon does not lose progress.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Greek olive-road imagery; its reversible transition and layered optional route are original.',
+        }),
+      },
+      {
+        id: 'clear-entry', kind: 'clear-encounter', encounterId: 'enc-act1-entry',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Can Kallias prove the new patron bond at the first guarded threshold?',
+          systemsUsed: ['combat', 'patron-power', 'questing'],
+          durableReward: 'The Entry Court completion flag advances the quest exactly once.',
+          downstreamConsequence: 'Victory returns to Beacon and makes the Sun Court encounter the next objective.',
+          recoveryBehavior: 'Combat waits behind Begin; defeat and reload return to a safe retry without a false clear.',
+          expectedMinutes: 4,
+          originalityNotes: 'Uses public-domain threshold-guardian motifs; this first patron trial and quest function are original.',
+        }),
+      },
+      {
+        id: 'clear-sun', kind: 'clear-encounter', encounterId: 'enc-act1-sun',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Can Kallias defeat the Name-Cutter Captain before Far-Sighted disappears?',
+          systemsUsed: ['boss-combat', 'patron-power', 'questing'],
+          durableReward: 'The Sun Court completion flag unlocks Thessa’s epithet-restoration scene.',
+          downstreamConsequence: 'The captain’s fragment becomes the evidence that directs Kallias seaward.',
+          recoveryBehavior: 'The ready gate, pause, defeat return, and duplicate-clear guard preserve an exact replay boundary.',
+          expectedMinutes: 6,
+          originalityNotes: 'Uses public-domain solar and heroic-combat motifs; the name-erasing captain and recovered fragment are original.',
+          levelMin: 2,
+          levelMax: 6,
+        }),
+      },
+      {
+        id: 'talk-thessa-exit', kind: 'talk', npcId: 'thessa', conversationId: 'act1-thessa-exit',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'What obligation follows from recovering only one piece of a wounded divine name?',
+          systemsUsed: ['dialogue', 'epithet-progression', 'questing'],
+          durableReward: 'Far-Sighted, revealed-ianthe, and the Act I completion flag persist.',
+          downstreamConsequence: 'The current main quest bridges to Pelagos and the Salt Covenant.',
+          recoveryBehavior: 'Only the matching exit conversation settles the objective; effects and quest completion are exact-once.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain epithet and omen motifs; the seaward fragment and Act II handoff are original.',
+        }),
+      },
     ],
     rewards: [{ kind: 'flag', id: 'mq-act1-ash-at-dawn-complete', value: true }],
   },
@@ -273,9 +592,43 @@ export const QUEST_DEFS = {
     kind: 'side',
     act: 1,
     prerequisites: [],
+    authoring: act1Authoring({
+      category: 'regional-side-quest',
+      dramaticQuestion: 'Is one half-erased mortal witness worth saving when the divine crisis is more urgent?',
+      systemsUsed: ['dialogue', 'economy', 'exploration', 'side-quest'],
+      durableReward: 'The recovered record yields 25 drachmae and the sq-lost-witness-complete flag.',
+      downstreamConsequence: 'Amonides’s ledger retains one witness while the quest remains deliberately non-blocking to the main road.',
+      recoveryBehavior: 'Both steps are first/exact-once, the keeper remains reachable, and ignoring the quest never blocks Act I.',
+      expectedMinutes: 5,
+      originalityNotes: 'Uses public-domain Greek witness tablets and civic ledgers; the erasure premise, Amonides, and compact detour are original.',
+    }),
     objectives: [
-      { id: 'read-tablet', kind: 'interact', entityId: 'olive-road:tablet' },
-      { id: 'return-tablet', kind: 'talk', npcId: 'keeper', conversationId: 'sq-lost-witness-return' },
+      {
+        id: 'read-tablet', kind: 'interact', entityId: 'olive-road:tablet',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Will Kallias stop to read a damaged mortal record beside the urgent road?',
+          systemsUsed: ['exploration', 'interaction', 'side-quest'],
+          durableReward: 'The tablet interaction records the first objective exactly once.',
+          downstreamConsequence: 'It makes the keeper return meaningful without altering the main quest gate.',
+          recoveryBehavior: 'The tablet is first-only; leaving the map preserves progress and never blocks travel.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain roadside inscriptions; the optional half-erased witness discovery is original.',
+        }),
+      },
+      {
+        id: 'return-tablet', kind: 'talk', npcId: 'keeper', conversationId: 'sq-lost-witness-return',
+        authoring: act1Authoring({
+          category: 'quest-objective',
+          dramaticQuestion: 'Can the recovered witness be returned without making preservation another compulsory burden?',
+          systemsUsed: ['dialogue', 'economy', 'side-quest'],
+          durableReward: 'The completion flag and 25-drachma reward settle once.',
+          downstreamConsequence: 'The ledger thread closes and explicitly releases the player back to the main road.',
+          recoveryBehavior: 'The keeper remains reachable after interruption; mismatched or repeated dialogue completion is inert.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain keeper and ledger motifs; the low-pressure return and reward exchange are original.',
+        }),
+      },
     ],
     rewards: [
       { kind: 'currency', amount: 25 },

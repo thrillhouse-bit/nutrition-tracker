@@ -114,7 +114,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 |---|---:|---:|
 | Skills | 22 definitions; several lack repeatable actions | 22 complete loops |
 | Items | 56 | 200 useful |
-| Recipes | 24; 9 currently unreachable | 100 reachable |
+| Recipes | 24; all ingredients now have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
 | Quests | 10 | 70 total |
@@ -125,8 +125,10 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Resource nodes | 10 across all five acts | 150 across all regions |
 | Banks | 1 | 8 |
 | Merchants | 5 regional specializations | 15 regional merchants |
-| Static content integrity | 0 errors / 0 warnings | 0 errors / 0 warnings |
-| Account RPG save | browser-global local storage | server-backed account save |
+| Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
+| Production authoring readiness | 28 / 282 release-ready; 254 legacy warnings | all released records ready |
+| Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
+| Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |
 | Estimated campaign | 1.5–5 hours | measured 35–45 hour median |
 
