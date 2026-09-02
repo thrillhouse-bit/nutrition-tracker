@@ -108,13 +108,13 @@ game and must not be described, tagged, deployed, or marketed as one.
 - Performance budgets cover input latency, frame cadence, memory, canvas backing
   pixels, asset loading, and background/hidden rendering.
 
-## Current audited baseline — 2026-09-01
+## Current audited baseline — 2026-09-02
 
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
 | Skills | 22 definitions; several lack repeatable actions | 22 complete loops |
-| Items | 75 | 200 useful |
-| Recipes | 43; all ingredients have legitimate sources | 100 reachable |
+| Items | 77 | 200 useful |
+| Recipes | 45; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
 | Quests | 10 | 70 total |
@@ -122,7 +122,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Conversations | 15 / 927 words | 50,000 words; zero fallbacks |
 | Story encounters | 20 | 80 configurations |
 | Named bosses | 5 | 12 |
-| Resource nodes | 18 across all five acts; quarrying, foraging, and woodcutting now span full 5-tier curves with a rare/mastery node each, plus two tool tiers per tool-bearing skill | 150 across all regions |
+| Resource nodes | 18 across all five acts; quarrying, foraging, and woodcutting now span full 5-tier curves with a rare/mastery node each, plus two tool tiers per tool-bearing skill (quarrying pick, foraging sickle, woodcutting axe); fishing and stewardship still lack a tiered-tool loop | 150 across all regions |
 | Banks | 1 | 8 |
 | Merchants | 5 regional specializations | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
