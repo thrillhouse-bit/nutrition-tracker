@@ -1650,3 +1650,15 @@ existing Info item.
 
 No fixes made directly by this pass — nothing found affecting the
 core app.
+
+## 2026-09-02 — Check-in pass (recurring, consolidated 04:36/08:36 UTC)
+
+Two scheduled firings queued while this session was idle; consolidated
+into one pass covering current state (same rationale as the earlier
+multi-firing consolidation this week). Nothing new in the repo —
+`origin/main` unchanged since the last check-in (still `4e709dc`).
+Live site is one commit behind (`f9f8374` vs. current HEAD), but that
+gap is only this report's own prior docs-only merge — zero app-code
+difference, not tracked per this report's standing convention.
+`/api/legal/status` still unchanged (`signupEnabled: false`). No fixes
+needed this pass.
