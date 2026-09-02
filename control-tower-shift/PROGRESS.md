@@ -1142,3 +1142,109 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      available.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T16:5x (turnover hour ~1)
+
+- **Branch/HEAD at start**: `codex/oathbearer-complete-game` @ `b8a5490`
+  (Beastbond checkpoint).
+- **What changed**: Stewardship's third tier — a "frost-locked terrace"
+  at Wheat Village (Act III), directly continuing this checkpoint's own
+  previously-recorded plan (widen the shallowest existing loop toward
+  the contract's "at least five useful level bands" floor, rather than
+  opening a fourth brand-new skill from scratch). Stewardship now has 3
+  tiers (Act I/II/III), the same shape Fishing/Quarrying/Foraging/
+  Woodcutting already follow, though still short of a full 5-tier curve.
+  - First ran a small standalone skill-depth audit (a throwaway
+    `_skill_audit.mjs` script, counting recipes/resources/other actions
+    per skill by walking `RECIPES` and every map's entities — never
+    committed) to confirm Stewardship (2 tiers) was genuinely the
+    shallowest *content-backed* loop worth widening next, ahead of
+    Cooking/Alchemy (3 recipes each). Combat/Divine/Wayfinding skills
+    showing 0 in that audit are not additional dead skills — the
+    contract explicitly derives their progression from actions taken
+    (combat, quest resolution, travel) rather than recipes/resources, a
+    different system this audit doesn't cover.
+  - New resource entity `wheat-village-frost-terrace` on the existing
+    Wheat Village map (Act III) — restore level 25 (2 spiced must) →
+    tend level 30 (threshed grain, 50 XP). Deliberately ties into this
+    exact map's own already-authored "stilled year" story (the harvest
+    frozen mid-cycle) and its existing "First Thaw" marker, rather than
+    being a generic drop-in: thawing a frost-locked terrace is the
+    stewardship-mechanic expression of the same story beat. Uses its
+    own new restore-cost item (`spiced-must`) rather than reusing
+    compost or water casks, matching how each earlier tier introduced
+    its own thematically distinct cost.
+  - Deliberately avoided `charred-ember` (Act IV foraging-only,
+    obtainable no earlier than level 20 foraging in Act IV) as a
+    restore cost for this Act III node — reusing it here would have
+    reintroduced exactly the class of reachability-order bug this
+    session already found and fixed three times (bronze-forge/
+    alchemy-lab/kiln). New items were added instead specifically to
+    avoid that trap.
+  - New items `spiced-must` (material, restore cost) and
+    `threshed-grain` (grain, tend output) registered in
+    `progression.js` and sold both ways (buy/sell) at Eirene's
+    Household Exchange (`wheat-village-exchange`, already Wheat
+    Village's own established merchant) — no new shop needed.
+  - Placement verified reachable from every spawn (direct path, 0
+    distance) and ≥60px distinct from all 14 pre-existing Wheat Village
+    targets with the same throwaway-probe-script method as every prior
+    checkpoint (never committed). Confirmed via direct inspection of
+    `pathfinding.js` that Wheat Village's `traversalLanes` all list
+    every season in `SEASONS`, so — per `isInsideActiveLane`'s own
+    logic — the map behaves as free, unrestricted space exactly like
+    Act I maps; no lane-hugging was needed for placement, only avoiding
+    the two collision boxes and every existing entity/exit.
+  - No new authoring metadata — Acts III–V still carry zero authoring
+    anywhere in this codebase (confirmed before touching, matching
+    every prior Act III/IV/V addition this session).
+  - New test file `test/rpg-stewardship-act3-frost-terrace.test.js` (15
+    tests), mirroring `rpg-stewardship-act2-expansion.test.js`'s
+    structure closely (no route-state loop needed, since the map itself
+    isn't state-gated): item/obtainability, placement/reachability/
+    distinctness, `RESTORE_LAND` reducer behavior (level gate, atomic
+    cost, exact-once), `GATHER` before/after restoration plus the
+    existing iron-hoe tool-bonus mechanism, and a full real-reducer
+    playthrough (buy spiced must at Eirene's, restore, tend, sell the
+    grain back, bank deposit/withdraw) proving the closure end to end.
+  - Content-integrity fallout, all mechanically reconciled: whole-
+    registry resources 23→24, whole-registry total 307→308, legacy
+    216→217 (a new Act III record with no authoring is legacy by
+    design), release-ready unchanged at 91 (no new *authored* record).
+    `FULL-GAME-CONTRACT.md`'s Items and Resource-nodes rows updated;
+    Production-authoring-readiness row's legacy/total counts updated.
+    Also extended `rpg-regional-economy.test.js`'s existing
+    `NON_CRAFTED_STEWARDSHIP_LISTINGS` allowlist with both new items,
+    the same class of fixture-widening this file has needed at every
+    prior Stewardship-tier checkpoint.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1069/1069 passed** (81
+    files, up from 1054/80).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 90/200, `resourceNodes` 24/150;
+    `completeSkillLoops` still truthfully 0/22 for the same reason as
+    every prior checkpoint this session — this figure requires genuine
+    human/browser acceptance evidence, which a passing test suite
+    cannot substitute for.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same `visibilityState:
+    "hidden"` environment blocker as every checkpoint since
+    Stewardship's first tier; already filed via `SendFeedback`, not
+    re-attempted or silently dropped.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Beastbond checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Stewardship is now at 3/5 tiers. A fourth tier (Act IV, likely
+     tied to the Slag Road/Forge March or Atlas Vault region) would
+     continue the same widening pattern, or attention could shift to
+     another shallow loop (Cooking/Alchemy each have only 3 recipes
+     across a wide level spread) — whichever has the stronger available
+     narrative hook, evaluated the same way this checkpoint evaluated
+     Wheat Village's "First Thaw" story tie-in before committing to a
+     location.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.

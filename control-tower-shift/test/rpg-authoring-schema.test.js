@@ -131,7 +131,7 @@ describe('whole-registry authored-depth report', () => {
 
     expect(report.authoredDepth.counts).toEqual({
       total: expectedTotal,
-      legacy: 216,
+      legacy: 217,
       incomplete: 0,
       releaseReady: 91,
     })
@@ -145,7 +145,7 @@ describe('whole-registry authored-depth report', () => {
     expect(report.authoredDepth.byKind.entity.total).toBe(entityCount)
 
     const warnings = report.issues.filter((entry) => entry.code === 'LEGACY_AUTHORING_RECORD')
-    expect(warnings).toHaveLength(216)
+    expect(warnings).toHaveLength(217)
     expect(warnings.every((entry) => entry.severity === 'warning')).toBe(true)
     expect(report.issues.filter((entry) => entry.code === 'INCOMPLETE_AUTHORING_RECORD')).toEqual([])
     expect(report.summary.errors).toBe(0)

@@ -111,6 +111,8 @@ export const ITEM_DEFS = Object.freeze({
   'sea-fig': { id: 'sea-fig', name: 'Sea Fig', category: 'grain', stackable: false, tier: 15 },
   'votive-oil': { id: 'votive-oil', name: 'Votive Oil', category: 'material', stackable: false, tier: 1 },
   lockpick: { id: 'lockpick', name: 'Lockpick', category: 'material', stackable: false, tier: 1 },
+  'spiced-must': { id: 'spiced-must', name: 'Spiced Must', category: 'material', stackable: false, tier: 25 },
+  'threshed-grain': { id: 'threshed-grain', name: 'Threshed Grain', category: 'grain', stackable: false, tier: 30 },
   drachma: { id: 'drachma', name: 'Drachma', category: 'currency', stackable: true, tier: 1 },
 })
 

@@ -113,7 +113,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
 | Skills | 22 definitions; Devotion (repeatable votive-stand offerings), Guile (an exact-once locked-chest pick), and now Beastbond (an exact-once wild-creature calming, the Sacred Hind at Beacon Overlook) all have real first loops, closing all three skills that previously had zero obtainable XP source anywhere in the game; several other skills still lack repeatable actions | 22 complete loops |
-| Items | 88; closes honeyed-figs, a pre-defined food consumable that had no obtainable source anywhere until Myrrine's stall began selling it for the Beastbond loop | 200 useful |
+| Items | 90; closes honeyed-figs, a pre-defined food consumable that had no obtainable source anywhere until Myrrine's stall began selling it for the Beastbond loop | 200 useful |
 | Recipes | 50; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
@@ -122,11 +122,11 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Conversations | 15 / 927 words | 50,000 words; zero fallbacks |
 | Story encounters | 20 | 80 configurations |
 | Named bosses | 5 | 12 |
-| Resource nodes | 23 across all five acts; quarrying, foraging, and woodcutting span full 5-tier curves with a rare/mastery node each; fishing spans four level tiers (sardine/tuna plus red-mullet, sturgeon, hippocamp-roe) with its own two-tier rod line (bronze/iron); stewardship now spans two tiers — Beacon Overlook's fallow field (Act I) and Pelagos Harbor's salt-damaged garden (Act II, leached with purchased water casks instead of compost) — sharing the bronze/iron hoe tool line, still short of a full 5-tier curve | 150 across all regions |
+| Resource nodes | 24 across all five acts; quarrying, foraging, and woodcutting span full 5-tier curves with a rare/mastery node each; fishing spans four level tiers (sardine/tuna plus red-mullet, sturgeon, hippocamp-roe) with its own two-tier rod line (bronze/iron); stewardship now spans three tiers — Beacon Overlook's fallow field (Act I, compost), Pelagos Harbor's salt-damaged garden (Act II, purchased water casks), and Wheat Village's frost-locked terrace (Act III, purchased spiced must, tying into the map's own "stilled year"/"First Thaw" story) — sharing the bronze/iron hoe tool line, still short of a full 5-tier curve | 150 across all regions |
 | Banks | 5 — one per act (Beacon Overlook, Pelagos Harbor, Wheat Village, Slag Road, Nyx Foothold); all share one account-wide bank, gated by physical presence | 8 |
 | Merchants | 7 — the 5 regional hub specializations plus two gap-closing traders: Philyra (Olive Road, tin ore) and Straton (Storm Anchorage, iron ore *and* cypress-log), which close a real progression gap where bronze-bar and every iron-tier recipe had no obtainable ingredient — cypress-log included — before Act II/III/IV | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 91 / 307 release-ready; 216 legacy warnings | all released records ready |
+| Production authoring readiness | 91 / 308 release-ready; 217 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |

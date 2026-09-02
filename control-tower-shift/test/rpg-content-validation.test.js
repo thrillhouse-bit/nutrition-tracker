@@ -23,7 +23,7 @@ describe('complete Oathbearer content integrity report', () => {
       conversations: Object.keys(REGISTERED_CONVERSATIONS).length,
       encounters: Object.keys(REGISTERED_ENCOUNTERS).length,
       recipes: RECIPES.length,
-      resources: 23,
+      resources: 24,
       shops: 7,
       shopPlacements: 7,
       stations: 10,
@@ -52,6 +52,7 @@ describe('complete Oathbearer content integrity report', () => {
       'storm-anchorage:anchorage-sturgeon-run',
       'storm-anchorage:anchorage-tuna-run',
       'threshing-circle:threshing-circle-ambrosia',
+      'wheat-village:wheat-village-frost-terrace',
       'wheat-village:wheat-village-sage',
       'winter-orchard:orchard-cypress',
     ])

@@ -100,6 +100,16 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
       { id: 'eirene-household-steward', kind: 'shop', shopId: 'wheat-village-exchange', x: 670, y: 410, name: 'Eirene', label: 'Trade household goods with Eirene' },
       { id: 'wheat-village-sage', kind: 'resource', x: 520, y: 120, name: 'Wheat Village Sage Row', label: 'Gather mountain sage', skillId: 'foraging', itemId: 'sage', level: 10, xp: 22 },
       { id: 'wheat-village-granary-bank', kind: 'bank', x: 250, y: 410, name: 'Wheat Village Granary Store', label: 'Open the granary store' },
+      {
+        id: 'wheat-village-frost-terrace', kind: 'resource', x: 600, y: 460, name: 'Frost-Locked Terrace', label: 'Tend the frost-locked terrace',
+        skillId: 'stewardship', itemId: 'threshed-grain', level: 30, xp: 50,
+        requiresFlag: 'steward:restored:wheat-village:wheat-village-frost-terrace',
+        restore: {
+          level: 25, xp: 45,
+          cost: [{ itemId: 'spiced-must', quantity: 2 }],
+          label: 'Thaw the frost-locked terrace with warmed must',
+        },
+      },
     ],
     exits: [
       exit('village-to-orchard', 922, 286, 'winter-orchard', 'from-village', 'from-orchard'),
