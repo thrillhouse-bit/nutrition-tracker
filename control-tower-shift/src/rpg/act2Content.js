@@ -17,6 +17,8 @@
 // Story logic reasons only about the stable kebab-case IDs below; display
 // text is never used to infer progression.
 
+import { AUTHORING_SCHEMA_VERSION } from './authoringSchema.js'
+
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value)
@@ -29,6 +31,33 @@ function deepFreeze(value) {
 export const ACT2_REGION_ID = 'pelagos-isles'
 export const ACT2_MAIN_QUEST_ID = 'mq-act2-salt-covenant'
 export const ACT2_SIDE_QUEST_ID = 'sq-act2-unmoored-heart'
+
+export function act2Authoring({
+  category,
+  dramaticQuestion,
+  systemsUsed,
+  durableReward,
+  downstreamConsequence,
+  recoveryBehavior,
+  expectedMinutes,
+  originalityNotes,
+  levelMin = 5,
+  levelMax = 35,
+}) {
+  return {
+    schemaVersion: AUTHORING_SCHEMA_VERSION,
+    category,
+    dramaticQuestion,
+    systemsUsed,
+    durableReward,
+    downstreamConsequence,
+    recoveryBehavior,
+    expectedMinutes,
+    originalityNotes,
+    levelBand: { min: levelMin, max: levelMax },
+    regionBand: { regionIds: [ACT2_REGION_ID], acts: { min: 2, max: 2 } },
+  }
+}
 
 // Entry requires Act I completion AND the restored Far-Sighted epithet.
 export const ACT2_PRECONDITIONS = deepFreeze([
@@ -141,14 +170,86 @@ export const ACT2_CONNECTIONS = deepFreeze([
 // ─── Main quest: exact eight-step chain ────────────────────────
 // IDs and order are authoritative per blueprint §Act II "Main objectives".
 export const ACT2_MAIN_OBJECTIVES = deepFreeze([
-  { id: 'reach-pelagos-keeper', kind: 'talk', npcId: 'melite', conversationId: 'act2-melite-oath-post', text: 'Meet harbor Keeper Melite and inspect the oath-post' },
-  { id: 'witness-first-surge', kind: 'reach', mapId: 'breakwater-road', markerId: 'surge-witness', text: 'Cross the breakwater and learn the tide-state telegraph' },
-  { id: 'free-nereid-witnesses', kind: 'free-witnesses', encounterId: 'enc-act2-nereid-caves', entityIds: ['nereid-witness-1', 'nereid-witness-2', 'nereid-witness-3'], count: 3, orderFree: true, text: 'Clear the caves and release the three named witnesses in any order' },
-  { id: 'separate-boundary-names', kind: 'interact', entityIds: ['pressure-shell-1', 'pressure-shell-2', 'pressure-shell-3'], count: 3, orderFree: true, text: 'Rotate the three pressure shells to separate harbor-oath from world-boundary' },
-  { id: 'secure-storm-anchorage', kind: 'clear-encounter', encounterId: 'enc-act2-anchorage', text: 'Clear the anchorage ambush and activate the archive skiff' },
-  { id: 'board-archive-barge', kind: 'interact', entityIds: ['cipher-folio-1', 'cipher-folio-2'], count: 2, orderFree: true, text: 'Recover the two cipher folios from fixed deck locations' },
-  { id: 'defeat-archive-leviathan', kind: 'clear-encounter', encounterId: 'boss-act2-archive-leviathan', text: 'Defeat the Archive Leviathan' },
-  { id: 'ratify-salt-covenant', kind: 'choose', choiceIds: ['harbor-first', 'boundary-first', 'shared-crossing'], text: 'Ratify the Salt Covenant with Poseidon, Oceanus, the sailors, and the nereids' },
+  {
+    id: 'reach-pelagos-keeper', kind: 'talk', npcId: 'melite', conversationId: 'act2-melite-oath-post', text: 'Meet harbor Keeper Melite and inspect the oath-post',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Can Kallias understand Pelagos’ crisis without collapsing welcome, arrival, and permission into one rule?',
+      systemsUsed: ['dialogue', 'questing'], durableReward: 'Meeting Melite records the harbor briefing and makes the breakwater route the active public objective.',
+      downstreamConsequence: 'Her tide instructions establish the non-color telegraph and point Kallias toward the first surge witness.',
+      recoveryBehavior: 'The conversation resumes through its deterministic node graph, and its flag and marker effects apply only once.', expectedMinutes: 2,
+      originalityNotes: 'Uses public-domain Greek harbor-keeper and oath-post motifs; Melite and the distinction between welcome and permission are original Oathbearer expression.',
+    }),
+  },
+  {
+    id: 'witness-first-surge', kind: 'reach', mapId: 'breakwater-road', markerId: 'surge-witness', text: 'Cross the breakwater and learn the tide-state telegraph',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Will Kallias learn to read the covenant tide before treating the sea as a passive road?',
+      systemsUsed: ['movement', 'tide-traversal'], durableReward: 'Witnessing the surge records the traversal lesson and advances the quest to the captive nereids.',
+      downstreamConsequence: 'The learned Ebb, Crossing, and Surge language governs route access throughout the rest of Pelagos.',
+      recoveryBehavior: 'Tide state persists across transitions and reloads; the reachable witness marker remains available until completion.', expectedMinutes: 3,
+      originalityNotes: 'Uses public-domain Greek sea-crossing and tidal imagery; the explicit shape-coded covenant-tide traversal is original Oathbearer design.',
+    }),
+  },
+  {
+    id: 'free-nereid-witnesses', kind: 'free-witnesses', encounterId: 'enc-act2-nereid-caves', entityIds: ['nereid-witness-1', 'nereid-witness-2', 'nereid-witness-3'], count: 3, orderFree: true, text: 'Clear the caves and release the three named witnesses in any order',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Can three individual nereid witnesses be restored without reducing them to a single chorus?',
+      systemsUsed: ['combat', 'interaction', 'questing'], durableReward: 'The cave victory and three distinct witness releases persist as exact-once objective progress.',
+      downstreamConsequence: 'All three releases are required before Kallias can separate the fused harbor and boundary names.',
+      recoveryBehavior: 'Combat uses a ready gate and recoverable return spawn; witness interactions are order-free and cannot double-count.', expectedMinutes: 6,
+      originalityNotes: 'Uses public-domain nereid and sea-cave mythology; the named witness ledger and order-free rescue structure are original.',
+    }),
+  },
+  {
+    id: 'separate-boundary-names', kind: 'interact', entityIds: ['pressure-shell-1', 'pressure-shell-2', 'pressure-shell-3'], count: 3, orderFree: true, text: 'Rotate the three pressure shells to separate harbor-oath from world-boundary',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Can the harbor’s promise and the sea’s boundary remain related without being made identical?',
+      systemsUsed: ['environment-puzzle', 'interaction'], durableReward: 'Three shell rotations record a permanent separation of harbor-oath from world-boundary.',
+      downstreamConsequence: 'The corrected names permit the anchorage route and frame the later covenant formulation choice.',
+      recoveryBehavior: 'Each shell records once in any order; partial progress survives reload and remains reachable in valid tide states.', expectedMinutes: 4,
+      originalityNotes: 'Uses public-domain conch, boundary, and Oceanus motifs; the pressure-shell naming puzzle is original Oathbearer expression.',
+    }),
+  },
+  {
+    id: 'secure-storm-anchorage', kind: 'clear-encounter', encounterId: 'enc-act2-anchorage', text: 'Clear the anchorage ambush and activate the archive skiff',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Can Kallias reopen a shared route without converting the anchorage into conquered ground?',
+      systemsUsed: ['combat', 'travel-unlock'], durableReward: 'Victory permanently records the cleared anchorage and unlocks the archive skiff gate.',
+      downstreamConsequence: 'The route exposes the stolen covenant folios on the archive barge while preserving the cave return.',
+      recoveryBehavior: 'Defeat returns to the anchorage approach; victory settlement and skiff unlock are exact-once.', expectedMinutes: 5,
+      originalityNotes: 'Uses public-domain Greek storm-harbor imagery; the consent-bound archive route and ambush context are original.',
+    }),
+  },
+  {
+    id: 'board-archive-barge', kind: 'interact', entityIds: ['cipher-folio-1', 'cipher-folio-2'], count: 2, orderFree: true, text: 'Recover the two cipher folios from fixed deck locations',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Will Kallias recover both halves of the covenant record before judging what the agreement meant?',
+      systemsUsed: ['exploration', 'interaction'], durableReward: 'Arrival and Return folios persist separately and satisfy the archive evidence requirement only together.',
+      downstreamConsequence: 'The paired record explains the Leviathan’s custody and supplies the terms needed for ratification.',
+      recoveryBehavior: 'Either folio may be recovered first; partial progress and the safe post-boss return state survive reload.', expectedMinutes: 3,
+      originalityNotes: 'Uses public-domain maritime archives and inscribed treaty traditions; the paired cipher folios are original Oathbearer artifacts.',
+    }),
+  },
+  {
+    id: 'defeat-archive-leviathan', kind: 'clear-encounter', encounterId: 'boss-act2-archive-leviathan', text: 'Defeat the Archive Leviathan',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Can the stolen clauses be reclaimed from a guardian that preserves records by imprisoning them?',
+      systemsUsed: ['boss-combat', 'questing'], durableReward: 'Defeating the Leviathan records the boss completion flag while preserving both recovered folios.',
+      downstreamConsequence: 'Victory returns the covenant evidence to the harbor and enables the final three-form ratification.',
+      recoveryBehavior: 'The pre-boss checkpoint restores folios after defeat; a ready gate and exact-once settlement prevent lost or duplicated progress.', expectedMinutes: 7,
+      originalityNotes: 'Uses public-domain sea-monster and Hydra imagery; the archive-preserving Leviathan and mast-slam encounter are original.',
+    }),
+  },
+  {
+    id: 'ratify-salt-covenant', kind: 'choose', choiceIds: ['harbor-first', 'boundary-first', 'shared-crossing'], text: 'Ratify the Salt Covenant with Poseidon, Oceanus, the sailors, and the nereids',
+    authoring: act2Authoring({
+      category: 'quest-objective', dramaticQuestion: 'Which durable balance of harbor access, ocean boundary, and shared crossing can all witnesses live with?',
+      systemsUsed: ['choice', 'questing'], durableReward: 'Exactly one restoration formulation and the completed Salt Covenant persist in the save.',
+      downstreamConsequence: 'The chosen formulation changes Pelagos language and terrain interpretation while unlocking the Fields of Kore.',
+      recoveryBehavior: 'Only a valid formulation resolves the objective; repeated or malformed choices cannot overwrite the ratified form.', expectedMinutes: 3,
+      originalityNotes: 'Uses public-domain Poseidon and Oceanus domains; the revocable three-form covenant deliberation is original Oathbearer expression.',
+    }),
+  },
 ])
 
 export const ACT2_MAIN_QUEST = deepFreeze({
@@ -159,6 +260,13 @@ export const ACT2_MAIN_QUEST = deepFreeze({
   prerequisites: ACT2_PRECONDITIONS,
   objectives: ACT2_MAIN_OBJECTIVES,
   rewards: [{ kind: 'flag', id: 'mq-act2-salt-covenant-completed', value: true }],
+  authoring: act2Authoring({
+    category: 'main-quest', dramaticQuestion: 'Can Pelagos restore a covenant that protects both mortal harbor passage and the sea’s right to set boundaries?',
+    systemsUsed: ['boss-combat', 'dialogue', 'environment-puzzle', 'tide-traversal'], durableReward: 'The ratified Salt Covenant, selected restoration form, and Act III region unlock persist permanently.',
+    downstreamConsequence: 'The covenant restores Act II’s epithet logic and provides the reciprocity evidence carried into the final Accord.',
+    recoveryBehavior: 'Every combat has a safe return, tide and partial objective state persist, and exact-once choices prevent covenant replay.', expectedMinutes: 42,
+    originalityNotes: 'Uses public-domain Poseidon, Oceanus, nereid, and Greek covenant motifs; the arrival-versus-permission conflict and restoration ledger are original.',
+  }),
 })
 
 // ─── Optional loop: The Unmoored Heart ─────────────────────────
@@ -172,9 +280,36 @@ export const ACT2_SIDE_QUEST = deepFreeze({
   regionId: ACT2_REGION_ID,
   prerequisites: [],
   objectives: [
-    { id: 'follow-echo-markers', kind: 'reach', mapId: 'nereid-caves', markerId: 'echo-cavern', text: 'Follow the fixed echo markers into the side cavern' },
-    { id: 'confront-charmed-medusa', kind: 'clear-encounter', encounterId: 'enc-act2-unmoored-charmed', text: 'Face the charmed medusa elite' },
-    { id: 'witness-desire-debate', kind: 'choose', choiceIds: ['affinity-aphrodite', 'affinity-eros'], text: 'Let Aphrodite and Eros disagree over whether desire proves identity' },
+    {
+      id: 'follow-echo-markers', kind: 'reach', mapId: 'nereid-caves', markerId: 'echo-cavern', text: 'Follow the fixed echo markers into the side cavern',
+      authoring: act2Authoring({
+        category: 'quest-objective', dramaticQuestion: 'Will Kallias follow an uncertain remembered song when the main covenant does not require it?',
+        systemsUsed: ['exploration', 'tide-traversal'], durableReward: 'Reaching the echo cavern records optional progress without changing the main covenant route.',
+        downstreamConsequence: 'The hidden branch exposes the charmed medusa and the debate over memory and desire.',
+        recoveryBehavior: 'The fixed markers remain reachable in Crossing or Surge, and skipping the branch preserves a valid neutral ending.', expectedMinutes: 2,
+        originalityNotes: 'Uses public-domain cave-echo and siren-like memory motifs; the fixed remembered-song trail is original Oathbearer expression.',
+      }),
+    },
+    {
+      id: 'confront-charmed-medusa', kind: 'clear-encounter', encounterId: 'enc-act2-unmoored-charmed', text: 'Face the charmed medusa elite',
+      authoring: act2Authoring({
+        category: 'quest-objective', dramaticQuestion: 'Can Kallias interrupt enchantment without treating the charmed creature as proof of its own guilt?',
+        systemsUsed: ['combat', 'side-quest'], durableReward: 'The medusa-clear flag persists and unlocks the optional affinity debate.',
+        downstreamConsequence: 'Victory turns the side loop from pursuit into a disagreement between Aphrodite and Eros about identity.',
+        recoveryBehavior: 'The ready-gated encounter returns to the cave approach on defeat and settles its side-quest flag only once.', expectedMinutes: 4,
+        originalityNotes: 'Uses the public-domain Medusa and divine-desire traditions; the charm-as-contested-evidence encounter is original.',
+      }),
+    },
+    {
+      id: 'witness-desire-debate', kind: 'choose', choiceIds: ['affinity-aphrodite', 'affinity-eros'], text: 'Let Aphrodite and Eros disagree over whether desire proves identity',
+      authoring: act2Authoring({
+        category: 'quest-objective', dramaticQuestion: 'Does desire remember a person faithfully, or only reveal the needs of the one who desires?',
+        systemsUsed: ['choice', 'dialogue'], durableReward: 'One affinity flag, Mutual Memory evidence, codex entry, and 30 drachmae persist after resolution.',
+        downstreamConsequence: 'The selected affinity colors later interpretation while the evidence remains optional for final-story eligibility.',
+        recoveryBehavior: 'Only one valid affinity can resolve the debate; skipping the entire quest preserves the documented neutral fallback.', expectedMinutes: 3,
+        originalityNotes: 'Uses public-domain Aphrodite and Eros domains; their dispute over desire as identity evidence is original Oathbearer writing.',
+      }),
+    },
   ],
   rewards: [
     { kind: 'flag', id: 'evidence-mutual-memory', value: true },
@@ -188,6 +323,13 @@ export const ACT2_SIDE_QUEST = deepFreeze({
     affinity: null,
     note: 'Neutral final-story fallback: the main covenant ratification never requires this loop',
   },
+  authoring: act2Authoring({
+    category: 'regional-side-quest', dramaticQuestion: 'Can remembered desire preserve identity without becoming another authority that speaks over its subject?',
+    systemsUsed: ['choice', 'combat', 'exploration'], durableReward: 'Completion preserves Mutual Memory evidence, one affinity, a codex entry, and 30 drachmae.',
+    downstreamConsequence: 'The optional evidence can support later Accord reasoning, while omission deliberately leaves the main story completable.',
+    recoveryBehavior: 'The cave branch and encounter can be resumed safely; rejecting the loop uses a valid neutral fallback with no hidden gate.', expectedMinutes: 9,
+    originalityNotes: 'Uses public-domain Aphrodite, Eros, and Medusa traditions; the Unmoored Heart argument and evidence design are original.',
+  }),
 })
 
 // ─── Encounters ────────────────────────────────────────────────
@@ -209,6 +351,13 @@ export const ACT2_ENCOUNTERS = deepFreeze({
     completionFlag: 'act2-breakwater-cleared',
     activation: 'traversal',
     repeatable: false,
+    authoring: act2Authoring({
+      category: 'story-encounter', dramaticQuestion: 'Can Kallias defend the crossing while first learning that tide position changes the terms of combat?',
+      systemsUsed: ['combat', 'tide-traversal'], durableReward: 'Victory records the breakwater-clear flag and leaves the crossing encounter permanently settled.',
+      downstreamConsequence: 'The cleared road preserves access to the surge witness and Nereid Caves without replacing the tide lesson.',
+      recoveryBehavior: 'The explicit ready gate freezes the fight until armed; defeat restores a valid Breakwater Road exploration state.', expectedMinutes: 4,
+      originalityNotes: 'Uses public-domain Greek reef-creature imagery; the tide-telegraphed causeway defense is original Oathbearer encounter design.',
+    }),
   },
   'enc-act2-nereid-caves': {
     id: 'enc-act2-nereid-caves',
@@ -223,6 +372,13 @@ export const ACT2_ENCOUNTERS = deepFreeze({
     completionFlag: 'act2-nereid-caves-cleared',
     activation: 'quest',
     repeatable: false,
+    authoring: act2Authoring({
+      category: 'story-encounter', dramaticQuestion: 'Can the cave be made safe without allowing the rescued nereids to disappear into a generic victory count?',
+      systemsUsed: ['combat', 'witness-rescue'], durableReward: 'Victory records the cave-clear flag while leaving three separately named witness interactions to complete.',
+      downstreamConsequence: 'The cleared arena permits the order-free releases that lead to the pressure-shell boundary puzzle.',
+      recoveryBehavior: 'The threshold checkpoint and ready gate protect retries; combat victory and each later witness release settle exactly once.', expectedMinutes: 5,
+      originalityNotes: 'Uses public-domain nereid, Medusa, Hydra, and sea-cave motifs; separating battle victory from named witness recovery is original.',
+    }),
   },
   'enc-act2-anchorage': {
     id: 'enc-act2-anchorage',
@@ -237,6 +393,13 @@ export const ACT2_ENCOUNTERS = deepFreeze({
     completionFlag: 'act2-anchorage-cleared',
     activation: 'quest',
     repeatable: false,
+    authoring: act2Authoring({
+      category: 'story-encounter', dramaticQuestion: 'Can the storm anchorage be reopened as a passage rather than claimed as a permanent military prize?',
+      systemsUsed: ['combat', 'travel-unlock'], durableReward: 'The anchorage-clear flag persists and enables the archive skiff route exactly once.',
+      downstreamConsequence: 'The cleared platform opens the barge investigation and its paired covenant folios.',
+      recoveryBehavior: 'Defeat returns to the from-caves approach; the rope-lift checkpoint and exact-once gate prevent route-state loss.', expectedMinutes: 5,
+      originalityNotes: 'Uses public-domain storm, reef, and maritime-ambush motifs; the passage-focused anchorage conflict is original Oathbearer design.',
+    }),
   },
   'boss-act2-archive-leviathan': {
     id: 'boss-act2-archive-leviathan',
@@ -259,6 +422,13 @@ export const ACT2_ENCOUNTERS = deepFreeze({
     repeatable: false,
     checkpointId: 'checkpoint-archive-barge-boss',
     defeatRestore: { note: 'Defeat restores recovered folios but not boss completion' },
+    authoring: act2Authoring({
+      category: 'boss-encounter', dramaticQuestion: 'Can Kallias defeat a guardian of stolen history without losing the clauses already recovered from its deck?',
+      systemsUsed: ['boss-combat', 'checkpoint'], durableReward: 'Victory permanently records the Leviathan defeat while preserving both recovered cipher folios.',
+      downstreamConsequence: 'The boss clear returns Kallias to the harbor with enough evidence to ratify one Salt Covenant form.',
+      recoveryBehavior: 'The pre-boss checkpoint restores collected folios after defeat; phased mast slams begin only after the ready boundary.', expectedMinutes: 7,
+      originalityNotes: 'Uses public-domain Leviathan-like sea monsters, Hydra heads, and mast hazards; the archive-custodian boss is original.',
+    }),
   },
   // Side-loop encounter (The Unmoored Heart) — not part of the main chain.
   'enc-act2-unmoored-charmed': {
@@ -275,6 +445,13 @@ export const ACT2_ENCOUNTERS = deepFreeze({
     activation: 'side',
     repeatable: false,
     questId: ACT2_SIDE_QUEST_ID,
+    authoring: act2Authoring({
+      category: 'story-encounter', dramaticQuestion: 'Can Kallias break an imposed charm while refusing to mistake enchantment for the medusa’s identity?',
+      systemsUsed: ['combat', 'side-quest'], durableReward: 'Victory records the optional medusa-clear flag and enables the desire-and-memory debate.',
+      downstreamConsequence: 'The cleared encounter makes the Aphrodite or Eros affinity choice available without affecting main-quest gates.',
+      recoveryBehavior: 'A ready-gated single-elite fight returns safely to the cave branch on defeat and settles only its own quest.', expectedMinutes: 4,
+      originalityNotes: 'Uses public-domain Medusa and divine-enchantment motifs; the distinction between charm and identity is original Oathbearer expression.',
+    }),
   },
 })
 

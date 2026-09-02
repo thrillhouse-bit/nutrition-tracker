@@ -114,7 +114,7 @@ const KALLIAS_ANIMATION_MANIFEST = Object.freeze({
   fallback: kalliasWorldSprite,
   clips: Object.freeze({}),
 })
-const EMPTY_DIRECTIONAL_INPUT = Object.freeze({ up: false, down: false, left: false, right: false, dash: false })
+const EMPTY_DIRECTIONAL_INPUT = Object.freeze({ up: false, down: false, left: false, right: false, dash: false, guard: false })
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '])
 export const MAX_CANVAS_DPR = 2
 // A full-screen canvas should not exceed roughly 10 MB per RGBA surface.
@@ -908,6 +908,10 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         // attack hotkeys cannot arm or queue work behind it. Pause may still
         // cover the staged scene, but Resume returns to the unarmed gate.
         if (!combatReadyRef.current) return
+        if (k === 'g') {
+          keysRef.current.add('g')
+          return
+        }
         if (k === 'enter' || k === 'j') {
           queueCombatAction({ attack: true })
           return
@@ -1272,6 +1276,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
             firing: pointerDownRef.current,
             attack: action.attack,
             powerId: action.powerId,
+            guard: keysRef.current.has('g') || touch.guard === true,
           }
           combatActionRef.current = { attack: false, powerId: null }
           const out = stepCombat(cur, inp)
@@ -1310,7 +1315,12 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
           type: 'WILDERNESS_VICTORY',
           enemyId: session.wilderness.enemyId,
           encounterKey: session.wilderness.encounterKey,
-          damageByStyle: { spearcraft: 1 },
+          damageByStyle: session.damageByStyle,
+          combatContributions: {
+            damageByStyle: session.damageByStyle,
+            damageTaken: session.damageTaken,
+            guardedDamageTaken: session.guardedDamageTaken,
+          },
         })
       } else if (outcome === OUTCOME_FAILED) {
         dispatch({
@@ -1324,7 +1334,16 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
       return
     }
     if (outcome === OUTCOME_WON) {
-      dispatch({ type: 'COMBAT_WON', encounterId: enc })
+      dispatch({
+        type: 'COMBAT_WON',
+        encounterId: enc,
+        damageByStyle: session.damageByStyle,
+        combatContributions: {
+          damageByStyle: session.damageByStyle,
+          damageTaken: session.damageTaken,
+          guardedDamageTaken: session.guardedDamageTaken,
+        },
+      })
     } else if (outcome === OUTCOME_FAILED) {
       dispatch({ type: 'COMBAT_FAILED', encounterId: enc })
     }
@@ -2311,6 +2330,18 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
             <button type="button" aria-label="Melee attack" disabled={!combatReady} onPointerDown={() => queueCombatAction({ attack: true })} className="min-h-12 rounded border border-[#e8b64c] bg-[#7d2b1f]/95 px-5 py-2 text-xs font-bold uppercase tracking-widest text-[#fff1d0] disabled:cursor-not-allowed disabled:opacity-40">
               Attack <span className="ml-1 text-[9px] text-[#e8c995]">J</span>
             </button>
+            <button
+              type="button"
+              aria-label="Guard while held, keyboard G"
+              disabled={!combatReady}
+              onPointerDown={() => { touchRef.current.guard = true }}
+              onPointerUp={() => { touchRef.current.guard = false }}
+              onPointerCancel={() => { touchRef.current.guard = false }}
+              onPointerLeave={() => { touchRef.current.guard = false }}
+              className="min-h-12 rounded border border-[#7890a8] bg-[#182433]/95 px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#e4eef8] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Guard <span className="ml-1 text-[9px] text-[#b8cce0]">G</span>
+            </button>
             {activePatron?.loadout.map((power, index) => {
               const ready = powerReady(session.arena, power.id)
               const hotkey = ['K', 'L', ';'][index] || ''
@@ -2627,6 +2658,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                 <p><b className="text-[#b8a888]">Move:</b> Click ground / WASD / Arrows</p>
                 <p><b className="text-[#b8a888]">Dash:</b> Shift / Space</p>
                 <p><b className="text-[#b8a888]">Interact:</b> Click target / E</p>
+                <p><b className="text-[#b8a888]">Combat:</b> J attack / G guard / K, L, ; powers</p>
                 <p><b className="text-[#b8a888]">Advance dialogue:</b> Enter / Space</p>
                 <p><b className="text-[#b8a888]">Pause:</b> Escape</p>
               </div>

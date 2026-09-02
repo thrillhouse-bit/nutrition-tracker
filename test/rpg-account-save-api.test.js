@@ -5,10 +5,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   RPG_SAVE_MAX_BYTES,
   validateRpgSavePutBody,
+  validateRpgSaveRestoreBody,
 } from '../server/rpgSave.js'
 
 const fake = vi.hoisted(() => {
-  const state = { users: [], saves: new Map(), nextUserId: 0 }
+  const state = { users: [], saves: new Map(), histories: new Map(), nextUserId: 0 }
   const clone = (value) => value == null ? value : structuredClone(value)
   const publicSave = (row) => row && ({
     payload: clone(row.payload),
@@ -17,6 +18,14 @@ const fake = vi.hoisted(() => {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   })
+  const appendHistory = (uid, row) => {
+    const history = state.histories.get(uid) || []
+    history.unshift({
+      revision: row.revision, payload: clone(row.payload), gameSchemaVersion: row.gameSchemaVersion,
+      createdAt: row.createdAt, savedAt: row.updatedAt,
+    })
+    state.histories.set(uid, history.slice(0, 20))
+  }
   const store = {
     createUser: async ({ email, password_hash, legal_version }) => {
       const now = new Date().toISOString()
@@ -57,17 +66,39 @@ const fake = vi.hoisted(() => {
         createdAt: current?.createdAt || now, updatedAt: now,
       }
       state.saves.set(uid, row)
+      appendHistory(uid, row)
+      return { outcome: 'written', save: publicSave(row) }
+    },
+    listRpgSaveHistory: async (userId) => (state.histories.get(Number(userId)) || []).map(({ payload, ...metadata }) => metadata),
+    restoreRpgSave: async (userId, { revision, expectedRevision }) => {
+      const uid = Number(userId)
+      const current = state.saves.get(uid) || null
+      if (!current || current.revision !== expectedRevision) return { outcome: 'conflict', save: publicSave(current) }
+      const historical = (state.histories.get(uid) || []).find((row) => row.revision === revision)
+      if (!historical) return { outcome: 'not_found', save: publicSave(current) }
+      const row = {
+        payload: clone(historical.payload), gameSchemaVersion: historical.gameSchemaVersion,
+        revision: current.revision + 1, createdAt: current.createdAt, updatedAt: new Date().toISOString(),
+      }
+      state.saves.set(uid, row)
+      appendHistory(uid, row)
       return { outcome: 'written', save: publicSave(row) }
     },
     exportUserData: async (userId) => {
       const user = state.users.find((candidate) => candidate.id === Number(userId))
-      return { schema_version: 1, account: user ? { id: user.id, email: user.email } : null, rpg_save: publicSave(state.saves.get(Number(userId)) || null) }
+      return {
+        schema_version: 1,
+        account: user ? { id: user.id, email: user.email } : null,
+        rpg_save: publicSave(state.saves.get(Number(userId)) || null),
+        rpg_save_history: clone(state.histories.get(Number(userId)) || []),
+      }
     },
     deleteUser: async (userId) => {
       const uid = Number(userId)
       const before = state.users.length
       state.users = state.users.filter((user) => user.id !== uid)
       state.saves.delete(uid)
+      state.histories.delete(uid)
       return state.users.length < before
     },
   }
@@ -132,6 +163,12 @@ describe('RPG save request validation', () => {
     expect(() => validateRpgSavePutBody({ payload: [], gameSchemaVersion: 1, expectedRevision: 0 })).toThrow(/payload must be an object/i)
     expect(() => validateRpgSavePutBody({ payload: {}, gameSchemaVersion: 1, expectedRevision: 1.5 })).toThrow(/safe integer/i)
     expect(() => validateRpgSavePutBody({ payload: {}, gameSchemaVersion: 2_147_483_648, expectedRevision: 0 })).toThrow(/32-bit/i)
+  })
+
+  it('accepts only the exact restore revision envelope', () => {
+    expect(validateRpgSaveRestoreBody({ revision: 1, expectedRevision: 3 })).toEqual({ revision: 1, expectedRevision: 3 })
+    expect(() => validateRpgSaveRestoreBody({ revision: 1, expectedRevision: 3, userId: 9 })).toThrow(/contain only/i)
+    expect(() => validateRpgSaveRestoreBody({ revision: 0, expectedRevision: 3 })).toThrow(/positive safe integer/i)
   })
 
   it('enforces a UTF-8 byte ceiling before storage', () => {
@@ -199,6 +236,53 @@ describe('authenticated RPG save API', () => {
       rpg_save: { payload: { quest: 'the-last-name' }, gameSchemaVersion: 4, revision: 1 },
     })
   })
+
+  it('lists metadata-only history and restores only the signed-in account with optimistic concurrency', async () => {
+    const owner = await signup('rpg-history-owner@example.test')
+    const other = await signup('rpg-history-other@example.test')
+    const firstBody = { payload: { checkpoint: 'first' }, gameSchemaVersion: 4, expectedRevision: 0 }
+    const secondBody = { payload: { checkpoint: 'second' }, gameSchemaVersion: 4, expectedRevision: 1 }
+    await request('/api/rpg/save', { cookie: owner.cookie, method: 'PUT', body: firstBody })
+    await request('/api/rpg/save', { cookie: owner.cookie, method: 'PUT', body: secondBody })
+    // Exact retry is idempotent and must not create a third restore point.
+    await request('/api/rpg/save', { cookie: owner.cookie, method: 'PUT', body: secondBody })
+
+    const historyResponse = await request('/api/rpg/save/history', { cookie: owner.cookie })
+    expect(historyResponse.status).toBe(200)
+    const history = (await historyResponse.json()).history
+    expect(history.map((entry) => entry.revision)).toEqual([2, 1])
+    expect(JSON.stringify(history)).not.toContain('checkpoint')
+    expect(await (await request('/api/rpg/save/history', { cookie: other.cookie })).json()).toEqual({ history: [] })
+
+    const crossAccount = await request('/api/rpg/save/restore', {
+      cookie: other.cookie, method: 'POST', body: { revision: 1, expectedRevision: 0 },
+    })
+    expect(crossAccount.status).toBe(409)
+
+    const stale = await request('/api/rpg/save/restore', {
+      cookie: owner.cookie, method: 'POST', body: { revision: 1, expectedRevision: 1 },
+    })
+    expect(stale.status).toBe(409)
+    expect((await (await request('/api/rpg/save', { cookie: owner.cookie })).json()).save).toMatchObject({
+      revision: 2, payload: { checkpoint: 'second' },
+    })
+    expect((await (await request('/api/rpg/save/history', { cookie: owner.cookie })).json()).history).toHaveLength(2)
+
+    const restored = await request('/api/rpg/save/restore', {
+      cookie: owner.cookie, method: 'POST', body: { revision: 1, expectedRevision: 2 },
+    })
+    expect(restored.status).toBe(200)
+    expect(await restored.json()).toMatchObject({ save: { revision: 3, payload: { checkpoint: 'first' } } })
+    expect((await (await request('/api/rpg/save/history', { cookie: owner.cookie })).json()).history.map((entry) => entry.revision)).toEqual([3, 2, 1])
+
+    const forged = await request('/api/rpg/save/restore', {
+      cookie: owner.cookie, method: 'POST', body: { revision: 1, expectedRevision: 3, userId: other.user.id },
+    })
+    expect(forged.status).toBe(400)
+    const exported = await (await request('/api/account/export', { cookie: owner.cookie })).json()
+    expect(exported.rpg_save_history).toHaveLength(3)
+    expect(exported.rpg_save_history[0].payload).toEqual({ checkpoint: 'first' })
+  })
 })
 
 describe('JsonStore RPG save lifecycle', () => {
@@ -212,6 +296,7 @@ describe('JsonStore RPG save lifecycle', () => {
       const input = { payload: { act: 1 }, gameSchemaVersion: 2, expectedRevision: 0 }
       expect((await store.putRpgSave(one.id, input)).save.revision).toBe(1)
       expect(await store.putRpgSave(one.id, input)).toMatchObject({ outcome: 'idempotent', save: { revision: 1 } })
+      expect(await store.listRpgSaveHistory(one.id)).toHaveLength(1)
       expect(await store.getRpgSave(two.id)).toBeNull()
       expect((await store.putRpgSave(two.id, { ...input, payload: { act: 5 } })).save.payload.act).toBe(5)
 
@@ -222,9 +307,11 @@ describe('JsonStore RPG save lifecycle', () => {
       expect(attempts.map((result) => result.outcome).sort()).toEqual(['conflict', 'written'])
       expect((await store.getRpgSave(one.id)).revision).toBe(2)
       expect((await store.exportUserData(one.id)).rpg_save.revision).toBe(2)
+      expect((await store.exportUserData(one.id)).rpg_save_history).toHaveLength(2)
 
       await store.deleteUser(one.id)
       expect(await store.getRpgSave(one.id)).toBeNull()
+      expect(await store.listRpgSaveHistory(one.id)).toEqual([])
       expect((await store.getRpgSave(two.id)).payload.act).toBe(5)
     } finally {
       await fs.rm(dir, { recursive: true, force: true })
@@ -245,7 +332,7 @@ describe('PgStore RPG save contract', () => {
       const query = strings.join('?').replace(/\s+/g, ' ').trim()
       calls.push({ query, values })
       if (query.startsWith('select payload')) return current ? [current] : []
-      if (query.startsWith('update rpg_saves')) {
+      if (query.includes('saved as ( update rpg_saves')) {
         const [payloadJson, gameSchemaVersion, userId, expectedRevision] = values
         expect(userId).toBe(41)
         if (current?.revision !== expectedRevision) return []
@@ -286,5 +373,9 @@ describe('Postgres schema lifecycle', () => {
     expect(schema).toMatch(/revision\s+bigint not null/i)
     expect(schema).toMatch(/created_at\s+timestamptz not null default now\(\)/i)
     expect(schema).toMatch(/updated_at\s+timestamptz not null default now\(\)/i)
+    expect(schema).toMatch(/create table if not exists rpg_save_history/i)
+    expect(schema).toMatch(/rpg_save_history[\s\S]*user_id\s+bigint not null references users \(id\) on delete cascade/i)
+    expect(schema).toMatch(/rpg_save_history[\s\S]*payload\s+jsonb not null/i)
+    expect(schema).toMatch(/primary key \(user_id, revision\)/i)
   })
 })

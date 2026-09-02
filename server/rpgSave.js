@@ -4,6 +4,7 @@ export const RPG_SAVE_MAX_BYTES = 512 * 1024
 export const RPG_SAVE_MAX_GAME_SCHEMA_VERSION = 2_147_483_647
 
 const BODY_KEYS = Object.freeze(['expectedRevision', 'gameSchemaVersion', 'payload'])
+const RESTORE_BODY_KEYS = Object.freeze(['expectedRevision', 'revision'])
 
 function requestError(message, status = 400) {
   const error = new Error(message)
@@ -79,6 +80,19 @@ export function validateRpgSavePutBody(body) {
   }
 }
 
+export function validateRpgSaveRestoreBody(body) {
+  if (!isPlainObject(body) || !isDeepStrictEqual(Object.keys(body).sort(), RESTORE_BODY_KEYS)) {
+    throw requestError('RPG save restore body must contain only revision and expectedRevision.')
+  }
+  if (!Number.isSafeInteger(body.revision) || body.revision < 1) {
+    throw requestError('revision must be a positive safe integer.')
+  }
+  if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0) {
+    throw requestError('expectedRevision must be a non-negative safe integer.')
+  }
+  return { revision: body.revision, expectedRevision: body.expectedRevision }
+}
+
 export function normalizeRpgSave(row) {
   if (!row) return null
   return {
@@ -98,4 +112,15 @@ export function isIdempotentRpgSaveRetry(row, input) {
     && save.gameSchemaVersion === input.gameSchemaVersion
     && isDeepStrictEqual(save.payload, input.payload),
   )
+}
+
+export function normalizeRpgSaveHistoryRow(row, { includePayload = false } = {}) {
+  if (!row) return null
+  return {
+    revision: Number(row.revision),
+    gameSchemaVersion: Number(row.game_schema_version ?? row.gameSchemaVersion),
+    createdAt: row.created_at ?? row.createdAt,
+    savedAt: row.saved_at ?? row.savedAt,
+    ...(includePayload ? { payload: row.payload } : {}),
+  }
 }

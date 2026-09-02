@@ -21,7 +21,11 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inviteUnavailableError } from './alphaAccess.js'
-import { isIdempotentRpgSaveRetry, normalizeRpgSave } from './rpgSave.js'
+import {
+  isIdempotentRpgSaveRetry,
+  normalizeRpgSave,
+  normalizeRpgSaveHistoryRow,
+} from './rpgSave.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -896,19 +900,43 @@ export class PgStore {
     let rows
     if (input.expectedRevision === 0) {
       rows = await sql`
-        insert into rpg_saves (user_id, payload, game_schema_version, revision)
-        values (${userId}, ${JSON.stringify(input.payload)}::jsonb, ${input.gameSchemaVersion}, 1)
-        on conflict (user_id) do nothing
-        returning payload, game_schema_version, revision, created_at, updated_at`
+        with saved as (
+          insert into rpg_saves (user_id, payload, game_schema_version, revision)
+          values (${userId}, ${JSON.stringify(input.payload)}::jsonb, ${input.gameSchemaVersion}, 1)
+          on conflict (user_id) do nothing
+          returning payload, game_schema_version, revision, created_at, updated_at
+        ), pruned as (
+          delete from rpg_save_history
+          where user_id = ${userId} and exists (select 1 from saved) and revision in (
+            select revision from rpg_save_history where user_id = ${userId}
+            order by revision desc offset 19
+          )
+        ), history as (
+          insert into rpg_save_history (user_id, revision, payload, game_schema_version, created_at, saved_at)
+          select ${userId}, revision, payload, game_schema_version, created_at, updated_at from saved
+        )
+        select payload, game_schema_version, revision, created_at, updated_at from saved`
     } else {
       rows = await sql`
-        update rpg_saves
-        set payload = ${JSON.stringify(input.payload)}::jsonb,
-            game_schema_version = ${input.gameSchemaVersion},
-            revision = revision + 1,
-            updated_at = now()
-        where user_id = ${userId} and revision = ${input.expectedRevision}
-        returning payload, game_schema_version, revision, created_at, updated_at`
+        with saved as (
+          update rpg_saves
+          set payload = ${JSON.stringify(input.payload)}::jsonb,
+              game_schema_version = ${input.gameSchemaVersion},
+              revision = revision + 1,
+              updated_at = now()
+          where user_id = ${userId} and revision = ${input.expectedRevision}
+          returning payload, game_schema_version, revision, created_at, updated_at
+        ), pruned as (
+          delete from rpg_save_history
+          where user_id = ${userId} and exists (select 1 from saved) and revision in (
+            select revision from rpg_save_history where user_id = ${userId}
+            order by revision desc offset 19
+          )
+        ), history as (
+          insert into rpg_save_history (user_id, revision, payload, game_schema_version, created_at, saved_at)
+          select ${userId}, revision, payload, game_schema_version, created_at, updated_at from saved
+        )
+        select payload, game_schema_version, revision, created_at, updated_at from saved`
     }
     if (rows[0]) return { outcome: 'written', save: normalizeRpgSave(rows[0]) }
     // A write can lose a race after its optimistic check. Read the winner's
@@ -917,6 +945,51 @@ export class PgStore {
     const current = await this.getRpgSave(userId)
     if (isIdempotentRpgSaveRetry(current, input)) return { outcome: 'idempotent', save: current }
     return { outcome: 'conflict', save: current }
+  }
+
+  async listRpgSaveHistory(userId) {
+    const sql = await this.ready()
+    const rows = await sql`
+      select revision, game_schema_version, created_at, saved_at
+      from rpg_save_history where user_id = ${userId}
+      order by revision desc limit 20`
+    return rows.map((row) => normalizeRpgSaveHistoryRow(row))
+  }
+
+  async restoreRpgSave(userId, { revision, expectedRevision }) {
+    const sql = await this.ready()
+    const rows = await sql`
+      with restored as (
+        update rpg_saves current_save
+        set payload = historical.payload,
+            game_schema_version = historical.game_schema_version,
+            revision = current_save.revision + 1,
+            updated_at = now()
+        from rpg_save_history historical
+        where current_save.user_id = ${userId}
+          and current_save.revision = ${expectedRevision}
+          and historical.user_id = ${userId}
+          and historical.revision = ${revision}
+        returning current_save.payload, current_save.game_schema_version, current_save.revision,
+                  current_save.created_at, current_save.updated_at
+      ), pruned as (
+        delete from rpg_save_history
+        where user_id = ${userId} and exists (select 1 from restored) and revision in (
+          select revision from rpg_save_history where user_id = ${userId}
+          order by revision desc offset 19
+        )
+      ), history as (
+        insert into rpg_save_history (user_id, revision, payload, game_schema_version, created_at, saved_at)
+        select ${userId}, revision, payload, game_schema_version, created_at, updated_at from restored
+      )
+      select payload, game_schema_version, revision, created_at, updated_at from restored`
+    if (rows[0]) return { outcome: 'written', save: normalizeRpgSave(rows[0]) }
+    const current = await this.getRpgSave(userId)
+    if (!current || current.revision !== expectedRevision) return { outcome: 'conflict', save: current }
+    const history = await this.listRpgSaveHistory(userId)
+    return history.some((entry) => entry.revision === revision)
+      ? { outcome: 'conflict', save: current }
+      : { outcome: 'not_found', save: current }
   }
 
   // Complete account-owned data export. Credentials, OAuth tokens, Apple
@@ -941,6 +1014,7 @@ export class PgStore {
       plannedWorkouts,
       afpDailyPlans,
       rpgSaveRows,
+      rpgHistoryRows,
     ] = await Promise.all([
       sql`select id, email, legal_version, legal_accepted_at, created_at from users where id = ${userId}`,
       sql`select e.id, e.food_id, e.logged_at, e.servings_consumed, e.meal, e.created_at,
@@ -964,6 +1038,7 @@ export class PgStore {
       sql`select * from planned_workouts where user_id = ${userId} order by date asc, start_time asc nulls last, id asc`,
       sql`select * from afp_daily_plans where user_id = ${userId} order by date asc`,
       sql`select payload, game_schema_version, revision, created_at, updated_at from rpg_saves where user_id = ${userId}`,
+      sql`select revision, payload, game_schema_version, created_at, saved_at from rpg_save_history where user_id = ${userId} order by revision asc`,
     ])
     return {
       schema_version: 1,
@@ -983,6 +1058,7 @@ export class PgStore {
         daily_plans: afpDailyPlans,
       },
       rpg_save: normalizeRpgSave(rpgSaveRows[0]),
+      rpg_save_history: rpgHistoryRows.map((row) => normalizeRpgSaveHistoryRow(row, { includePayload: true })),
     }
   }
 
@@ -1053,6 +1129,7 @@ export class JsonStore {
     this.data.users = this.data.users || []
     this.data.alpha_invite_redemptions = this.data.alpha_invite_redemptions || []
     this.data.rpg_saves = this.data.rpg_saves || {}
+    this.data.rpg_save_history = this.data.rpg_save_history || {}
     this.data.seq = this.data.seq || {}
     this.data.seq.user = this.data.seq.user || 0
     return this.data
@@ -1811,12 +1888,73 @@ export class JsonStore {
         updated_at: now,
       }
       d.rpg_saves[uid] = row
+      const history = d.rpg_save_history[uid] || []
+      history.push(structuredClone({
+        user_id: uid,
+        revision: row.revision,
+        payload: row.payload,
+        game_schema_version: row.game_schema_version,
+        created_at: row.created_at,
+        saved_at: row.updated_at,
+      }))
+      d.rpg_save_history[uid] = history
+        .sort((a, b) => b.revision - a.revision)
+        .slice(0, 20)
       await this.persist()
       return { outcome: 'written', save: normalizeRpgSave(row) }
     }
     // Serialize the compare + mutation, not only the disk write. Otherwise
     // two simultaneous updates could both observe the same revision and both
     // claim success before the persist queue ever sees them.
+    const result = this.rpgSaveWrites.then(run, run)
+    this.rpgSaveWrites = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  async listRpgSaveHistory(userId) {
+    const d = await this.load()
+    return (d.rpg_save_history?.[Number(userId)] || [])
+      .slice()
+      .sort((a, b) => b.revision - a.revision)
+      .slice(0, 20)
+      .map((row) => normalizeRpgSaveHistoryRow(row))
+  }
+
+  async restoreRpgSave(userId, { revision, expectedRevision }) {
+    const run = async () => {
+      const d = await this.load()
+      const uid = Number(userId)
+      const current = d.rpg_saves?.[uid] || null
+      if (!current || current.revision !== expectedRevision) {
+        return { outcome: 'conflict', save: normalizeRpgSave(current) }
+      }
+      const historical = (d.rpg_save_history?.[uid] || []).find((row) => row.revision === revision)
+      if (!historical) return { outcome: 'not_found', save: normalizeRpgSave(current) }
+      const now = new Date().toISOString()
+      const row = {
+        user_id: uid,
+        payload: structuredClone(historical.payload),
+        game_schema_version: historical.game_schema_version,
+        revision: current.revision + 1,
+        created_at: current.created_at,
+        updated_at: now,
+      }
+      d.rpg_saves[uid] = row
+      const history = d.rpg_save_history[uid] || []
+      history.push(structuredClone({
+        user_id: uid,
+        revision: row.revision,
+        payload: row.payload,
+        game_schema_version: row.game_schema_version,
+        created_at: row.created_at,
+        saved_at: row.updated_at,
+      }))
+      d.rpg_save_history[uid] = history
+        .sort((a, b) => b.revision - a.revision)
+        .slice(0, 20)
+      await this.persist()
+      return { outcome: 'written', save: normalizeRpgSave(row) }
+    }
     const result = this.rpgSaveWrites.then(run, run)
     this.rpgSaveWrites = result.then(() => undefined, () => undefined)
     return result
@@ -1872,6 +2010,10 @@ export class JsonStore {
         daily_plans: valuesForUser(d.afp_daily_plans),
       },
       rpg_save: normalizeRpgSave(d.rpg_saves?.[uid]),
+      rpg_save_history: (d.rpg_save_history?.[uid] || [])
+        .slice()
+        .sort((a, b) => a.revision - b.revision)
+        .map((row) => normalizeRpgSaveHistoryRow(row, { includePayload: true })),
     }
   }
 
@@ -1894,6 +2036,7 @@ export class JsonStore {
     d.wearable_signals = (d.wearable_signals || []).filter((row) => row.user_id !== uid)
     d.planned_workouts = (d.planned_workouts || []).filter((row) => row.user_id !== uid)
     if (d.rpg_saves) delete d.rpg_saves[uid]
+    if (d.rpg_save_history) delete d.rpg_save_history[uid]
     for (const name of ['profiles', 'afp_profiles']) {
       if (d[name]) delete d[name][uid]
     }

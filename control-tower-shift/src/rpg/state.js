@@ -33,6 +33,7 @@ import {
   withdrawBankItem,
 } from './progression.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
+import { combatXpFromContributions } from './combatProgression.js'
 import {
   consumeCombatInventoryItem,
   consumePendingConsumableLoadout,
@@ -731,7 +732,14 @@ function wildernessVictory(state, event) {
   if (state.flags[rewardFlag]) {
     return { ...state, status: 'playing', combatSnapshot: null, wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null } }
   }
-  const rewards = wildernessCombatRewards({ enemyId, damageByStyle: event.damageByStyle, killCredit: true })
+  const contributions = event.combatContributions || { damageByStyle: event.damageByStyle }
+  const rewards = wildernessCombatRewards({
+    enemyId,
+    damageByStyle: contributions.damageByStyle,
+    damageTaken: contributions.damageTaken,
+    guardedDamageTaken: contributions.guardedDamageTaken,
+    killCredit: true,
+  })
   if (!rewards) return state
   let inventory = state.inventory
   for (const item of rewards.items) {
@@ -1353,15 +1361,9 @@ function combatWon(state, event) {
   if (objective?.kind === 'clear-encounter' && objective.encounterId === enc.id) {
     next = advanceQuest(next, owner)
   }
-  const ownerDef = owner && questDefById(owner)
-  const act = Math.max(1, Number(ownerDef?.act) || 1)
-  next = awardSkillXpBundle(next, [
-    { skillId: 'spearcraft', amount: 95 * act },
-    { skillId: 'might', amount: 70 * act },
-    { skillId: 'guard', amount: 55 * act },
-    { skillId: 'vitality', amount: 45 * act },
-    { skillId: 'stormcalling', amount: 80 * act },
-  ])
+  next = awardSkillXpBundle(next, combatXpFromContributions(event.combatContributions || {
+    damageByStyle: event.damageByStyle,
+  }))
   return next
 }
 

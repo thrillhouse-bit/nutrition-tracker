@@ -246,28 +246,46 @@ describe('wildernessCombatRewards', () => {
     const a = wildernessCombatRewards({ enemyId: 'wild-boar', damageByStyle: { spearcraft: 50 }, killCredit: true })
     const b = wildernessCombatRewards({ enemyId: 'wild-boar', damageByStyle: { spearcraft: 50 }, killCredit: true })
     expect(a).toEqual(b)
-    // All damage was dealt with the spear, so only spearcraft XP is granted.
+    // Spear damage trains both spearcraft and might, each capped at the
+    // enemy's authored maximum for this kill.
     expect(a.xp.spearcraft).toBe(20)
-    expect(a.xp.might).toBe(0)
+    expect(a.xp.might).toBe(15)
+    expect(a.xp.guard).toBeUndefined()
+    expect(a.xp.vitality).toBeUndefined()
     expect(a.currency).toBe(5)
     expect(a.items).toEqual([{ itemId: 'thyme', quantity: 1 }])
   })
 
-  it('scales XP by the proportion of damage dealt in each style', () => {
-    const result = wildernessCombatRewards({
-      enemyId: 'wild-boar',
-      damageByStyle: { spearcraft: 75, might: 25 },
-      killCredit: true,
-    })
-    // spearcraft base 20 * 0.75 = 15; might base 15 * 0.25 = 3.75 -> 3
-    expect(result.xp.spearcraft).toBe(15)
+  it('scales XP with actual damage dealt while below the authored cap', () => {
+    const result = wildernessCombatRewards({ enemyId: 'wild-boar', damageByStyle: { spearcraft: 10 }, killCredit: true })
+    // spearcraft: floor(10 * 0.6) = 6; might: floor(10 * 0.35) = 3
+    expect(result.xp.spearcraft).toBe(6)
     expect(result.xp.might).toBe(3)
   })
 
-  it('grants the full base bundle when no damage is recorded', () => {
-    const result = wildernessCombatRewards({ enemyId: 'wild-boar', damageByStyle: {}, killCredit: true })
+  it('caps XP at the enemy-authored maximum regardless of overkill damage', () => {
+    const result = wildernessCombatRewards({ enemyId: 'wild-boar', damageByStyle: { spearcraft: 1000 }, killCredit: true })
     expect(result.xp.spearcraft).toBe(20)
     expect(result.xp.might).toBe(15)
+  })
+
+  it('trains guard from guarded damage taken and vitality from total damage taken', () => {
+    const result = wildernessCombatRewards({
+      enemyId: 'wild-boar',
+      damageByStyle: {},
+      damageTaken: 20,
+      guardedDamageTaken: 10,
+      killCredit: true,
+    })
+    // guard: floor(10 * 0.8) = 8 (under the cap of 10); vitality: floor(20 * 0.4) = 8, capped at 8
+    expect(result.xp.guard).toBe(8)
+    expect(result.xp.vitality).toBe(8)
+    expect(result.xp.spearcraft).toBeUndefined()
+  })
+
+  it('grants zero XP for every skill when no contribution is recorded', () => {
+    const result = wildernessCombatRewards({ enemyId: 'wild-boar', damageByStyle: {}, killCredit: true })
+    expect(result.xp).toEqual({})
   })
 
   it('fails safely on unknown enemies and missing kill credit', () => {
@@ -277,11 +295,19 @@ describe('wildernessCombatRewards', () => {
     expect(wildernessCombatRewards()).toBeNull()
   })
 
-  it('only references existing combat skills and authored items', () => {
+  it('only ever grants XP for skills the enemy authors, never above its cap', () => {
     for (const enemy of Object.values(ENEMY_DEFS)) {
-      const result = wildernessCombatRewards({ enemyId: enemy.id, damageByStyle: {}, killCredit: true })
+      const result = wildernessCombatRewards({
+        enemyId: enemy.id,
+        damageByStyle: { spearcraft: 500, marksmanship: 500, stormcalling: 500 },
+        damageTaken: 500,
+        guardedDamageTaken: 500,
+        killCredit: true,
+      })
       for (const skillId of Object.keys(result.xp)) {
         expect(['spearcraft', 'might', 'guard', 'vitality', 'marksmanship', 'stormcalling']).toContain(skillId)
+        expect(enemy.xp[skillId]).toBeGreaterThan(0)
+        expect(result.xp[skillId]).toBeLessThanOrEqual(enemy.xp[skillId])
       }
       for (const entry of result.items) {
         expect(entry.itemId).toBeTruthy()

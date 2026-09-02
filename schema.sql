@@ -40,6 +40,22 @@ create table if not exists rpg_saves (
   updated_at          timestamptz not null default now()
 );
 
+-- Immutable restore points for the latest twenty successful RPG writes per
+-- account. The application prunes older rows inside the same atomic statement
+-- that writes each new revision. Payloads are available only to restore/export
+-- paths; the ordinary history endpoint exposes metadata.
+create table if not exists rpg_save_history (
+  user_id             bigint not null references users (id) on delete cascade,
+  revision            bigint not null check (revision > 0),
+  payload             jsonb not null,
+  game_schema_version integer not null check (game_schema_version > 0),
+  created_at          timestamptz not null,
+  saved_at            timestamptz not null default now(),
+  primary key (user_id, revision)
+);
+create index if not exists rpg_save_history_user_revision_idx
+  on rpg_save_history (user_id, revision desc);
+
 -- A durable, digest-only redemption ledger. `user_id` is deliberately set
 -- null (not cascaded) on account deletion: deleting an alpha account must not
 -- make its invitation reusable. The users-table digest supplies a second

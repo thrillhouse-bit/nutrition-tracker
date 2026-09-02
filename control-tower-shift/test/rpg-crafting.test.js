@@ -150,7 +150,7 @@ describe('recipe lookup helpers', () => {
 
   it('recipesForSkill returns recipes in registry order (ascending level)', () => {
     const bronzework = recipesForSkill('bronzework')
-    expect(bronzework.length).toBe(4)
+    expect(bronzework.length).toBe(11)
     for (let i = 1; i < bronzework.length; i++) {
       expect(bronzework[i].level).toBeGreaterThanOrEqual(bronzework[i - 1].level)
     }
@@ -193,7 +193,7 @@ describe('recipe lookup helpers', () => {
     const skills = makeSkills({ bronzework: 99 })
     const prog = { progression: { skills, totalXp: 0 } }
     const result = recipesAvailableAt(prog, 'bronze-forge')
-    expect(result.length).toBe(4)
+    expect(result.length).toBe(11)
   })
 
   it('recipesAvailableAt accepts null/undefined skills safely (defaults to level 1)', () => {
@@ -774,9 +774,14 @@ describe('edge cases', () => {
 
   it('recipesAvailableAt respects level gates across multiple skills', () => {
     const skills = makeSkills({ bronzework: 1, carpentry: 10 })
-    // woodwork-bench: olive-plank (lvl1) — cypress-plank needs lvl10, cypress-helm needs lvl15
+    // The first two equipment tiers unlock alongside the material ladder.
     const bench = recipesAvailableAt({ skills }, 'woodwork-bench')
-    expect(bench.map((r) => r.id)).toEqual(['olive-plank', 'cypress-plank'])
+    expect(bench.map((r) => r.id)).toEqual([
+      'olive-plank',
+      'olive-circlet',
+      'olive-buckler',
+      'cypress-plank',
+    ])
   })
 
   it('craft with bank items consumes from bank when inventory lacks them', () => {

@@ -14,6 +14,12 @@ import {
   MAPS,
   QUEST_DEFS,
 } from '../src/rpg/content.js'
+import {
+  ACT2_ENCOUNTERS,
+  ACT2_MAIN_QUEST,
+  ACT2_SIDE_QUEST,
+} from '../src/rpg/act2Content.js'
+import { ACT2_RENDERABLE_MAPS } from '../src/rpg/act2Runtime.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
 import { SHOP_DEFS } from '../src/rpg/economy.js'
 import {
@@ -22,6 +28,19 @@ import {
   REGISTERED_MAPS,
   REGISTERED_QUESTS,
 } from '../src/rpg/registry.js'
+
+// Act II is a second production-authoring pass, released after Act I (see
+// rpg-act2-authoring-readiness.test.js for its own template/count contract).
+// This file only owns the Act I template and the still-legacy Acts III-V +
+// merchants boundary, so it must not re-litigate whole-registry counts that
+// the Act II template file already owns.
+function act2RecordIds() {
+  const mapIds = new Set(Object.keys(ACT2_RENDERABLE_MAPS))
+  const questIds = new Set([ACT2_MAIN_QUEST.id, ACT2_SIDE_QUEST.id])
+  const conversationIds = new Set(['act2-melite-oath-post'])
+  const encounterIds = new Set(Object.keys(ACT2_ENCOUNTERS))
+  return { mapIds, questIds, conversationIds, encounterIds }
+}
 
 function act1RecordKeys() {
   const keys = new Set()
@@ -61,20 +80,18 @@ function expectSpecificMetadata(record) {
 }
 
 describe('Act I canonical production-authoring template', () => {
-  it('marks every collected Act I record release-ready and no unowned record ready', () => {
+  it('marks every collected Act I record release-ready', () => {
+    // Whole-registry ready/legacy counts are owned by whichever authoring
+    // pass most recently landed (currently rpg-act2-authoring-readiness);
+    // this only re-asserts that Act I's own 28 records have not regressed.
     const report = validateRPGContent()
     const expected = act1RecordKeys()
-    const ready = report.authoredDepth.records.filter((record) => record.status === 'release-ready')
+    const readyKeys = new Set(report.authoredDepth.records
+      .filter((record) => record.status === 'release-ready')
+      .map(recordKey))
 
     expect(expected.size).toBe(28)
-    expect(new Set(ready.map(recordKey))).toEqual(expected)
-    expect(report.authoredDepth.counts).toEqual({ total: 282, legacy: 254, incomplete: 0, releaseReady: 28 })
-    expect(report.summary).toEqual({
-      errors: 0,
-      warnings: 254,
-      total: 254,
-      byCode: { LEGACY_AUTHORING_RECORD: 254 },
-    })
+    for (const key of expected) expect(readyKeys.has(key), key).toBe(true)
   })
 
   it('deep-validates specific metadata on quests, objectives, scenes, maps, entities, resources, and encounters', () => {
@@ -108,12 +125,15 @@ describe('Act I canonical production-authoring template', () => {
     expect(QUEST_DEFS['sq-lost-witness'].authoring.expectedMinutes).toBe(5)
   })
 
-  it('leaves every collected Act II–V record at the truthful legacy boundary', () => {
+  it('leaves every collected Act III–V record at the truthful legacy boundary', () => {
     const report = validateRPGContent()
-    const laterMapIds = new Set(Object.keys(REGISTERED_MAPS).filter((id) => !MAPS[id]))
-    const laterQuestIds = new Set(Object.keys(REGISTERED_QUESTS).filter((id) => !QUEST_DEFS[id]))
-    const laterConversationIds = new Set(Object.keys(REGISTERED_CONVERSATIONS).filter((id) => !CONVERSATIONS[id]))
-    const laterEncounterIds = new Set(Object.keys(REGISTERED_ENCOUNTERS).filter((id) => !ENCOUNTERS[id]))
+    const act2 = act2RecordIds()
+    const laterMapIds = new Set(Object.keys(REGISTERED_MAPS).filter((id) => !MAPS[id] && !act2.mapIds.has(id)))
+    const laterQuestIds = new Set(Object.keys(REGISTERED_QUESTS).filter((id) => !QUEST_DEFS[id] && !act2.questIds.has(id)))
+    const laterConversationIds = new Set(Object.keys(REGISTERED_CONVERSATIONS)
+      .filter((id) => !CONVERSATIONS[id] && !act2.conversationIds.has(id)))
+    const laterEncounterIds = new Set(Object.keys(REGISTERED_ENCOUNTERS)
+      .filter((id) => !ENCOUNTERS[id] && !act2.encounterIds.has(id)))
     const laterMerchantIds = new Set(Object.values(SHOP_DEFS)
       .filter((shop) => shop.mapIds.some((mapId) => laterMapIds.has(mapId)))
       .map((shop) => shop.id))

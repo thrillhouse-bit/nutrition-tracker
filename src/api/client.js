@@ -49,6 +49,12 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ payload, gameSchemaVersion, expectedRevision }),
     }),
+  getRpgSaveHistory: () => req('/rpg/save/history'),
+  restoreRpgSave: ({ revision, expectedRevision }) =>
+    req('/rpg/save/restore', {
+      method: 'POST',
+      body: JSON.stringify({ revision, expectedRevision }),
+    }),
 
   // Barcode lookup: cache → Open Food Facts → USDA. Returns a normalized food.
   lookupBarcode: (barcode) => req(`/lookup/${encodeURIComponent(barcode)}`),

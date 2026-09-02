@@ -13,6 +13,38 @@ import { ALL_ITEM_DEFS } from './crafting.js'
 
 export const CANONICAL_EQUIPMENT_SLOTS = Object.freeze([...EQUIPMENT_SLOTS])
 
+// The first complete equipment progression is deliberately small enough to
+// audit and broad enough to change a build. These six slots cover the primary
+// offensive, guard, vitality, poise, awareness, and mobility decisions. Item
+// ids are the stable contract shared with crafting; tier here means position
+// in this progression, independent of regional gathering level numbers.
+export const CORE_EQUIPMENT_LADDER_SLOTS = Object.freeze([
+  'weapon',
+  'head',
+  'body',
+  'offhand',
+  'legs',
+  'feet',
+])
+
+export const EQUIPMENT_PROGRESSION_LADDER = Object.freeze({
+  weapon: Object.freeze(['oath-spear', 'bronze-dory', 'laurel-oath-spear']),
+  head: Object.freeze(['olive-circlet', 'cypress-helm', 'laurel-war-crown']),
+  body: Object.freeze(['traveler-tunic', 'linen-cuirass', 'bronze-scale-cuirass']),
+  offhand: Object.freeze(['olive-buckler', 'bronze-aspis', 'laurel-aegis']),
+  legs: Object.freeze(['woven-greaves', 'bronze-greaves', 'laurel-greaves']),
+  feet: Object.freeze(['olive-sandals', 'cypress-trail-boots', 'bronze-bound-boots']),
+})
+
+export const EQUIPMENT_SLOT_ROLES = Object.freeze({
+  weapon: 'offense',
+  head: 'awareness',
+  body: 'vitality',
+  offhand: 'guard',
+  legs: 'poise',
+  feet: 'mobility',
+})
+
 export const EMPTY_COMBAT_MODIFIERS = Object.freeze({
   accuracyBonus: 0,
   damageBonus: 0,
@@ -31,6 +63,46 @@ export function createEmptyEquipment() {
 function itemDefinition(itemDefs, itemId) {
   if (!itemDefs || typeof itemId !== 'string') return null
   return Object.prototype.hasOwnProperty.call(itemDefs, itemId) ? itemDefs[itemId] : null
+}
+
+function explicitCombatModifiers(item) {
+  const modifiers = item?.combatModifiers
+  return modifiers && typeof modifiers === 'object' ? modifiers : {}
+}
+
+// Comparable audit score for one ladder item. Damage is weighted because it
+// is converted to the attack multiplier, while accuracy, defense, and health
+// each retain a direct contribution. This is not used by combat balance; it is
+// a catalog invariant that makes regressions in tier ordering visible.
+export function equipmentTierUtility(item) {
+  const modifiers = explicitCombatModifiers(item)
+  return finiteModifier(modifiers.accuracyBonus)
+    + finiteModifier(modifiers.damageBonus) * 2
+    + finiteModifier(modifiers.defenseBonus)
+    + finiteModifier(modifiers.maxHealthBonus)
+}
+
+export function equipmentProgressionForSlot(slot, itemDefs = ALL_ITEM_DEFS) {
+  const itemIds = EQUIPMENT_PROGRESSION_LADDER[slot]
+  if (!itemIds) return Object.freeze([])
+  return Object.freeze(itemIds.map((itemId, index) => {
+    const item = itemDefinition(itemDefs, itemId)
+    return Object.freeze({
+      slot,
+      role: EQUIPMENT_SLOT_ROLES[slot],
+      ladderTier: index + 1,
+      itemId,
+      item,
+      utility: equipmentTierUtility(item),
+    })
+  }))
+}
+
+export function equipmentProgressionCatalog(itemDefs = ALL_ITEM_DEFS) {
+  return Object.freeze(Object.fromEntries(CORE_EQUIPMENT_LADDER_SLOTS.map((slot) => [
+    slot,
+    equipmentProgressionForSlot(slot, itemDefs),
+  ])))
 }
 
 export function isCanonicalEquipmentSlot(slot) {

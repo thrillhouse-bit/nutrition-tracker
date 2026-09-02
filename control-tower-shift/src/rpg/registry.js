@@ -14,7 +14,7 @@ import {
 } from './content.js'
 import {
   ACT2_REGION, ACT2_CONNECTIONS, ACT2_ENCOUNTERS,
-  ACT2_MAIN_QUEST, ACT2_SIDE_QUEST, ACT2_ENCOUNTER_OWNER_QUEST,
+  ACT2_MAIN_QUEST, ACT2_SIDE_QUEST, ACT2_ENCOUNTER_OWNER_QUEST, act2Authoring,
 } from './act2Content.js'
 import { ACT2_RENDERABLE_MAPS } from './act2Runtime.js'
 import {
@@ -134,6 +134,16 @@ const ACT2_ENTRY_CONVERSATION = Object.freeze({
       effects: Object.freeze([{ kind: 'marker', mapId: 'breakwater-road', entityId: 'surge-witness' }]),
       next: null,
     }),
+  }),
+  authoring: act2Authoring({
+    category: 'conversation',
+    dramaticQuestion: 'Can Melite teach Kallias to separate arrival from permission before Pelagos turns a damaged oath into permanent exclusion?',
+    systemsUsed: ['dialogue', 'questing'],
+    durableReward: 'The scene records Melite as met and places the First Surge marker on Breakwater Road.',
+    downstreamConsequence: 'Its shape-and-color tide instructions define how the player reads every Act II traversal lane.',
+    recoveryBehavior: 'The deterministic three-node scene can resume after interruption, and its flag and marker effects cannot duplicate progress.',
+    expectedMinutes: 2,
+    originalityNotes: 'Uses public-domain Greek harbor-keeper and sea-oath motifs; Melite’s arrival-versus-permission lesson is original Oathbearer writing.',
   }),
 })
 

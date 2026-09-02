@@ -20,6 +20,7 @@ import { TIER1_PATRON_IDS } from './content.js'
 import { seedForEncounter } from './state.js'
 import { ENEMY_DEFS_BY_ID } from './wilderness.js'
 import { deriveCombatModifiers } from './equipment.js'
+import { recordCombatContributions } from './combatProgression.js'
 import {
   applyCombatConsumableEffect,
   combatConsumableDecision,
@@ -303,7 +304,9 @@ function stepAuthoredSpawner(session, arena) {
 // departure (or death) so no next-map spawn leaks into a settled session.
 function stepEncounterFrame(session, input = {}) {
   let arena = session.arena
-  const { moveX = 0, moveY = 0, firing = false, aimX = 0, aimY = 0, attack = false, powerId = null } = input
+  const { moveX = 0, moveY = 0, firing = false, aimX = 0, aimY = 0, attack = false, powerId = null, guard = false } = input
+  const unguardedThreatDamage = arena.config.threatDamage
+  if (guard) arena = { ...arena, config: { ...arena.config, threatDamage: unguardedThreatDamage * 0.55 } }
   arena = setFiring(arena, firing)
   if (aimX || aimY) arena = setAim(arena, aimX, aimY)
   arena = setInput(arena, moveX, moveY)
@@ -324,6 +327,7 @@ function stepEncounterFrame(session, input = {}) {
     arena = spawnThreat(arena, desc)
   }
   arena = advanceTick(arena)
+  if (guard) arena = { ...arena, config: { ...arena.config, threatDamage: unguardedThreatDamage } }
 
   // Victory: the arena advanced past the encounter's start level (the authored
   // composition cleared) or won the campaign outright.
@@ -377,10 +381,13 @@ export function stepCombat(session, input = {}) {
   // sequence so exactly the final authored spawn can be restyled. Plain
   // encounters keep the existing generic stepFrame path (arena route unchanged).
   if (session.eliteOverlay || session.authoredOrder) {
-    return stepEncounterFrame(session, input)
+    const next = stepEncounterFrame(session, input)
+    return { ...next, ...recordCombatContributions(session, session.arena, next.arena, input) }
   }
   let arena = session.arena
-  const { moveX = 0, moveY = 0, firing = false, aimX = 0, aimY = 0, attack = false, powerId = null } = input
+  const { moveX = 0, moveY = 0, firing = false, aimX = 0, aimY = 0, attack = false, powerId = null, guard = false } = input
+  const unguardedThreatDamage = arena.config.threatDamage
+  if (guard) arena = { ...arena, config: { ...arena.config, threatDamage: unguardedThreatDamage * 0.55 } }
   arena = setFiring(arena, firing)
   if (aimX || aimY) arena = setAim(arena, aimX, aimY)
   arena = setInput(arena, moveX, moveY)
@@ -392,15 +399,18 @@ export function stepCombat(session, input = {}) {
     arena = castPowerOn(arena, powerId, targetX, targetY)
   }
   arena = stepFrame(arena, session.spawner)
+  if (guard) arena = { ...arena, config: { ...arena.config, threatDamage: unguardedThreatDamage } }
 
   // Victory: the arena advanced past the encounter's start level (the authored
   // composition cleared) or won the campaign outright.
   const won = arena.status === 'won' || arena.levelIndex > session.startLevelIndex
   const failed = arena.status === 'failed'
   if (won || failed) {
-    return { ...session, arena, settled: true, outcome: won ? OUTCOME_WON : OUTCOME_FAILED }
+    const next = { ...session, arena, settled: true, outcome: won ? OUTCOME_WON : OUTCOME_FAILED }
+    return { ...next, ...recordCombatContributions(session, session.arena, arena, input) }
   }
-  return { ...session, arena }
+  const next = { ...session, arena }
+  return { ...next, ...recordCombatContributions(session, session.arena, arena, input) }
 }
 
 // Accessible, non-color combat telegraph derived only from deterministic

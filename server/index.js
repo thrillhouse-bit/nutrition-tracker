@@ -68,7 +68,7 @@ import {
   signupIpLimiter,
 } from './authRateLimit.js'
 import { securityHeaders } from './securityHeaders.js'
-import { validateRpgSavePutBody } from './rpgSave.js'
+import { validateRpgSavePutBody, validateRpgSaveRestoreBody } from './rpgSave.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -431,6 +431,26 @@ requireAuthRouter.put('/rpg/save', asyncH(async (req, res) => {
     })
   }
   res.json({ save: result.save, idempotent: result.outcome === 'idempotent' })
+}))
+
+requireAuthRouter.get('/rpg/save/history', asyncH(async (req, res) => {
+  res.json({ history: await store.listRpgSaveHistory(req.userId) })
+}))
+
+requireAuthRouter.post('/rpg/save/restore', asyncH(async (req, res) => {
+  const input = validateRpgSaveRestoreBody(req.body)
+  const result = await store.restoreRpgSave(req.userId, input)
+  if (result.outcome === 'conflict') {
+    return res.status(409).json({
+      error: 'RPG save revision conflict.',
+      code: 'RPG_SAVE_REVISION_CONFLICT',
+      currentRevision: result.save?.revision ?? 0,
+    })
+  }
+  if (result.outcome === 'not_found') {
+    return res.status(404).json({ error: 'RPG save history revision not found.', code: 'RPG_SAVE_HISTORY_NOT_FOUND' })
+  }
+  res.json({ save: result.save })
 }))
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------
