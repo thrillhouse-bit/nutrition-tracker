@@ -1662,3 +1662,12 @@ gap is only this report's own prior docs-only merge — zero app-code
 difference, not tracked per this report's standing convention.
 `/api/legal/status` still unchanged (`signupEnabled: false`). No fixes
 needed this pass.
+
+## 2026-09-02 — Check-in pass (recurring, consolidated 12:37/16:36 UTC)
+
+Two more scheduled firings queued while idle; consolidated into one
+pass as before. Nothing new in the repo — `origin/main` unchanged
+since the last check-in (still `26e31d6`). Live site remains only
+this report's own accumulated docs-only merges behind (`f9f8374`) —
+still zero app-code difference. `/api/legal/status` unchanged. No
+fixes needed this pass.
