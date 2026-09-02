@@ -72,8 +72,8 @@ const CRAFTING_PLACEMENT = {
   },
   'alchemy-lab': {
     label: 'Alchemy Laboratory',
-    mapIds: ['kore-sanctuary'],
-    accessLabel: 'Brew remedies among Kore’s preserved herbs',
+    mapIds: ['beacon-overlook', 'kore-sanctuary'],
+    accessLabel: 'Brew remedies at an alchemy laboratory',
   },
   loom: {
     label: 'Covenant Loom',

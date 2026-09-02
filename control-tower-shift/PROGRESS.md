@@ -566,3 +566,78 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      reachable later than its lowest-level recipe" pattern before
      assuming they're fine.
   3. Continue Priority 1: close a second skill loop.
+
+## Recovery checkpoint — 2026-09-02T15:0x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `e906ac1`
+  (bronze-forge/tin-ore/iron-ore gap closures, pushed).
+- **This checkpoint**: acted immediately on the previous checkpoint's own
+  milestone 2 — audited every one of the 9 crafting stations (not just
+  bronze-forge) for the same "station reachable later than its lowest-
+  level recipe" pattern with a throwaway probe script comparing each
+  station's earliest-available map against its lowest-level recipe.
+  Findings:
+  - `woodwork-bench`, `field-kitchen` — already fine (level-1 recipe,
+    Act I station).
+  - `shipwright`, `hearth`, `kiln`, `shrine-fire` — lowest-level recipe
+    is high enough (level 12–30) that the player would plausibly already
+    be in a later act by the time it matters; not an urgent structural
+    gap, left alone.
+  - `alchemy-lab` — a second real gap, same shape as bronze-forge: all
+    three of alchemy's recipes (including the level-1 one) use
+    alchemy-lab, which was only physically accessible at Act III's Kore
+    Sanctuary. The entire alchemy skill was 100% non-functional for the
+    first two-fifths of the game.
+  - `loom` — **investigated and deliberately left alone.** Its physical
+    entity is literally named "Restored Covenant Loom," reachable only
+    after two Act V story flags (`act5-time-fractures-crossed`,
+    `act5-epithets-restored`) and framed narratively as a
+    just-unlocked, one-of-a-kind location. This is genuine intentional
+    narrative gating, not an oversight — the opposite of bronze-forge's
+    and alchemy-lab's case, where no such justification exists.
+    Recording the distinction explicitly so a future pass doesn't
+    "fix" this one by mistake.
+  - Fixed alchemy-lab exactly like bronze-forge: widened
+    `CRAFTING_PLACEMENT['alchemy-lab'].mapIds` to
+    `['beacon-overlook', 'kore-sanctuary']`, added a physical
+    `beacon-alchemy-bench` station entity at Beacon Overlook with full
+    `act1Authoring` metadata, verified reachability with the same
+    probe-script method (never committed).
+  - Reconciled the identical class of test fallout as bronze-forge: one
+    more `craftingStationMaps('alchemy-lab')` hardcoded assertion in
+    `rpg-system-access.test.js`, and the `rpg-systems-panel.test.jsx`
+    "remote stations" test — which I had just repointed at `alchemy-lab`
+    as its stand-in remote station during the previous checkpoint's
+    fallout fixes — needed repointing again, this time to `hearth`,
+    since alchemy-lab is no longer remote from Beacon Overlook either.
+  - Extended `test/rpg-economy-gap-closures.test.js` (now 13 tests, up
+    from 9) with the same coverage shape for alchemy-lab: access-policy
+    and physical-placement checks, every alchemy recipe now has a
+    reachable Act I station, and a full real-reducer playthrough (dry
+    herbs at Beacon Overlook with zero travel) proving the closure.
+  - Content-integrity fallout: `stationPlacements` 10→11, Act I records
+    30→31, whole-registry total 301→302, legacy unchanged 216,
+    release-ready 85→86. `FULL-GAME-CONTRACT.md` authoring-readiness row
+    updated to match.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1000/1000 passed** (76
+    files, up from 996/76).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same reasoning as the
+    prior two checkpoints (pure backend/content work fully covered by
+    the real-reducer integration test).
+- **Active subagents**: none — solo lead work, direct continuation of
+  the prior checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Land the still-open Stewardship browser-acceptance evidence.
+  2. Priority 2: merchants 7/15, banks 5/8 remain the largest raw
+     economy gaps. The station-reachability audit is now complete for
+     all 9 crafting stations — no more of that particular class of gap
+     is known to remain (`loom` is confirmed intentional).
+  3. Priority 1: close a second skill loop — Stewardship is currently
+     Act I-only with one node; extending it into Act II/III toward a
+     full multi-tier curve (matching Fishing/Quarrying/Foraging/
+     Woodcutting) is probably higher-value than starting a brand-new
+     22nd skill from scratch.

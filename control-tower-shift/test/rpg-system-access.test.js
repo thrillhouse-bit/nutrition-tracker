@@ -68,7 +68,7 @@ describe('lore-coherent representative placements', () => {
     expect(craftingStationMaps('shipwright')).toContain('pelagos-harbor')
     expect(craftingStationMaps('loom')).toEqual(['silent-loom'])
     expect(craftingStationMaps('field-kitchen')).toEqual(expect.arrayContaining(['beacon-overlook', 'nyx-foothold']))
-    expect(craftingStationMaps('alchemy-lab')).toEqual(['kore-sanctuary'])
+    expect(craftingStationMaps('alchemy-lab')).toEqual(['beacon-overlook', 'kore-sanctuary'])
   })
 })
 

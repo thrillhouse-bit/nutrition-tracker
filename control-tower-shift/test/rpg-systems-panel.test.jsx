@@ -188,14 +188,14 @@ describe('RPGSystemsPanel — Crafting tab', () => {
     expect(stationRecipe).toBeTruthy()
   })
 
-  it('keeps remote alchemy-lab and loom stations readable but blocks their dispatch', async () => {
+  it('keeps remote hearth and loom stations readable but blocks their dispatch', async () => {
     const dispatch = vi.fn()
     await mount(<RPGSystemsPanel state={createInitialState()} dispatch={dispatch} />)
     await gotoCraftingTab()
 
-    // Beacon Overlook now also has a bronze-forge, so this uses two stations
-    // genuinely unavailable there instead.
-    for (const stationId of ['alchemy-lab', 'loom']) {
+    // Beacon Overlook now also has a bronze-forge and an alchemy-lab, so
+    // this uses two stations genuinely unavailable there instead.
+    for (const stationId of ['hearth', 'loom']) {
       const button = buttons().find((candidate) => candidate.dataset.stationId === stationId)
       expect(button).toBeTruthy()
       expect(button.disabled).toBe(true)

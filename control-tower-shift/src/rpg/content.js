@@ -157,6 +157,19 @@ export const MAPS = {
       },
       { id: 'myrrine-provisioner', kind: 'shop', shopId: 'beacon-provisioner', x: 650, y: 410, name: 'Myrrine', label: 'Trade with Myrrine' },
       {
+        id: 'beacon-alchemy-bench', kind: 'station', stationId: 'alchemy-lab', x: 550, y: 180, name: 'Beacon Alchemy Bench', label: 'Brew remedies at the Beacon bench',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Kallias be able to dry a single herb before the whole campaign is behind them, or must alchemy wait entirely for a laboratory two regions away?',
+          systemsUsed: ['alchemy', 'crafting', 'inventory'],
+          durableReward: 'The bench enables every authorized alchemy recipe reachable at the player’s level, starting with the level-1 Dry Herbs recipe, from the first hub.',
+          downstreamConsequence: 'It closes a genuine progression gap where the entire alchemy skill — all three of its recipes — was otherwise physically unreachable until Act III.',
+          recoveryBehavior: 'Craft attempts revalidate map access, ingredients, quantity, and capacity before changing inventory; an interrupted craft leaves inventory unchanged.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Mediterranean herb-drying and remedy practice; placing a working bench at the Beacon hub is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'beacon-bronze-forge', kind: 'station', stationId: 'bronze-forge', x: 700, y: 180, name: 'Beacon Bronze Forge', label: 'Work metal at the Beacon forge',
         authoring: act1Authoring({
           category: 'world-entity',

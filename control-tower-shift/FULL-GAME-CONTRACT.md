@@ -126,7 +126,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Banks | 5 — one per act (Beacon Overlook, Pelagos Harbor, Wheat Village, Slag Road, Nyx Foothold); all share one account-wide bank, gated by physical presence | 8 |
 | Merchants | 7 — the 5 regional hub specializations plus two gap-closing traders: Philyra (Olive Road, tin ore) and Straton (Storm Anchorage, iron ore), which close a real progression gap where bronze-bar and every iron-tier recipe had no obtainable ingredient before Act II/IV | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 85 / 301 release-ready; 216 legacy warnings | all released records ready |
+| Production authoring readiness | 86 / 302 release-ready; 216 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |
