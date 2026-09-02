@@ -35,6 +35,8 @@ export const SHOP_DEFS = Object.freeze({
       'olive-plank': Object.freeze({ itemId: 'olive-plank', buyPrice: 38, sellPrice: 15, baseStock: 8, maxStock: 20, restockAmount: 2 }),
       'cedar-keel': Object.freeze({ itemId: 'cedar-keel', buyPrice: 220, sellPrice: 85, baseStock: 2, maxStock: 6, restockAmount: 1 }),
       'tuna-stew': Object.freeze({ itemId: 'tuna-stew', buyPrice: 90, sellPrice: 34, baseStock: 6, maxStock: 12, restockAmount: 1 }),
+      'water-cask': Object.freeze({ itemId: 'water-cask', buyPrice: 22, sellPrice: 8, baseStock: 10, maxStock: 20, restockAmount: 2 }),
+      'sea-fig': Object.freeze({ itemId: 'sea-fig', buyPrice: 40, sellPrice: 15, baseStock: 5, maxStock: 14, restockAmount: 2 }),
     }),
   }),
   'wheat-village-exchange': Object.freeze({

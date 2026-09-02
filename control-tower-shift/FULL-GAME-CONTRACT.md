@@ -122,11 +122,11 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Conversations | 15 / 927 words | 50,000 words; zero fallbacks |
 | Story encounters | 20 | 80 configurations |
 | Named bosses | 5 | 12 |
-| Resource nodes | 22 across all five acts; quarrying, foraging, and woodcutting span full 5-tier curves with a rare/mastery node each; fishing spans four level tiers (sardine/tuna plus red-mullet, sturgeon, hippocamp-roe) with its own two-tier rod line (bronze/iron); stewardship has its first node — Beacon Overlook's fallow field, a genuine restore-then-tend loop (not a plain harvest node) with its own bronze/iron hoe tool line — but is otherwise still a single Act I tier, not yet a full curve | 150 across all regions |
+| Resource nodes | 23 across all five acts; quarrying, foraging, and woodcutting span full 5-tier curves with a rare/mastery node each; fishing spans four level tiers (sardine/tuna plus red-mullet, sturgeon, hippocamp-roe) with its own two-tier rod line (bronze/iron); stewardship now spans two tiers — Beacon Overlook's fallow field (Act I) and Pelagos Harbor's salt-damaged garden (Act II, leached with purchased water casks instead of compost) — sharing the bronze/iron hoe tool line, still short of a full 5-tier curve | 150 across all regions |
 | Banks | 5 — one per act (Beacon Overlook, Pelagos Harbor, Wheat Village, Slag Road, Nyx Foothold); all share one account-wide bank, gated by physical presence | 8 |
 | Merchants | 7 — the 5 regional hub specializations plus two gap-closing traders: Philyra (Olive Road, tin ore) and Straton (Storm Anchorage, iron ore), which close a real progression gap where bronze-bar and every iron-tier recipe had no obtainable ingredient before Act II/IV | 15 regional merchants |
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
-| Production authoring readiness | 86 / 302 release-ready; 216 legacy warnings | all released records ready |
+| Production authoring readiness | 87 / 303 release-ready; 216 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
 | Consumables | food healing plus salve/tonic/blessing next-encounter loadouts | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |

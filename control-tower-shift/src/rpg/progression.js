@@ -107,6 +107,8 @@ export const ITEM_DEFS = Object.freeze({
   'ambrosia-bloom': { id: 'ambrosia-bloom', name: 'Ambrosia Bloom', category: 'herb', stackable: false, tier: 80 },
   compost: { id: 'compost', name: 'Compost', category: 'material', stackable: false, tier: 1 },
   'barley-sheaf': { id: 'barley-sheaf', name: 'Barley Sheaf', category: 'grain', stackable: false, tier: 1 },
+  'water-cask': { id: 'water-cask', name: 'Water Cask', category: 'material', stackable: false, tier: 15 },
+  'sea-fig': { id: 'sea-fig', name: 'Sea Fig', category: 'grain', stackable: false, tier: 15 },
   drachma: { id: 'drachma', name: 'Drachma', category: 'currency', stackable: true, tier: 1 },
 })
 

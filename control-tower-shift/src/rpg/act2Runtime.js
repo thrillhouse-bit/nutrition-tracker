@@ -175,6 +175,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     reward: 'Deposited items persist in a second physical bank and can be withdrawn atomically, mirroring the Beacon Storehouse contract.', consequence: 'It extends the inventory-management loop the Beacon Storehouse established into the first region beyond Asterion Reach.', recovery: 'Full-capacity and invalid-quantity operations are atomic; closing or reloading preserves both pack and bank state.', minutes: 2,
     originality: 'Uses public-domain Greek harbor storehouse practice; a second regional bank tied to Pelagos’ working-port identity is original Oathbearer design.',
   }),
+  'pelagos-harbor:steward-salt-garden': authoredEntity({
+    question: 'Will Pelagos treat a salt-ruined garden as a solvable civic problem, or leave it a permanent scar from the surge?', systemsUsed: ['inventory', 'resource-respawn', 'stewardship', 'trading'],
+    reward: 'A one-time leaching with fresh water permanently restores the plot; afterward each available charge awards one sea fig and 35 Stewardship XP.', consequence: 'Sea figs feed Thaleia’s chandlery trade, and the restoration is Stewardship’s first Act II tier, proving the restore-then-tend contract scales regionally.',
+    recovery: 'Restoration is exact-once and its water-cask cost is atomic; once restored the garden behaves like any other resource node, with inventory-full gathering atomic and depletion surviving reload.', minutes: 2, resource: true, levelMin: 15, levelMax: 20,
+    originality: 'Uses public-domain Mediterranean coastal sea-fig foraging and freshwater soil-leaching practice; the salt-damaged civic garden and its restore contract are original Oathbearer design.',
+  }),
   'pelagos-harbor:pelagos-red-mullet-run': authoredEntity({
     question: 'Can a working quay support a mid-level fishing run without pulling attention from the covenant crisis at its center?', systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
     reward: 'Each available charge awards one red mullet and 27 Fishing XP at the authored level gate.', consequence: 'Red mullet supplies the mid-level ingredient bridge between shore sardine and the storm-anchorage tuna run.',
@@ -347,6 +353,16 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'thaleia-harbor-chandler', kind: 'shop', shopId: 'pelagos-chandler', x: 620, y: 250, name: 'Thaleia', label: 'Trade at the harbor chandlery' },
       { id: 'pelagos-red-mullet-run', kind: 'resource', x: 300, y: 400, name: 'Pelagos Red Mullet Run', label: 'Fish the harbor red mullet run', skillId: 'fishing', itemId: 'red-mullet', level: 15, xp: 27 },
       { id: 'pelagos-storehouse', kind: 'bank', x: 500, y: 300, name: 'Pelagos Storehouse', label: 'Open the Pelagos Storehouse' },
+      {
+        id: 'steward-salt-garden', kind: 'resource', x: 180, y: 420, name: 'Salt-Damaged Garden', label: 'Tend the salt-damaged garden',
+        skillId: 'stewardship', itemId: 'sea-fig', level: 20, xp: 35,
+        requiresFlag: 'steward:restored:pelagos-harbor:steward-salt-garden',
+        restore: {
+          level: 15, xp: 30,
+          cost: [{ itemId: 'water-cask', quantity: 3 }],
+          label: 'Leach the salt-damaged garden with fresh water',
+        },
+      },
     ],
     exits: [
       { id: 'harbor-to-breakwater', x: 920, y: 278, toMapId: 'breakwater-road', spawnId: 'from-harbor', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },

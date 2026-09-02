@@ -641,3 +641,88 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      full multi-tier curve (matching Fishing/Quarrying/Foraging/
      Woodcutting) is probably higher-value than starting a brand-new
      22nd skill from scratch.
+
+## Recovery checkpoint — 2026-09-02T15:1x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `bffd663`
+  (crafting-station audit + alchemy-lab fix, pushed).
+- **This checkpoint**: acted on the previous checkpoint's own milestone
+  3 — gave Stewardship a real second tier instead of leaving it a
+  single-node skill, the same way Fishing/Quarrying/Foraging/Woodcutting
+  already have multi-tier curves.
+  - New Pelagos Harbor (Act II) node: `steward-salt-garden` — a
+    salt-damaged civic garden. Restoring it costs 3 `water-cask`
+    (a new material, purchasable from Thaleia's chandlery — a
+    deliberately different restore-cost material from tier 1's compost,
+    so the loop doesn't feel like a reskin) instead of compost, framed
+    as leaching salted soil with fresh water (a real Mediterranean
+    agricultural technique). Restore level 15, tend level 20, yields a
+    new crop item `sea-fig` (also sellable back to Thaleia — closes the
+    trade loop, matching tier 1's pattern).
+  - Reused every existing mechanism with zero reducer changes: the same
+    `RESTORE_LAND`/`requiresFlag`-gated `GATHER` contract built for tier
+    1, and the existing bronze-hoe/iron-hoe tool bonus applies
+    automatically (it's keyed generically on `resource.skillId ===
+    'stewardship'`, not on a specific node) — proven live in the new
+    test suite (iron-hoe grants the tier-2 yield bonus on the new node
+    with no code changes needed).
+  - Placement verified with the same throwaway-probe-script method as
+    every prior placement checkpoint (never committed): reachable from
+    all 4 Pelagos Harbor spawns across the full Act II tide cycle.
+  - Added full `act2Authoring` metadata to the new resource entity
+    (Act II still has its authoring-readiness contract, unlike Acts
+    III–V).
+  - New test file `test/rpg-stewardship-act2-expansion.test.js` (15
+    tests): item registration/obtainability, placement/reachability/
+    distinctness, `RESTORE_LAND` level-gate/atomicity/exact-once at the
+    new tier, `GATHER` before/after restoration including the
+    cross-tier tool-bonus proof, and both economy interactions (buy
+    water-cask/sell sea-fig at Thaleia's, deposit/withdraw at the
+    Pelagos Storehouse).
+  - **One genuinely different test fix, not just a count bump**:
+    `rpg-regional-economy.test.js` has a `CRAFTED_SINK_ITEMS` fixed list
+    asserting the four regional-hub shops' listings match *exactly* the
+    set of crafted-recipe outputs that need a trade sink. `water-cask`
+    (a raw purchasable material) and `sea-fig` (a gathered resource, not
+    a crafted output) legitimately don't belong in that list — they're
+    a different kind of listing serving a different purpose. Rather than
+    stuff them into `CRAFTED_SINK_ITEMS` and blur what that list means,
+    added a small `NON_CRAFTED_STEWARDSHIP_LISTINGS` allowlist and
+    asserted both properties separately: the crafted-sink set is still
+    exactly what it was, and the two new listings are present too.
+  - Reconciled the same class of content-integrity fallout as every
+    prior placement checkpoint: `resources` 22→23 + new sorted ID;
+    Act II records 55→56; whole-registry total 302→303, legacy
+    unchanged 216, release-ready 86→87; recomputed Act II behavior
+    digest. `FULL-GAME-CONTRACT.md` resource-nodes and
+    authoring-readiness rows updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1015/1015 passed** (77
+    files, up from 1000/76).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `resourceNodes` 22→23, `items` 83→85.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same reasoning as every
+    checkpoint since the Stewardship tier-1 one: pure backend/content
+    work with an already-proven UI wiring pattern (the tier-1 checkpoint
+    already verified the restore/tend label logic live against the
+    production build), fully covered by the real-reducer integration
+    tests above.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the prior checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Land the still-open Stewardship browser-acceptance evidence — this
+     is now the single most valuable open item, since two full tiers of
+     reducer/economy logic are verified but zero minutes of actual human
+     or live-browser play have confirmed the loop feels right.
+  2. Priority 2: merchants 7/15, banks 5/8. Stewardship's tier-2 node
+     added `sea-fig`/`water-cask` to an *existing* shop rather than a
+     new one, so the merchant count didn't move this checkpoint — a
+     genuinely new merchant is still the more direct way to close that
+     specific gap further.
+  3. Priority 1: Stewardship could go to a third tier (Act III/IV), or
+     a different skill (e.g. Hearthkeeping, Alchemy, or Weaving) could
+     get its own first real loop — Stewardship having 2/5 plausible
+     tiers is a reasonable place to pause that particular skill and
+     spread coverage across more of the 22 before deepening one further.

@@ -44,6 +44,12 @@ const CRAFTED_SINK_ITEMS = [
   'tuna-stew',
 ]
 
+// Stewardship's Act II tier added a second-tier raw material (water-cask,
+// the restore cost) and its gathered crop (sea-fig) to Thaleia's chandlery.
+// Neither is a crafted output, so they sit outside CRAFTED_SINK_ITEMS above
+// without changing what that list is verifying.
+const NON_CRAFTED_STEWARDSHIP_LISTINGS = ['sea-fig', 'water-cask']
+
 const MERCHANT_ENTITY_IDS = new Set([
   'thaleia-harbor-chandler',
   'eirene-household-steward',
@@ -87,7 +93,8 @@ describe('regional merchant network', () => {
         listed.push(listing.itemId)
       }
     }
-    expect(listed.sort()).toEqual(CRAFTED_SINK_ITEMS)
+    expect(listed.filter((itemId) => !NON_CRAFTED_STEWARDSHIP_LISTINGS.includes(itemId)).sort()).toEqual(CRAFTED_SINK_ITEMS)
+    expect(listed).toEqual(expect.arrayContaining(NON_CRAFTED_STEWARDSHIP_LISTINGS))
   })
 
   it('places one distinct, reachable merchant in each of Acts II through V', () => {
