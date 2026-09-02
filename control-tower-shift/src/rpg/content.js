@@ -170,6 +170,19 @@ export const MAPS = {
         }),
       },
       {
+        id: 'beacon-kiln', kind: 'station', stationId: 'kiln', x: 620, y: 120, name: 'Beacon Kiln', label: 'Fire clay at the Beacon kiln',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Kallias be able to mold a single clay brick before the whole campaign is behind them, or must hearthkeeping wait entirely for a kiln two regions away?',
+          systemsUsed: ['crafting', 'hearthkeeping', 'inventory'],
+          durableReward: 'The kiln enables every authorized hearthkeeping recipe reachable at the player’s level, starting with the level-1 Clay Brick recipe, from the first hub.',
+          downstreamConsequence: 'It closes a genuine progression gap where the entire hearthkeeping skill — four of its five recipes, including the level-1 one — was otherwise physically unreachable until Act III.',
+          recoveryBehavior: 'Craft attempts revalidate map access, ingredients, quantity, and capacity before changing inventory; an interrupted craft leaves inventory unchanged.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Aegean domestic kiln practice; placing a working kiln at the Beacon hub is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'beacon-bronze-forge', kind: 'station', stationId: 'bronze-forge', x: 700, y: 180, name: 'Beacon Bronze Forge', label: 'Work metal at the Beacon forge',
         authoring: act1Authoring({
           category: 'world-entity',

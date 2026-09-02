@@ -82,8 +82,8 @@ const CRAFTING_PLACEMENT = {
   },
   kiln: {
     label: 'Foundry Kiln',
-    mapIds: ['bronze-foundry', 'wheat-village'],
-    accessLabel: 'Fire clay at a foundry or village kiln',
+    mapIds: ['beacon-overlook', 'bronze-foundry', 'wheat-village'],
+    accessLabel: 'Fire clay at a kiln',
   },
   'shrine-fire': {
     label: 'Shrine Fire',

@@ -27,7 +27,7 @@ describe('complete Oathbearer content integrity report', () => {
       shops: 7,
       shopPlacements: 7,
       stations: 9,
-      stationPlacements: 11,
+      stationPlacements: 12,
       banks: 5,
     })
     expect(report.inventory.resources.map((entry) => entry.id)).toEqual([

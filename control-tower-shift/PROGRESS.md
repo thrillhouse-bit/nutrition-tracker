@@ -798,3 +798,83 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      different skill (Hearthkeeping/Alchemy/Weaving) — spreading
      coverage across more of the 22 skills is probably higher-value
      than deepening Stewardship further right now.
+
+## Recovery checkpoint — 2026-09-02T15:2x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `697f8c0`
+  (cypress-log fix, pushed).
+- **This checkpoint**: went looking for a genuinely new merchant to move
+  the 7/15 merchant count (this checkpoint's own prior milestone), but
+  first ran a proper systematic audit instead of continuing to
+  spot-check by hand — for every recipe in the game, computed the
+  earliest act its own station is reachable at vs. the earliest act
+  every one of its ingredients (including transitively through other
+  recipes) is reachable at, and flagged any recipe where ingredients lag
+  behind the station. That surfaced a **third** whole-skill-blocking gap
+  in the exact shape of bronze-forge and alchemy-lab: `kiln` — required
+  by four of hearthkeeping's five recipes, including the level-1 Clay
+  Brick one (whose only ingredient, copper-ore, is already free at
+  Beacon Overlook) — was only physically accessible at Act III's Wheat
+  Village and Act IV's Bronze Foundry. Hearthkeeping was 100%
+  non-functional for the first two-fifths of the game, same as
+  bronzework and alchemy were before their fixes.
+  - Fixed identically: widened `CRAFTING_PLACEMENT['kiln'].mapIds` to
+    `['beacon-overlook', 'bronze-foundry', 'wheat-village']`, added a
+    physical `beacon-kiln` station entity at Beacon Overlook with full
+    `act1Authoring` metadata, verified reachability with the same
+    probe-script method (never committed).
+  - The rest of the systematic audit's findings (bronze-quarry-pick and
+    four siblings at "effectiveAct 2" turned out to be a **false
+    positive** in the audit script itself — olive-plank is obtainable
+    via its own Act I recipe, but the script's shop-lookup pass set its
+    earliest-act from a Pelagos Harbor listing before ever checking the
+    recipe path, so it never saw the earlier route. Manually confirmed
+    those five recipes are genuinely fine.) Every other flagged recipe
+    (cedar-keel, ash-blessing, several higher armor/weapon tiers, levels
+    12–42) has ingredients gated by resource-node levels high enough
+    that reaching the corresponding act by then is a normal expectation,
+    not a structural blocker — the same judgment call already applied to
+    shipwright/hearth/shrine-fire earlier. No further station changes
+    made this checkpoint.
+  - Extended `test/rpg-economy-gap-closures.test.js` with a
+    `kiln access widened to the Act I hub` block (19 tests total now,
+    up from 15): access-policy and physical-placement checks, every
+    kiln-based hearthkeeping recipe now has a reachable Act I station,
+    and a full real-reducer playthrough (gather copper-ore twice at
+    Beacon Overlook, mold a Clay Brick at the new kiln, zero travel)
+    proving the closure.
+  - Considered but did not pursue a genuinely new merchant at Winter
+    Orchard (Act III) this checkpoint — the two candidate items
+    (herbal-salve, already sold at Wheat Village; moly-tonic, already
+    sold at Nyx Foothold and gated by level-55/80 foraging ingredients
+    regardless of where it's sold) would have been redundant or
+    low-value rather than a genuine gap closure, so didn't force it.
+    Recorded here so a future pass doesn't waste time re-deriving the
+    same conclusion.
+  - Content-integrity fallout: `stationPlacements` 11→12, Act I records
+    31→32, whole-registry total 303→304, legacy unchanged 216,
+    release-ready 87→88. `FULL-GAME-CONTRACT.md` authoring-readiness row
+    updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1021/1021 passed** (77
+    files, up from 1017/77).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same reasoning as every
+    pure backend/content checkpoint since Stewardship tier 1.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the merchant-count milestone that led to a more valuable discovery
+  instead.
+- **Next three ordered milestones**:
+  1. Land the still-open Stewardship browser-acceptance evidence — still
+     needs a session where the tab is genuinely foregrounded.
+  2. Priority 2: merchants 7/15, banks 5/8 remain the two largest raw
+     economy-count gaps. The systematic ingredient/station-reachability
+     audit is now complete — no more of that specific bug class is
+     believed to remain across any of the 9 crafting stations.
+  3. Priority 1: a third Stewardship tier, or Hearthkeeping/Weaving's
+     first real loop (Hearthkeeping's reducer/economy side is now fully
+     reachable from Act I — it may be very close to "complete loop"
+     shape already, pending only the same browser-acceptance evidence
+     every other loop is waiting on).

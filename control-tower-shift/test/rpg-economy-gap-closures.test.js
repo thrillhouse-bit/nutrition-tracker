@@ -25,10 +25,15 @@ import { applyEvent, createInitialState } from '../src/rpg/state.js'
 // also needs cypress-plank (a carpentry output of cypress-log), and
 // cypress-log only existed on a single Act III resource node — so the
 // recipes were still unreachable even after iron-ore and the forge itself
-// became available earlier. This file proves every gap is closed: the
-// missing materials are now purchasable early, both stations are now
-// reachable from the Act I hub, and a full iron-tier tool can be assembled
-// start to finish without ever reaching Act III or IV.
+// became available earlier. A systematic re-audit comparing every recipe's
+// ingredient reachability against its own station's earliest map then found
+// a third instance of the identical shape: kiln, required by four of
+// hearthkeeping's five recipes including the level-1 one, was only
+// physically accessible at Acts III and IV. This file proves every gap is
+// closed: the missing materials are now purchasable early, all three
+// stations are now reachable from the Act I hub, and both a full iron-tier
+// tool and a hearthkeeping clay brick can be made start to finish without
+// ever reaching Act III or IV.
 
 function atMap(state, mapId, position) {
   const map = rpgMapById(mapId)
@@ -245,5 +250,60 @@ describe('cypress-log now purchasable alongside iron-ore', () => {
     expect(state.inventory.slots.some((entry) => entry.itemId === 'iron-hoe')).toBe(true)
     expect(state.inventory.slots.some((entry) => entry.itemId === 'cypress-plank')).toBe(false)
     expect(state.inventory.slots.filter((entry) => entry.itemId === 'iron-ore')).toHaveLength(0)
+  })
+})
+
+// A systematic re-audit (comparing every recipe's ingredient reachability
+// against its own station's earliest map, not just eyeballing individual
+// stations) found a third whole-skill-blocking gap in the identical shape:
+// kiln — required by four of hearthkeeping's five recipes, including the
+// level-1 Clay Brick one — was only physically accessible at Act III's
+// Wheat Village and Act IV's Bronze Foundry. Clay Brick's only ingredient
+// (copper-ore) is already free at Beacon Overlook, so the station was the
+// entire blocker.
+describe('kiln access widened to the Act I hub', () => {
+  it('is reachable from Beacon Overlook, not only Acts III/IV', () => {
+    expect(craftingStationMaps('kiln')).toEqual(['beacon-overlook', 'bronze-foundry', 'wheat-village'])
+    expect(craftingAccessDecision('beacon-overlook', 'kiln')).toMatchObject({ available: true })
+    expect(craftingAccessDecision('wheat-village', 'kiln')).toMatchObject({ available: true })
+    expect(craftingAccessDecision('bronze-foundry', 'kiln')).toMatchObject({ available: true })
+  })
+
+  it('places a physical kiln entity at Beacon Overlook, reachable from every spawn', () => {
+    const map = REGISTERED_MAPS['beacon-overlook']
+    const entity = map.entities.find((candidate) => candidate.id === 'beacon-kiln')
+    expect(entity).toBeTruthy()
+    expect(entity.kind).toBe('station')
+    expect(entity.stationId).toBe('kiln')
+    for (const spawn of Object.values(map.spawns)) {
+      const path = findWorldPath(map, spawn, entity)
+      expect(path.length, spawn.id).toBeGreaterThan(0)
+      expect(Math.hypot(path.at(-1).x - entity.x, path.at(-1).y - entity.y)).toBeLessThan(56)
+    }
+  })
+
+  it('every kiln-based hearthkeeping recipe now has a physically reachable Act I station', () => {
+    const kilnRecipes = RECIPES.filter((recipe) => recipe.skillId === 'hearthkeeping' && recipe.stationId === 'kiln')
+    expect(kilnRecipes.length).toBe(4)
+    for (const recipe of kilnRecipes) {
+      expect(craftingAccessDecision('beacon-overlook', recipe.stationId)?.available, recipe.id).toBe(true)
+    }
+  })
+
+  it('lets a real player mold a clay brick at Beacon Overlook with no travel at all — the exact gap this closes', () => {
+    const base = createInitialState()
+    let state = atMap(base, 'beacon-overlook')
+    state = applyEvent(state, { type: 'GATHER', entityId: 'copper-seam' })
+    expect(state.inventory.slots.some((entry) => entry.itemId === 'copper-ore')).toBe(true)
+    state = applyEvent(state, { type: 'TICK', n: 300 })
+    state = applyEvent(state, { type: 'GATHER', entityId: 'copper-seam' })
+    expect(state.inventory.slots.filter((entry) => entry.itemId === 'copper-ore')).toHaveLength(2)
+
+    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'kiln' })
+    expect(state.crafting.stationId).toBe('kiln')
+    state = applyEvent(state, { type: 'CRAFT', recipeId: 'clay-brick', quantity: 1 })
+    expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
+    expect(state.inventory.slots.some((entry) => entry.itemId === 'clay-brick')).toBe(true)
+    expect(state.inventory.slots.filter((entry) => entry.itemId === 'copper-ore')).toHaveLength(0)
   })
 })
