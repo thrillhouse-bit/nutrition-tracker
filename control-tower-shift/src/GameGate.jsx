@@ -9,7 +9,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 
 const ControlTowerShift = lazy(() => import('./ControlTowerShift.jsx'))
-const ControlTowerRPG = lazy(() => import('./ControlTowerRPG.jsx'))
+const RPGAccountGate = lazy(() => import('./RPGAccountGate.jsx'))
 
 export const GAME_HASH = '#control-tower'
 export const RPG_HASH = '#control-tower-rpg'
@@ -30,7 +30,7 @@ export default function GameGate({ app }) {
   if (!route) return app
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted">Loading the tower…</div>}>
-      {route === 'arena' ? <ControlTowerShift /> : <ControlTowerRPG />}
+      {route === 'arena' ? <ControlTowerShift /> : <RPGAccountGate />}
     </Suspense>
   )
 }

@@ -9,6 +9,7 @@ import {
   ACT2_CONNECTIONS,
   ACT2_POCKETS,
   ACT2_TIDE_ORDER,
+  act2Authoring,
   act2PocketById,
 } from './act2Content.js'
 
@@ -68,6 +69,235 @@ const spawn = (id, x, y, facing) => ({ id, x, y, facing })
 const solid = (id, x, y, w, h) => ({ id, kind: 'solid', x, y, w, h })
 const lane = (id, width, stateIds, points) => ({ id, width, stateIds, points })
 
+function authoredMap({ question, systemsUsed, reward, consequence, recovery, minutes, originality }) {
+  return act2Authoring({
+    category: 'region-map', dramaticQuestion: question, systemsUsed,
+    durableReward: reward, downstreamConsequence: consequence, recoveryBehavior: recovery,
+    expectedMinutes: minutes, originalityNotes: originality,
+  })
+}
+
+function authoredEntity({ question, systemsUsed, reward, consequence, recovery, minutes = 1, originality, resource = false, levelMin = 5, levelMax = 35 }) {
+  return act2Authoring({
+    category: resource ? 'gathering-resource' : 'world-entity', dramaticQuestion: question, systemsUsed,
+    durableReward: reward, downstreamConsequence: consequence, recoveryBehavior: recovery,
+    expectedMinutes: minutes, originalityNotes: originality, levelMin, levelMax,
+  })
+}
+
+const ACT2_MAP_AUTHORING = deepFreeze({
+  'pelagos-harbor': authoredMap({
+    question: 'Can a working harbor remain open while sailors, gods, and nereids renegotiate who has authority to permit a crossing?',
+    systemsUsed: ['banking', 'crafting', 'dialogue', 'questing', 'trading'],
+    reward: 'The hub preserves covenant progress, physical service access, shrine state, and the post-ratification completion spawn.',
+    consequence: 'Melite’s briefing begins Act II and the covenant table resolves it before opening the Fields of Kore.',
+    recovery: 'Named harbor, barge-return, and post-covenant spawns provide stable recovery; services remain physically accessible without remote menus.',
+    minutes: 9,
+    originality: 'Uses public-domain Greek harbor, Poseidon-shrine, and oath-post motifs; Pelagos’ consent-based civic hub is original Oathbearer expression.',
+  }),
+  'breakwater-road': authoredMap({
+    question: 'Can Kallias cross a changing causeway by learning the sea’s terms rather than overpowering them?',
+    systemsUsed: ['combat', 'movement', 'tide-traversal'],
+    reward: 'The map preserves the learned surge witness, cleared defense, and current covenant-tide state.',
+    consequence: 'Its two tide wells teach the regional traversal grammar and connect the harbor to the Nereid Caves.',
+    recovery: 'Both reciprocal exits and all canonical spawns remain reachable in valid tide states; the combat ready gate prevents unattended loss.',
+    minutes: 7,
+    originality: 'Uses public-domain Greek breakwater and tidal-crossing imagery; the shape-coded three-state route is original Oathbearer design.',
+  }),
+  'nereid-caves': authoredMap({
+    question: 'Can a boundary cavern preserve distinct witnesses, distinct names, and an optional remembered desire without trapping the main path?',
+    systemsUsed: ['combat', 'environment-puzzle', 'gathering', 'side-quest', 'tide-traversal'],
+    reward: 'The cave preserves witness releases, pressure-shell rotations, optional quest progress, and its regional tin source.',
+    consequence: 'Completing its witness and boundary work opens the storm anchorage while the echo branch contributes optional evidence.',
+    recovery: 'Threshold and reciprocal spawns keep every required target reachable; partial order-free progress and tide state survive reload.',
+    minutes: 16,
+    originality: 'Uses public-domain nereid cavern, conch, and Oceanus-boundary motifs; the named witness and pressure-shell topology is original.',
+  }),
+  'storm-anchorage': authoredMap({
+    question: 'Can a fortified storm platform become a shared archive route rather than another permanently occupied chokepoint?',
+    systemsUsed: ['combat', 'fishing', 'movement', 'travel-unlock'],
+    reward: 'The map preserves anchorage victory, rope-lift access, and the high-level tuna gathering node.',
+    consequence: 'Clearing the platform activates the only gated skiff route to the archive barge.',
+    recovery: 'The cave return, rope-lift checkpoint, and barge return spawn keep travel reversible before and after combat.',
+    minutes: 7,
+    originality: 'Uses public-domain storm anchorage and maritime fortification motifs; its archive-route purpose and consent framing are original.',
+  }),
+  'archive-barge-deck': authoredMap({
+    question: 'Can the two halves of a stolen covenant be recovered from a moving archive before its guardian fixes one false history forever?',
+    systemsUsed: ['boss-combat', 'exploration', 'interaction'],
+    reward: 'The deck preserves each recovered folio, boss completion, and a safe post-boss return boundary.',
+    consequence: 'Its evidence and Leviathan victory provide the final prerequisites for Salt Covenant ratification.',
+    recovery: 'Named arrival and post-boss spawns keep folios through defeat, and the harbor skiff supplies a stable exit.',
+    minutes: 10,
+    originality: 'Uses public-domain Greek merchant-barge and sea-monster imagery; the stolen-clause archive deck is original Oathbearer expression.',
+  }),
+})
+
+const ACT2_ENTITY_AUTHORING = deepFreeze({
+  'pelagos-harbor:melite': authoredEntity({
+    question: 'Will Melite trust Kallias to distinguish a harbor welcome from permission to cross the sea?', systemsUsed: ['dialogue', 'questing'],
+    reward: 'Her briefing records the meeting and places the surge witness marker.', consequence: 'She directs Kallias to the breakwater and establishes the tide-reading rule.',
+    recovery: 'Her deterministic conversation can resume after interruption without duplicating its flag or marker.', minutes: 2,
+    originality: 'Uses the public-domain Greek harbor-keeper role; Melite and her arrival-versus-permission counsel are original.',
+  }),
+  'pelagos-harbor:oath-post': authoredEntity({
+    question: 'What fails when a civic oath-post uses the same name for welcome, arrival, and permission?', systemsUsed: ['interaction', 'questing'],
+    reward: 'Inspection gives a stable physical reference for the harbor’s broken covenant.', consequence: 'The post grounds Melite’s explanation and the later three-form ratification.',
+    recovery: 'The post remains physically present and repeat inspection cannot create duplicate quest rewards.',
+    originality: 'Uses public-domain Greek inscribed decrees and harbor markers; this fused-name oath-post is original.',
+  }),
+  'pelagos-harbor:poseidon-shrine': authoredEntity({
+    question: 'Can Poseidon be honored as keeper of harbors without granting him sole ownership of every crossing?', systemsUsed: ['checkpoint', 'shrine'],
+    reward: 'The shrine provides a persistent Pelagos save point tied to Poseidon.', consequence: 'It frames the authority side of the covenant without deciding the final formulation.',
+    recovery: 'Using the shrine creates a safe checkpoint; reload restores state without repeating story effects.',
+    originality: 'Uses public-domain Poseidon worship and coastal shrines; its limited covenant role is original Oathbearer expression.',
+  }),
+  'pelagos-harbor:salt-covenant-table': authoredEntity({
+    question: 'Which formulation can sailors, nereids, Poseidon, and Oceanus ratify without erasing one another?', systemsUsed: ['choice', 'questing'],
+    reward: 'One covenant formulation and the Act II completion state persist permanently.', consequence: 'The choice completes Pelagos and unlocks Act III while preserving regional consequences.',
+    recovery: 'The table remains inert until prerequisites are met; invalid or repeated choices cannot overwrite ratification.', minutes: 3,
+    originality: 'Uses public-domain Greek council and covenant traditions; the three-form Salt Covenant table is original.',
+  }),
+  'pelagos-harbor:pelagos-woodwork-bench': authoredEntity({
+    question: 'Will gathered harbor timber become useful equipment rather than decorative inventory?', systemsUsed: ['crafting', 'inventory'],
+    reward: 'The physical bench enables authorized woodwork recipes and their exact XP awards.', consequence: 'It connects Pelagos materials to the broader regional crafting and merchant loops.',
+    recovery: 'Every craft rechecks physical access and inventory capacity; invalid or unaffordable crafts are atomic.',
+    originality: 'Uses public-domain shipyard woodworking practice; this exact station placement and recipe role are original.',
+  }),
+  'pelagos-harbor:pelagos-shipwright': authoredEntity({
+    question: 'Can the harbor’s seafaring tools be maintained through visible local labor rather than a remote crafting menu?', systemsUsed: ['crafting', 'inventory'],
+    reward: 'The physical shipwright enables authorized maritime recipes and deterministic crafting XP.', consequence: 'Its outputs support the regional economy and reinforce Pelagos as a working port.',
+    recovery: 'Craft attempts revalidate map access, ingredients, quantity, and capacity before changing inventory.',
+    originality: 'Uses public-domain Greek shipwright traditions; the station’s systemic closure role is original Oathbearer design.',
+  }),
+  'breakwater-road:tide-well-harbor': authoredEntity({
+    question: 'Will Kallias deliberately turn the covenant tide toward the harbor instead of waiting for an invisible timer?', systemsUsed: ['interaction', 'tide-traversal'],
+    reward: 'Activation deterministically advances and persists the canonical tide state.', consequence: 'The changed state alters which causeway lanes are traversable without drowning timers.',
+    recovery: 'The well is reachable from every relevant spawn and active lane; tide state survives transitions and reload.',
+    originality: 'Uses public-domain sacred-well and tidal motifs; explicit player-controlled tide cycling is original.',
+  }),
+  'breakwater-road:tide-well-caves': authoredEntity({
+    question: 'Will Kallias open the cavern route while respecting the same visible tide rules learned at the harbor well?', systemsUsed: ['interaction', 'tide-traversal'],
+    reward: 'Activation deterministically advances and persists the canonical tide state.', consequence: 'The changed state opens or closes authored lanes leading toward the Nereid Caves.',
+    recovery: 'The well is reachable from every relevant spawn and active lane; malformed interactions cannot change state.',
+    originality: 'Uses public-domain sacred-well and tidal motifs; the paired cave-facing controller is original Oathbearer design.',
+  }),
+  'breakwater-road:surge-witness': authoredEntity({
+    question: 'Can the first surge be learned as readable information rather than as surprise punishment?', systemsUsed: ['interaction', 'tide-traversal'],
+    reward: 'Witnessing the marker records the regional tide tutorial as quest progress.', consequence: 'It advances the main objective toward the cave rescues without launching the nearby combat.',
+    recovery: 'Its semantic target is separately reachable and remains available until the objective is satisfied.',
+    originality: 'Uses public-domain sea-surge imagery; the non-color tutorial witness is original Oathbearer design.',
+  }),
+  'nereid-caves:nereid-witness-1': authoredEntity({
+    question: 'Will the Witness of Arrival retain a distinct account instead of being absorbed into a generic rescue total?', systemsUsed: ['interaction', 'questing'],
+    reward: 'The first named witness contributes exactly one persistent release.', consequence: 'Her account is one of three required before the boundary names can be separated.',
+    recovery: 'Release is order-free, survives reload, and repeated interaction cannot increment the count.',
+    originality: 'Uses public-domain nereid mythology; the individual Witness of Arrival and ledger role are original.',
+  }),
+  'nereid-caves:nereid-witness-2': authoredEntity({
+    question: 'Will the Witness of Passage retain a distinct account instead of being absorbed into a generic rescue total?', systemsUsed: ['interaction', 'questing'],
+    reward: 'The second named witness contributes exactly one persistent release.', consequence: 'Her account is one of three required before the boundary names can be separated.',
+    recovery: 'Release is order-free, survives reload, and repeated interaction cannot increment the count.',
+    originality: 'Uses public-domain nereid mythology; the individual Witness of Passage and ledger role are original.',
+  }),
+  'nereid-caves:nereid-witness-3': authoredEntity({
+    question: 'Will the Witness of Return retain a distinct account instead of being absorbed into a generic rescue total?', systemsUsed: ['interaction', 'questing'],
+    reward: 'The third named witness contributes exactly one persistent release.', consequence: 'Her account completes the three-witness condition for the boundary-name puzzle.',
+    recovery: 'Release is order-free, survives reload, and repeated interaction cannot increment the count.',
+    originality: 'Uses public-domain nereid mythology; the individual Witness of Return and ledger role are original.',
+  }),
+  'nereid-caves:pressure-shell-1': authoredEntity({
+    question: 'Can the Harbor Shell preserve a civic oath without claiming the whole sea as harbor property?', systemsUsed: ['environment-puzzle', 'interaction'],
+    reward: 'Rotation records one exact persistent boundary-separation step.', consequence: 'It contributes to the three-shell condition that opens the anchorage objective.',
+    recovery: 'The order-free rotation survives reload and cannot be credited twice.',
+    originality: 'Uses public-domain conch and harbor symbolism; the Harbor Shell naming function is original.',
+  }),
+  'nereid-caves:pressure-shell-2': authoredEntity({
+    question: 'Can the Boundary Shell name Oceanus’ limit without turning every crossing into prohibition?', systemsUsed: ['environment-puzzle', 'interaction'],
+    reward: 'Rotation records one exact persistent boundary-separation step.', consequence: 'It contributes to the three-shell condition that opens the anchorage objective.',
+    recovery: 'The order-free rotation survives reload and cannot be credited twice.',
+    originality: 'Uses public-domain Oceanus and conch symbolism; the Boundary Shell naming function is original.',
+  }),
+  'nereid-caves:pressure-shell-3': authoredEntity({
+    question: 'Can the Crossing Shell name negotiated passage as distinct from both ownership and exclusion?', systemsUsed: ['environment-puzzle', 'interaction'],
+    reward: 'Rotation records one exact persistent boundary-separation step.', consequence: 'It completes the three-shell condition when the other two names are also restored.',
+    recovery: 'The order-free rotation survives reload and cannot be credited twice.',
+    originality: 'Uses public-domain conch and sea-passage motifs; the Crossing Shell naming function is original.',
+  }),
+  'nereid-caves:oceanus-boundary-well': authoredEntity({
+    question: 'What does Oceanus’ older boundary record reveal that the harbor oath forgot?', systemsUsed: ['interaction', 'lore'],
+    reward: 'Reading the well provides a stable in-world account of the old boundary distinction.', consequence: 'Its language informs the boundary-first and shared-crossing covenant interpretations.',
+    recovery: 'The fixed well remains reachable and carries no repeatable reward that could be duplicated.',
+    originality: 'Uses public-domain Oceanus as the world-encircling boundary; the readable boundary-well is original.',
+  }),
+  'nereid-caves:nereid-enclave': authoredEntity({
+    question: 'Will Kallias approach the nereid enclave as a community with testimony rather than a quest destination?', systemsUsed: ['exploration', 'questing'],
+    reward: 'The marker provides a stable physical destination for the rescued witnesses.', consequence: 'It spatially separates nereid testimony from the combat threshold and optional echo branch.',
+    recovery: 'The marker remains reachable in its authored tide states and has no destructive repeat effect.',
+    originality: 'Uses public-domain nereid community imagery; this enclave’s witness-led civic role is original.',
+  }),
+  'nereid-caves:echo-cavern': authoredEntity({
+    question: 'Will Kallias follow a remembered song into an optional dispute about desire and identity?', systemsUsed: ['exploration', 'side-quest'],
+    reward: 'Reaching the marker records optional Unmoored Heart route progress.', consequence: 'It leads to the charmed-medusa encounter without gating the main covenant.',
+    recovery: 'The branch remains reachable in Crossing or Surge and can be abandoned for the neutral fallback.',
+    originality: 'Uses public-domain cave-echo motifs; the remembered-song side path is original Oathbearer expression.',
+  }),
+  'nereid-caves:unmoored-heart-invitation': authoredEntity({
+    question: 'Is the remembered voice worth following when it offers evidence but no obligation?', systemsUsed: ['interaction', 'side-quest'],
+    reward: 'Listening activates the optional Unmoored Heart quest without altering main-quest state.', consequence: 'It makes the echo route and optional affinity debate legible to the player.',
+    recovery: 'Activation is exact-once, and declining or leaving preserves a fully completable main story.',
+    originality: 'Uses public-domain echo and divine-desire motifs; the invitation and neutral refusal path are original.',
+  }),
+  'nereid-caves:nereid-tin-vein': authoredEntity({
+    question: 'Will sea-washed tin become a legitimate regional input to bronze craft rather than unexplained inventory?', systemsUsed: ['inventory', 'quarrying', 'resource-respawn'],
+    reward: 'Each available charge awards one tin ore and 20 Quarrying XP.', consequence: 'Tin closes the legitimate source chain for bronze recipes and regional merchant value.',
+    recovery: 'Inventory-full gathering is atomic; depletion persists and respawns from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 5, levelMax: 20,
+    originality: 'Uses public-domain Bronze Age tin trade; the sea-washed Nereid vein and its systems placement are original.',
+  }),
+  'storm-anchorage:rope-lift': authoredEntity({
+    question: 'Can the archive route be opened by a visible civic signal rather than an unexplained teleport?', systemsUsed: ['interaction', 'travel-unlock'],
+    reward: 'The lift marks the cleared anchorage checkpoint and physical skiff-route activation.', consequence: 'It connects the ambush victory to boarding the archive barge.',
+    recovery: 'The lift and return spawn remain reachable after victory; the gated route cannot activate before the clear flag.',
+    originality: 'Uses public-domain harbor lifts and signal pennants; this archive-route mechanism is original.',
+  }),
+  'storm-anchorage:anchorage-tuna-run': authoredEntity({
+    question: 'Will a dangerous offshore fishing ground reward developed skill without pretending to be early-game forage?', systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
+    reward: 'Each available charge awards one tuna and 45 Fishing XP at the authored level gate.', consequence: 'Tuna supplies the legitimate high-level ingredient source for regional cooking.',
+    recovery: 'Failed level or capacity checks are atomic; depletion persists and respawns from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 30, levelMax: 35,
+    originality: 'Uses public-domain Mediterranean tuna fishing; the storm-anchorage run and its progression role are original.',
+  }),
+  'archive-barge-deck:cipher-folio-1': authoredEntity({
+    question: 'What did the covenant promise at Arrival before the archive split it from Return?', systemsUsed: ['interaction', 'questing'],
+    reward: 'The Arrival folio records one exact persistent half of the recovered covenant evidence.', consequence: 'Together with the Return folio it enables the Leviathan objective and later ratification.',
+    recovery: 'It can be collected in either order, survives boss defeat, and cannot count twice.',
+    originality: 'Uses public-domain treaty-folio traditions; the Arrival clause and split archive are original.',
+  }),
+  'archive-barge-deck:cipher-folio-2': authoredEntity({
+    question: 'What did the covenant promise at Return before the archive split it from Arrival?', systemsUsed: ['interaction', 'questing'],
+    reward: 'The Return folio records one exact persistent half of the recovered covenant evidence.', consequence: 'Together with the Arrival folio it enables the Leviathan objective and later ratification.',
+    recovery: 'It can be collected in either order, survives boss defeat, and cannot count twice.',
+    originality: 'Uses public-domain treaty-folio traditions; the Return clause and split archive are original.',
+  }),
+  'archive-barge-deck:archive-crates': authoredEntity({
+    question: 'What ordinary records surround the stolen covenant clauses on the archive barge?', systemsUsed: ['exploration', 'lore'],
+    reward: 'The marker gives the deck a stable searchable archive landmark.', consequence: 'It locates the folios within a working stolen-record context rather than an abstract pickup room.',
+    recovery: 'The fixed landmark remains visible and carries no repeatable state mutation.',
+    originality: 'Uses public-domain maritime cargo and archives; these confiscated civic record crates are original.',
+  }),
+  'archive-barge-deck:mast-hazard': authoredEntity({
+    question: 'Can the Leviathan’s falling mast be read as a telegraphed hazard rather than arbitrary damage?', systemsUsed: ['boss-combat', 'telegraph'],
+    reward: 'The landmark identifies the authored source of the boss’s phased mast-slam threat.', consequence: 'It ties the deck geometry to all three Leviathan combat phases.',
+    recovery: 'The hazard is inactive outside the ready-gated encounter and resets with the boss checkpoint.',
+    originality: 'Uses public-domain ship-mast hazards; the three-phase Leviathan telegraph is original Oathbearer design.',
+  }),
+  'archive-barge-deck:leviathan-arena': authoredEntity({
+    question: 'Will Kallias enter the archive hold prepared to preserve evidence through a boss defeat?', systemsUsed: ['boss-combat', 'interaction'],
+    reward: 'The arena provides the distinct physical launch point for the Archive Leviathan.', consequence: 'Its encounter is the final combat gate before covenant ratification.',
+    recovery: 'The launch respects prerequisites and ready state; defeat returns to the authored pre-boss checkpoint with folios intact.',
+    originality: 'Uses public-domain sea-monster holds and shipboard arenas; this evidence-preserving boss threshold is original.',
+  }),
+})
+
 export const ACT2_RUNTIME_MAPS = deepFreeze({
   'pelagos-harbor': {
     id: 'pelagos-harbor', bounds: { w: 960, h: 540 }, palette: PALETTES.harbor,
@@ -83,6 +313,9 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'oath-post', kind: 'interact', x: 280, y: 330, name: 'Harbor Oath-Post', label: 'Inspect the oath-post' },
       { id: 'poseidon-shrine', kind: 'shrine', x: 328, y: 174, name: 'Poseidon Shrine', label: 'Honor the keeper of harbors', deityId: 'poseidon', savePointId: 'shrine-pelagos-poseidon' },
       { id: 'salt-covenant-table', kind: 'choice', x: 442, y: 246, name: 'Salt Covenant Table', label: 'Ratify the Salt Covenant', choiceIds: ['harbor-first', 'boundary-first', 'shared-crossing'] },
+      { id: 'pelagos-woodwork-bench', kind: 'station', stationId: 'woodwork-bench', x: 560, y: 340, name: 'Pelagos Woodwork Bench', label: 'Shape harbor timber' },
+      { id: 'pelagos-shipwright', kind: 'station', stationId: 'shipwright', x: 740, y: 340, name: 'Pelagos Shipwright', label: 'Work at the harbor shipwright' },
+      { id: 'thaleia-harbor-chandler', kind: 'shop', shopId: 'pelagos-chandler', x: 620, y: 250, name: 'Thaleia', label: 'Trade at the harbor chandlery' },
     ],
     exits: [
       { id: 'harbor-to-breakwater', x: 920, y: 278, toMapId: 'breakwater-road', spawnId: 'from-harbor', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
@@ -164,6 +397,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'nereid-enclave', kind: 'marker', x: 778, y: 210, name: 'Nereid Enclave', label: 'Enter the enclave' },
       { id: 'echo-cavern', kind: 'marker', x: 452, y: 444, name: 'Echo Cavern', label: 'Follow the remembered song' },
       { id: 'unmoored-heart-invitation', kind: 'interact', x: 414, y: 414, name: 'Unmoored Heart Echo', label: 'Listen to the unmoored heart', sideQuest: 'sq-act2-unmoored-heart' },
+      { id: 'nereid-tin-vein', kind: 'resource', x: 820, y: 260, name: 'Nereid Tin Vein', label: 'Mine the sea-washed tin vein', skillId: 'quarrying', itemId: 'tin-ore', level: 5, xp: 20 },
     ],
     exits: [
       { id: 'caves-to-breakwater', x: 38, y: 284, toMapId: 'breakwater-road', spawnId: 'from-caves', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
@@ -198,6 +432,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     },
     entities: [
       { id: 'rope-lift', kind: 'rope-lift', x: 720, y: 174, name: 'Archive Rope Lift', label: 'Raise the archive pennant' },
+      { id: 'anchorage-tuna-run', kind: 'resource', x: 240, y: 320, name: 'Storm Tuna Run', label: 'Fish the storm tuna run', skillId: 'fishing', itemId: 'tuna', level: 30, xp: 45 },
     ],
     exits: [
       { id: 'anchorage-to-caves', x: 38, y: 286, toMapId: 'nereid-caves', spawnId: 'from-anchorage', returnSpawnId: 'from-caves', kind: 'foot', gate: [] },
@@ -277,9 +512,13 @@ export function act2RenderablePocketById(id) {
   return {
     ...definition,
     ...runtime,
+    authoring: ACT2_MAP_AUTHORING[id],
     spawns,
     spawn: spawns[definition.spawnId],
-    entities: runtime.entities.map((entity) => ({ ...entity })),
+    entities: runtime.entities.map((entity) => ({
+      ...entity,
+      ...(entity.kind === 'shop' ? {} : { authoring: ACT2_ENTITY_AUTHORING[`${id}:${entity.id}`] }),
+    })),
     exits: runtime.exits.map((exit) => ({ ...exit, gate: exit.gate.map((condition) => ({ ...condition })) })),
     collisions: runtime.collisions.map((collision) => ({ ...collision })),
     traversalLanes: runtime.traversalLanes.map((item) => ({ ...item, stateIds: [...item.stateIds], points: item.points.map((p) => ({ ...p })) })),

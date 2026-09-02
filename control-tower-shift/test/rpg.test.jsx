@@ -11,11 +11,24 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
+vi.mock('../../src/api/client.js', () => ({
+  api: {
+    me: vi.fn(async () => ({ user: { id: 91, email: 'rpg-route@example.test', legalAcceptanceRequired: false } })),
+    getRpgSave: vi.fn(async () => ({ save: null })),
+    putRpgSave: vi.fn(async ({ payload, gameSchemaVersion }) => ({
+      save: { payload, gameSchemaVersion, revision: 1 },
+      idempotent: false,
+    })),
+    logout: vi.fn(async () => ({})),
+  },
+}))
+
 const {
   default: GameGate, GAME_HASH, RPG_HASH, routeFor,
 } = await import('../src/GameGate.jsx')
 // Preload the lazy chunks so GameGate's Suspense resolves from module cache.
 await import('../src/ControlTowerShift.jsx')
+await import('../src/RPGAccountGate.jsx')
 const { default: ControlTowerRPG } = await import('../src/ControlTowerRPG.jsx')
 const {
   createInitialState, applyEvent, SCHEMA_VERSION,
@@ -86,8 +99,11 @@ describe('exact hash routing — arena, RPG, and main app stay independent', () 
 
     window.location.hash = RPG_HASH
     await mount(<GameGate app={<div data-testid="the-app">app</div>} />)
-    // The lazy RPG chunk must resolve (a couple of microtask flushes).
-    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve() })
+    // The route resolves both the account boundary and account-owned save
+    // before exposing title actions; neither loading layer may be bypassed.
+    for (let i = 0; i < 8 && !container.textContent.includes('Control Tower — Oathbearer'); i++) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    }
     expect(container.querySelector('[data-testid="the-app"]')).toBeNull()
     expect(container.textContent).toContain('Control Tower — Oathbearer')
     const newStory = [...container.querySelectorAll('button')].find((button) => button.textContent === 'New Story')
@@ -278,6 +294,91 @@ describe('story entry and dialogue controls', () => {
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Resume').click())
     await advanceFrames(2)
     expect(Number(combatHud.dataset.arenaTick)).toBeGreaterThan(Number(pausedTick))
+  })
+
+  it('gates Guard behind the same ready boundary, accepts held pointer/keyboard input, and cleans up on blur/unmount', async () => {
+    let now = 1_000
+    let nextRafId = 1
+    const rafCallbacks = new Map()
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      const id = nextRafId++
+      rafCallbacks.set(id, callback)
+      return id
+    })
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => { rafCallbacks.delete(id) })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    const advanceFrames = async (count, elapsed = 34) => {
+      await act(async () => {
+        for (let index = 0; index < count; index += 1) {
+          now += elapsed
+          const callbacks = [...rafCallbacks.values()]
+          rafCallbacks.clear()
+          for (const callback of callbacks) callback(now)
+        }
+      })
+    }
+
+    let prepared = createInitialState()
+    prepared = applyEvent(prepared, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
+    prepared = applyEvent(prepared, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
+    prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'shrine' })
+    prepared = applyEvent(prepared, { type: 'CHOOSE_PATRON', godId: 'apollo' })
+    prepared = applyEvent(prepared, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    const gate = mapById('olive-road').exits.find((exit) => exit.kind === 'combat')
+    prepared = applyEvent(prepared, { type: 'MOVE', x: gate.x, y: gate.y, facing: 1 })
+    expect(saveRPG(window.localStorage, prepared)).toBe(true)
+    await mount(<ControlTowerRPG />)
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue').click())
+    const interact = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Interact')
+    await act(async () => interact.dispatchEvent(new Event('pointerdown', { bubbles: true })))
+
+    const guard = container.querySelector('[aria-label="Guard while held, keyboard G"]')
+    const melee = container.querySelector('[aria-label="Melee attack"]')
+    const begin = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Begin encounter')
+    expect(guard).not.toBeNull()
+    expect(guard.disabled).toBe(true)
+    expect(guard.textContent).toContain('Guard')
+    expect(guard.textContent).toContain('G')
+
+    await act(async () => begin.click())
+    expect(guard.disabled).toBe(false)
+
+    // Held pointer behavior: press, then release/cancel/leave must all be
+    // accepted without throwing and without leaving Guard stuck engaged.
+    await act(async () => guard.dispatchEvent(new Event('pointerdown', { bubbles: true })))
+    await advanceFrames(2)
+    await act(async () => guard.dispatchEvent(new Event('pointerup', { bubbles: true })))
+    await act(async () => guard.dispatchEvent(new Event('pointerdown', { bubbles: true })))
+    await act(async () => guard.dispatchEvent(new Event('pointercancel', { bubbles: true })))
+    await act(async () => guard.dispatchEvent(new Event('pointerdown', { bubbles: true })))
+    await act(async () => guard.dispatchEvent(new Event('pointerleave', { bubbles: true })))
+
+    // Keyboard: holding G queues a guarded frame; releasing it clears the
+    // key, and combat keys (attack) keep working afterward.
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g' })))
+    await advanceFrames(2)
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'g' })))
+    expect(melee.disabled).toBe(false)
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j' })))
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'j' })))
+    await advanceFrames(2)
+    expect(container.textContent).not.toContain('You Fell')
+
+    // Losing focus mid-fight suspends the encounter (pausing also clears
+    // held keyboard/pointer input, including Guard) rather than leaving a
+    // held key silently active while the tab is backgrounded.
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g' })))
+    await act(async () => window.dispatchEvent(new Event('blur')))
+    expect(container.textContent).toContain('Paused')
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Resume').click())
+    await advanceFrames(2)
+    expect(container.textContent).not.toContain('You Fell')
+
+    // Unmounting mid-fight (e.g. navigating away) must not throw even with
+    // Guard actively held.
+    await act(async () => guard.dispatchEvent(new Event('pointerdown', { bubbles: true })))
+    await unmount()
   })
 
   it('stages wilderness combat behind the same explicit ready boundary', async () => {

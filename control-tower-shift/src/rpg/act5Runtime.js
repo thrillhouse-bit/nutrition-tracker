@@ -101,6 +101,10 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'ally-witness-board', kind: 'interact', x: 438, y: 330, name: 'Ally Witness Board', label: 'Review present and neutral witnesses', accessibleLabel: 'Review the witness roster' },
       { id: 'archive-tent', kind: 'marker', x: 540, y: 408, name: 'Unwritten Witnesses', label: 'Read the unwritten accounts' },
       { id: 'shadow-seal-first', kind: 'interact', interactionType: 'light-switch', x: 684, y: 280, name: 'First Shadow Seal', label: ACT5_LIGHT_POLARITY_STATES.shadow.label, accessibleLabel: 'Shadow bridge control, filled crescent', lightStateId: 'shadow', controllerSourceId: ACT5_LIGHT_POLARITY_STATES.shadow.controller, shapeGlyph: ACT5_LIGHT_POLARITY_STATES.shadow.shapeGlyph },
+      { id: 'nyx-laurel', kind: 'resource', x: 760, y: 340, name: 'Night-Sheltered Laurel', label: 'Cut a branch from the sheltered laurel', skillId: 'woodcutting', itemId: 'laurel-branch', level: 45, xp: 65 },
+      { id: 'nyx-field-kitchen', kind: 'station', stationId: 'field-kitchen', x: 460, y: 400, name: 'Witness Camp Field Kitchen', label: 'Cook at the witness camp kitchen' },
+      { id: 'nyx-shrine-fire', kind: 'station', stationId: 'shrine-fire', x: 180, y: 290, name: 'Nyx Shrine Fire', label: 'Consecrate an offering beneath primordial night' },
+      { id: 'asteria-witness-broker', kind: 'shop', shopId: 'nyx-witness-exchange', x: 640, y: 390, name: 'Asteria', label: 'Trade witnessed crafts with Asteria' },
     ],
     exits: [
       { id: 'foothold-to-night-stair', x: 922, y: 276, toMapId: 'night-stair', spawnId: 'from-foothold', returnSpawnId: 'from-night-stair', kind: 'shadow-bridge', gate: [], accessibleLabel: 'Cross the shadow bridge to the Night Stair' },
@@ -277,6 +281,7 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
         choiceIds: endingOptions.map((option) => option.id), options: endingOptions,
       },
       { id: 'kallias', kind: 'npc', x: 792, y: 320, name: 'Kallias', label: 'Witness the Last Name', accessibleLabel: 'Speak with Kallias to publish the Accord', conversationId: 'act5-epilogue' },
+      { id: 'restored-covenant-loom', kind: 'station', stationId: 'loom', x: 780, y: 400, name: 'Restored Covenant Loom', label: 'Weave at the restored Silent Loom' },
     ],
     exits: [
       { id: 'silent-loom-to-approach', x: 38, y: 400, toMapId: 'silent-loom-approach', spawnId: 'from-loom', returnSpawnId: 'from-approach', kind: 'witness-seal', gate: [], accessibleLabel: 'Return to the Silent Loom approach' },
@@ -313,6 +318,7 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'epilogue-sky', kind: 'marker', x: 480, y: 112, name: 'Plural Sky', label: 'Look across the restored regions' },
       { id: 'kallias', kind: 'npc', x: 536, y: 304, name: 'Kallias', label: 'Witness the Last Name', conversationId: 'act5-epilogue' },
       { id: 'thessa', kind: 'npc', x: 420, y: 316, name: 'Thessa', label: 'Leave room for the next refusal', conversationId: 'act5-epilogue' },
+      { id: 'accord-overlook-ambrosial-ash', kind: 'resource', x: 770, y: 380, name: 'Covenant-Grown Ash', label: 'Cut a bough from the covenant-grown ash', skillId: 'woodcutting', itemId: 'ambrosial-ash', level: 70, xp: 145, capacity: 1, respawnTicks: 1000 },
     ],
     exits: [
       { id: 'overlook-to-silent-loom', x: 38, y: 358, toMapId: 'silent-loom', spawnId: 'from-overlook', returnSpawnId: 'from-loom', kind: 'epilogue-path', gate: [{ kind: 'flag', flagId: 'mq-act5-last-name-completed', value: true }], accessibleLabel: 'Return to the Silent Loom covenant chamber' },

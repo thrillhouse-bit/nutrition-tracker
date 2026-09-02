@@ -99,7 +99,7 @@ describe('wilderness reducer integration', () => {
       type: 'WILDERNESS_VICTORY',
       enemyId: 'wild-boar',
       encounterKey,
-      damageByStyle: { spearcraft: 1 },
+      damageByStyle: { spearcraft: 10 },
     })
     expect(won.status).toBe('playing')
     expect(won.wilderness.pendingEnemyId).toBeNull()

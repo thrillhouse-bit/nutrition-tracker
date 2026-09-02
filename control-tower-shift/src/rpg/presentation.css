@@ -836,9 +836,11 @@
   overflow: visible;
   --rpg-body-bob: 0px;
   --rpg-body-lean: 0deg;
-  --rpg-stride-sway: 0deg;
+  --rpg-weight-shift: 0deg;
   --rpg-shadow-scale: 1;
-  --rpg-footfall-alpha: 0;
+  --rpg-left-contact-alpha: 0;
+  --rpg-right-contact-alpha: 0;
+  --rpg-frame-flip: 1;
 }
 
 .rpg-world-sprite-player {
@@ -849,7 +851,7 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform: translateY(calc(-1 * var(--rpg-body-bob))) rotate(var(--rpg-stride-sway)) skewX(var(--rpg-body-lean));
+  transform: translateY(calc(-1 * var(--rpg-body-bob))) rotate(var(--rpg-weight-shift)) skewX(var(--rpg-body-lean)) scaleX(var(--rpg-frame-flip));
   transform-origin: 50% 94%;
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.28));
   will-change: transform;
@@ -875,14 +877,24 @@
   z-index: 1;
   width: 18%;
   height: 5%;
-  border: 1px solid rgba(232, 182, 76, var(--rpg-footfall-alpha));
+  border: 1px solid rgba(232, 182, 76, 0.34);
   border-radius: 50%;
-  opacity: var(--rpg-footfall-alpha);
   transform: scaleX(1.5);
 }
 
-.rpg-player-footfall-left { left: 27%; }
-.rpg-player-footfall-right { right: 27%; }
+.rpg-player-footfall-left {
+  left: 27%;
+  opacity: var(--rpg-left-contact-alpha);
+}
+.rpg-player-footfall-right {
+  right: 27%;
+  opacity: var(--rpg-right-contact-alpha);
+}
+
+.rpg-world-player[data-animation='start'] .rpg-world-sprite-player,
+.rpg-world-player[data-animation='brake'] .rpg-world-sprite-player {
+  transform-origin: 50% 97%;
+}
 
 .rpg-world-player[data-moving='true'] .rpg-world-sprite-player {
   filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.34));

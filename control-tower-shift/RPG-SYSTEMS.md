@@ -1,5 +1,15 @@
 # Oathbearer RPG Systems Contract
 
+> Release scope is governed by [FULL-GAME-CONTRACT.md](./FULL-GAME-CONTRACT.md).
+> This document describes implemented system behavior; a green subsystem does
+> not authorize a partial Oathbearer release. Run
+> `npm run report:oathbearer:complete` for the current whole-game gap report.
+
+> Release scope is governed by [FULL-GAME-CONTRACT.md](./FULL-GAME-CONTRACT.md).
+> This document describes implemented system behavior; a green subsystem does
+> not authorize a partial Oathbearer release. Run
+> `npm run report:oathbearer:complete` for the current whole-game gap report.
+
 ## Direction
 
 Oathbearer uses the durable interaction and progression grammar of a classic point-and-click skill RPG inside an original Greek-mythology world. Mechanical familiarity is the goal; names, worldbuilding, quests, maps, characters, art, audio, prose, and interface composition remain original.

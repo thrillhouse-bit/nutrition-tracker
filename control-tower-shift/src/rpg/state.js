@@ -25,6 +25,7 @@ import {
   addInventoryItem,
   awardSkillXp,
   awardSkillXpBundle,
+  carriedItemQuantity,
   createInitialInventory,
   createInitialSkills,
   depositBankItem,
@@ -33,6 +34,12 @@ import {
   withdrawBankItem,
 } from './progression.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
+import { combatXpFromContributions } from './combatProgression.js'
+import {
+  consumeCombatInventoryItem,
+  consumePendingConsumableLoadout,
+  prepareConsumable,
+} from './itemEffects.js'
 import {
   CRAFTING_SOURCE_MODES,
   executeCraftingLedger,
@@ -429,6 +436,9 @@ export function applyEvent(state, event) {
     }
     case 'EQUIP_ITEM': return equipAtRest(state, event)
     case 'UNEQUIP_ITEM': return unequipAtRest(state, event)
+    case 'USE_ITEM': return state.status === 'in-combat'
+      ? consumeCombatInventoryItem(state, event.itemId, event.useId, ALL_ITEM_DEFS, event.encounterId)
+      : prepareConsumable(state, event.itemId, ALL_ITEM_DEFS)
     case 'GATHER': return gather(state, event)
     case 'WILDERNESS_ENTER': return wildernessEnter(state, event)
     case 'WILDERNESS_STEP': return wildernessStep(state, event)
@@ -608,27 +618,49 @@ function move(state, event) {
   }
 }
 
+// Carrying a matching gathering tool anywhere in the backpack grants extra
+// items per successful harvest (never extra node charges consumed, and never
+// extra XP). With only one tool per skill authored today this reduces to
+// "that tool's bonus or 0", but scanning for the max across every matching
+// carried tool keeps later, higher tiers of the same skill's tool additive-
+// safe without further reducer changes.
+function gatherToolBonus(inventory, skillId) {
+  let bonus = 0
+  for (const item of Object.values(ALL_ITEM_DEFS)) {
+    if (item?.toolBonus?.skillId !== skillId) continue
+    if (carriedItemQuantity(inventory, item.id, ALL_ITEM_DEFS) > 0) {
+      bonus = Math.max(bonus, item.toolBonus.yieldBonus || 0)
+    }
+  }
+  return bonus
+}
+
 function gather(state, event) {
   if (state.status !== 'playing') return state
   const map = mapById(state.world.mapId)
   const resource = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'resource')
-  if (!resource || !ITEM_DEFS[resource.itemId]) return state
+  if (!resource || !ALL_ITEM_DEFS[resource.itemId]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
   if (levelForXp(xp) < (resource.level || 1)) return state
-  const quantity = positiveIntegerQuantity(resource.quantity || 1)
-  if (!quantity) return state
+  const baseQuantity = positiveIntegerQuantity(resource.quantity || 1)
+  if (!baseQuantity) return state
+  // The node's authored quantity governs charge consumption only. A carried
+  // tool's yield bonus must never inflate what is drawn from the node itself,
+  // or a capacity-1 node would fail the whole harvest whenever a tool is
+  // carried (harvestResourceNode rejects a request above remaining charges).
   const node = harvestResourceNode({
     resources: state.resources,
     mapId: state.world.mapId,
     entityId: resource.id,
-    quantity,
+    quantity: baseQuantity,
     capacity: resource.capacity,
     respawnTicks: resource.respawnTicks,
     playtimeTicks: state.playtimeTicks,
   })
   if (!node.changed) return state
-  const result = addInventoryItem(state.inventory, resource.itemId, quantity, ALL_ITEM_DEFS)
-  if (result.added !== quantity) return state
+  const yieldQuantity = baseQuantity + gatherToolBonus(state.inventory, resource.skillId)
+  const result = addInventoryItem(state.inventory, resource.itemId, yieldQuantity, ALL_ITEM_DEFS)
+  if (result.added !== yieldQuantity) return state
   return awardSkillXp({
     ...state,
     inventory: result.inventory,
@@ -693,10 +725,20 @@ function wildernessCombatStart(state, event) {
   if (event.enemyId !== state.wilderness.pendingEnemyId) return state
   const encounterKey = wildernessEncounterKey(state)
   if (!encounterKey || event.encounterKey !== encounterKey) return state
+  const prepared = consumePendingConsumableLoadout(state)
   return {
-    ...state,
+    ...prepared.state,
     status: 'in-combat',
     wilderness: { ...state.wilderness, activeEncounterKey: encounterKey },
+    combatSnapshot: {
+      encounterId: `wilderness:${encounterKey}`,
+      mapId: state.world.mapId,
+      seed: seedForEncounter(`wilderness:${encounterKey}`),
+      checkpoint: prepared.state,
+      consumableLoadout: prepared.loadout,
+      consumableUseIds: [],
+      wilderness: true,
+    },
   }
 }
 
@@ -711,9 +753,16 @@ function wildernessVictory(state, event) {
   const rewardKey = event.encounterKey || `${state.wilderness.regionId}:${state.wilderness.step}:${enemyId}`
   const rewardFlag = `wilderness:reward:${rewardKey}`
   if (state.flags[rewardFlag]) {
-    return { ...state, status: 'playing', wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null } }
+    return { ...state, status: 'playing', combatSnapshot: null, wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null } }
   }
-  const rewards = wildernessCombatRewards({ enemyId, damageByStyle: event.damageByStyle, killCredit: true })
+  const contributions = event.combatContributions || { damageByStyle: event.damageByStyle }
+  const rewards = wildernessCombatRewards({
+    enemyId,
+    damageByStyle: contributions.damageByStyle,
+    damageTaken: contributions.damageTaken,
+    guardedDamageTaken: contributions.guardedDamageTaken,
+    killCredit: true,
+  })
   if (!rewards) return state
   let inventory = state.inventory
   for (const item of rewards.items) {
@@ -723,6 +772,7 @@ function wildernessVictory(state, event) {
   let next = awardSkillXpBundle({
     ...state,
     status: 'playing',
+    combatSnapshot: null,
     flags: { ...state.flags, [rewardFlag]: true },
     inventory,
     wilderness: { ...state.wilderness, pendingEnemyId: null, activeEncounterKey: null },
@@ -751,6 +801,7 @@ function wildernessDefeat(state, event) {
   return {
     ...state,
     status: 'playing',
+    combatSnapshot: null,
     inventory: {
       ...state.inventory,
       slots: drop.kept,
@@ -952,10 +1003,24 @@ function dialogueEnd(state, event) {
     : setFlag(applyConversationEffects(state, collectConversationEffects(convo)), completedFlag, true)
   // Dialogue done → restore gameplay.
   next = { ...next, status: 'playing', flags: dropFlags(next.flags, [ACTIVE_CONVO_FLAG, ACTIVE_CONVO_NPC_FLAG]) }
-  // A completed conversation may satisfy a main-quest talk objective.
+  // A completed conversation may satisfy a main-quest talk objective. Order-
+  // free multi-talk objectives are recorded against the NPC who actually
+  // opened this dialogue; registering authored conversations must never make
+  // the older TALK fallback the only way to advance them.
   const mainTalk = currentObjective(next)
   if (mainTalk?.kind === 'talk' && mainTalk.conversationId === convoId && (!mainTalk.npcId || mainTalk.npcId === resolvedNpcId)) {
     next = advanceMain(next)
+  } else if (
+    mainTalk?.kind === 'multi-talk'
+    && resolvedNpcId
+    && resolvedNpcId === activeNpcId
+    && (mainTalk.speakerIds || mainTalk.npcIds || []).includes(resolvedNpcId)
+    && convo.speakerIds?.includes(resolvedNpcId)
+  ) {
+    next = recordObjectiveEntity(next, next.mainQuestId, {
+      ...mainTalk,
+      entityIds: mainTalk.speakerIds || mainTalk.npcIds,
+    }, resolvedNpcId)
   }
   // ...or an optional-quest talk objective.
   const side = registeredQuestIds().find((id) => {
@@ -1262,15 +1327,18 @@ function enterEncounter(state, event) {
   // Must be entering from the encounter's authored activation map (the gate).
   if (state.world.mapId !== enc.activationMapId) return state
   const seed = seedForEncounter(enc.id)
+  const prepared = consumePendingConsumableLoadout(state)
   return {
-    ...state,
+    ...prepared.state,
     status: 'in-combat',
     combatSnapshot: {
       encounterId: enc.id,
       mapId: enc.returnMapId || enc.mapId,
       campaignLevelId: enc.campaignLevelId,
       seed,
-      checkpoint: state,
+      checkpoint: prepared.state,
+      consumableLoadout: prepared.loadout,
+      consumableUseIds: [],
     },
   }
 }
@@ -1316,15 +1384,9 @@ function combatWon(state, event) {
   if (objective?.kind === 'clear-encounter' && objective.encounterId === enc.id) {
     next = advanceQuest(next, owner)
   }
-  const ownerDef = owner && questDefById(owner)
-  const act = Math.max(1, Number(ownerDef?.act) || 1)
-  next = awardSkillXpBundle(next, [
-    { skillId: 'spearcraft', amount: 95 * act },
-    { skillId: 'might', amount: 70 * act },
-    { skillId: 'guard', amount: 55 * act },
-    { skillId: 'vitality', amount: 45 * act },
-    { skillId: 'stormcalling', amount: 80 * act },
-  ])
+  next = awardSkillXpBundle(next, combatXpFromContributions(event.combatContributions || {
+    damageByStyle: event.damageByStyle,
+  }))
   return next
 }
 

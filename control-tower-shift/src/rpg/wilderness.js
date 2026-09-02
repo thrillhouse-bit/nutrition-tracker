@@ -17,6 +17,7 @@ import {
   normalizeSkills,
 } from './progression.js'
 import { ALL_ITEM_DEFS } from './crafting.js'
+import { combatXpFromContributions } from './combatProgression.js'
 
 // ---------------------------------------------------------------------------
 // Risk bands, ordered from safest to most dangerous. The array index is the
@@ -299,10 +300,16 @@ export function planDeathDrop(input = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Deterministic combat rewards. Returns a fixed XP bundle for existing combat
-// skills (scaled by the proportion of damage dealt in each style) plus fixed
-// item/currency rewards. Unknown enemies and missing kill credit fail safely by
-// returning null.
+// Deterministic combat rewards. XP is derived purely from the damage the
+// player actually dealt and took this fight (see combatProgression.js):
+// spear damage trains spearcraft and might, ranged damage trains
+// marksmanship, patron-power damage trains stormcalling, guarded damage
+// actually taken trains guard, and total damage actually taken trains
+// vitality. Each enemy's authored xp bundle is a per-skill cap, not a bundle
+// paid out regardless of contribution — a skill with zero contribution earns
+// zero XP from this kill, and a skill the enemy does not author at all can
+// never be trained by it. Item/currency rewards remain fixed per enemy.
+// Unknown enemies and missing kill credit fail safely by returning null.
 // ---------------------------------------------------------------------------
 function normalizeDamageByStyle(damageByStyle) {
   const result = {}
@@ -313,17 +320,22 @@ function normalizeDamageByStyle(damageByStyle) {
   return result
 }
 
-export function wildernessCombatRewards({ enemyId, damageByStyle, killCredit } = {}) {
+export function wildernessCombatRewards({ enemyId, damageByStyle, damageTaken, guardedDamageTaken, killCredit } = {}) {
   const enemy = ENEMY_DEFS_BY_ID[enemyId]
   if (!enemy || !killCredit) return null
 
-  const styles = normalizeDamageByStyle(damageByStyle)
-  const totalDamage = Object.values(styles).reduce((sum, damage) => sum + damage, 0)
+  const contributions = {
+    damageByStyle: normalizeDamageByStyle(damageByStyle),
+    damageTaken,
+    guardedDamageTaken,
+  }
 
   const xp = {}
-  for (const [skillId, base] of Object.entries(enemy.xp)) {
-    const share = totalDamage > 0 ? (styles[skillId] || 0) / totalDamage : 1
-    xp[skillId] = Math.floor(base * share)
+  for (const { skillId, amount } of combatXpFromContributions(contributions)) {
+    const cap = enemy.xp[skillId]
+    if (!Number.isFinite(cap) || cap <= 0) continue
+    const awarded = Math.floor(Math.min(amount, cap))
+    if (awarded > 0) xp[skillId] = awarded
   }
 
   return {

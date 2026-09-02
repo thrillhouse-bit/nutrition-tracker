@@ -14,13 +14,14 @@ import {
 } from './content.js'
 import {
   ACT2_REGION, ACT2_CONNECTIONS, ACT2_ENCOUNTERS,
-  ACT2_MAIN_QUEST, ACT2_SIDE_QUEST, ACT2_ENCOUNTER_OWNER_QUEST,
+  ACT2_MAIN_QUEST, ACT2_SIDE_QUEST, ACT2_ENCOUNTER_OWNER_QUEST, act2Authoring,
 } from './act2Content.js'
 import { ACT2_RENDERABLE_MAPS } from './act2Runtime.js'
 import {
   ACT3_REGION, ACT3_CONNECTIONS, ACT3_ENCOUNTERS,
   ACT3_MAIN_QUEST, ACT3_SIDE_QUEST, ACT3_ENCOUNTER_OWNER_QUEST,
 } from './act3Content.js'
+import { ACT3_CONVERSATIONS } from './act3Conversations.js'
 import { ACT3_RENDERABLE_MAPS } from './act3Runtime.js'
 import {
   ACT4_REGION, ACT4_CONNECTIONS, ACT4_ENCOUNTERS,
@@ -134,6 +135,16 @@ const ACT2_ENTRY_CONVERSATION = Object.freeze({
       next: null,
     }),
   }),
+  authoring: act2Authoring({
+    category: 'conversation',
+    dramaticQuestion: 'Can Melite teach Kallias to separate arrival from permission before Pelagos turns a damaged oath into permanent exclusion?',
+    systemsUsed: ['dialogue', 'questing'],
+    durableReward: 'The scene records Melite as met and places the First Surge marker on Breakwater Road.',
+    downstreamConsequence: 'Its shape-and-color tide instructions define how the player reads every Act II traversal lane.',
+    recoveryBehavior: 'The deterministic three-node scene can resume after interruption, and its flag and marker effects cannot duplicate progress.',
+    expectedMinutes: 2,
+    originalityNotes: 'Uses public-domain Greek harbor-keeper and sea-oath motifs; Melite’s arrival-versus-permission lesson is original Oathbearer writing.',
+  }),
 })
 
 export const REGISTERED_QUESTS = Object.freeze({
@@ -159,6 +170,7 @@ export const REGISTERED_ENCOUNTERS = Object.freeze({
 export const REGISTERED_CONVERSATIONS = Object.freeze({
   ...ACT1_CONVERSATIONS,
   [ACT2_ENTRY_CONVERSATION.id]: ACT2_ENTRY_CONVERSATION,
+  ...ACT3_CONVERSATIONS,
   ...ACT5_CONVERSATIONS,
 })
 

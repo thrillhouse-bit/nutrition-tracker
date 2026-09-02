@@ -76,7 +76,7 @@ describe('registered five-act playthrough contract', () => {
     for (const [npcId, conversationId] of [
       ['demeter', 'act3-demeter-stilled-year'], ['persephone', 'act3-persephone-stilled-year'],
       ['villager-1', 'act3-myrto-stilled-year'], ['villager-2', 'act3-phaon-stilled-year'],
-    ]) state = send(state, 'TALK', { npcId, conversationId })
+    ]) state = finishDialogue(state, npcId, conversationId)
     state = atMap(state, 'winter-orchard', 'from-village')
     state = send(state, 'INTERACT', { entityId: 'harvest-altar' })
     state = send(state, 'INTERACT', { entityId: 'winter-altar' })
@@ -84,7 +84,7 @@ describe('registered five-act playthrough contract', () => {
     state = atMap(state, 'kore-sanctuary', 'from-orchard')
     for (const entityId of ['pomegranate-seal-1', 'pomegranate-seal-2', 'pomegranate-seal-3', 'pomegranate-seal-4']) state = send(state, 'INTERACT', { entityId })
     state = atMap(state, 'asphodel-gate', 'from-sanctuary')
-    state = send(state, 'TALK', { npcId: 'kleio', conversationId: 'act3-kleio-testimony' })
+    state = finishDialogue(state, 'kleio', 'act3-kleio-testimony')
     state = send(state, 'CHOOSE', { choiceId: 'witnessed-cycle' })
     state = clearEncounter(state, 'boss-act3-winter-mother-echo', 'threshing-circle', 'from-village')
     state = send(atMap(state, 'wheat-village', 'first-thaw'), 'REACH', { mapId: 'wheat-village', markerId: 'first-thaw' })

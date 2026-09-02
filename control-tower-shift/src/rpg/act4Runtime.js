@@ -87,6 +87,8 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'athena-march-captain', kind: 'npc', x: 410, y: 330, name: 'Athena', label: 'Hear the precise route' },
       { id: 'ares-march-captain', kind: 'npc', x: 456, y: 340, name: 'Ares', label: 'Hear the direct breach' },
       { id: 'mortal-draft-table', kind: 'choice', x: 540, y: 382, name: 'Mortal-Authored Draft', label: 'Ratify the mortal draft', objectiveId: 'ratify-mortal-draft', choiceIds: ['licensed-flame', 'guild-stewardship', 'revocable-hearths'] },
+      { id: 'slag-road-cedar', kind: 'resource', x: 700, y: 340, name: 'March Cedar', label: 'Cut the fire-scarred march cedar', skillId: 'woodcutting', itemId: 'cedar-log', level: 30, xp: 45 },
+      { id: 'doros-march-quartermaster', kind: 'shop', shopId: 'forge-march-quartermaster', x: 620, y: 400, name: 'Doros', label: 'Trade campaign goods with Doros' },
     ],
     exits: [
       { id: 'plan-athena-first-edge', x: 920, y: 238, toMapId: 'bronze-foundry', spawnId: 'from-slag-road', returnSpawnId: 'from-foundry', kind: 'foot', planId: 'athena-precise-route', label: 'Take Athena\'s relief route', gate: [] },
@@ -124,6 +126,8 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'pressure-valve-1', kind: 'pressure-valve', x: 298, y: 350, name: 'Lane I Pressure Valve', label: 'Cycle lane-one pressure' },
       { id: 'pressure-valve-2', kind: 'pressure-valve', x: 480, y: 350, name: 'Lane II Pressure Valve', label: 'Cycle lane-two pressure' },
       { id: 'pressure-valve-3', kind: 'pressure-valve', x: 662, y: 350, name: 'Lane III Pressure Valve', label: 'Cycle lane-three pressure' },
+      { id: 'foundry-charred-ember', kind: 'resource', x: 240, y: 380, name: 'Lawful Furnace Embers', label: 'Gather a charred ember from the cooled furnace', skillId: 'foraging', itemId: 'charred-ember', level: 20, xp: 36 },
+      { id: 'bronze-foundry-forge', kind: 'station', stationId: 'bronze-forge', x: 720, y: 380, name: 'Bronze Foundry Forge', label: 'Work metal at the foundry forge' },
     ],
     exits: [
       { id: 'foundry-to-slag-road', x: 38, y: 270, toMapId: 'slag-road', spawnId: 'from-foundry', returnSpawnId: 'from-slag-road', kind: 'foot', label: 'Return to the Slag Road', gate: [] },
@@ -161,6 +165,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'pressure-relief-1', kind: 'pressure-valve', x: 326, y: 342, name: 'West Pressure Relief', label: 'Open the west pressure relief' },
       { id: 'pressure-relief-2', kind: 'pressure-valve', x: 634, y: 342, name: 'East Pressure Relief', label: 'Open the east pressure relief' },
       { id: 'prometheus-brazier', kind: 'interact', x: 480, y: 376, name: 'Prometheus\'s Lawful Brazier', label: 'Return the stolen fire' },
+      { id: 'name-press-iron-vein', kind: 'resource', x: 760, y: 400, name: 'Forge March Iron Vein', label: 'Mine the forge march iron vein', skillId: 'quarrying', itemId: 'iron-ore', level: 10, xp: 24 },
     ],
     exits: [
       { id: 'name-press-to-foundry', x: 38, y: 270, toMapId: 'bronze-foundry', spawnId: 'from-name-press', returnSpawnId: 'from-foundry', kind: 'foot', label: 'Return to the Bronze Foundry', gate: [] },
@@ -208,6 +213,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'cell-smith-2', kind: 'interact', x: 770, y: 326, name: 'Eastern Smith Cell', label: 'Release the second smith' },
       { id: 'atlas-npc', kind: 'npc', x: 566, y: 342, name: 'Atlas', label: 'Speak with Atlas', identityRole: 'coerced-witness' },
       { id: 'single-crown-parley', kind: 'choice', x: 812, y: 246, name: 'Zeus\'s Single Crown', label: 'Reject the single crown', objectiveId: 'reject-single-crown', choiceIds: ['rejection-firm', 'rejection-mournful'] },
+      { id: 'vault-orichalcum-cache', kind: 'resource', x: 740, y: 230, name: 'Atlas Vault Orichalcum Cache', label: 'Pry loose the orichalcum cache', skillId: 'quarrying', itemId: 'orichalcum', level: 60, xp: 110, capacity: 1, respawnTicks: 1200 },
     ],
     exits: [
       { id: 'vault-to-name-press', x: 38, y: 272, toMapId: 'name-press', spawnId: 'from-vault', returnSpawnId: 'from-name-press', kind: 'foot', label: 'Return to the Name-Press', gate: [] },
@@ -243,6 +249,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
     entities: [
       { id: 'bronze-firmament', kind: 'marker', x: 480, y: 150, name: 'Bronze Firmament', label: 'Witness the false sky' },
       { id: 'colossus-arena', kind: 'marker', x: 574, y: 270, name: 'Colossus Arena', label: 'Enter the Colossus arena' },
+      { id: 'constellation-silver-seam', kind: 'resource', x: 480, y: 420, name: 'Bronze Firmament Silver Seam', label: 'Mine the firmament silver seam', skillId: 'quarrying', itemId: 'silver-ore', level: 20, xp: 38 },
     ],
     exits: [
       { id: 'constellation-to-vault', x: 38, y: 270, toMapId: 'atlas-vault', spawnId: 'from-false-constellation', returnSpawnId: 'from-vault', kind: 'foot', label: 'Descend to the Atlas Vault', gate: [] },
