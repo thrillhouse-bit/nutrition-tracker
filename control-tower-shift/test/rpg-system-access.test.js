@@ -64,7 +64,7 @@ describe('lore-coherent representative placements', () => {
   })
 
   it('places representative stations at their authored physical homes', () => {
-    expect(craftingStationMaps('bronze-forge')).toEqual(['bronze-foundry'])
+    expect(craftingStationMaps('bronze-forge')).toEqual(['beacon-overlook', 'bronze-foundry'])
     expect(craftingStationMaps('shipwright')).toContain('pelagos-harbor')
     expect(craftingStationMaps('loom')).toEqual(['silent-loom'])
     expect(craftingStationMaps('field-kitchen')).toEqual(expect.arrayContaining(['beacon-overlook', 'nyx-foothold']))
@@ -97,7 +97,7 @@ describe('strict lookups and user-facing access decisions', () => {
       mapId: 'bronze-foundry',
       stationId: 'bronze-forge',
     })
-    expect(craftingAccessDecision('bronze-foundry', 'bronze-forge').label).toContain('Bronze Foundry')
+    expect(craftingAccessDecision('bronze-foundry', 'bronze-forge').label).toContain('forge')
   })
 
   it('explains known but unavailable access with a useful destination', () => {
@@ -131,6 +131,6 @@ describe('immutable policy data', () => {
     expect(() => craftingStationMaps('bronze-forge').splice(0, 1)).toThrow()
     expect(() => { systemAccessForMap('olive-road').label = 'Remote menu' }).toThrow()
     expect(wildernessMaps('olive-road')).toEqual(['olive-road'])
-    expect(craftingStationMaps('bronze-forge')).toEqual(['bronze-foundry'])
+    expect(craftingStationMaps('bronze-forge')).toEqual(['beacon-overlook', 'bronze-foundry'])
   })
 })

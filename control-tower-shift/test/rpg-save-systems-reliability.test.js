@@ -116,7 +116,9 @@ describe('save normalization system boundaries', () => {
     atFoundry.crafting = { stationId: 'bronze-forge', lastResult: { ok: true, quantity: 1 } }
     expect(normalizeState(atFoundry).crafting.stationId).toBe('bronze-forge')
 
-    const remote = createInitialState()
+    // Beacon Overlook now also has a bronze-forge, so use a map with no
+    // bronze-forge access at all to exercise the remote/stale case.
+    const remote = atMap(createInitialState(), 'olive-road')
     remote.crafting = { stationId: 'bronze-forge', lastResult: { ok: true, quantity: 1 } }
     expect(normalizeState(remote).crafting).toMatchObject({ stationId: null })
   })
@@ -124,7 +126,9 @@ describe('save normalization system boundaries', () => {
 
 describe('reducer quantity and access hardening', () => {
   it('rejects a forged remote CRAFT event and closes the stale station', () => {
-    let state = createInitialState()
+    // Beacon Overlook now also has a bronze-forge, so use a map with no
+    // bronze-forge access at all to exercise the forged/remote case.
+    let state = atMap(createInitialState(), 'olive-road')
     state = {
       ...state,
       inventory: inventoryWith(state, 'copper-ore', 2),

@@ -455,3 +455,114 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      using the same verified-placement method as this checkpoint.
   3. Continue Priority 1: close a second skill loop (see previous
      checkpoint's milestone 2).
+
+## Recovery checkpoint — 2026-09-02T14:5x (turnover hour ~1)
+
+- **Branch**: `codex/oathbearer-complete-game`. Prior HEAD `f405728`
+  (regional banks, pushed).
+- **This checkpoint**: continued Priority 2 (economy). While scoping the
+  next merchant, discovered two real content-integrity gaps that
+  `validateRPGContent()` doesn't catch because it only checks that an
+  ingredient is obtainable *somewhere in the whole game*, never that a
+  recipe's *station* is reachable at the act where its level gate first
+  makes it available:
+  1. **tin-ore** (needed by the level-2 Alloy Bronze Bar recipe) only
+     existed on a level-5 Act II resource node — bronze-bar was
+     unreachable for the whole of Act I despite its level-2 gate.
+  2. **iron-ore** (needed by all five level-15 iron-tier tool recipes —
+     iron-quarry-pick, iron-herb-sickle, iron-felling-axe,
+     iron-fishing-rod, iron-hoe) only existed on a single Act IV resource
+     node — the entire iron tier was unreachable until Act IV regardless
+     of bronzework level.
+  3. **The much bigger one**: `bronze-forge` itself — required by *all
+     21* bronzework recipes, including every level-1 one — was only
+     physically accessible at the Act IV Bronze Foundry
+     (`CRAFTING_PLACEMENT['bronze-forge'].mapIds` was `['bronze-foundry']`
+     only). The entire bronzework skill was structurally unreachable for
+     three-quarters of the game.
+  Fixed all three:
+  - Added Philyra's Roadside Stall (`olive-road-trader` shop, Act I) —
+    sells tin-ore, with full `act1Authoring` metadata.
+  - Added Straton's Garrison Stores (`anchorage-garrison-quartermaster`
+    shop, Act II `storm-anchorage`) — sells iron-ore, with full
+    `act2Authoring` metadata.
+  - Widened `bronze-forge`'s `mapIds` to `['beacon-overlook',
+    'bronze-foundry']` and placed a matching physical `beacon-bronze-forge`
+    station entity at Beacon Overlook (Act I), with `act1Authoring`
+    metadata explaining exactly why (closes the structural-unreachability
+    gap, not decoration).
+  - All three placements verified with the same throwaway-probe-script
+    method as the regional-banks checkpoint before any coordinate was
+    chosen (never committed).
+- **Discovered mid-checkpoint that shop-kind entities are structurally
+  excluded from the authored-depth report**: `act1RecordKeys()` /
+  `act2RecordKeys()` / `contentValidation.js`'s own `collectRecords` all
+  explicitly skip `kind === 'shop'` entities — merchant "authoring" is
+  tracked separately as one record per `SHOP_DEFS` entry (`shops.<id>`),
+  and none of the 7 existing `SHOP_DEFS` entries (the 5 original plus my
+  2 new ones) carry `authoring` metadata — matching the turnover's own
+  "merchants remain legacy" statement. The `authoring:` fields I added
+  to Philyra's and Straton's physical entity placements are therefore
+  inert for the release-ready count (harmless, accurate prose, just not
+  load-bearing) — only the new `beacon-bronze-forge` *station* entity
+  (not shop-kind) actually became release-ready. Recording this so a
+  future session doesn't re-discover it the hard way: authoring
+  merchants for real would mean adding `authoring` to the `SHOP_DEFS`
+  entries themselves, a distinct, not-yet-started piece of work.
+- **Existing tests fixed, not papered over**: six pre-existing tests
+  across four files (`rpg-regional-resources`, `rpg-save-systems-
+  reliability`, `rpg-systems-integration`, `rpg-systems-panel` ×2) had
+  encoded the old "bronze-forge only exists at bronze-foundry" fact as
+  their test premise — using Beacon Overlook as their "remote/stale
+  station" fixture. Each was fixed to either use a genuinely-still-
+  remote map (`olive-road`) or a genuinely-still-remote *station*
+  (`alchemy-lab`) instead, and one structural assumption
+  (`rpg-regional-resources.test.js` asserted exactly one physical
+  placement per station type) was corrected to allow a station having
+  more than one physical placement, which is now a real and correct
+  possibility.
+- **Content-integrity fallout reconciled** (same shape as every prior
+  checkpoint): `shops`/`shopPlacements` 5→7, `stationPlacements` 9→10;
+  Act I records 29→30 (only the new forge station counts — Philyra's
+  shop entity is excluded, see above), Act II records 54→55 (Straton's
+  authored entity); whole-registry total 298→301, legacy 214→216 (+2 for
+  the two unauthored merchant shop records), release-ready 84→85 (+1 for
+  Straton's authored Act II entity — the Act I forge's own release-ready
+  count is already folded into the 29→30 delta above); recomputed Act II
+  behavior digest (new gameplay data, not authoring-only).
+  `FULL-GAME-CONTRACT.md` merchants and authoring-readiness rows updated
+  to match.
+- **New test file**: `test/rpg-economy-gap-closures.test.js` (9 tests) —
+  placement/reachability/distinctness for both new merchants, zero new
+  content-validation errors, real `SHOP_BUY` purchases through the
+  reducer, `bronze-forge` access-policy and physical-placement checks,
+  every bronzework recipe now has a physically reachable Act I station,
+  and — the crucial one — a full real-reducer playthrough proving the
+  exact gap closure: gather copper-ore for free at Beacon Overlook, buy
+  tin-ore at Olive Road, travel back to Beacon Overlook, open the new
+  forge, and successfully craft Alloy Bronze Bar.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **996/996 passed** (76
+    files, up from 987/75).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `merchants` 5→7.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted this checkpoint — same
+    reasoning as the regional-banks checkpoint (pure backend/content
+    work, fully covered by the real-reducer integration test above); a
+    live pass through Philyra/Straton/the new forge is still worth doing
+    whenever an interactive session is available.
+- **Active subagents**: none — solo lead work; discovered mid-flight
+  during a bounded merchant-placement task, stayed in scope by fixing
+  exactly the gap found plus its test fallout, nothing more.
+- **Next three ordered milestones**:
+  1. Land the still-open Stewardship browser-acceptance evidence.
+  2. Continue Priority 2: merchants 7/15, banks 5/8 remain the largest
+     raw economy gaps. Worth auditing other skills' stations the same
+     way bronze-forge was just audited — `woodwork-bench` (carpentry),
+     `hearth`/`kiln` (cooking), `shipwright`, `field-kitchen`,
+     `shrine-fire`, `alchemy-lab`, `loom` — for the same "station
+     reachable later than its lowest-level recipe" pattern before
+     assuming they're fine.
+  3. Continue Priority 1: close a second skill loop.

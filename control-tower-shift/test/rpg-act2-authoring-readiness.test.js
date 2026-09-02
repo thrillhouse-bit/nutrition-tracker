@@ -117,15 +117,15 @@ describe('Act II production authoring readiness', () => {
       .filter((record) => record.status === 'release-ready')
       .map(recordKey))
 
-    expect(act1.size).toBe(29)
+    expect(act1.size).toBe(30)
     expect(act2.size).toBe(55)
     expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 298, legacy: 214, incomplete: 0, releaseReady: 84 })
+    expect(report.authoredDepth.counts).toEqual({ total: 301, legacy: 216, incomplete: 0, releaseReady: 85 })
     expect(report.summary).toEqual({
       errors: 0,
-      warnings: 214,
-      total: 214,
-      byCode: { LEGACY_AUTHORING_RECORD: 214 },
+      warnings: 216,
+      total: 216,
+      byCode: { LEGACY_AUTHORING_RECORD: 216 },
     })
   })
 
@@ -165,14 +165,14 @@ describe('Act II production authoring readiness', () => {
     const unowned = report.authoredDepth.records.filter((record) => !owned.has(recordKey(record)))
     const merchants = report.authoredDepth.records.filter((record) => record.kind === 'merchant')
 
-    expect(unowned.length).toBe(214)
+    expect(unowned.length).toBe(216)
     expect(new Set(unowned.map((record) => record.status))).toEqual(new Set(['legacy']))
     expect(merchants).toHaveLength(Object.keys(SHOP_DEFS).length)
     expect(new Set(merchants.map((record) => record.status))).toEqual(new Set(['legacy']))
   })
 
   it('changes no accepted Act II behavior data outside authoring fields', () => {
-    expect(behaviorDigest()).toBe('33d7ce8d237b17031757fa6a694a1abfde5bc04b921258422ccb6ee5e00a9c4f')
+    expect(behaviorDigest()).toBe('0adf6687ad8195a63f8ea28d3ebd712deca2f3002efeb6148c8be1f1cf63be28')
     expect(ACT2_MAIN_QUEST.objectives.map((objective) => objective.id)).toEqual([
       'reach-pelagos-keeper', 'witness-first-surge', 'free-nereid-witnesses',
       'separate-boundary-names', 'secure-storm-anchorage', 'board-archive-barge',

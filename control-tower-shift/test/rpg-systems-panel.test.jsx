@@ -188,12 +188,14 @@ describe('RPGSystemsPanel — Crafting tab', () => {
     expect(stationRecipe).toBeTruthy()
   })
 
-  it('keeps remote forge and loom stations readable but blocks their dispatch', async () => {
+  it('keeps remote alchemy-lab and loom stations readable but blocks their dispatch', async () => {
     const dispatch = vi.fn()
     await mount(<RPGSystemsPanel state={createInitialState()} dispatch={dispatch} />)
     await gotoCraftingTab()
 
-    for (const stationId of ['bronze-forge', 'loom']) {
+    // Beacon Overlook now also has a bronze-forge, so this uses two stations
+    // genuinely unavailable there instead.
+    for (const stationId of ['alchemy-lab', 'loom']) {
       const button = buttons().find((candidate) => candidate.dataset.stationId === stationId)
       expect(button).toBeTruthy()
       expect(button.disabled).toBe(true)
@@ -287,7 +289,9 @@ describe('RPGSystemsPanel — Crafting tab', () => {
   })
 
   it('disables crafting from a stale remote station while preserving Leave station', async () => {
-    const base = createInitialState()
+    // Beacon Overlook now also has a bronze-forge, so use a map with no
+    // bronze-forge access at all to exercise the stale/remote case.
+    const base = atMap(createInitialState(), 'olive-road')
     const state = { ...base, crafting: { stationId: 'bronze-forge', lastResult: null } }
     const dispatch = vi.fn()
     await mount(<RPGSystemsPanel state={state} dispatch={dispatch} />)
@@ -296,7 +300,7 @@ describe('RPGSystemsPanel — Crafting tab', () => {
     const craft = findExactButton('Craft')
     expect(craft.disabled).toBe(true)
     expect(craft.getAttribute('aria-describedby')).toBe('rsp-active-station-access')
-    expect(document.getElementById('rsp-active-station-access').textContent).toContain('Travel to Bronze Foundry')
+    expect(document.getElementById('rsp-active-station-access').textContent).toContain('Travel to Beacon Overlook or Bronze Foundry')
     await click(craft)
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'CRAFT' }))
 

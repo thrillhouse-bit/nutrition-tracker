@@ -176,10 +176,12 @@ describe('wilderness reducer integration', () => {
   it('rejects remote wilderness and crafting entry while accepting their physical maps', () => {
     const beacon = createInitialState()
     expect(applyEvent(beacon, { type: 'WILDERNESS_ENTER', regionId: 'olive-road' })).toBe(beacon)
-    expect(applyEvent(beacon, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })).toBe(beacon)
 
     const road = atMap(beacon, 'olive-road')
     expect(applyEvent(road, { type: 'WILDERNESS_ENTER', regionId: 'olive-road' }).wilderness.regionId).toBe('olive-road')
+    // Beacon Overlook now also has a bronze-forge, so use a map with no
+    // bronze-forge access at all to exercise the remote-rejection case.
+    expect(applyEvent(road, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })).toBe(road)
 
     const foundry = atMap(beacon, 'bronze-foundry')
     expect(applyEvent(foundry, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' }).crafting.stationId).toBe('bronze-forge')

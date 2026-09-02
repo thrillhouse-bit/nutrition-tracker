@@ -157,6 +157,19 @@ export const MAPS = {
       },
       { id: 'myrrine-provisioner', kind: 'shop', shopId: 'beacon-provisioner', x: 650, y: 410, name: 'Myrrine', label: 'Trade with Myrrine' },
       {
+        id: 'beacon-bronze-forge', kind: 'station', stationId: 'bronze-forge', x: 700, y: 180, name: 'Beacon Bronze Forge', label: 'Work metal at the Beacon forge',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Kallias be able to forge a single piece of bronze gear before the whole campaign is behind them, or must every recipe wait for a foundry three regions away?',
+          systemsUsed: ['bronzework', 'crafting', 'inventory'],
+          durableReward: 'The forge enables every authorized bronzework recipe and its deterministic crafting XP from the very first hub, not only at the Act IV Bronze Foundry.',
+          downstreamConsequence: 'It closes a genuine progression gap where the entire bronzework skill — including its level-1 recipes — was otherwise physically unreachable until Act IV.',
+          recoveryBehavior: 'Craft attempts revalidate map access, ingredients, quantity, and capacity before changing inventory; an interrupted craft leaves inventory unchanged.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Bronze Age Aegean forge practice; placing a working forge at the Beacon hub is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'wild-thyme', kind: 'resource', x: 238, y: 338, name: 'Wild Thyme', label: 'Gather wild thyme', skillId: 'foraging', itemId: 'thyme', level: 1, xp: 12,
         authoring: act1Authoring({
           category: 'gathering-resource',
@@ -276,6 +289,19 @@ export const MAPS = {
           recoveryBehavior: 'Dialogue completion and quest rewards are exact-once; the NPC remains reachable if the conversation is interrupted.',
           expectedMinutes: 2,
           originalityNotes: 'Uses the public-domain role of Greek record keepers; Amonides, his restraint, and the witness-ledger exchange are original.',
+        }),
+      },
+      {
+        id: 'philyra-roadside-stall', kind: 'shop', shopId: 'olive-road-trader', x: 450, y: 180, name: 'Philyra', label: 'Trade with Philyra',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will a road trader stock the one metal the Beacon smiths still lack, or leave bronze-work stalled until Pelagos?',
+          systemsUsed: ['trading'],
+          durableReward: 'Her stall sells tin ore, the missing ingredient for the level-2 Alloy Bronze Bar recipe, which was otherwise unreachable before Act II.',
+          downstreamConsequence: 'It closes a genuine progression gap: bronze-forge players can now actually reach bronze-bar and its dependent gear on schedule.',
+          recoveryBehavior: 'Trades revalidate stock and funds before completing; an interrupted purchase leaves currency and inventory unchanged.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Mediterranean itinerant-trader practice; Philyra and her tin-supply role are original Oathbearer design.',
         }),
       },
       {

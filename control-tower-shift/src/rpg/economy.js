@@ -60,6 +60,24 @@ export const SHOP_DEFS = Object.freeze({
       'sacred-flame-brand': Object.freeze({ itemId: 'sacred-flame-brand', buyPrice: 300, sellPrice: 115, baseStock: 2, maxStock: 6, restockAmount: 1 }),
     }),
   }),
+  'olive-road-trader': Object.freeze({
+    id: 'olive-road-trader',
+    name: 'Philyra’s Roadside Stall',
+    merchantName: 'Philyra',
+    mapIds: Object.freeze(['olive-road']),
+    listings: Object.freeze({
+      'tin-ore': Object.freeze({ itemId: 'tin-ore', buyPrice: 24, sellPrice: 9, baseStock: 6, maxStock: 14, restockAmount: 1 }),
+    }),
+  }),
+  'anchorage-garrison-quartermaster': Object.freeze({
+    id: 'anchorage-garrison-quartermaster',
+    name: 'Straton’s Garrison Stores',
+    merchantName: 'Straton',
+    mapIds: Object.freeze(['storm-anchorage']),
+    listings: Object.freeze({
+      'iron-ore': Object.freeze({ itemId: 'iron-ore', buyPrice: 60, sellPrice: 22, baseStock: 5, maxStock: 12, restockAmount: 1 }),
+    }),
+  }),
   'nyx-witness-exchange': Object.freeze({
     id: 'nyx-witness-exchange',
     name: 'Asteria’s Witness Exchange',

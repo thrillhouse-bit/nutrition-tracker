@@ -47,8 +47,8 @@ const WILDERNESS_PLACEMENT = {
 const CRAFTING_PLACEMENT = {
   'bronze-forge': {
     label: 'Bronze Forge',
-    mapIds: ['bronze-foundry'],
-    accessLabel: 'Work metal at the Bronze Foundry forge',
+    mapIds: ['beacon-overlook', 'bronze-foundry'],
+    accessLabel: 'Work metal at a bronze forge',
   },
   'woodwork-bench': {
     label: 'Woodwork Bench',

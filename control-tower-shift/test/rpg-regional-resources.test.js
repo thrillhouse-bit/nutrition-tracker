@@ -59,7 +59,7 @@ function regionalEntities(predicate) {
 }
 
 function expectReachableFromEverySpawn(map, entity) {
-  for (const routeStateId of ROUTE_STATES_BY_MAP[map.id]) {
+  for (const routeStateId of ROUTE_STATES_BY_MAP[map.id] || [undefined]) {
     for (const spawn of Object.values(map.spawns)) {
       const path = findWorldPath(map, spawn, entity, { routeStateId })
       expect(path.length, `${map.id}:${spawn.id}->${entity.id}@${routeStateId}`).toBeGreaterThan(0)
@@ -93,8 +93,12 @@ describe('regional gathering sources and crafting stations', () => {
 
   it('physically places every crafting station on a map authorized by system access', () => {
     const placements = regionalEntities((entity) => entity.kind === 'station')
-    expect(placements.map(({ entity }) => entity.stationId).sort()).toEqual(
-      Object.keys(CRAFTING_ACCESS_BY_STATION).sort(),
+    // A station may have more than one physical placement (e.g. bronze-forge
+    // is reachable from both Beacon Overlook and the Act IV Bronze Foundry) —
+    // every authored station id must have at least one, and every placement
+    // must sit on a map that station's access policy actually authorizes.
+    expect(new Set(placements.map(({ entity }) => entity.stationId))).toEqual(
+      new Set(Object.keys(CRAFTING_ACCESS_BY_STATION)),
     )
 
     for (const { map, entity } of placements) {

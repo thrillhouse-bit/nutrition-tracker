@@ -24,10 +24,10 @@ describe('complete Oathbearer content integrity report', () => {
       encounters: Object.keys(REGISTERED_ENCOUNTERS).length,
       recipes: RECIPES.length,
       resources: 22,
-      shops: 5,
-      shopPlacements: 5,
+      shops: 7,
+      shopPlacements: 7,
       stations: 9,
-      stationPlacements: 9,
+      stationPlacements: 10,
       banks: 5,
     })
     expect(report.inventory.resources.map((entry) => entry.id)).toEqual([

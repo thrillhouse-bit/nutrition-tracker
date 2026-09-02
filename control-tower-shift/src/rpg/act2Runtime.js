@@ -283,6 +283,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     recovery: 'Failed level or capacity checks are atomic; depletion persists and respawns from deterministic playtime ticks.', minutes: 2, resource: true, levelMin: 50, levelMax: 55,
     originality: 'Uses public-domain Black Sea sturgeon fishing; the deepwater anchorage run and its late-Act-II role are original.',
   }),
+  'storm-anchorage:straton-garrison-quartermaster': authoredEntity({
+    question: 'Will the cleared garrison actually stock the iron a level-15 smith needs, or leave every iron-tier recipe stranded until the Forge March?', systemsUsed: ['trading'],
+    reward: 'Straton sells iron ore, the missing ingredient for every level-15 iron-tier tool recipe, which was otherwise unreachable before Act IV.', consequence: 'It closes a genuine progression gap: bronzework players who reach level 15 in Act II or III can now actually forge the iron tier on schedule.',
+    recovery: 'Trades revalidate stock and funds before completing; an interrupted purchase leaves currency and inventory unchanged.', minutes: 1,
+    originality: 'Uses public-domain garrison-quartermaster practice; Straton and his iron-supply role are original Oathbearer design.',
+  }),
   'archive-barge-deck:cipher-folio-1': authoredEntity({
     question: 'What did the covenant promise at Arrival before the archive split it from Return?', systemsUsed: ['interaction', 'questing'],
     reward: 'The Arrival folio records one exact persistent half of the recovered covenant evidence.', consequence: 'Together with the Return folio it enables the Leviathan objective and later ratification.',
@@ -459,6 +465,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'rope-lift', kind: 'rope-lift', x: 720, y: 174, name: 'Archive Rope Lift', label: 'Raise the archive pennant' },
       { id: 'anchorage-tuna-run', kind: 'resource', x: 240, y: 320, name: 'Storm Tuna Run', label: 'Fish the storm tuna run', skillId: 'fishing', itemId: 'tuna', level: 30, xp: 45 },
       { id: 'anchorage-sturgeon-run', kind: 'resource', x: 620, y: 310, name: 'Deepwater Sturgeon Run', label: 'Fish the deepwater sturgeon run', skillId: 'fishing', itemId: 'sturgeon', level: 50, xp: 72 },
+      { id: 'straton-garrison-quartermaster', kind: 'shop', shopId: 'anchorage-garrison-quartermaster', x: 780, y: 320, name: 'Straton', label: 'Trade with Straton' },
     ],
     exits: [
       { id: 'anchorage-to-caves', x: 38, y: 286, toMapId: 'nereid-caves', spawnId: 'from-anchorage', returnSpawnId: 'from-caves', kind: 'foot', gate: [] },
