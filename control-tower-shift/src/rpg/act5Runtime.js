@@ -318,6 +318,7 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'epilogue-sky', kind: 'marker', x: 480, y: 112, name: 'Plural Sky', label: 'Look across the restored regions' },
       { id: 'kallias', kind: 'npc', x: 536, y: 304, name: 'Kallias', label: 'Witness the Last Name', conversationId: 'act5-epilogue' },
       { id: 'thessa', kind: 'npc', x: 420, y: 316, name: 'Thessa', label: 'Leave room for the next refusal', conversationId: 'act5-epilogue' },
+      { id: 'accord-overlook-ambrosial-ash', kind: 'resource', x: 770, y: 380, name: 'Covenant-Grown Ash', label: 'Cut a bough from the covenant-grown ash', skillId: 'woodcutting', itemId: 'ambrosial-ash', level: 70, xp: 145, capacity: 1, respawnTicks: 1000 },
     ],
     exits: [
       { id: 'overlook-to-silent-loom', x: 38, y: 358, toMapId: 'silent-loom', spawnId: 'from-overlook', returnSpawnId: 'from-loom', kind: 'epilogue-path', gate: [{ kind: 'flag', flagId: 'mq-act5-last-name-completed', value: true }], accessibleLabel: 'Return to the Silent Loom covenant chamber' },

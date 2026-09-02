@@ -150,7 +150,7 @@ describe('recipe lookup helpers', () => {
 
   it('recipesForSkill returns recipes in registry order (ascending level)', () => {
     const bronzework = recipesForSkill('bronzework')
-    expect(bronzework.length).toBe(13)
+    expect(bronzework.length).toBe(15)
     for (let i = 1; i < bronzework.length; i++) {
       expect(bronzework[i].level).toBeGreaterThanOrEqual(bronzework[i - 1].level)
     }
@@ -194,7 +194,7 @@ describe('recipe lookup helpers', () => {
     const skills = makeSkills({ bronzework: 99 })
     const prog = { progression: { skills, totalXp: 0 } }
     const result = recipesAvailableAt(prog, 'bronze-forge')
-    expect(result.length).toBe(13)
+    expect(result.length).toBe(15)
   })
 
   it('recipesAvailableAt accepts null/undefined skills safely (defaults to level 1)', () => {

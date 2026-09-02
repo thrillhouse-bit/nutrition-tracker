@@ -23,7 +23,7 @@ describe('complete Oathbearer content integrity report', () => {
       conversations: Object.keys(REGISTERED_CONVERSATIONS).length,
       encounters: Object.keys(REGISTERED_ENCOUNTERS).length,
       recipes: RECIPES.length,
-      resources: 17,
+      resources: 18,
       shops: 5,
       shopPlacements: 5,
       stations: 9,
@@ -31,6 +31,7 @@ describe('complete Oathbearer content integrity report', () => {
       banks: 1,
     })
     expect(report.inventory.resources.map((entry) => entry.id)).toEqual([
+      'accord-overlook:accord-overlook-ambrosial-ash',
       'asphodel-gate:asphodel-gate-bloom',
       'atlas-vault:vault-orichalcum-cache',
       'beacon-overlook:copper-seam',
