@@ -181,7 +181,7 @@ describe('alchemy-lab access widened to the Act I hub', () => {
 
   it('every one of alchemy’s recipes now has a physically reachable Act I station', () => {
     const alchemy = RECIPES.filter((recipe) => recipe.skillId === 'alchemy')
-    expect(alchemy).toHaveLength(4)
+    expect(alchemy).toHaveLength(5)
     for (const recipe of alchemy) {
       expect(craftingAccessDecision('beacon-overlook', recipe.stationId)?.available, recipe.id).toBe(true)
     }

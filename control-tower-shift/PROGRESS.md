@@ -1558,3 +1558,86 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      available.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T18:4x (turnover hour ~1)
+
+- **Branch/HEAD**: `codex/oathbearer-complete-game` @ `c1c38cc`
+  (Stewardship tier-5 checkpoint), pushed cleanly. No obstacle this
+  cycle.
+- **What changed**: Before starting the next content lane, re-ran the
+  skill-depth audit script to verify the last checkpoint's own claim
+  that "Fishing still has only four level tiers" — it does not; Fishing
+  already has a full 5-tier curve (levels 1/15/30/50/75), matching
+  `FULL-GAME-CONTRACT.md`'s own resource-node description, which just
+  undercounted it in prose ("four level tiers" while literally naming
+  five items). That earlier note was wrong and is now corrected rather
+  than acted on. The same audit also positively re-confirmed
+  spearcraft/might/guard/vitality/marksmanship/stormcalling all draw
+  real action-derived XP from `combatProgression.js`, and
+  oathkeeping/wayfinding draw real quest-derived XP from `state.js` —
+  neither is a hidden dead skill, just sourced outside the recipe/
+  resource tables this audit walks.
+  - A second, broader audit (comparing every item in `ITEM_DEFS` +
+    `ITEM_EXTENSIONS` against every recipe output, shop listing, and
+    resource-node `itemId`) surfaced a genuinely new, previously-
+    undiscovered gap: **`ambrosia-distillate`** had a complete item
+    definition and a real tonic-slot consumable effect already written
+    in `itemEffects.js`, but zero recipe produced it and zero shop sold
+    it — completely unobtainable anywhere in the game, and *not*
+    flagged by `validateRPGContent()`'s own obtainability check (which
+    only walks ingredients recipes already declare, so an item with no
+    referencing recipe at all is invisible to it — a real blind spot
+    worth remembering, not a bug to fix this session).
+  - Closed it with a genuine mastery-tier Alchemy recipe, **Distill
+    Ambrosia** (level 45, above Moly Tonic's 30) that refines a
+    *crafted* Moly Tonic further with 2 more ambrosia bloom — a real
+    "distill it further" alchemy chain, not just a parallel recipe.
+    This also gives Alchemy its fifth level band (1/12/20/30/45),
+    closing the same 5-tier floor every gathering skill already has,
+    and does so as a genuine side effect of closing a real content gap
+    rather than inventing a token new item to hit a number.
+  - Sold at Asteria's existing Witness Exchange (Nyx Foothold), priced
+    above Moly Tonic, alongside it — no new merchant needed.
+  - New test file `test/rpg-alchemy-ambrosia-distillate.test.js` (9
+    tests): recipe registration, confirms exactly five distinct
+    Alchemy level bands, its pre-existing tonic effect (now genuinely
+    reachable), zero new content-validation errors, `CRAFT` reducer
+    behavior (level gate, missing ingredients, exact accounting), shop
+    buy/sell, and a full real-reducer playthrough that crafts Moly
+    Tonic from raw moly/ambrosia-bloom first and then refines it into
+    Ambrosia Distillate — proving the full two-step chain, not just the
+    final recipe in isolation.
+  - Content-integrity fallout, all mechanically reconciled: alchemy
+    recipe count in `rpg-economy-gap-closures.test.js`'s earlier
+    reachability-gap-closure test 4→5; `rpg-regional-economy.test.js`'s
+    `CRAFTED_SINK_ITEMS` list extended. `FULL-GAME-CONTRACT.md`'s
+    Recipes, Items, and Consumables rows updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1127/1127 passed** (86
+    files, up from 1118/85).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `recipes` 53/100, `items` unchanged at 96/200
+    (ambrosia-distillate was already counted in the item registry
+    total — only its *obtainability* changed); `completeSkillLoops`
+    still truthfully 0/22 for the same reason as every prior checkpoint
+    this session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Active subagents**: none — solo lead work.
+- **Next three ordered milestones**:
+  1. The same orphan-audit method (comparing every `ITEM_DEFS`/
+     `ITEM_EXTENSIONS` entry against every recipe output, shop listing,
+     and resource `itemId`) surfaced several other unreferenced items
+     worth checking before assuming they're bugs — `oath-spear`,
+     `traveler-tunic`, `celestial-bronze`, `copper-wire`,
+     `olive-figurehead`, `woven-tape` — none has a consumable effect,
+     so they may be legitimate equipment pieces granted through a quest
+     reward or starting loadout path this audit doesn't check (not
+     verified yet either way). Worth a careful look before touching.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.

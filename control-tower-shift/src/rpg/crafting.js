@@ -954,6 +954,19 @@ const RECIPE_DEFS = [
     ],
     outputs: [{ itemId: 'moly-tonic', quantity: 1 }],
   }),
+  Object.freeze({
+    id: 'ambrosia-distillate',
+    name: 'Distill Ambrosia',
+    skillId: 'alchemy',
+    stationId: 'alchemy-lab',
+    level: 45,
+    xp: 160,
+    ingredients: [
+      { itemId: 'moly-tonic', quantity: 1 },
+      { itemId: 'ambrosia-bloom', quantity: 2 },
+    ],
+    outputs: [{ itemId: 'ambrosia-distillate', quantity: 1 }],
+  }),
 
   // ── Devotion ──
   // Devotion had no obtainable XP source anywhere in the game before this
