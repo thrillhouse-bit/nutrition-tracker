@@ -1641,3 +1641,82 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      available.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T18:5x (turnover hour ~1)
+
+- **Branch/HEAD**: `codex/oathbearer-complete-game` @ `a7ea250`
+  (Ambrosia Distillate checkpoint), pushed cleanly. No obstacle this
+  cycle.
+- **What changed**: Followed through on this checkpoint's own recorded
+  next step — checked the six items the orphan audit flagged before
+  touching any of them.
+  - **Confirmed not bugs (3 of 6)**: `oath-spear` and `traveler-tunic`
+    are granted as real starting equipment defaults in `progression.js`
+    (`equipment.weapon = 'oath-spear'`, `equipment.body =
+    'traveler-tunic'`) — a legitimate source the audit script never
+    checked. `celestial-bronze` drops from a wilderness encounter's
+    loot table in `wilderness.js` — also a legitimate source outside
+    recipes/shops/resource-nodes. None of the three needed any change.
+  - **Genuine gaps (3 of 6)**: `copper-wire`, `olive-figurehead`, and
+    `woven-tape` each had a complete item definition and category/tier
+    metadata but appeared *nowhere else at all* in the codebase — no
+    recipe output, no shop listing, no resource node, no loot table,
+    no starting equipment. Completely inert content with neither a
+    source nor a use, violating the contract's floor on both counts at
+    once.
+  - Closed each with one small recipe at the natural early tier of its
+    own skill's existing chain, plus a shop sink at a thematically
+    fitting existing merchant — no new stations or merchants needed for
+    any of the three:
+    - `copper-wire` (Bronzework, level 3): copper-bar ×2 → copper-wire,
+      sold at Doros's Forge March Quartermaster (Slag Road).
+    - `olive-figurehead` (Carpentry, level 2): olive-plank ×1 →
+      olive-figurehead, sold at Thaleia's Harbor Chandlery (Pelagos
+      Harbor) — a ship's figurehead fits a harbor town's own carpentry
+      chain far better than an unrelated location would.
+    - `woven-tape` (Weaving, level 2): flax-fiber ×2 → woven-tape, sold
+      at Asteria's Witness Exchange (Nyx Foothold). Crafted at the
+      `loom` station — the same narrative-gated Silent Loom every other
+      Weaving recipe already depends on; this doesn't introduce a new
+      reachability issue, it just joins the existing gated set.
+  - New test file `test/rpg-orphan-item-closures.test.js` (7 tests)
+    covering all three: recipe registration, content-validation
+    obtainability, and a full real-reducer playthrough for each
+    (gather/craft the base ingredient → craft the new recipe → sell at
+    the chosen merchant) — including explicit documentation in the
+    file's own header comment of which three items were checked and
+    ruled out as non-bugs, so a future session doesn't re-investigate
+    them from scratch.
+  - Content-integrity fallout, all mechanically reconciled:
+    `rpg-crafting.test.js`'s Bronzework recipe count (21→22, in three
+    separate assertions) and its exact `bronze-forge`/`woodwork-bench`
+    available-recipe-list assertions (inserting `copper-wire` and
+    `olive-figurehead` at their correct registry-order position);
+    `rpg-regional-economy.test.js`'s `CRAFTED_SINK_ITEMS` list extended
+    with all three. `FULL-GAME-CONTRACT.md`'s Items and Recipes rows
+    updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1134/1134 passed** (87
+    files, up from 1127/86).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `recipes` 56/100; `completeSkillLoops` still
+    truthfully 0/22 for the same reason as every prior checkpoint this
+    session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Ambrosia Distillate checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. The orphan-audit backlog from this checkpoint and the last is now
+     fully resolved — no more known unobtainable/unused items in the
+     registry. Highest-value remaining lane shifts to Priority 2
+     (merchants 7/15, banks 5/8) or Priority 3 (story expansion), per
+     this session's own running assessment that the skill-depth backlog
+     is substantially closed.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.

@@ -113,8 +113,8 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
 | Skills | 22 definitions; Devotion (repeatable votive-stand offerings), Guile (an exact-once locked-chest pick), and now Beastbond (an exact-once wild-creature calming, the Sacred Hind at Beacon Overlook) all have real first loops, closing all three skills that previously had zero obtainable XP source anywhere in the game; several other skills still lack repeatable actions | 22 complete loops |
-| Items | 96; closes honeyed-figs (Beastbond loop) and ambrosia-distillate (a fully-defined tonic consumable with zero obtainable source anywhere, discovered by an orphan audit — no recipe or shop referenced it at all) | 200 useful |
-| Recipes | 53; all ingredients have legitimate sources | 100 reachable |
+| Items | 96; closes honeyed-figs (Beastbond loop), ambrosia-distillate (a fully-defined tonic consumable with zero source), and copper-wire/olive-figurehead/woven-tape (three crafting materials with zero source and zero use) — all discovered by an orphan audit comparing every item definition against every recipe output, shop listing, resource node, wilderness loot table, and starting-equipment default | 200 useful |
+| Recipes | 56; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
 | Quests | 10 | 70 total |

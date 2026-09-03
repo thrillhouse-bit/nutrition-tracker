@@ -33,6 +33,7 @@ const CRAFTED_SINK_ITEMS = [
   'bronze-fittings',
   'bronze-ingot',
   'cedar-keel',
+  'copper-wire',
   'grain-pottage',
   'herb-cake',
   'herbal-salve',
@@ -40,11 +41,13 @@ const CRAFTED_SINK_ITEMS = [
   'laurel-loom-fiber',
   'linen-weave',
   'moly-tonic',
+  'olive-figurehead',
   'olive-plank',
   'sacred-flame-brand',
   'sage-barley-broth',
   'sage-tonic',
   'tuna-stew',
+  'woven-tape',
 ]
 
 // Stewardship's Act II tier added a second-tier raw material (water-cask,

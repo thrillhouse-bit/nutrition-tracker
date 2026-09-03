@@ -36,6 +36,7 @@ export const SHOP_DEFS = Object.freeze({
     mapIds: Object.freeze(['pelagos-harbor']),
     listings: Object.freeze({
       'olive-plank': Object.freeze({ itemId: 'olive-plank', buyPrice: 38, sellPrice: 15, baseStock: 8, maxStock: 20, restockAmount: 2 }),
+      'olive-figurehead': Object.freeze({ itemId: 'olive-figurehead', buyPrice: 55, sellPrice: 20, baseStock: 4, maxStock: 10, restockAmount: 1 }),
       'cedar-keel': Object.freeze({ itemId: 'cedar-keel', buyPrice: 220, sellPrice: 85, baseStock: 2, maxStock: 6, restockAmount: 1 }),
       'tuna-stew': Object.freeze({ itemId: 'tuna-stew', buyPrice: 90, sellPrice: 34, baseStock: 6, maxStock: 12, restockAmount: 1 }),
       'water-cask': Object.freeze({ itemId: 'water-cask', buyPrice: 22, sellPrice: 8, baseStock: 10, maxStock: 20, restockAmount: 2 }),
@@ -66,6 +67,7 @@ export const SHOP_DEFS = Object.freeze({
     listings: Object.freeze({
       'bronze-fittings': Object.freeze({ itemId: 'bronze-fittings', buyPrice: 75, sellPrice: 28, baseStock: 8, maxStock: 18, restockAmount: 2 }),
       'bronze-ingot': Object.freeze({ itemId: 'bronze-ingot', buyPrice: 110, sellPrice: 42, baseStock: 6, maxStock: 14, restockAmount: 1 }),
+      'copper-wire': Object.freeze({ itemId: 'copper-wire', buyPrice: 48, sellPrice: 18, baseStock: 8, maxStock: 18, restockAmount: 2 }),
       'sacred-flame-brand': Object.freeze({ itemId: 'sacred-flame-brand', buyPrice: 300, sellPrice: 115, baseStock: 2, maxStock: 6, restockAmount: 1 }),
       'ration-water': Object.freeze({ itemId: 'ration-water', buyPrice: 34, sellPrice: 13, baseStock: 8, maxStock: 18, restockAmount: 2 }),
       'camp-forage': Object.freeze({ itemId: 'camp-forage', buyPrice: 30, sellPrice: 11, baseStock: 10, maxStock: 20, restockAmount: 2 }),
@@ -100,6 +102,7 @@ export const SHOP_DEFS = Object.freeze({
       'ash-blessing': Object.freeze({ itemId: 'ash-blessing', buyPrice: 520, sellPrice: 200, baseStock: 2, maxStock: 4, restockAmount: 1 }),
       'laurel-loom-fiber': Object.freeze({ itemId: 'laurel-loom-fiber', buyPrice: 280, sellPrice: 105, baseStock: 3, maxStock: 8, restockAmount: 1 }),
       'linen-weave': Object.freeze({ itemId: 'linen-weave', buyPrice: 190, sellPrice: 72, baseStock: 4, maxStock: 10, restockAmount: 1 }),
+      'woven-tape': Object.freeze({ itemId: 'woven-tape', buyPrice: 60, sellPrice: 22, baseStock: 6, maxStock: 14, restockAmount: 1 }),
       'moly-tonic': Object.freeze({ itemId: 'moly-tonic', buyPrice: 360, sellPrice: 135, baseStock: 3, maxStock: 8, restockAmount: 1 }),
       'ambrosia-distillate': Object.freeze({ itemId: 'ambrosia-distillate', buyPrice: 640, sellPrice: 240, baseStock: 2, maxStock: 4, restockAmount: 1 }),
       'shadow-lantern-oil': Object.freeze({ itemId: 'shadow-lantern-oil', buyPrice: 42, sellPrice: 16, baseStock: 8, maxStock: 18, restockAmount: 2 }),
