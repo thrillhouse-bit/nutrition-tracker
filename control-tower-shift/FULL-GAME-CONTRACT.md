@@ -113,8 +113,8 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
 | Skills | 22 definitions; Devotion (repeatable votive-stand offerings), Guile (an exact-once locked-chest pick), and now Beastbond (an exact-once wild-creature calming, the Sacred Hind at Beacon Overlook) all have real first loops, closing all three skills that previously had zero obtainable XP source anywhere in the game; several other skills still lack repeatable actions | 22 complete loops |
-| Items | 96; closes honeyed-figs (Beastbond loop), ambrosia-distillate (a fully-defined tonic consumable with zero source), and copper-wire/olive-figurehead/woven-tape (three crafting materials with zero source and zero use) — all discovered by an orphan audit comparing every item definition against every recipe output, shop listing, resource node, wilderness loot table, and starting-equipment default | 200 useful |
-| Recipes | 56; all ingredients have legitimate sources | 100 reachable |
+| Items | 97; closes honeyed-figs (Beastbond loop), ambrosia-distillate and clay-loaf (two fully-defined consumables with zero source), and copper-wire/olive-figurehead/woven-tape (three crafting materials with zero source and zero use) — all discovered by an orphan audit comparing every item definition against every recipe output, shop listing, resource node, wilderness loot table, and starting-equipment default | 200 useful |
+| Recipes | 58; all ingredients have legitimate sources | 100 reachable |
 | Regions | 5 | 5 production regions |
 | Maps/zones | 23 small pockets | 60 materially distinct |
 | Quests | 10 | 70 total |
@@ -128,7 +128,7 @@ game and must not be described, tagged, deployed, or marketed as one.
 | Referential/source/use integrity | 0 errors / 0 domain warnings | 0 errors / 0 domain warnings |
 | Production authoring readiness | 92 / 311 release-ready; 219 legacy warnings | all released records ready |
 | Account RPG save | authenticated remote-first save, per-account offline cache, revision conflicts; restore history and release matrix pending | server-backed account save |
-| Consumables | food healing plus salve/tonic/blessing next-encounter loadouts; the tonic slot now has three tiers (Sage Tonic at Alchemy 20, Moly Tonic at 30, Ambrosia Distillate at 45 — refining a crafted Moly Tonic further) instead of jumping straight from nothing to level 30, and Cooking's food curve now has a real mid-tier heal (Sage-Barley Broth at 12) between Herb Cake and Tuna Stew | full useful loadout progression |
+| Consumables | food healing plus salve/tonic/blessing next-encounter loadouts; the tonic slot now has three tiers (Sage Tonic at Alchemy 20, Moly Tonic at 30, Ambrosia Distillate at 45 — refining a crafted Moly Tonic further) instead of jumping straight from nothing to level 30; Cooking's food curve now has a real mid-tier heal (Sage-Barley Broth at 12) and a mastery-tier feast (Ambrosial Roe Feast at 60, pairing hippocamp-roe — previously the rarest catch in the game with zero culinary use — with ambrosia bloom) — Cooking and Alchemy both now span the full 5-tier curve every gathering skill already has | full useful loadout progression |
 | Player trading | absent | authoritative escrow trade |
 | Estimated campaign | 1.5–5 hours | measured 35–45 hour median |
 

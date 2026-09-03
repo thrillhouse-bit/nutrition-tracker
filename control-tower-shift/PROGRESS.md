@@ -1794,3 +1794,80 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   3. Priority 3 (story expansion) or a fourth Cooking recipe (still 4
      bands, one short of the 5-tier floor Alchemy just reached) remain
      open lanes once Priority 2's easiest wins are exhausted.
+
+## Recovery checkpoint — 2026-09-02T19:0x (turnover hour ~1)
+
+- **Branch/HEAD**: `codex/oathbearer-complete-game` @ `809863f` (Olive
+  Road bank checkpoint), pushed cleanly. No obstacle this cycle.
+- **What changed**: Cooking's own missing fifth tier, directly
+  continuing this checkpoint's own recorded next step — plus a second
+  small orphan closure spotted along the way.
+  - **`clay-loaf`**: the same class of gap as `ambrosia-distillate` —
+    a complete item definition with a real food-heal effect already
+    written in `itemEffects.js`, but no recipe or shop referenced it.
+    Closed with a cheap level-1 alternative to Grain Pottage
+    (`barley-flatbread` ×1 → `clay-loaf`), sold at Myrrine's alongside
+    the flatbread it's baked from.
+  - **`ambrosial-roe-feast`** (Cooking's fifth tier, level 60): closes
+    a genuine, previously-unnoticed gap of its own — `hippocamp-roe`
+    (a level-75 fishing catch, the single rarest ingredient gathered
+    anywhere in the game) had zero culinary use despite being a food-
+    category fish. Pairs it with `ambrosia-bloom` — the same "everything
+    meets at the endgame" pattern the prior checkpoint's Ambrosia
+    Distillate recipe already established — for a genuine mastery-tier
+    feast that heals more than any other cooked food. This gives
+    Cooking its fifth distinct level band (1/1/5/12/25/60), closing the
+    same 5-tier floor Alchemy reached two checkpoints ago; Cooking and
+    Alchemy are now the only two artisan skills at the full curve
+    besides the three pure-gathering skills.
+  - Both crafted at `field-kitchen` (Beacon Overlook / Nyx Foothold);
+    the feast sold at Asteria's Witness Exchange, priced above every
+    other cooked food.
+  - New test file `test/rpg-cooking-fifth-tier.test.js` (9 tests):
+    both recipes' registration, confirms exactly five distinct Cooking
+    level bands, the feast's heal value ordering (above Tuna Stew's),
+    zero new content-validation errors and no `INERT_CRAFTED_OUTPUT`
+    warnings, `CRAFT` reducer behavior (level gate, exact accounting),
+    and full real-reducer playthroughs for both (buy/bake/sell for the
+    loaf; craft/sell for the feast). One test needed a fix mid-write:
+    the starting-inventory assumption (`createInitialState()` already
+    carries 3 barley-flatbread) meant asserting an absolute post-
+    purchase quantity was wrong — fixed to assert the delta instead,
+    matching how quantity-based assertions should be written when a
+    shared starting item is involved.
+  - Content-integrity fallout, all mechanically reconciled:
+    `rpg-regional-economy.test.js`'s `CRAFTED_SINK_ITEMS` list extended
+    with `ambrosial-roe-feast` (`clay-loaf`'s sink, Myrrine's general
+    store, isn't one of the four specialized shops that list checks).
+    `FULL-GAME-CONTRACT.md`'s Items, Recipes, and Consumables rows
+    updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1144/1144 passed** (88
+    files, up from 1135/87).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 97/200, `recipes` 58/100; `completeSkillLoops`
+    still truthfully 0/22 for the same reason as every prior checkpoint
+    this session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Olive Road bank checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Every artisan/gathering skill except Weaving now has genuine
+     depth (Weaving's own 10 recipes across 10 levels are already
+     substantial, just entirely behind the narrative-gated Silent
+     Loom by design — not a gap to close). Highest-value remaining
+     content lanes are Priority 2 (banks 6/8, merchants 7/15 — the
+     next candidate needs the same "genuine civic texture" filter
+     Olive Road passed) or Priority 3 (story expansion: quests,
+     dialogue word count, side content — all still far below floor).
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 3 (story expansion) is now the largest remaining gap by
+     raw distance to floor (10/70 quests, 927/50,000 dialogue words) —
+     worth seriously considering as the next major lane once Priority
+     2's remaining easy wins are exhausted, since skill/economy depth
+     is now substantially ahead of narrative depth.

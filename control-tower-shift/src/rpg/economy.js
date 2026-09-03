@@ -19,6 +19,7 @@ export const SHOP_DEFS = Object.freeze({
     mapIds: Object.freeze(['beacon-overlook']),
     listings: Object.freeze({
       'barley-flatbread': Object.freeze({ itemId: 'barley-flatbread', buyPrice: 6, sellPrice: 2, baseStock: 12, maxStock: 24, restockAmount: 2 }),
+      'clay-loaf': Object.freeze({ itemId: 'clay-loaf', buyPrice: 5, sellPrice: 2, baseStock: 12, maxStock: 24, restockAmount: 2 }),
       thyme: Object.freeze({ itemId: 'thyme', buyPrice: 9, sellPrice: 3, baseStock: 16, maxStock: 32, restockAmount: 3 }),
       'olive-log': Object.freeze({ itemId: 'olive-log', buyPrice: 14, sellPrice: 5, baseStock: 10, maxStock: 24, restockAmount: 2 }),
       'copper-ore': Object.freeze({ itemId: 'copper-ore', buyPrice: 18, sellPrice: 7, baseStock: 8, maxStock: 20, restockAmount: 1 }),
@@ -107,6 +108,7 @@ export const SHOP_DEFS = Object.freeze({
       'ambrosia-distillate': Object.freeze({ itemId: 'ambrosia-distillate', buyPrice: 640, sellPrice: 240, baseStock: 2, maxStock: 4, restockAmount: 1 }),
       'shadow-lantern-oil': Object.freeze({ itemId: 'shadow-lantern-oil', buyPrice: 42, sellPrice: 16, baseStock: 8, maxStock: 18, restockAmount: 2 }),
       'night-forage': Object.freeze({ itemId: 'night-forage', buyPrice: 36, sellPrice: 14, baseStock: 10, maxStock: 20, restockAmount: 2 }),
+      'ambrosial-roe-feast': Object.freeze({ itemId: 'ambrosial-roe-feast', buyPrice: 480, sellPrice: 180, baseStock: 2, maxStock: 4, restockAmount: 1 }),
     }),
   }),
 })

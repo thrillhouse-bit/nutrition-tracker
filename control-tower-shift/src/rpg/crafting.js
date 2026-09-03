@@ -361,6 +361,13 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 5,
   },
+  'ambrosial-roe-feast': {
+    id: 'ambrosial-roe-feast',
+    name: 'Ambrosial Roe Feast',
+    category: 'food',
+    stackable: false,
+    tier: 6,
+  },
   'sacred-flame-brand': {
     id: 'sacred-flame-brand',
     name: 'Sacred Flame Brand',
@@ -885,6 +892,16 @@ const RECIPE_DEFS = [
     outputs: [{ itemId: 'grain-pottage', quantity: 1 }],
   }),
   Object.freeze({
+    id: 'clay-loaf',
+    name: 'Bake Clay-Oven Loaf',
+    skillId: 'cooking',
+    stationId: 'field-kitchen',
+    level: 1,
+    xp: 8,
+    ingredients: [{ itemId: 'barley-flatbread', quantity: 1 }],
+    outputs: [{ itemId: 'clay-loaf', quantity: 1 }],
+  }),
+  Object.freeze({
     id: 'herb-cake',
     name: 'Bake Herb Cake',
     skillId: 'cooking',
@@ -922,6 +939,19 @@ const RECIPE_DEFS = [
       { itemId: 'asphodel', quantity: 1 },
     ],
     outputs: [{ itemId: 'tuna-stew', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'ambrosial-roe-feast',
+    name: 'Prepare Ambrosial Roe Feast',
+    skillId: 'cooking',
+    stationId: 'field-kitchen',
+    level: 60,
+    xp: 260,
+    ingredients: [
+      { itemId: 'hippocamp-roe', quantity: 1 },
+      { itemId: 'ambrosia-bloom', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'ambrosial-roe-feast', quantity: 1 }],
   }),
 
   // ── Alchemy ──

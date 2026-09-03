@@ -29,6 +29,7 @@ const REGIONAL_SHOP_IDS = [
 
 const CRAFTED_SINK_ITEMS = [
   'ambrosia-distillate',
+  'ambrosial-roe-feast',
   'ash-blessing',
   'bronze-fittings',
   'bronze-ingot',

@@ -25,6 +25,7 @@ export const ITEM_EFFECTS = Object.freeze({
   'sage-barley-broth': food(38),
   'honeyed-figs': food(36),
   'tuna-stew': food(48),
+  'ambrosial-roe-feast': food(80),
   'herbal-salve': preparation('salve', { maxHealthBonus: 12 }),
   'sage-tonic': preparation('tonic', { incomingDamageMultiplier: 0.92 }),
   'moly-tonic': preparation('tonic', { incomingDamageMultiplier: 0.85, statusWard: 'Moly ward' }),
