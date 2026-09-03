@@ -140,6 +140,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     recovery: 'Her deterministic conversation can resume after interruption without duplicating its flag or marker.', minutes: 2,
     originality: 'Uses the public-domain Greek harbor-keeper role; Melite and her arrival-versus-permission counsel are original.',
   }),
+  'pelagos-harbor:ianthe-tidecharts': authoredEntity({
+    question: 'Will a stranger’s claim about a god’s fragment earn a working chart-reader’s trust before her patience runs out?', systemsUsed: ['dialogue', 'questing'],
+    reward: 'The scene records Ianthe as met and gives Kallias a concrete heading for the road beyond the Salt Covenant.', consequence: 'It closes the promise Thessa made at the end of Act I and grounds the Fields of Kore as a real, chart-read destination.',
+    recovery: 'Her deterministic conversation, including one reconverging player choice, can resume after interruption without duplicating its flag effect.', minutes: 3,
+    originality: 'Uses public-domain Mediterranean tide-chart and wayfinding practice; Ianthe’s transactional voice and the fragment-reading scene are original.',
+  }),
   'pelagos-harbor:oath-post': authoredEntity({
     question: 'What fails when a civic oath-post uses the same name for welcome, arrival, and permission?', systemsUsed: ['interaction', 'questing'],
     reward: 'Inspection gives a stable physical reference for the harbor’s broken covenant.', consequence: 'The post grounds Melite’s explanation and the later three-form ratification.',
@@ -345,6 +351,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     },
     entities: [
       { id: 'melite', kind: 'npc', x: 232, y: 352, name: 'Melite', label: 'Speak with Melite', conversationId: 'act2-melite-oath-post' },
+      { id: 'ianthe-tidecharts', kind: 'npc', x: 860, y: 420, name: 'Ianthe', label: 'Speak with Ianthe', conversationId: 'act2-ianthe-first-meeting' },
       { id: 'oath-post', kind: 'interact', x: 280, y: 330, name: 'Harbor Oath-Post', label: 'Inspect the oath-post' },
       { id: 'poseidon-shrine', kind: 'shrine', x: 328, y: 174, name: 'Poseidon Shrine', label: 'Honor the keeper of harbors', deityId: 'poseidon', savePointId: 'shrine-pelagos-poseidon' },
       { id: 'salt-covenant-table', kind: 'choice', x: 442, y: 246, name: 'Salt Covenant Table', label: 'Ratify the Salt Covenant', choiceIds: ['harbor-first', 'boundary-first', 'shared-crossing'] },

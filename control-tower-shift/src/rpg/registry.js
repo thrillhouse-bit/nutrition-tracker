@@ -109,41 +109,82 @@ export const REGISTERED_MAPS = Object.freeze({
   ),
 })
 
-// Minimal playable-entry conversation. It deliberately lives at the registry
-// seam: act2Content owns the quest contract, act2Runtime owns geometry, and the
-// registry supplies the line graph needed by the generic dialogue runtime.
-const ACT2_ENTRY_CONVERSATION = Object.freeze({
-  id: 'act2-melite-oath-post',
-  speakerIds: ['melite', 'kallias'],
-  start: 'n1',
-  nodes: Object.freeze({
-    n1: Object.freeze({
-      speakerId: 'melite',
-      text: 'Far-Sighted brought you to Pelagos, then. The tide remembers every crossing, but the oath-post has begun calling arrival and permission the same name.',
-      effects: Object.freeze([{ kind: 'flag', id: 'act2-melite-met', value: true }]),
-      next: 'n2',
+// Act II conversations. act2Content owns the quest contract, act2Runtime owns
+// geometry, and the registry supplies the line graphs needed by the generic
+// dialogue runtime.
+const ACT2_CONVERSATIONS = Object.freeze({
+  'act2-melite-oath-post': Object.freeze({
+    id: 'act2-melite-oath-post',
+    speakerIds: ['melite', 'kallias'],
+    start: 'n1',
+    nodes: Object.freeze({
+      n1: Object.freeze({
+        speakerId: 'melite',
+        text: 'Far-Sighted brought you to Pelagos, then. The tide remembers every crossing, but the oath-post has begun calling arrival and permission the same name.',
+        effects: Object.freeze([{ kind: 'flag', id: 'act2-melite-met', value: true }]),
+        next: 'n2',
+      }),
+      n2: Object.freeze({
+        speakerId: 'kallias',
+        text: 'Then we separate them before the harbor forgets who may leave — and who was ever welcomed here.',
+        next: 'n3',
+      }),
+      n3: Object.freeze({
+        speakerId: 'melite',
+        text: 'Start at the breakwater. Read the tide by its shape as well as its color, and turn it only at a marked well. Pelagos will answer an honest hand.',
+        effects: Object.freeze([{ kind: 'marker', mapId: 'breakwater-road', entityId: 'surge-witness' }]),
+        next: null,
+      }),
     }),
-    n2: Object.freeze({
-      speakerId: 'kallias',
-      text: 'Then we separate them before the harbor forgets who may leave — and who was ever welcomed here.',
-      next: 'n3',
-    }),
-    n3: Object.freeze({
-      speakerId: 'melite',
-      text: 'Start at the breakwater. Read the tide by its shape as well as its color, and turn it only at a marked well. Pelagos will answer an honest hand.',
-      effects: Object.freeze([{ kind: 'marker', mapId: 'breakwater-road', entityId: 'surge-witness' }]),
-      next: null,
+    authoring: act2Authoring({
+      category: 'conversation',
+      dramaticQuestion: 'Can Melite teach Kallias to separate arrival from permission before Pelagos turns a damaged oath into permanent exclusion?',
+      systemsUsed: ['dialogue', 'questing'],
+      durableReward: 'The scene records Melite as met and places the First Surge marker on Breakwater Road.',
+      downstreamConsequence: 'Its shape-and-color tide instructions define how the player reads every Act II traversal lane.',
+      recoveryBehavior: 'The deterministic three-node scene can resume after interruption, and its flag and marker effects cannot duplicate progress.',
+      expectedMinutes: 2,
+      originalityNotes: 'Uses public-domain Greek harbor-keeper and sea-oath motifs; Melite’s arrival-versus-permission lesson is original Oathbearer writing.',
     }),
   }),
-  authoring: act2Authoring({
-    category: 'conversation',
-    dramaticQuestion: 'Can Melite teach Kallias to separate arrival from permission before Pelagos turns a damaged oath into permanent exclusion?',
-    systemsUsed: ['dialogue', 'questing'],
-    durableReward: 'The scene records Melite as met and places the First Surge marker on Breakwater Road.',
-    downstreamConsequence: 'Its shape-and-color tide instructions define how the player reads every Act II traversal lane.',
-    recoveryBehavior: 'The deterministic three-node scene can resume after interruption, and its flag and marker effects cannot duplicate progress.',
-    expectedMinutes: 2,
-    originalityNotes: 'Uses public-domain Greek harbor-keeper and sea-oath motifs; Melite’s arrival-versus-permission lesson is original Oathbearer writing.',
+  // Fulfills the promise Thessa made at the close of Act I ("Ianthe keeps the
+  // old tide-charts on the Pelagos strand... rebuild the name there") — Ianthe
+  // never actually appeared in Act II until this scene. Drafted by a governed
+  // Hermes worker (qwen/qwen3.8-flash) per CLAUDE-HERMES-SWARM-DIRECTIVE.md
+  // and independently verified here (schema, word count, graph integrity,
+  // required beats, prohibited-reveals list) before integration.
+  'act2-ianthe-first-meeting': Object.freeze({
+    id: 'act2-ianthe-first-meeting',
+    speakerIds: ['ianthe', 'kallias'],
+    start: 'n1',
+    nodes: Object.freeze({
+      n1: Object.freeze({ speakerId: 'ianthe', text: 'You have stood there long enough to read three of my charts. Either buy something or walk on. The docks are full of men who want my tide-tables and none who can pay.', next: 'n2' }),
+      n2: Object.freeze({ speakerId: 'kallias', text: 'I am looking for Ianthe. Thessa sent me, out of Asterion Reach.', next: 'n3' }),
+      n3: Object.freeze({ speakerId: 'ianthe', text: 'Thessa. Good. Thessa’s name buys you one look at my table and nothing more. Everyone who washes up here lately wants something the sea already took back.', next: 'n4' }),
+      n4: Object.freeze({ speakerId: 'kallias', text: 'Then look at this. It is a fragment of an epithet. Far-Sighted. It does not point like a needle does. It leans seaward, and it pulls harder when the crossing turns.', next: 'n5' }),
+      n5: Object.freeze({ speakerId: 'ianthe', text: 'Hold it over the depth columns. Do not move it. See how the set-and-drift figures fight against it? Glass does not do that. Neither does a lie. In eleven years of copying these charts, nothing has ever corrected one of mine before.', next: 'n6' }),
+      n6: Object.freeze({ speakerId: 'ianthe', text: 'Understand what you are carrying. A name that leans seaward is a name trying to get back to the water it was sworn over. You will not stitch Far-Sighted shut on this strand. Follow the drift, not the shore.', next: 'c1' }),
+      c1: Object.freeze({
+        choices: Object.freeze([
+          Object.freeze({ id: 'ianthe-hand-over-fragment', text: 'Set the fragment down on her chart table. Read it yourself. That is why I came this far to find you.', next: 'n7' }),
+          Object.freeze({ id: 'ianthe-keep-fragment-close', text: 'Keep it in your hand. Tell me the route and I will go. I would rather you did not touch it.', next: 'n8' }),
+        ]),
+      }),
+      n7: Object.freeze({ speakerId: 'ianthe', text: 'Careful. First thing a stranger has handed me in two years that I did not have to pry open. Point at the column you want measured.', next: 'n9' }),
+      n8: Object.freeze({ speakerId: 'ianthe', text: 'Fair enough. Keep it close. The charts do not need your hands, only your eyes. Hold it level with the outer marker and tell me which way the lean swings when the tide crosses.', next: 'n9' }),
+      n9: Object.freeze({ speakerId: 'ianthe', text: 'Here. See where the old shoal road threads out past the Dry Mouths? Every pilot who ran it is gone, but the water still runs it, and it runs straight past the Salt Covenant toward the Fields of Kore. Take that heading. And when the Surge turns the wrong color, do not anchor off low ground. Those shores get borrowed back without warning.', next: 'n10' }),
+      n10: Object.freeze({ speakerId: 'ianthe', text: 'Go on, then. And when you have the rest of your god’s name in hand, send word to this table. I would like to check my columns against it.', effects: Object.freeze([{ kind: 'flag', id: 'ianthe-met', value: true }]), next: null }),
+    }),
+    authoring: act2Authoring({
+      category: 'conversation',
+      dramaticQuestion: 'Will a stranger’s claim about a god’s fragment earn a working chart-reader’s trust before her patience runs out?',
+      systemsUsed: ['dialogue', 'questing'],
+      durableReward: 'The scene records Ianthe as met and gives Kallias a concrete heading for the road beyond the Salt Covenant.',
+      downstreamConsequence: 'It closes the promise Thessa made at the end of Act I and grounds the Fields of Kore as a real, chart-read destination rather than an abstract next chapter.',
+      recoveryBehavior: 'The deterministic ten-node scene, including one reconverging player choice, can resume after interruption; its flag effect applies only once regardless of replay.',
+      expectedMinutes: 3,
+      originalityNotes: 'Uses public-domain Mediterranean tide-chart and wayfinding practice; Ianthe’s transactional voice and the fragment-reading scene are original Oathbearer writing.',
+    }),
   }),
 })
 
@@ -169,7 +210,7 @@ export const REGISTERED_ENCOUNTERS = Object.freeze({
 
 export const REGISTERED_CONVERSATIONS = Object.freeze({
   ...ACT1_CONVERSATIONS,
-  [ACT2_ENTRY_CONVERSATION.id]: ACT2_ENTRY_CONVERSATION,
+  ...ACT2_CONVERSATIONS,
   ...ACT3_CONVERSATIONS,
   ...ACT5_CONVERSATIONS,
 })

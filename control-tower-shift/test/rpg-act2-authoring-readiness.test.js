@@ -49,7 +49,7 @@ function act1RecordKeys() {
 }
 
 function act2RecordKeys() {
-  const keys = new Set(['conversation:act2-melite-oath-post'])
+  const keys = new Set(['conversation:act2-melite-oath-post', 'conversation:act2-ianthe-first-meeting'])
   for (const quest of [ACT2_MAIN_QUEST, ACT2_SIDE_QUEST]) {
     keys.add(`quest:${quest.id}`)
     for (const objective of quest.objectives) keys.add(`objective:${quest.id}:${objective.id}`)
@@ -118,9 +118,9 @@ describe('Act II production authoring readiness', () => {
       .map(recordKey))
 
     expect(act1.size).toBe(36)
-    expect(act2.size).toBe(56)
+    expect(act2.size).toBe(58)
     expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 311, legacy: 219, incomplete: 0, releaseReady: 92 })
+    expect(report.authoredDepth.counts).toEqual({ total: 313, legacy: 219, incomplete: 0, releaseReady: 94 })
     expect(report.summary).toEqual({
       errors: 0,
       warnings: 219,
@@ -172,7 +172,7 @@ describe('Act II production authoring readiness', () => {
   })
 
   it('changes no accepted Act II behavior data outside authoring fields', () => {
-    expect(behaviorDigest()).toBe('ba2b11344c503c1e6636348b08b4a421e9a12d512420cdb068d58ef9941e0971')
+    expect(behaviorDigest()).toBe('6fb1d9308e536bf3ecfb78e11917d4e4a1b836deb92c92cd7dced7eb522c552b')
     expect(ACT2_MAIN_QUEST.objectives.map((objective) => objective.id)).toEqual([
       'reach-pelagos-keeper', 'witness-first-surge', 'free-nereid-witnesses',
       'separate-boundary-names', 'secure-storm-anchorage', 'board-archive-barge',

@@ -37,7 +37,7 @@ import {
 function act2RecordIds() {
   const mapIds = new Set(Object.keys(ACT2_RENDERABLE_MAPS))
   const questIds = new Set([ACT2_MAIN_QUEST.id, ACT2_SIDE_QUEST.id])
-  const conversationIds = new Set(['act2-melite-oath-post'])
+  const conversationIds = new Set(['act2-melite-oath-post', 'act2-ianthe-first-meeting'])
   const encounterIds = new Set(Object.keys(ACT2_ENCOUNTERS))
   return { mapIds, questIds, conversationIds, encounterIds }
 }
