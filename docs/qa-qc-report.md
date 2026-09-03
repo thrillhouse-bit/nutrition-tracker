@@ -64,6 +64,7 @@ doesn't repeat that ground.
 | Info | Live deploy | Live site stuck at commit `45bbf76` (PR #95, the food-search overhaul) for 3 consecutive check-ins — ~19.5 hours behind `main` as of 2026-08-27 12:42 UTC, having missed PR #96's already-reviewed, low-risk `MAX_RESULTS` tuning change | Resolved (2026-08-27, owner deploy — site now matches current `main` HEAD exactly) |
 | Info | Live deploy | Live site stuck at commit `431e2b0` since before PR #121 — now ~4 days / 32 commits behind `main` as of 2026-08-31 08:36 UTC. All missed app-code changes are the two already-reviewed, opt-in features this report tracked live (Control Tower Shift behind a URL hash, the read-only A2A surface) plus their follow-up fixes — no pending fix to an existing user-facing issue is stuck behind this | Resolved (2026-09-01 — live site redeployed, `GET /api/version` now matches current `main` HEAD `58f1223` exactly) |
 | Info | Live deploy | `GET /api/legal/status` on the live site reports `signupEnabled: false` — none of the 7 required `LEGAL_*` operator env vars (entity name, effective date, jurisdiction, hosting location, contact email, year, review acknowledgement) are configured in production, so new signups are currently blocked. Also reports `inviteRequired: true`, meaning `ALPHA_INVITE_ONLY` is already set — the owner appears mid-rollout on the new invite-only alpha launch (PR #137) but hasn't yet set the legal vars it depends on. Existing accounts are unaffected (legal re-consent gate only activates once `legal.ready` is true) | Reported (2026-09-01) — owner deploy/config action, not a code fix; new signups blocked until resolved |
+| Info | Live deploy | Live site stuck at `f9f8374` (before PR #148) as of 2026-09-03 04:36 UTC — the first Oathbearer deploy lag involving real app-code (new `rpg_saves`/`rpg_save_history` tables, new authenticated routes), not just docs. Schema changes are additive/idempotent (`create table if not exists`) per this session's own review, so no deploy risk from the gap itself — but live players of the game currently have no cross-device save until this deploys. Nutrition-tracking core app unaffected either way | Reported (2026-09-03) — owner deploy action, not a code fix |
 
 ## 2026-08-25 — First pass
 
@@ -1741,3 +1742,17 @@ of this check (still `f9f8374`, now including real app-code — the
 `rpg_saves`/`rpg_save_history` tables and new routes — so this is
 worth watching next pass rather than folded into the "docs-only, not
 tracked" note used the last two passes).
+
+## 2026-09-03 — Check-in pass (recurring, consolidated 00:36/04:36 UTC)
+
+Two scheduled firings queued while idle; consolidated as before.
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `92ca4d7`). Live site is now confirmed still on
+`f9f8374`, unchanged from last pass's flag — 11 commits behind
+(9 app-code, 2 this report's own docs), the whole PR #148 account-save
+feature included. Per last pass's note that this was "worth watching
+next pass," added it as a tracked Info item above rather than a
+passing mention: schema changes are additive/idempotent so there's no
+deploy risk from the gap, only a functionality gap (no cross-device
+save for live players of the game) until the owner redeploys.
+`/api/legal/status` unchanged. No fixes needed this pass.
