@@ -317,7 +317,10 @@ export const ACT5_CONVERSATIONS = deepFreeze({
     nodes: {
       'three-claims': { speakerId: 'apollo', text: 'I reveal the road before the traveler commits.', cameraCue: 'speaker', next: 'helios-claim' },
       'helios-claim': { speakerId: 'helios', text: 'I endure above every road, whether anyone praises the heat.', cameraCue: 'speaker', next: 'selene-claim' },
-      'selene-claim': { speakerId: 'selene', text: 'And I return light changed by distance. None of us owns visibility.', cameraCue: 'restore' },
+      'selene-claim': { speakerId: 'selene', text: 'And I return light changed by distance. None of us owns visibility.', cameraCue: 'restore', next: 'three-lights-ext-1' },
+      'three-lights-ext-1': { speakerId: 'apollo', text: 'I go first, and I go without thanks. The step shown is spent the moment it is taken.', cameraCue: 'speaker', next: 'three-lights-ext-2' },
+      'three-lights-ext-2': { speakerId: 'helios', text: 'Praise adds no heat. Setting changes nothing. I rise at the same cost.', cameraCue: 'speaker', next: 'three-lights-ext-3' },
+      'three-lights-ext-3': { speakerId: 'selene', text: 'None of us is the fire. My face only says someone stood somewhere, and looked up.', cameraCue: 'restore', next: null },
     },
   },
   'act5-regent-interruption': {

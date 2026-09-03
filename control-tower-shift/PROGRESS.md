@@ -2373,3 +2373,55 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   report shows this batch (97/200, 6/8, 17/60) were already accurate
   as of the prior commit (`6828204`) and earlier — not new progress
   from either failed agent.
+
+### Act V Three Lights batch — accepted and integrated
+
+- Sixth batch, same extension pattern, applied to `act5-three-lights`
+  (Apollo/Helios/Selene's optional reflective scene — the one Act V
+  conversation with no Kallias line at all, 3 nodes/30 words before
+  this batch). Checked first: no exact-text lock on any node, and a
+  dedicated existing test (`keeps independent-light evidence solely on
+  optional quest completion`) asserts no node in this conversation may
+  carry an `evidence-independent-light` flag effect — the dispatch
+  packet explicitly forbade any effects/flags/mechanic references to
+  stay inside that guarantee.
+  - A judgment call up front: this scene has no player-character
+    presence, unlike every prior batch. Rather than adding Kallias as
+    a fourth voice (a stray earlier draft in
+    `artifacts/hermes-dialogue/drafts/batch5-melite-three-lights/`
+    had tried that — never integrated, now superseded), the dispatch
+    instructed the three gods to close the exchange speaking only to
+    each other, reinforcing rather than resolving Selene's existing
+    closing line ("None of us owns visibility").
+  - Cost **$0.0062**, 7 API calls. Three new nodes
+    (`three-lights-ext-1/2/3`, 47 words), one line each from Apollo,
+    Helios, Selene in that order: Apollo's revelation is spent the
+    moment it's given; Helios's endurance costs the same whether
+    praised or not; Selene closes on not being the fire herself, only
+    proof someone looked up. No new names, no mechanic language, no
+    hierarchy among the three.
+  - Independently re-verified: parsed the JSON, recomputed the word
+    count (47, within the 40–70 bound given), chain resolves fully
+    inside the new nodes with exactly one `next: null` on the last,
+    zero forbidden fields, no Kallias speakerId anywhere.
+  - Integration: in `src/rpg/act5Content.js`, `selene-claim.next`
+    rewired from absent (implicit end) to `'three-lights-ext-1'`,
+    `cameraCue` added by Claude for the two new interior lines
+    (`'speaker'`) and the closing line (`'restore'`), matching the
+    conversation's own established camera convention.
+- **Verification evidence**:
+  - `npx vitest run test/act-v-content.test.js` → 40/40 passed,
+    including the independent-light-evidence-isolation test — no
+    test-file edit needed.
+  - Full suite: `npm run test:oathbearer` → **1155/1155 passed** (89
+    files).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 3063→3110 (+47, exact match);
+    `conversations` unchanged at 16.
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.31 + $0.0062 ≈ **$9.32**,
+  still well under the $20 stop.
+- **Running total across all six dialogue batches this pass**:
+  dialogueWords 927→3110 (+2183), combined Nous spend
+  **≈$0.0485** across 6 dispatches and 45 API calls total.
