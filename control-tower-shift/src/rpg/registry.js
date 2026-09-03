@@ -133,6 +133,21 @@ const ACT2_CONVERSATIONS = Object.freeze({
         speakerId: 'melite',
         text: 'Start at the breakwater. Read the tide by its shape as well as its color, and turn it only at a marked well. Pelagos will answer an honest hand.',
         effects: Object.freeze([{ kind: 'marker', mapId: 'breakwater-road', entityId: 'surge-witness' }]),
+        next: 'melite-oath-ext-1',
+      }),
+      'melite-oath-ext-1': Object.freeze({
+        speakerId: 'kallias',
+        text: 'Before I walk out to it, define honest hand. At the breakwater, what does a dishonest one actually do? I can splice rope and carry a crate, but I have never kept a well in my life. Tell me the mistake in the hands, not the morals, and I will stay off it.',
+        next: 'melite-oath-ext-2',
+      }),
+      'melite-oath-ext-2': Object.freeze({
+        speakerId: 'melite',
+        text: 'A dishonest hand draws out of turn. Watch the well head where the Crossing ends: the face goes low and still, and that water is what the harbor lets you have. Pull on the Surge instead and you bring up silt, salt, and a rope chafed loose at the throat — and every broken line is one more crew the oath-post learns to refuse. Take what the turn allows, cap the well behind you, and the tally stays clean.',
+        next: 'melite-oath-ext-3',
+      }),
+      'melite-oath-ext-3': Object.freeze({
+        speakerId: 'melite',
+        text: 'Keep that tally clean while you are in it. Every arrival refused on a bad record is a crew I have to stand in front of on this quay and explain. This is my harbor. Setting arrival and permission back part is not work I can hand off, so I am not handing it to you either. I am lending it, and I expect it back.',
         next: null,
       }),
     }),

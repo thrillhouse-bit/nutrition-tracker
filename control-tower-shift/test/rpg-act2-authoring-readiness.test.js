@@ -172,7 +172,7 @@ describe('Act II production authoring readiness', () => {
   })
 
   it('changes no accepted Act II behavior data outside authoring fields', () => {
-    expect(behaviorDigest()).toBe('6fb1d9308e536bf3ecfb78e11917d4e4a1b836deb92c92cd7dced7eb522c552b')
+    expect(behaviorDigest()).toBe('4c8d6ba9937e95b7a74e03ef2d4ec300143b3765bf75494599b8783643b78a8e')
     expect(ACT2_MAIN_QUEST.objectives.map((objective) => objective.id)).toEqual([
       'reach-pelagos-keeper', 'witness-first-surge', 'free-nereid-witnesses',
       'separate-boundary-names', 'secure-storm-anchorage', 'board-archive-barge',

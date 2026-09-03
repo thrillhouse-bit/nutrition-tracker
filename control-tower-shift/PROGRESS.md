@@ -2306,3 +2306,70 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   and 31 API calls total. Cost is confirmed not the bottleneck at this
   batch size; genuine content-slot availability and integration care
   are.
+
+### Act II Melite-depth batch — accepted and integrated
+
+- Fifth batch, same extension pattern, applied to Melite's own Act II
+  introduction scene (`act2-melite-oath-post`, the oath-post
+  conversation the game's original blueprint document calls out by
+  name). Checked first for exact-text/blueprint locks: the 8-step
+  `ACT2_MAIN_OBJECTIVES` id order stays untouched (this batch adds
+  dialogue text only, no objectives), and node `n3` was the
+  conversation's own existing terminal node with no other test
+  asserting its exact text — clear to extend.
+  - Cost **$0.0061**, 7 API calls. Three new nodes
+    (`melite-oath-ext-1/2/3`, 198 words): Kallias asks what a
+    dishonest hand concretely does at the breakwater; Melite answers
+    with the actual mechanics of her own established tide rule (draw
+    only at the low, still face where the Crossing ends — pull on the
+    Surge instead and the rope chafes loose at the throat); she closes
+    on her own stake in the outcome (every refused crew is one she has
+    to explain to on her own quay). No new names, no choices, no
+    effects, no reference to Ianthe or later Act II content.
+  - Independently re-verified: parsed the JSON, recomputed the word
+    count (198, within the 150–220 bound given), 3/3 unique node ids,
+    chain resolves fully inside the new nodes with exactly one
+    `next: null` on the last, zero forbidden fields, banned-term scan
+    clean.
+  - Integration: spliced into the frozen `ACT2_CONVERSATIONS`
+    `'act2-melite-oath-post'` object in `src/rpg/registry.js`, node
+    `n3.next` rewired from `null` to `'melite-oath-ext-1'`, new chain
+    terminates at `melite-oath-ext-3.next: null`. Unlike the Act I/III/V
+    digests, `test/rpg-act2-authoring-readiness.test.js`'s
+    `behaviorDigest()` hashes this conversation's own content
+    directly (`entryConversation: rpgConversationById(...)`), so its
+    expected SHA-256 needed updating — recomputed from the test's own
+    failure output and applied, no other assertion changed.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1155/1155 passed** (89
+    files) — the digest-hash update is the only test-file change this
+    batch required.
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 2866→3063 (+197, matching the
+    delivered 198 words within tokenizer rounding); `conversations`
+    unchanged at 16 (an extension, not a new conversation).
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.30 + $0.0061 ≈ **$9.31**,
+  still well under the $20 stop.
+- **Running total across all five dialogue batches this pass**:
+  dialogueWords 927→3063 (+2136), combined Nous spend
+  **≈$0.0423** across 5 dispatches and 38 API calls total.
+- **Non-dialogue delegation note**: three consecutive attempts to
+  delegate the user's requested non-dialogue metric work (items,
+  recipes, maps, resource nodes, merchants, banks) to a Claude
+  subagent failed to produce real progress this pass — two `fork`
+  dispatches returned final messages that were confused echoes of
+  this session's own in-flight narration rather than genuine
+  independent reports (confirmed via `git log`, not the agents'
+  self-reports, since neither left real committed or uncommitted work
+  beyond one trivial already-pushed PROGRESS.md formatting fix), and a
+  third, fresh non-fork `general-purpose` agent was mid-task (auditing
+  orphaned `loot` fields) when it hit a Claude-account session rate
+  limit (HTTP 429, resets 11:20pm America/Los_Angeles) — an
+  account-level cap on further Claude subagent dispatch, confirmed to
+  not affect the Hermes/Nous dialogue pipeline, which is Qwen/DeepSeek
+  via a separate provider. The `items`/`banks`/`namedNpcs` figures the
+  report shows this batch (97/200, 6/8, 17/60) were already accurate
+  as of the prior commit (`6828204`) and earlier — not new progress
+  from either failed agent.
