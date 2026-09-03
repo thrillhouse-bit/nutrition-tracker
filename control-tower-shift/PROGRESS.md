@@ -1720,3 +1720,77 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      available.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T19:0x (turnover hour ~1)
+
+- **Branch/HEAD**: `codex/oathbearer-complete-game` @ `0cbe7d9`
+  (orphan-closure checkpoint), pushed cleanly. No obstacle this cycle.
+- **What changed**: First Priority 2 (economy network) work since the
+  original regional-bank/merchant pass — a second Act I bank access
+  point at Olive Road, directly continuing this checkpoint's own
+  standing plan.
+  - Surveyed every map's `kind` inventory and, critically, the data
+    model's own `hub: true/false` flag before picking a location. Every
+    act has exactly one `hub: true` map, and those five already have
+    both a bank and a shop — Beacon Overlook, Pelagos Harbor, Wheat
+    Village, Slag Road, Nyx Foothold. Reaching the contract's 8-bank
+    floor with only 23 of the eventual 60 maps built necessarily means
+    going beyond the five hubs; the question was which non-hub map
+    actually earns it.
+  - Olive Road stood out: unlike the puzzle/combat corridors surveyed
+    and rejected earlier this session (nereid-caves, winter-orchard),
+    it already carries genuine settled texture — an NPC (Amonides), an
+    established merchant (Philyra's stall, added earlier this session),
+    and its own side quest. A shop was already justified here once;
+    a second physical bank access point follows the same reasoning,
+    onto the same account-wide storehouse every other bank already
+    shares — not new storage capacity, just another entry point.
+  - Named and framed it as a small **Roadside Way-Cache**, distinct in
+    scale from the Beacon's proper "Storehouse," Wheat Village's
+    "Granary Store," etc. — deliberately not oversized for a road
+    waypoint. Full `act1Authoring` metadata added, matching every other
+    Act I entity.
+  - Placement verified reachable from Olive Road's one spawn (direct
+    path, 0 distance) and ≥60px distinct from all 5 pre-existing
+    targets with the same throwaway-probe-script method as every prior
+    checkpoint (never committed).
+  - Added to the existing `test/rpg-regional-banks.test.js`'s own
+    `NEW_BANKS` table (rather than a new file — this is the file's
+    designated purpose) and fixed a test fixture it broke: the "no
+    physical bank" negative-path test used Olive Road as its remote
+    fixture, which is no longer true. Replaced with `breakwater-road`
+    (already the established remote/no-bank fixture elsewhere this
+    session, per the Fishing-expansion checkpoint).
+  - Content-integrity fallout, all mechanically reconciled: Act I
+    records 35→36 (Olive Road entities 5→6), whole-registry total
+    310→311, legacy unchanged 219 (a new authored record is release-
+    ready, not legacy), release-ready 91→92, `banks` inventory count
+    5→6. `FULL-GAME-CONTRACT.md`'s Banks and authoring-readiness rows
+    updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1135/1135 passed** (87
+    files, up from 1134/87 — no new test file this checkpoint, just one
+    extended and one fixture fix, so the file count is unchanged but
+    test count grew by one entry in the existing `it.each`/parametrized
+    coverage).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `banks` 6/8; `completeSkillLoops` still truthfully
+    0/22 for the same reason as every prior checkpoint this session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the orphan-closure checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Priority 2 continues: banks now 6/8 (two more), merchants still
+     7/15 (eight more). The same reasoning that justified Olive Road's
+     bank — genuine settled texture beyond the five `hub: true` maps —
+     is the filter for where any of the remaining eight go next, not
+     forcing them into combat/puzzle corridors just to hit a number.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 3 (story expansion) or a fourth Cooking recipe (still 4
+     bands, one short of the 5-tier floor Alchemy just reached) remain
+     open lanes once Priority 2's easiest wins are exhausted.

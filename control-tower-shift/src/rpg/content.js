@@ -390,6 +390,19 @@ export const MAPS = {
           originalityNotes: 'Uses public-domain Aegean shore-fishing practice; the node’s location, progression reward, and systems role are original.',
         }),
       },
+      {
+        id: 'olive-road-waycache', kind: 'bank', x: 150, y: 150, name: 'Roadside Way-Cache', label: 'Open the roadside way-cache',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Will Kallias trust a waystation cache far from the Beacon, or carry everything the whole urgent road?',
+          systemsUsed: ['banking', 'inventory'],
+          durableReward: 'A second physical bank access point onto the same account-wide storehouse the Beacon already established.',
+          downstreamConsequence: 'It lets the road itself serve gathering and quest traffic without forcing a detour back to the Beacon just to store or fetch gear.',
+          recoveryBehavior: 'Full-capacity and invalid-quantity operations are atomic; closing or reloading preserves both pack and bank state.',
+          expectedMinutes: 1,
+          originalityNotes: 'Uses public-domain Greek roadside waystation-cache practice; its placement on this exact road is original Oathbearer design.',
+        }),
+      },
     ],
     exits: [
       { id: 'to-beacon', x: 80, y: 96, toMapId: 'beacon-overlook', spawnId: 'start', label: 'Back to the Overlook' },

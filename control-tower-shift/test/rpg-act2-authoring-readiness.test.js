@@ -117,10 +117,10 @@ describe('Act II production authoring readiness', () => {
       .filter((record) => record.status === 'release-ready')
       .map(recordKey))
 
-    expect(act1.size).toBe(35)
+    expect(act1.size).toBe(36)
     expect(act2.size).toBe(56)
     expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 310, legacy: 219, incomplete: 0, releaseReady: 91 })
+    expect(report.authoredDepth.counts).toEqual({ total: 311, legacy: 219, incomplete: 0, releaseReady: 92 })
     expect(report.summary).toEqual({
       errors: 0,
       warnings: 219,

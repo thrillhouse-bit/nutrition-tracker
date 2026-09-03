@@ -9,12 +9,16 @@ import { applyEvent, createInitialState } from '../src/rpg/state.js'
 
 // Priority 2 (economy network): before this pass, only Beacon Overlook (Act I)
 // had a physical bank, leaving Acts II-V with zero account-safe storage.
-// One regional bank per remaining act closes the most acute gap first.
+// One regional bank per remaining act closed the most acute gap first. A
+// later pass added a second Act I access point at Olive Road — already a
+// genuine mid-Act-I hub (an NPC, a merchant, and a quest all sit there) —
+// rather than forcing an 8th bank into a location with no civic texture.
 const NEW_BANKS = [
   { mapId: 'pelagos-harbor', entityId: 'pelagos-storehouse', routeStates: ACT2_TIDE_ORDER },
   { mapId: 'wheat-village', entityId: 'wheat-village-granary-bank', routeStates: null },
   { mapId: 'slag-road', entityId: 'slag-road-muster-bank', routeStates: null },
   { mapId: 'nyx-foothold', entityId: 'nyx-foothold-bank', routeStates: null },
+  { mapId: 'olive-road', entityId: 'olive-road-waycache', routeStates: null },
 ]
 
 function atMap(state, mapId) {
@@ -92,7 +96,7 @@ describe('regional bank reducer integration', () => {
     state = { ...state, inventory: addInventoryItem(state.inventory, 'copper-ore', 1, ALL_ITEM_DEFS).inventory }
 
     // A map with no physical bank cannot be used for deposits/withdrawals.
-    const remote = { ...state, world: { ...state.world, mapId: 'olive-road' } }
+    const remote = { ...state, world: { ...state.world, mapId: 'breakwater-road' } }
     expect(applyEvent(remote, { type: 'BANK_DEPOSIT', itemId: 'copper-ore', quantity: 1 })).toBe(remote)
 
     const deposited = applyEvent(state, { type: 'BANK_DEPOSIT', itemId: 'copper-ore', quantity: 1 })

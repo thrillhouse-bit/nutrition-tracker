@@ -133,7 +133,7 @@ describe('whole-registry authored-depth report', () => {
       total: expectedTotal,
       legacy: 219,
       incomplete: 0,
-      releaseReady: 91,
+      releaseReady: 92,
     })
     expect(report.authoredDepth.byKind.quest.total).toBe(Object.keys(REGISTERED_QUESTS).length)
     expect(report.authoredDepth.byKind.objective.total).toBe(objectiveCount)
