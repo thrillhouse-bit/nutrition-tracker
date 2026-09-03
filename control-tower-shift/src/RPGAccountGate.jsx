@@ -8,7 +8,7 @@ function LoadingAccount() {
   return (
     <main className="grid min-h-dvh place-items-center bg-[#090d16] px-6 text-[#f2e8d4]" aria-busy="true">
       <div className="max-w-sm text-center">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d8aa4d]">Oathbearer</div>
+        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d8aa4d]">Aegean Frontier</div>
         <h1 className="mt-3 text-3xl font-semibold">Opening your chronicle…</h1>
         <p className="mt-3 text-sm leading-relaxed text-[#b8b0a3]">Confirming the account that owns this journey.</p>
       </div>

@@ -54,7 +54,7 @@ describe('account-owned RPG save surface', () => {
     }
     await renderAccount(api)
     expect(api.getRpgSave).toHaveBeenCalledTimes(1)
-    expect(container.textContent).toContain('Oathbearer')
+    expect(container.textContent).toContain('Aegean Frontier')
     const continueButton = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue')
     expect(continueButton?.disabled).toBe(false)
   })
@@ -118,7 +118,7 @@ describe('account-owned RPG save surface', () => {
 
     const useCloud = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Use cloud progress')
     await act(async () => useCloud.click())
-    expect(container.textContent).toContain('Control Tower — Oathbearer')
+    expect(container.textContent).toContain('Aegean Frontier — The Unwritten Age')
     expect(api.putRpgSave).not.toHaveBeenCalled()
   })
 })

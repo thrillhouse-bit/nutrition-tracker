@@ -10,7 +10,7 @@ describe('Oathbearer complete-game release gate', () => {
     ], { encoding: 'utf8' })
     const report = JSON.parse(output)
 
-    expect(report.product).toBe('Oathbearer')
+    expect(report.product).toBe('Aegean Frontier: The Unwritten Age')
     expect(report.ready).toBe(false)
     expect(report.actual.maps).toBeGreaterThan(0)
     expect(report.actual.skills).toBe(22)

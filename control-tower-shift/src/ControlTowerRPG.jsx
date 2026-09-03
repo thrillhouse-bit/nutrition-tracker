@@ -1613,15 +1613,15 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
     const prev = typeof document !== 'undefined' ? document.title : ''
     if (state.status === 'in-combat' && session) {
       const enc = rpgEncounterById(session.encounterId)
-      document.title = enc ? `${enc.title} — Oathbearer` : 'In Combat — Oathbearer'
+      document.title = enc ? `${enc.title} — Aegean Frontier` : 'In Combat — Aegean Frontier'
     } else if (state.status === 'ending') {
       document.title = nextAct
-        ? `${transition?.title || nextRegion?.name || `Act ${romanNumeral(nextAct)}`} — Oathbearer`
-        : 'The Last Name Witnessed — Oathbearer'
+        ? `${transition?.title || nextRegion?.name || `Act ${romanNumeral(nextAct)}`} — Aegean Frontier`
+        : 'The Last Name Witnessed — Aegean Frontier'
     } else if (map) {
-      document.title = `${map.name} — Oathbearer`
+      document.title = `${map.name} — Aegean Frontier`
     } else {
-      document.title = 'Control Tower — Oathbearer'
+      document.title = 'Aegean Frontier: The Unwritten Age'
     }
     return () => { if (prev) document.title = prev }
   }, [state.status, state.world.mapId, session && session.encounterId, map && map.name, nextAct, nextRegion && nextRegion.name, transition && transition.title])
@@ -1794,7 +1794,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
     return (
       <main className="grid min-h-dvh place-items-center bg-[#090d16] px-6 text-[#f2e8d4]" aria-busy="true">
         <div className="max-w-sm text-center">
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d8aa4d]">Oathbearer</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d8aa4d]">Aegean Frontier</div>
           <h1 className="mt-3 text-3xl font-semibold">Opening your chronicle…</h1>
           <p className="mt-3 text-sm text-[#b8b0a3]">Loading the save owned by {accountUser.email || 'this account'}.</p>
         </div>
@@ -1845,8 +1845,8 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         <div className="rpg-seam rpg-seam-b" aria-hidden="true" />
         <div className="rpg-title-content">
           <h1>
-            <span className="rpg-title-eyebrow">{'Control Tower — '}</span>
-            <span className="rpg-title-name rpg-serif">Oathbearer</span>
+            <span className="rpg-title-eyebrow">{'Aegean Frontier — '}</span>
+            <span className="rpg-title-name rpg-serif">The Unwritten Age</span>
           </h1>
           <p className="rpg-title-premise">
             The treaty-stone has broken. Carry a god's power beyond the Veil and restore the name stolen from Asterion Reach.
@@ -2121,7 +2121,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
           <section className="rpg-side-panel" aria-label={`${panelOpen === 'inventory' ? 'Backpack' : panelOpen === 'bank' ? 'Storehouse bank' : panelOpen === 'shop' ? 'Merchant trade' : panelOpen.charAt(0).toUpperCase() + panelOpen.slice(1)} panel`}>
             <div className="rpg-side-panel-head">
               <div>
-                <div className="rpg-side-kicker">Oathbearer record</div>
+                <div className="rpg-side-kicker">Aegean Frontier record</div>
                 <h2 className="rpg-serif">{panelOpen === 'inventory' ? 'Backpack' : panelOpen === 'quests' ? 'Quest Journal' : panelOpen === 'bank' ? 'Beacon Storehouse' : panelOpen === 'shop' ? 'Myrrine’s Provision Table' : panelOpen === 'systems' ? 'Wilderness & Crafting' : 'Skills'}</h2>
               </div>
               <button type="button" aria-label={`Close ${panelOpen} panel`} onClick={closePanel} className="rpg-panel-close">×</button>

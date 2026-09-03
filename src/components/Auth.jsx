@@ -54,7 +54,7 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16">
       <header className="mb-8">
-        <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Oathbearer' : 'OmniFuel Tech'}</div>
+        <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Aegean Frontier' : 'OmniFuel Tech'}</div>
         <h1 className="serif text-4xl leading-none text-ink">
           {mode === 'signup' ? 'Create your account' : 'Sign in'}
         </h1>
@@ -167,7 +167,7 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
       )}
 
       <p className="mt-5 text-center text-xs leading-relaxed text-faint">
-        Review {oathbearer ? "Oathbearer's" : "OmniFuel's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
+        Review {oathbearer ? "Aegean Frontier's" : "OmniFuel's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
         {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms">Terms of Service</a>.
       </p>
     </div>
@@ -178,7 +178,7 @@ export function LegalReconsent({ user, onAccepted, onLogout, surface = 'omnifuel
   const [acknowledged, setAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const product = surface === 'oathbearer' ? 'Oathbearer' : 'OmniFuel'
+  const product = surface === 'oathbearer' ? 'Aegean Frontier' : 'OmniFuel'
 
   const submit = async (event) => {
     event.preventDefault()

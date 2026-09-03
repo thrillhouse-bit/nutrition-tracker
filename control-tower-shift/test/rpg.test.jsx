@@ -94,18 +94,18 @@ describe('exact hash routing — arena, RPG, and main app stay independent', () 
     await act(async () => {})
     expect(container.querySelector('[data-testid="the-app"]')).toBeNull()
     // The arena's own HUD marker is present, the RPG route is not.
-    expect(container.textContent).not.toContain('Control Tower — Oathbearer')
+    expect(container.textContent).not.toContain('Aegean Frontier — The Unwritten Age')
     await unmount()
 
     window.location.hash = RPG_HASH
     await mount(<GameGate app={<div data-testid="the-app">app</div>} />)
     // The route resolves both the account boundary and account-owned save
     // before exposing title actions; neither loading layer may be bypassed.
-    for (let i = 0; i < 8 && !container.textContent.includes('Control Tower — Oathbearer'); i++) {
+    for (let i = 0; i < 8 && !container.textContent.includes('Aegean Frontier — The Unwritten Age'); i++) {
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     }
     expect(container.querySelector('[data-testid="the-app"]')).toBeNull()
-    expect(container.textContent).toContain('Control Tower — Oathbearer')
+    expect(container.textContent).toContain('Aegean Frontier — The Unwritten Age')
     const newStory = [...container.querySelectorAll('button')].find((button) => button.textContent === 'New Story')
     const continueStory = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue')
     expect(newStory).toBeDefined()

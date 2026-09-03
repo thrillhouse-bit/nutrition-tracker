@@ -1,4 +1,6 @@
-# Oathbearer: 96-hour interim senior engineer and product-design turnover
+# Aegean Frontier: 96-hour interim senior engineer and product-design turnover
+
+> **Brand and swarm directive (2026-09-02):** The franchise is now **Aegean Frontier**, the single-player title is **Aegean Frontier: The Unwritten Age**, and the future service is **Aegean Frontier Online**. Read [`CLAUDE-HERMES-SWARM-DIRECTIVE.md`](./CLAUDE-HERMES-SWARM-DIRECTIVE.md) before dispatching Hermes work. Preserve `Oathbearer` only as Kallias's in-world title or a legacy-compatible internal identifier.
 
 ## Role and outcome
 

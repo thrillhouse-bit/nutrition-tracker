@@ -1,4 +1,6 @@
-# Oathbearer complete-game handoff to Claude Code
+# Aegean Frontier complete-game handoff to Claude Code
+
+> **Current brand:** **Aegean Frontier: The Unwritten Age**. `Oathbearer` remains Kallias's in-world title and is retained in legacy-compatible branch, command, route, save, and API identifiers. For governed dialogue/content offload through Hermes and Nous, read [`CLAUDE-HERMES-SWARM-DIRECTIVE.md`](./CLAUDE-HERMES-SWARM-DIRECTIVE.md).
 
 > **Live operating directive (2026-09-02):** Read [`CLAUDE-96H-TURNOVER.md`](./CLAUDE-96H-TURNOVER.md) first. It contains the current `06055fb` baseline, verified dirty Fishing checkpoint, quarantined Act IV dialogue files, adaptive Claude team topology, recovery protocol, and autonomous 96-hour execution loop. Where this older handoff describes an earlier dirty wave or checkpoint, the live turnover plus repository evidence supersede it.
 
