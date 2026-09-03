@@ -101,6 +101,8 @@ export const SHOP_DEFS = Object.freeze({
       'laurel-loom-fiber': Object.freeze({ itemId: 'laurel-loom-fiber', buyPrice: 280, sellPrice: 105, baseStock: 3, maxStock: 8, restockAmount: 1 }),
       'linen-weave': Object.freeze({ itemId: 'linen-weave', buyPrice: 190, sellPrice: 72, baseStock: 4, maxStock: 10, restockAmount: 1 }),
       'moly-tonic': Object.freeze({ itemId: 'moly-tonic', buyPrice: 360, sellPrice: 135, baseStock: 3, maxStock: 8, restockAmount: 1 }),
+      'shadow-lantern-oil': Object.freeze({ itemId: 'shadow-lantern-oil', buyPrice: 42, sellPrice: 16, baseStock: 8, maxStock: 18, restockAmount: 2 }),
+      'night-forage': Object.freeze({ itemId: 'night-forage', buyPrice: 36, sellPrice: 14, baseStock: 10, maxStock: 20, restockAmount: 2 }),
     }),
   }),
 })

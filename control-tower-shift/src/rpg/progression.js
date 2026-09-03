@@ -115,6 +115,8 @@ export const ITEM_DEFS = Object.freeze({
   'threshed-grain': { id: 'threshed-grain', name: 'Threshed Grain', category: 'grain', stackable: false, tier: 30 },
   'ration-water': { id: 'ration-water', name: 'Ration Water', category: 'material', stackable: false, tier: 35 },
   'camp-forage': { id: 'camp-forage', name: 'Camp Forage', category: 'grain', stackable: false, tier: 40 },
+  'shadow-lantern-oil': { id: 'shadow-lantern-oil', name: 'Shadow Lantern Oil', category: 'material', stackable: false, tier: 45 },
+  'night-forage': { id: 'night-forage', name: 'Night Forage', category: 'grain', stackable: false, tier: 50 },
   drachma: { id: 'drachma', name: 'Drachma', category: 'currency', stackable: true, tier: 1 },
 })
 

@@ -106,6 +106,16 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'nyx-shrine-fire', kind: 'station', stationId: 'shrine-fire', x: 180, y: 290, name: 'Nyx Shrine Fire', label: 'Consecrate an offering beneath primordial night' },
       { id: 'asteria-witness-broker', kind: 'shop', shopId: 'nyx-witness-exchange', x: 640, y: 390, name: 'Asteria', label: 'Trade witnessed crafts with Asteria' },
       { id: 'nyx-foothold-bank', kind: 'bank', x: 420, y: 460, name: 'Witness Camp Cache', label: 'Open the witness camp cache', accessibleLabel: 'Open the witness camp cache, a physical bank' },
+      {
+        id: 'nyx-foothold-shade-plot', kind: 'resource', x: 250, y: 470, name: 'Shadowed Camp Plot', label: 'Tend the shadowed camp plot',
+        skillId: 'stewardship', itemId: 'night-forage', level: 50, xp: 95,
+        requiresFlag: 'steward:restored:nyx-foothold:nyx-foothold-shade-plot',
+        restore: {
+          level: 45, xp: 80,
+          cost: [{ itemId: 'shadow-lantern-oil', quantity: 3 }],
+          label: 'Light the plot with shadow lantern oil so it can grow beneath primordial night',
+        },
+      },
     ],
     exits: [
       { id: 'foothold-to-night-stair', x: 922, y: 276, toMapId: 'night-stair', spawnId: 'from-foothold', returnSpawnId: 'from-night-stair', kind: 'shadow-bridge', gate: [], accessibleLabel: 'Cross the shadow bridge to the Night Stair' },

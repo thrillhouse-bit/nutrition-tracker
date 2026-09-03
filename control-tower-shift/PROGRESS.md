@@ -1481,3 +1481,80 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      available.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T18:4x (turnover hour ~1)
+
+- **Branch/HEAD**: `codex/oathbearer-complete-game` @ `535d2a9`
+  (Stewardship tier-4 checkpoint), pushed cleanly. No obstacle this
+  cycle.
+- **What changed**: Stewardship's fifth and final tier — a shadowed
+  camp plot at Nyx Foothold (Act V) — closing the full 5-tier restore-
+  then-tend curve every other gathering skill already had. Beacon
+  Overlook (Act I) → Pelagos Harbor (Act II) → Wheat Village (Act III)
+  → Slag Road (Act IV) → Nyx Foothold (Act V), each tier its region's
+  one genuinely civic location, each with its own thematically
+  distinct restore cost. This directly finishes the exact milestone
+  the last checkpoint named.
+  - Surveyed all six Act V maps first: Night Stair and False Sky are
+    light-polarity puzzle corridors, Silent Loom/Silent Loom Approach
+    are the narrative-gated weaving area (explicitly a "don't touch"
+    precedent from earlier this session), and Accord Overlook is the
+    finale space. Nyx Foothold — the witness camp, with its own field
+    kitchen, shrine-fire, bank, and merchant (Asteria) — is the one
+    genuinely civic Act V location, the same shape as every prior
+    tier's chosen map.
+  - New resource entity `nyx-foothold-shade-plot` — restore level 45
+    (3 shadow lantern oil) → tend level 50 (night forage, 95 XP),
+    continuing Stewardship's escalating curve (1/20/30/40/50) and
+    reusing the identical `restoreLand`/`GATHER` reducer contract with
+    zero new code, same as all four prior tiers.
+  - Confirmed via direct inspection of `nyx-foothold`'s `light` block
+    and its `traversalLanes` (both lanes pass `allLightStates` as their
+    `stateIds`) that this map is free, collision-only space under the
+    same `isInsideActiveLane` logic already reasoned through for Wheat
+    Village and Slag Road — no lane-hugging needed. Verified reachable
+    from every spawn (direct path, 0 distance) and ≥60px distinct from
+    all 11 pre-existing Nyx Foothold targets with the same throwaway-
+    probe-script method as every prior checkpoint (never committed).
+  - New items `shadow-lantern-oil` (material, restore cost) and
+    `night-forage` (grain, tend output) registered in `progression.js`
+    and sold both ways at Asteria's existing Witness Exchange — no new
+    merchant needed.
+  - No new authoring metadata — Act V still carries zero authoring
+    anywhere in this codebase, confirmed before touching.
+  - New test file `test/rpg-stewardship-act5-shade-plot.test.js` (15
+    tests), mirroring the Act III/IV tiers' structure exactly.
+  - Content-integrity fallout, all mechanically reconciled: whole-
+    registry resources 25→26, whole-registry total 309→310, legacy
+    218→219, release-ready unchanged at 91. `FULL-GAME-CONTRACT.md`'s
+    Items, Resource-nodes, and authoring-readiness rows updated — the
+    Resource-nodes row now states Stewardship has the full 5-tier curve
+    rather than "one tier short." Extended
+    `rpg-regional-economy.test.js`'s `NON_CRAFTED_STEWARDSHIP_LISTINGS`
+    allowlist with both new items.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1118/1118 passed** (85
+    files, up from 1103/84).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 96/200, `resourceNodes` 26/150;
+    `completeSkillLoops` still truthfully 0/22 for the same reason as
+    every prior checkpoint this session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Stewardship tier-4 checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Stewardship is now the only skill with a full 5-tier gathering
+     curve besides Quarrying/Foraging/Woodcutting. Fishing still has
+     only four level tiers (no 5th, per the audited baseline) and could
+     be the next candidate for the same treatment, or attention could
+     shift entirely toward Priority 2 (merchants/banks) or Priority 3
+     (story expansion) now that the skill-depth backlog from the
+     Devotion/Guile/Beastbond checkpoint is substantially closed.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.
