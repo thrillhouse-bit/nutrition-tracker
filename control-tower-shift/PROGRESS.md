@@ -2235,4 +2235,74 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   a non-dialogue metric (merchants/banks/items/resources, using this
   session's own established civic-location and regression-lock
   discipline) on files disjoint from the dialogue work, running
-  concurrently with these two batches. Result pending.
+  concurrently with these two batches. That first fork run stalled —
+  it made one trivial, correct doc fix (a missing blank line in this
+  file, commit `b90ade5`, already pushed) but did not complete its
+  actual assigned task, ending on a confused message that appeared to
+  echo the parent session's own in-flight status rather than report
+  real findings. Resumed it with an explicit "you are not blocked on
+  anything, proceed to completion" nudge rather than starting over
+  from scratch (forks share context/cache, so resuming is cheap);
+  result pending.
+- **On "update Codex"**: tried `/codex:review` for a genuine read-only
+  second-opinion pass on the dialogue integration commits — it
+  refused programmatic invocation ("cannot be used with Skill tool
+  due to disable-model-invocation... reserved for explicit user
+  invocation"). Did not try to route around that restriction. Codex
+  involvement stays limited to real delegated work via the
+  `codex-rescue` bridge going forward; Jackson can run `/codex:review`
+  himself anytime for that specific independent-review pass.
+
+### Act I witness-depth batch — accepted and integrated
+
+- Fourth batch, same extension pattern, applied to the three
+  conversations that open and close Act I: `act1-thessa-overlook`
+  (the very first scene of the entire game), `act1-thessa-exit` (the
+  Act I → Act II handoff), and `sq-lost-witness-return` (Amonides's
+  optional side scene). Checked first for exact-text locks — found
+  exactly one, on `act1-thessa-overlook`'s node `n1` specifically (not
+  the whole conversation), which this batch never touches since it
+  only appends after each conversation's existing terminal node (`n4`,
+  `n3`, `n3` respectively).
+  - Cost **$0.0084**, 9 API calls. The worker's own handoff included
+    an honest note I verified rather than just accepted: its first
+    draft of the Amonides extension came in at 144 words, under the
+    150-word floor, so it expanded the final node once before
+    finishing — a legitimate single retry within its own bound, not a
+    quality shortcut (the delivered text reads as a complete, earned
+    beat, not padding).
+  - Independently re-verified: parsed the JSON, recomputed word counts
+    (530 total, matches exactly), 9/9 unique node ids, zero dangling
+    refs, exactly one terminal per chain, zero forbidden fields. Read
+    every line for compliance: Kallias's reaction to being named "the
+    Oathbearer" is grounded and practical (asks what it costs, where
+    to send word) rather than a speech accepting or refusing the role,
+    exactly as instructed; the exit scene stays a parting at Asterion
+    Reach only, with no description of Pelagos or Ianthe beyond what
+    Act I already establishes; Amonides's new reflection (a childhood
+    memory of a village burned over a miswritten ledger entry) gives
+    him real interiority without turning him into anything other than
+    an ordinary record-keeper.
+  - Integration: same splice pattern as Act III/V. No test file needed
+    any change — the only node-level assertions on these three
+    conversations check specific EXISTING nodes (`n1`'s exact text,
+    `n1`'s exact effects on a different conversation), both untouched.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1155/1155 passed** (89
+    files, unchanged — third dialogue batch in a row needing zero
+    test-file edits).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 2340→2866 (+526; the report's own
+    tokenizer counts em-dashes/punctuation slightly differently from
+    my own quick word-count script's 530, not a discrepancy worth
+    chasing); `conversations` unchanged at 16.
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.29 + $0.0084 ≈ **$9.30**,
+  still well under the $20 stop.
+- **Running total across all four dialogue batches this pass**:
+  dialogueWords 927→2866 (+1939), for a combined Nous spend of
+  **≈$0.0361** (well under one cent per ~54 words) across 4 dispatches
+  and 31 API calls total. Cost is confirmed not the bottleneck at this
+  batch size; genuine content-slot availability and integration care
+  are.
