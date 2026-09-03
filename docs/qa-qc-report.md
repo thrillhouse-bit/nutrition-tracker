@@ -1763,3 +1763,11 @@ Nothing new in the repo — `origin/main` unchanged since the last
 check-in (still `1256cdc`). Live site also unchanged (`f9f8374`) —
 both tracked Info items (PR #148 deploy lag, blocked new signups)
 hold, same as last pass. No fixes needed this pass.
+
+## 2026-09-03 — Check-in pass (recurring, consolidated 12:37/16:36 UTC)
+
+Two scheduled firings queued while idle; consolidated as before.
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `f8c1f16`). Live site also unchanged (`f9f8374`) —
+both tracked Info items hold, third consecutive quiet pass. No fixes
+needed this pass.
