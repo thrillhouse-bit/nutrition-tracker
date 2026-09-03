@@ -289,21 +289,27 @@ export const ACT5_CONVERSATIONS = deepFreeze({
     nodes: {
       'thessa-record': { speakerId: 'thessa', text: 'The archive is public now. What vanishes from ink remains in the people who acted.', cameraCue: 'speaker', next: 'nyx-shelter' },
       'nyx-shelter': { speakerId: 'nyx', text: 'Bring me no perfect name. Bring me a promise the Loom cannot separate from its witnesses.', cameraCue: 'reveal', next: 'kallias-answers' },
-      'kallias-answers': { speakerId: 'kallias', text: 'Then I am not delivering this draft. I am here to argue every line.', cameraCue: 'player', effects: [{ kind: 'flag', id: 'act5-witnesses-mustered', value: true }] },
+      'kallias-answers': { speakerId: 'kallias', text: 'Then I am not delivering this draft. I am here to argue every line.', cameraCue: 'player', effects: [{ kind: 'flag', id: 'act5-witnesses-mustered', value: true }], next: 'nyx-ext-1' },
+      'nyx-ext-1': { speakerId: 'nyx', text: 'Argue it in the open, where the whole camp can hear you tonight. A promise kept quietly is only a rumor when the Loom comes.', cameraCue: 'speaker', next: 'nyx-ext-2' },
+      'nyx-ext-2': { speakerId: 'kallias', text: 'Then nothing here gets signed while anyone sleeps. Every witness repeats their own words out loud before the camp breaks.', cameraCue: 'restore', next: null },
     },
   },
   'act5-selene-reflection': {
     id: 'act5-selene-reflection', speakerIds: ['selene', 'kallias'], start: 'selene-proof',
     nodes: {
       'selene-proof': { speakerId: 'selene', text: 'Reflection is not a lesser truth. It proves another stood somewhere to receive the light.', cameraCue: 'speaker', next: 'kallias-aligns' },
-      'kallias-aligns': { speakerId: 'kallias', text: 'Four anchors, one history, and no single owner of it.', cameraCue: 'restore', effects: [{ kind: 'flag', id: 'act5-moon-witnesses-aligned', value: true }] },
+      'kallias-aligns': { speakerId: 'kallias', text: 'Four anchors, one history, and no single owner of it.', cameraCue: 'restore', effects: [{ kind: 'flag', id: 'act5-moon-witnesses-aligned', value: true }], next: 'selene-ext-1' },
+      'selene-ext-1': { speakerId: 'selene', text: 'Say that to the ones who want a single lamp. A moon does not dim the sun; it keeps watch when he cannot.', cameraCue: 'speaker', next: 'selene-ext-2' },
+      'selene-ext-2': { speakerId: 'kallias', text: 'Then I will carry both kinds of light where the work is. Neither one gets to call the other a copy.', cameraCue: 'restore', next: null },
     },
   },
   'act5-helios-false-dawn': {
     id: 'act5-helios-false-dawn', speakerIds: ['helios', 'kallias'], start: 'helios-challenge',
     nodes: {
       'helios-challenge': { speakerId: 'helios', text: 'The false sky copies brightness and omits the cost of carrying it. Turn the mirrors toward the labor.', cameraCue: 'wide', next: 'kallias-turns' },
-      'kallias-turns': { speakerId: 'kallias', text: 'A dawn without witnesses is only glare.', cameraCue: 'restore', effects: [{ kind: 'flag', id: 'act5-false-dawn-turned', value: true }] },
+      'kallias-turns': { speakerId: 'kallias', text: 'A dawn without witnesses is only glare.', cameraCue: 'restore', effects: [{ kind: 'flag', id: 'act5-false-dawn-turned', value: true }], next: 'helios-ext-1' },
+      'helios-ext-1': { speakerId: 'helios', text: 'Glare is what a light looks like when nobody has to answer for it. The mirrors are turned now; count the hands that held them.', cameraCue: 'speaker', next: 'helios-ext-2' },
+      'helios-ext-2': { speakerId: 'kallias', text: 'I will count them where the record is read. A name that never worked deserves no share of this sunrise.', cameraCue: 'restore', next: null },
     },
   },
   'act5-three-lights': {

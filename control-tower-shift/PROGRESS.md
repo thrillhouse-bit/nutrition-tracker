@@ -2184,12 +2184,54 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   - `git diff --check` → clean.
 - **Spend**: cumulative Nous spend now ≈$9.27 (batch 1) + $0.0064
   (this batch) ≈ **$9.28**, still well under the $20 stop.
-- **In flight**: a third batch (Qwen, same extension pattern) is
-  running in the background for Act V's three short witness-light
-  scenes (Nyx-muster, Selene-reflection, Helios-false-dawn) —
-  deliberately much tighter word bounds (40-70 words/conversation,
-  120-210 total) given how extremely compressed and aphoristic the
-  existing Act V register is; the true climax scenes
-  (`act5-epilogue`, `act5-regent-interruption`) were deliberately left
-  out of this batch as too narratively load-bearing for routine
-  extension work.
+### Act V witness-lights batch — accepted and integrated
+
+- Third batch, same extension pattern as Act III but with much tighter
+  word bounds (40-70/conversation, 120-210 total) given how extremely
+  compressed and aphoristic Act V's existing register is — one
+  fortune-cookie-length line per beat, no filler. Extended
+  `act5-nyx-muster`, `act5-selene-reflection`, `act5-helios-false-dawn`
+  only; deliberately left the true climax scenes (`act5-epilogue`,
+  `act5-regent-interruption`) out as too narratively load-bearing for
+  routine extension work.
+  - Cost **$0.0094**, 6 API calls. Independently re-verified: parsed
+    the JSON, recomputed word counts (134 total, matches exactly),
+    confirmed 6/6 unique node ids, zero dangling refs, exactly one
+    terminal per chain, zero forbidden fields, zero "Oathbearer"
+    mentions, longest sentence 14 words (under the 15-word limit I
+    set). Selene's new line ("A moon does not dim the sun; it keeps
+    watch when he cannot") extends her established
+    "not-a-lesser-truth" theme without repeating it or claiming
+    superiority over Helios/Apollo, exactly as required.
+  - Integration: same splice pattern as Act III (rewired each
+    existing terminal node's `next`, appended the new nodes, moved
+    `next: null` to the new final node) — plus, unlike Act III, Act V
+    conversations carry a `cameraCue` field the schema I gave Hermes
+    deliberately excluded (kept out of its scope; presentation
+    metadata isn't dialogue-writing). Added `cameraCue: 'speaker'` on
+    each new NPC line and `cameraCue: 'restore'` on each new Kallias
+    closing line, matching the existing convention in the same three
+    scenes exactly.
+  - Checked `act-v-content.test.js`/`act-v-runtime.test.js`/
+    `five-act-playthrough.test.js` for exact-text or node-count locks
+    on these three conversations before touching anything — found
+    only presence/`.start` checks, no locks. All three test files
+    passed with zero changes needed (63/63 tests).
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1155/1155 passed** (89
+    files, unchanged — second dialogue batch in a row needing zero
+    test-file edits).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 2206→2340 (+134, exact match);
+    `conversations` unchanged at 16.
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.28 + $0.0094 ≈ **$9.29**,
+  still well under the $20 stop.
+- **Parallel work**: per Jackson's explicit direction (no time
+  constraint, no quality sacrifice, use agents for non-dialogue
+  tasks, keep Codex updated), forked a full-context subagent to work
+  a non-dialogue metric (merchants/banks/items/resources, using this
+  session's own established civic-location and regression-lock
+  discipline) on files disjoint from the dialogue work, running
+  concurrently with these two batches. Result pending.
