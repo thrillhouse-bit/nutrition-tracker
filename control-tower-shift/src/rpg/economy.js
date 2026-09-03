@@ -109,6 +109,7 @@ export const SHOP_DEFS = Object.freeze({
       'shadow-lantern-oil': Object.freeze({ itemId: 'shadow-lantern-oil', buyPrice: 42, sellPrice: 16, baseStock: 8, maxStock: 18, restockAmount: 2 }),
       'night-forage': Object.freeze({ itemId: 'night-forage', buyPrice: 36, sellPrice: 14, baseStock: 10, maxStock: 20, restockAmount: 2 }),
       'ambrosial-roe-feast': Object.freeze({ itemId: 'ambrosial-roe-feast', buyPrice: 480, sellPrice: 180, baseStock: 2, maxStock: 4, restockAmount: 1 }),
+      'covenant-figurehead': Object.freeze({ itemId: 'covenant-figurehead', buyPrice: 620, sellPrice: 230, baseStock: 2, maxStock: 4, restockAmount: 1 }),
     }),
   }),
 })

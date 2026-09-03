@@ -35,6 +35,7 @@ const CRAFTED_SINK_ITEMS = [
   'bronze-ingot',
   'cedar-keel',
   'copper-wire',
+  'covenant-figurehead',
   'grain-pottage',
   'herb-cake',
   'herbal-salve',

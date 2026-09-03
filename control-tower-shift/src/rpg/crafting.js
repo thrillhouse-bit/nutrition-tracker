@@ -84,6 +84,13 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 3,
   },
+  'covenant-figurehead': {
+    id: 'covenant-figurehead',
+    name: 'Covenant Figurehead',
+    category: 'wood',
+    stackable: false,
+    tier: 4,
+  },
   'cypress-helm': {
     id: 'cypress-helm',
     name: 'Cypress Helm',
@@ -878,6 +885,16 @@ const RECIPE_DEFS = [
     xp: 60,
     ingredients: [{ itemId: 'cedar-log', quantity: 5 }],
     outputs: [{ itemId: 'cedar-keel', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'covenant-figurehead',
+    name: 'Carve Covenant Figurehead',
+    skillId: 'carpentry',
+    stationId: 'woodwork-bench',
+    level: 65,
+    xp: 340,
+    ingredients: [{ itemId: 'ambrosial-ash', quantity: 3 }],
+    outputs: [{ itemId: 'covenant-figurehead', quantity: 1 }],
   }),
 
   // ── Cooking ──

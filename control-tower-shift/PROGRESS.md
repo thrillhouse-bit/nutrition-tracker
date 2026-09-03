@@ -2425,3 +2425,64 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
 - **Running total across all six dialogue batches this pass**:
   dialogueWords 927→3110 (+2183), combined Nous spend
   **≈$0.0485** across 6 dispatches and 45 API calls total.
+
+### Covenant Figurehead — Carpentry's endgame recipe, closed directly (no Hermes/subagent)
+
+- With Claude subagent dispatch still blocked by the account-level rate
+  limit, picked up the user's "non-dialogue metric" instruction directly
+  rather than wait it out. Started by writing an ad hoc orphan-item audit
+  script (`node` one-off, not committed) comparing every `ALL_ITEM_DEFS`
+  id against every recipe output/ingredient, shop listing, resource-node
+  drop, wilderness loot table, and quest reward. First pass over-reported
+  31 "orphans" from a bug (checked `recipe.output` instead of the real
+  `recipe.outputs` array); after fixing that, only 5 remained, and 4 of
+  those were false positives too (starting equipment, currency). The one
+  real finding: **`ambrosial-ash`** — Act V's tier-70 endgame woodcutting
+  material (`accord-overlook-ambrosial-ash` at the Accord Overlook,
+  `act5Runtime.js`) — has a real gather source but was never consumed by
+  any recipe anywhere.
+  - Cross-checked against the live `validateRPGContent()` report before
+    committing to this as a real gap: 0 errors, all 219 warnings are
+    `LEGACY_AUTHORING_RECORD` only — confirming no INERT_CRAFTED_OUTPUT
+    or missing-source errors currently exist, so this had to be verified
+    as a genuine design gap, not a validator-flagged bug.
+  - Checked for locks before touching anything: Cooking and Alchemy both
+    have an exact `'gives Cooking exactly five distinct level bands'`
+    -style test pinning their recipe-level `Set` to a fixed size — ruled
+    both out as consumers of ambrosial-ash. `EQUIPMENT_PROGRESSION_LADDER`
+    in `equipment.js` is explicitly commented as a deliberately-capped
+    3-tier ladder per slot — ruled out adding a 4th equipment tier.
+    Carpentry has no such lock (confirmed via `test/rpg-orphan-item-
+    closures.test.js`, which already added `olive-figurehead` to it this
+    project's history) and already mixes equipment-ladder items with
+    standalone sellable non-equipment products (`cedar-keel`, the
+    `shipwright`-station output) — the safe, precedented pattern.
+  - Added one new Carpentry recipe, **`covenant-figurehead`** (level 65,
+    340 XP, 3× `ambrosial-ash` → 1× Covenant Figurehead, `woodwork-bench`
+    station — Carpentry's first recipe above level 20, closing the
+    largest level-curve gap of any crafting skill), named to match the
+    Act V Accord/Covenant theme the resource's own flavor text already
+    uses ("Covenant-Grown Ash"). Added its item definition to
+    `ITEM_EXTENSIONS` in `src/rpg/crafting.js` (category `wood`, tier 4,
+    non-equipment) and a shop listing at Asteria's `nyx-witness-exchange`
+    (Act V, the same shop that already sells the other Act-V-endgame
+    item, `ambrosial-roe-feast`), matching the established price scale.
+  - `test/rpg-regional-economy.test.js` asserts an exact, alphabetically-
+    sorted `CRAFTED_SINK_ITEMS` list of every crafted output that must
+    have exactly one shop sink across the four regional merchants —
+    updated to insert `covenant-figurehead` in sorted position.
+  - Independently verified: a direct `node -e` reducer smoke test
+    (`OPEN_CRAFTING` → `CRAFT`) crafted the item end-to-end from 3 carried
+    `ambrosial-ash`, awarded exactly 340 Carpentry XP, and yielded exactly
+    1 `covenant-figurehead` — not just a static data check.
+- **Verification evidence**:
+  - Targeted: `test/rpg-regional-economy.test.js`, `test/rpg-crafting.test.js`,
+    `test/rpg-orphan-item-closures.test.js`, `test/rpg-cooking-fifth-tier.test.js`
+    → **90/90 passed**.
+  - Full suite: `npm run test:oathbearer` → **1155/1155 passed** (89 files).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains **BLOCKED**;
+    `items` 97→98, `recipes` 58→59, all other counters unchanged.
+  - `git diff --check` → clean.
+- **Cost**: $0, no Hermes/Nous or Claude-subagent spend — done directly
+  by Claude while subagent dispatch remains rate-limited.
