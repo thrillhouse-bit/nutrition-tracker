@@ -2112,3 +2112,84 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   (`witness-desire-debate`'s Aphrodite/Eros beat remains blocked on
   needing new portrait-less speakers — would need art-brief approval
   via the Tool Gateway's FAL lane first, out of scope for now).
+
+## Recovery checkpoint — 2026-09-02T21:2x — scaled dialogue loop, no time budget
+
+- **New instruction**: Jackson clarified the earlier "8 hours" question
+  was hypothetical — no time constraint, and explicitly **no
+  sacrificing quality for speed**. He also asked me to (a) update
+  Codex when meaningful progress lands on the report's tracked
+  metrics, and (b) use agents (Claude subagents and/or the local
+  Codex CLI bridge, confirmed set up and authenticated via
+  `codex-companion.mjs setup --json`) for **non-dialogue** tasks where
+  possible, freeing me to stay the sole integrator on the dialogue
+  pipeline specifically. Plan going forward: Hermes (Qwen draft/
+  DeepSeek validate) + me for dialogue/conversations; subagents/Codex
+  for the other ten tracked metrics (items, recipes, maps, quests,
+  encounters, bosses, named NPCs, resource nodes, merchants, banks,
+  reactive choices, delayed effects) wherever a task is well-bounded
+  and doesn't need dialogue-writing judgment.
+
+### Act III witness-depth batch — accepted and integrated
+
+- Found the real shape of the dialogue-word gap by census, not
+  assumption: every one of the 15 already-registered conversations in
+  the game is short (23-194 words, mostly 2-4 nodes) except the
+  Ianthe scene just landed. This opens a second, distinct, very safe
+  expansion path alongside "new NPCs": **extend existing, already-
+  tested, already-voiced conversations** with more nodes, without
+  touching a single existing line — zero new entities, zero new
+  registry structure, and (checked first) no exact-text regression
+  lock on any Act III/V conversation (Act I's `act1-thessa-overlook`
+  does have one; Act III/V do not, confirmed by grep for `.text).toBe(`
+  across their test files before touching anything).
+  - Dispatched `qwen/qwen3.8-flash` to write *extensions* (not new
+    conversations) for Act III's five "stilled year" testimonies
+    (Demeter, Persephone, Myrto/villager-1, Phaon/villager-2, Kleio) —
+    given the existing verbatim text of each as strict context, an
+    explicit "append after node X" splice point per conversation, and
+    instructions to match the existing spare, concrete, non-flowery
+    register rather than invent a new voice.
+  - Cost **$0.0064**, 3 API calls. Independently re-verified myself
+    (not just the self-reported handoff): parsed the JSON, recomputed
+    word counts per conversation (901 total, matches the worker's own
+    count exactly), confirmed all 20 new node ids are globally unique,
+    zero dangling `next` references, exactly one terminal node per
+    chain, zero use of forbidden `effects`/`choices` fields, zero
+    "Oathbearer" mentions, and none of the three Return Covenant
+    outcome ids appear anywhere in the new text. The writing itself
+    cross-references between testimonies in ways I hadn't asked for
+    but that read as genuine craft (Kleio's extension calls back to
+    "the same trick the granary played on Myrto"; Myrto's own
+    extension surfaces a new concrete detail — heated stones for
+    sleep — without contradicting her existing lines).
+  - Integration: spliced each conversation's `newNodes` in myself by
+    rewiring the existing terminal node's `next` from `null` to the
+    first new node id, appending the four new nodes, and moving
+    `next: null` to the new final node — the original three-to-four
+    nodes and their effects are byte-identical to before. No test file
+    needed any change at all (the only per-node assertion in
+    `rpg-act3-conversations.test.js` is a `>= 8 words` floor per node,
+    which the new nodes clear easily; there is no hardcoded node-count
+    or exact-text assertion anywhere for these five conversations).
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1155/1155 passed** (89
+    files — unchanged file count, since this batch touched zero test
+    files, a first for this session's dialogue work).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 1305→2206 (+901, exact match);
+    `conversations` unchanged at 16 (extending existing scenes doesn't
+    grow this count, by design).
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.27 (batch 1) + $0.0064
+  (this batch) ≈ **$9.28**, still well under the $20 stop.
+- **In flight**: a third batch (Qwen, same extension pattern) is
+  running in the background for Act V's three short witness-light
+  scenes (Nyx-muster, Selene-reflection, Helios-false-dawn) —
+  deliberately much tighter word bounds (40-70 words/conversation,
+  120-210 total) given how extremely compressed and aphoristic the
+  existing Act V register is; the true climax scenes
+  (`act5-epilogue`, `act5-regent-interruption`) were deliberately left
+  out of this batch as too narratively load-bearing for routine
+  extension work.
