@@ -1328,3 +1328,74 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      whenever a session with a genuinely foregrounded tab becomes
      available, and continue Priority 2 (merchants 7/15, banks 5/8) at
      genuinely civic locations only.
+
+## Recovery checkpoint — 2026-09-02T18:2x (turnover hour ~1)
+
+- **Branch/HEAD**: `codex/oathbearer-complete-game` @ `f441ad6` (Sage
+  Tonic checkpoint), now pushed successfully — the local `git push`
+  permission-classifier block from the prior checkpoint cleared on
+  retry (no error this time; all three queued commits, `b8a5490`
+  through `f441ad6`, landed on the remote in one push). No further
+  obstacle to report.
+- **What changed**: Cooking's own missing mid-tier recipe — Sage-
+  Barley Broth, level 12, directly continuing this checkpoint's own
+  previously-recorded next milestone (Cooking had only 3 recipes across
+  a wide 1/5/25 level spread, the same shape Alchemy had before its
+  Sage Tonic fix).
+  - Recipe uses the identical two ingredients already proven
+    obtainable well before their consuming level by the prior
+    checkpoint — `barley-sheaf` (Stewardship tier 1, Act I) and `sage`
+    (foraging level 10, Act III) — reusing rather than duplicating that
+    reachability groundwork.
+  - Placed at the `hearth` station (Wheat Village), the same station
+    Tuna Stew already uses, and the same map sage is gathered on — no
+    new station, no cross-map ingredient dependency to verify.
+  - New item `sage-barley-broth` in `crafting.js`'s `ITEM_EXTENSIONS`
+    (category `food`) with a real `food()` heal value (38) in
+    `itemEffects.js`, deliberately set between Herb Cake's 28 and Tuna
+    Stew's 48 — closing a genuine mid-tier gap in the food-heal curve,
+    not just adding a token item.
+  - Sold both ways at Eirene's Household Exchange, alongside the
+    existing `herb-cake` listing.
+  - New test file `test/rpg-cooking-sage-barley-broth.test.js` (10
+    tests): item/recipe registration, heal value ordering (confirmed
+    strictly between herb-cake and tuna-stew), zero new content-
+    validation errors and no `INERT_CRAFTED_OUTPUT` warning, `CRAFT`
+    reducer behavior (level gate, missing ingredients, wrong-map
+    refusal, exact cost/XP/output accounting), shop buy/sell, and a
+    full real-reducer playthrough that actually forages the sage via
+    `GATHER` on the same map as the hearth rather than granting it
+    directly — the one part of this loop not already covered by an
+    earlier checkpoint's test.
+  - Content-integrity fallout, all mechanically reconciled:
+    `rpg-regional-economy.test.js`'s `CRAFTED_SINK_ITEMS` list
+    extended with `sage-barley-broth`. `FULL-GAME-CONTRACT.md`'s Items,
+    Recipes, and Consumables rows updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1088/1088 passed** (83
+    files, up from 1078/82).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 92/200, `recipes` 52/100; `completeSkillLoops`
+    still truthfully 0/22 for the same reason as every prior checkpoint
+    this session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Sage Tonic checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. Cooking and Alchemy are both now at 4 recipes with a genuine
+     mid-tier gap closed. The remaining shallowest content-backed loops
+     are Devotion (1 repeatable action, but genuinely fine as a single
+     always-available offering — not obviously missing a "tier" the
+     way Cooking/Alchemy were) and the still-two-action Guile/Beastbond
+     exact-once loops (each intentionally scoped to a first loop only,
+     per their own checkpoints). Stewardship (3/5 tiers) is the next
+     genuinely under-filled curve; a 4th tier (Act IV, likely Slag
+     Road/Forge March or Atlas Vault) would continue that pattern.
+  2. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available.
+  3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
+     locations, not forced into puzzle/combat zones for the count alone.

@@ -50,6 +50,7 @@ export const SHOP_DEFS = Object.freeze({
     listings: Object.freeze({
       'grain-pottage': Object.freeze({ itemId: 'grain-pottage', buyPrice: 20, sellPrice: 8, baseStock: 10, maxStock: 24, restockAmount: 2 }),
       'herb-cake': Object.freeze({ itemId: 'herb-cake', buyPrice: 38, sellPrice: 14, baseStock: 8, maxStock: 18, restockAmount: 2 }),
+      'sage-barley-broth': Object.freeze({ itemId: 'sage-barley-broth', buyPrice: 68, sellPrice: 26, baseStock: 6, maxStock: 14, restockAmount: 1 }),
       'herbal-salve': Object.freeze({ itemId: 'herbal-salve', buyPrice: 120, sellPrice: 45, baseStock: 4, maxStock: 10, restockAmount: 1 }),
       'sage-tonic': Object.freeze({ itemId: 'sage-tonic', buyPrice: 180, sellPrice: 68, baseStock: 4, maxStock: 10, restockAmount: 1 }),
       'kiln-fired-vessel': Object.freeze({ itemId: 'kiln-fired-vessel', buyPrice: 150, sellPrice: 55, baseStock: 3, maxStock: 8, restockAmount: 1 }),

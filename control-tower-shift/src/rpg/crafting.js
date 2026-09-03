@@ -340,6 +340,13 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 3,
   },
+  'sage-barley-broth': {
+    id: 'sage-barley-broth',
+    name: 'Sage-Barley Broth',
+    category: 'food',
+    stackable: false,
+    tier: 3,
+  },
   'honeyed-figs': {
     id: 'honeyed-figs',
     name: 'Honeyed Figs',
@@ -869,6 +876,19 @@ const RECIPE_DEFS = [
       { itemId: 'thyme', quantity: 1 },
     ],
     outputs: [{ itemId: 'herb-cake', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'sage-barley-broth',
+    name: 'Simmer Sage-Barley Broth',
+    skillId: 'cooking',
+    stationId: 'hearth',
+    level: 12,
+    xp: 40,
+    ingredients: [
+      { itemId: 'barley-sheaf', quantity: 2 },
+      { itemId: 'sage', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'sage-barley-broth', quantity: 1 }],
   }),
   Object.freeze({
     id: 'tuna-stew',

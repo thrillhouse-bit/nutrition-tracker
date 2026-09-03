@@ -22,6 +22,7 @@ export const ITEM_EFFECTS = Object.freeze({
   'clay-loaf': food(10),
   'grain-pottage': food(20),
   'herb-cake': food(28),
+  'sage-barley-broth': food(38),
   'honeyed-figs': food(36),
   'tuna-stew': food(48),
   'herbal-salve': preparation('salve', { maxHealthBonus: 12 }),
