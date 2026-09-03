@@ -2184,6 +2184,7 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   - `git diff --check` → clean.
 - **Spend**: cumulative Nous spend now ≈$9.27 (batch 1) + $0.0064
   (this batch) ≈ **$9.28**, still well under the $20 stop.
+
 ### Act V witness-lights batch — accepted and integrated
 
 - Third batch, same extension pattern as Act III but with much tighter
