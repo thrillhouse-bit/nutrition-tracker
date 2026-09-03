@@ -25,6 +25,7 @@ export const ITEM_EFFECTS = Object.freeze({
   'honeyed-figs': food(36),
   'tuna-stew': food(48),
   'herbal-salve': preparation('salve', { maxHealthBonus: 12 }),
+  'sage-tonic': preparation('tonic', { incomingDamageMultiplier: 0.92 }),
   'moly-tonic': preparation('tonic', { incomingDamageMultiplier: 0.85, statusWard: 'Moly ward' }),
   'ambrosia-distillate': preparation('tonic', { maxHealthBonus: 25, statusWard: 'Ambrosial vigor' }),
   'ash-blessing': preparation('blessing', { attackDamageMultiplier: 1.18 }),

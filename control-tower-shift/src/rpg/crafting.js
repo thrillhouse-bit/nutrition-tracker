@@ -263,6 +263,13 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 3,
   },
+  'sage-tonic': {
+    id: 'sage-tonic',
+    name: 'Sage Tonic',
+    category: 'herb',
+    stackable: false,
+    tier: 2,
+  },
   'ambrosia-distillate': {
     id: 'ambrosia-distillate',
     name: 'Ambrosia Distillate',
@@ -900,6 +907,19 @@ const RECIPE_DEFS = [
       { itemId: 'sage', quantity: 1 },
     ],
     outputs: [{ itemId: 'herbal-salve', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'sage-tonic',
+    name: 'Distill Sage Tonic',
+    skillId: 'alchemy',
+    stationId: 'alchemy-lab',
+    level: 20,
+    xp: 70,
+    ingredients: [
+      { itemId: 'dried-herbs', quantity: 2 },
+      { itemId: 'sage', quantity: 2 },
+    ],
+    outputs: [{ itemId: 'sage-tonic', quantity: 1 }],
   }),
   Object.freeze({
     id: 'moly-tonic',

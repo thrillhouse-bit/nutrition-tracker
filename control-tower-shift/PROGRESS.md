@@ -1248,3 +1248,83 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
      available.
   3. Priority 2: merchants 7/15, banks 5/8 — only at genuinely civic
      locations, not forced into puzzle/combat zones for the count alone.
+
+## Recovery checkpoint — 2026-09-02T17:0x (turnover hour ~1)
+
+- **Branch/HEAD at start**: `codex/oathbearer-complete-game` @ `b4099ef`
+  (Stewardship tier-3 checkpoint) — **not yet pushed**, see the local
+  Bash permission-classifier note below.
+- **What changed**: Alchemy's missing mid-tier recipe — Sage Tonic,
+  level 20, slotting between the existing Dry Herbs (level 1) and
+  Herbal Salve (level 12) and the level-30 Moly Tonic, closing the
+  widest single gap left in any artisan skill's curve and directly
+  continuing this checkpoint's own previously-recorded plan (Cooking/
+  Alchemy each had only 3 recipes across a wide level spread).
+  - Recipe uses only ingredients already obtainable well before level
+    20 in normal play — `dried-herbs` (crafted from thyme, itself
+    level-1 foraging) and `sage` (level-10 foraging) — deliberately
+    avoiding any later-act ingredient dependency, the same reachability
+    discipline this session has applied everywhere else.
+  - New item `sage-tonic` registered in `crafting.js`'s
+    `ITEM_EXTENSIONS` (category `herb`, matching `herbal-salve`/
+    `moly-tonic`'s own convention) with a real `tonic`-slot consumable
+    effect in `itemEffects.js` (`incomingDamageMultiplier: 0.92`,
+    deliberately weaker than Moly Tonic's 0.85) — this also closes a
+    real loadout gap: the tonic slot previously had nothing between
+    "no tonic" and the level-30 Moly Tonic.
+  - Sold both ways at Eirene's Household Exchange (Wheat Village),
+    alongside the existing `herbal-salve` listing — no new merchant or
+    station needed; `alchemy-lab` was already reachable from Beacon
+    Overlook via this session's own earlier reachability-gap fix.
+  - New test file `test/rpg-alchemy-sage-tonic.test.js` (9 tests):
+    item/recipe registration, its real tonic effect (weaker than Moly
+    Tonic's, confirmed by direct comparison), zero new content-
+    validation errors and no `INERT_CRAFTED_OUTPUT` warning, `CRAFT`
+    reducer behavior (refuses below the level gate, refuses without
+    both ingredients, exact cost/XP/output accounting), and a full
+    real-reducer playthrough (buy/sell at Eirene's, then actually
+    prepare it as a pre-encounter tonic through `USE_ITEM`).
+  - Content-integrity fallout, all mechanically reconciled: alchemy
+    recipe count in `rpg-economy-gap-closures.test.js`'s own earlier
+    reachability-gap-closure test 3→4 (that test's title also updated
+    to drop the now-stale "three"); `rpg-regional-economy.test.js`'s
+    `CRAFTED_SINK_ITEMS` list extended. `FULL-GAME-CONTRACT.md`'s
+    Items, Recipes, and Consumables rows updated.
+- **Verification evidence**:
+  - Full suite: `npm run test:oathbearer` → **1078/1078 passed** (82
+    files, up from 1069/81).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 91/200, `recipes` 51/100; `completeSkillLoops`
+    still truthfully 0/22 for the same reason as every prior checkpoint
+    this session.
+  - `git diff --check` → clean.
+  - No browser-acceptance evidence attempted — same environment
+    blocker as every checkpoint since Stewardship's first tier.
+- **Obstacle — local `git push` blocked**: this checkpoint's commit
+  and the prior Stewardship-tier-3 commit (`b4099ef`) are verified and
+  committed locally but **`git push origin
+  codex/oathbearer-complete-game` was refused by the local Bash
+  permission classifier**, the identical class of blocker hit once
+  earlier this session (`git commit`/`git push`), which Jackson
+  resolved by explicitly granting permission in chat. Reported to
+  Jackson directly in the conversation rather than retried in a loop or
+  worked around. Both commits remain queued locally, fully verified,
+  ready to push the moment permission is confirmed; work continued on
+  the next milestone in the meantime per the classifier's own
+  suggestion and Jackson's standing "continue working" instruction.
+- **Active subagents**: none — solo lead work, direct continuation of
+  the Stewardship tier-3 checkpoint's own recorded next step.
+- **Next three ordered milestones**:
+  1. **Push the two queued local commits** (`b8a5490` Beastbond,
+     `b4099ef` Stewardship tier 3, and this Sage Tonic commit) as soon
+     as `git push` permission is confirmed — this is now the single
+     highest-priority action once unblocked.
+  2. Cooking still has only 3 recipes across a wide level spread
+     (1/5/25); the same mid-tier-gap pattern just closed for Alchemy
+     likely applies there too, using ingredients already obtainable
+     well before level 25.
+  3. Land the still-open Stewardship browser-acceptance evidence
+     whenever a session with a genuinely foregrounded tab becomes
+     available, and continue Priority 2 (merchants 7/15, banks 5/8) at
+     genuinely civic locations only.

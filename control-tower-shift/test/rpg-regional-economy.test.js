@@ -41,6 +41,7 @@ const CRAFTED_SINK_ITEMS = [
   'moly-tonic',
   'olive-plank',
   'sacred-flame-brand',
+  'sage-tonic',
   'tuna-stew',
 ]
 
