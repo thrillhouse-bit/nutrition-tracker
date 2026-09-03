@@ -2486,3 +2486,110 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   - `git diff --check` → clean.
 - **Cost**: $0, no Hermes/Nous or Claude-subagent spend — done directly
   by Claude while subagent dispatch remains rate-limited.
+
+### Act IV witness-conversation package — integrated (largest single checkpoint this pass)
+
+- A new user directive (`../CLAUDE-CONTINUOUS-CONTENT-EXECUTION.md`,
+  written to the repo root alongside the instruction) explicitly revised
+  the standing "preserve quarantined Act IV dialogue untouched" rule from
+  the original turnover: it named `src/rpg/act4Conversations.js` and
+  `test/rpg-act4-conversations.test.js` a "quarantined candidate, not
+  accepted work" and made Priority 1 "inspect every graph and test before
+  integration." Read both files in full before touching anything.
+- Findings: 8 conversations (`act4-athena-precise-route`,
+  `act4-ares-direct-breach`, `act4-prometheus-lawful-fire`,
+  `act4-atlas-coerced-witness`, `act4-hercules-freely-given`,
+  `act4-smiths-ledger`, `act4-zeus-single-crown`, `act4-mortal-draft`),
+  ~3,340 words, each deep-frozen, each carrying full `act4Authoring()`
+  release-authoring metadata (dramaticQuestion/systemsUsed/durableReward/
+  downstreamConsequence/recoveryBehavior/originalityNotes), each already
+  cross-referencing REAL Act IV data by exact id: `reject-single-crown`'s
+  objective `choiceIds` (`rejection-firm`/`rejection-mournful`) match the
+  Zeus conversation's choice node exactly; every marker effect
+  (`lift-controls`, `production-lane-1`, `prometheus-brazier`,
+  `chain-anchor-4`, `gate-hercules-lift`, `cell-smith-1`,
+  `single-crown-parley`) is a real existing entity in `act4Runtime.js`.
+  The candidate's own 14-test suite (`rpg-act4-conversations.test.js`)
+  passed standalone before any integration — schema-valid, zero cycles,
+  every node reachable, exactly one terminal per graph, no
+  currency/item/xp/epithet/codex/unlock-region granted from dialogue, no
+  8-gram overlap with Act III/V prose, no modern-politics substitution,
+  the Atlas coerced-witness/monster-base identity split preserved.
+  Assessed as genuinely high-quality, pre-integrated-in-spirit content —
+  not something to reject or rewrite.
+- **Integration performed** (the module's own header named this exact
+  seam as "not performed here"):
+  - `src/rpg/registry.js`: imported and spread `ACT4_CONVERSATIONS` into
+    `REGISTERED_CONVERSATIONS`.
+  - `src/rpg/act4Runtime.js`: attached `conversationId` to the two
+    already-existing NPC entities (`athena-march-captain`,
+    `ares-march-captain`, `atlas-npc`) and added 5 new `kind:'npc'`
+    entities the binding table called for but that did not yet exist —
+    `prometheus` (name-press, near the brazier), `hercules` and
+    `smith-thais` (atlas-vault, near their cells), `zeus-crown-herald`
+    (atlas-vault, near the parley marker), and `mortal-draft-table-voice`
+    (slag-road, near the ratification table — the assembly-testimony
+    scene is deliberately a separate talk-triggered beat from the
+    mechanical `mortal-draft-table` choice entity, matching the
+    candidate's own comment that the conversation's order-of-testimony
+    choices are tone only, never the ratification formula). Placement
+    checked against every existing solid/entity/exit on each map — one
+    position (`zeus-crown-herald`) needed two rounds of adjustment after
+    the full suite caught a too-close collision with
+    `vault-orichalcum-cache` that a narrower Act-IV-only test run missed.
+  - `src/rpg/act4Conversations.js`: flipped all five `existsInRuntime`
+    flags in `EXPECTED_SPEAKER_BINDINGS` from `false` to `true` now that
+    they're genuinely true, and updated the file's header comment from
+    "not performed here" to record that integration happened — an honest
+    update to the candidate module itself, not a silent one.
+  - New test file `test/rpg-act4-conversation-integration.test.js` (29
+    tests): every binding resolves to a real, correctly-wired, physically
+    distinct, pathfinding-reachable entity; full `TALK`/`CHOOSE`/
+    `DIALOGUE_END` reducer flow for all 8 conversations (blocks
+    completion before the required choice, records the choice flag,
+    grants zero currency/XP/inventory change, replays exact-once with no
+    flag re-application); a save/reload round trip confirms testimony
+    flags persist through `saveRPG`/`loadRPG`.
+- **Ripple effects found only by the FULL suite, not the Act-IV-scoped
+  runs** — the real reason a narrow-then-broad verification order matters:
+  registering 8 fully-authored conversations moved them from "unowned/
+  legacy" to "release-ready" in `validateRPGContent()`'s authored-depth
+  report, which is exact-count-locked in three separate files the same
+  way Act II's own additions were locked earlier this session. Updated,
+  each mechanically, matching the established precedent:
+  - `test/rpg-act1-authoring-readiness.test.js`: excluded the 8 new
+    act4-* conversation ids from its "later records must all be legacy"
+    check, the same way it already excludes Act II's own conversations.
+  - `test/rpg-act2-authoring-readiness.test.js`: relaxed its readyKeys
+    equality to containment (deferring whole-registry-count ownership
+    forward, the same deferral Act I's file already uses for Act II) and
+    excluded the 8 act4-* ids from its "Acts III-V + merchants" legacy
+    count, updating that count from 219 to 224 (the 5 new NPC entities,
+    correctly still legacy — they carry no `act4Authoring()` metadata of
+    their own, matching how mechanical items/entities have been added all
+    session).
+  - `test/rpg-authoring-schema.test.js`: updated the whole-registry
+    `authoredDepth.counts` (`legacy` 219→224, `releaseReady` 94→102) and
+    the `LEGACY_AUTHORING_RECORD` warning count (219→224); its `total`
+    field is computed dynamically from the live registries and needed no
+    change.
+- **Verification evidence**:
+  - Act-IV-scoped: `test/act-iv-content.test.js`,
+    `test/act-iv-runtime.test.js`, `test/rpg-act4-conversations.test.js`,
+    `test/rpg-act4-conversation-integration.test.js` → **97/97 passed**.
+  - Full suite (after fixing the two ripple failures above plus one
+    placement collision): `npm run test:oathbearer` → **1184/1184
+    passed** (90 files, up from 89 — the new integration test file).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 3110→6451 (+3341); `conversations`
+    16→24 (+8); `namedNpcs` 17→22 (+5, the newly-placed witnesses).
+  - `git diff --check` → clean.
+- **Cost**: $0 — direct Claude integration work, no Hermes/Nous or
+  Claude-subagent spend.
+- **Not yet done from Priority 1's full scope**: a real-browser Act IV
+  dialogue pass (this checkpoint's evidence is reducer-level and static-
+  graph-level, both independently re-verified, but not yet an in-browser
+  click-through). Flagging honestly rather than claiming full Priority 1
+  completion — the reducer/data layer is fully verified; the UI-smoke
+  layer is the remaining gap before this can be called fully closed.

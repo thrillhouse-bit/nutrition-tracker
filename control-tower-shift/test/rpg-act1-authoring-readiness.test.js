@@ -42,6 +42,17 @@ function act2RecordIds() {
   return { mapIds, questIds, conversationIds, encounterIds }
 }
 
+// Act IV's eight witness-testimony conversations are a third production-
+// authoring pass (see rpg-act4-authoring-readiness.test.js, which owns the
+// current whole-registry counts). Excluded here the same way act2RecordIds()
+// excludes Act II's own conversations, so this file's legacy-boundary check
+// stays truthful without re-litigating Act IV's readiness.
+const ACT4_CONVERSATION_IDS = new Set([
+  'act4-athena-precise-route', 'act4-ares-direct-breach', 'act4-prometheus-lawful-fire',
+  'act4-atlas-coerced-witness', 'act4-hercules-freely-given', 'act4-smiths-ledger',
+  'act4-zeus-single-crown', 'act4-mortal-draft',
+])
+
 function act1RecordKeys() {
   const keys = new Set()
   for (const [questId, quest] of Object.entries(QUEST_DEFS)) {
@@ -131,7 +142,7 @@ describe('Act I canonical production-authoring template', () => {
     const laterMapIds = new Set(Object.keys(REGISTERED_MAPS).filter((id) => !MAPS[id] && !act2.mapIds.has(id)))
     const laterQuestIds = new Set(Object.keys(REGISTERED_QUESTS).filter((id) => !QUEST_DEFS[id] && !act2.questIds.has(id)))
     const laterConversationIds = new Set(Object.keys(REGISTERED_CONVERSATIONS)
-      .filter((id) => !CONVERSATIONS[id] && !act2.conversationIds.has(id)))
+      .filter((id) => !CONVERSATIONS[id] && !act2.conversationIds.has(id) && !ACT4_CONVERSATION_IDS.has(id)))
     const laterEncounterIds = new Set(Object.keys(REGISTERED_ENCOUNTERS)
       .filter((id) => !ENCOUNTERS[id] && !act2.encounterIds.has(id)))
     const laterMerchantIds = new Set(Object.values(SHOP_DEFS)

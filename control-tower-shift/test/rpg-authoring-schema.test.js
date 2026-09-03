@@ -109,7 +109,7 @@ describe('complete-game authoring schema', () => {
 })
 
 describe('whole-registry authored-depth report', () => {
-  it('truthfully classifies the Act I+II authoring passes while later records remain legacy', () => {
+  it('truthfully classifies the Act I+II authoring passes and the Act IV witness conversations while other later records remain legacy', () => {
     const report = validateRPGContent()
     const objectiveCount = Object.values(REGISTERED_QUESTS).reduce((total, quest) => total + (quest.objectives || []).length, 0)
     const resourceCount = Object.values(REGISTERED_MAPS).reduce(
@@ -131,9 +131,9 @@ describe('whole-registry authored-depth report', () => {
 
     expect(report.authoredDepth.counts).toEqual({
       total: expectedTotal,
-      legacy: 219,
+      legacy: 224,
       incomplete: 0,
-      releaseReady: 94,
+      releaseReady: 102,
     })
     expect(report.authoredDepth.byKind.quest.total).toBe(Object.keys(REGISTERED_QUESTS).length)
     expect(report.authoredDepth.byKind.objective.total).toBe(objectiveCount)
@@ -145,7 +145,7 @@ describe('whole-registry authored-depth report', () => {
     expect(report.authoredDepth.byKind.entity.total).toBe(entityCount)
 
     const warnings = report.issues.filter((entry) => entry.code === 'LEGACY_AUTHORING_RECORD')
-    expect(warnings).toHaveLength(219)
+    expect(warnings).toHaveLength(224)
     expect(warnings.every((entry) => entry.severity === 'warning')).toBe(true)
     expect(report.issues.filter((entry) => entry.code === 'INCOMPLETE_AUTHORING_RECORD')).toEqual([])
     expect(report.summary.errors).toBe(0)

@@ -48,6 +48,20 @@ function act1RecordKeys() {
   return keys
 }
 
+// Act IV's eight witness-testimony conversations are a third production-
+// authoring pass, integrated after this file's own (see
+// rpg-act4-authoring-readiness.test.js, which now owns the whole-registry
+// counts). Excluded here the same way this file's own act2RecordKeys() are
+// excluded from act1's legacy-boundary file, so this file's checks stay
+// truthful without re-litigating Act IV's readiness.
+function act4ConversationKeys() {
+  return new Set([
+    'act4-athena-precise-route', 'act4-ares-direct-breach', 'act4-prometheus-lawful-fire',
+    'act4-atlas-coerced-witness', 'act4-hercules-freely-given', 'act4-smiths-ledger',
+    'act4-zeus-single-crown', 'act4-mortal-draft',
+  ].map((id) => `conversation:${id}`))
+}
+
 function act2RecordKeys() {
   const keys = new Set(['conversation:act2-melite-oath-post', 'conversation:act2-ianthe-first-meeting'])
   for (const quest of [ACT2_MAIN_QUEST, ACT2_SIDE_QUEST]) {
@@ -119,14 +133,12 @@ describe('Act II production authoring readiness', () => {
 
     expect(act1.size).toBe(36)
     expect(act2.size).toBe(58)
-    expect(readyKeys).toEqual(new Set([...act1, ...act2]))
-    expect(report.authoredDepth.counts).toEqual({ total: 313, legacy: 219, incomplete: 0, releaseReady: 94 })
-    expect(report.summary).toEqual({
-      errors: 0,
-      warnings: 219,
-      total: 219,
-      byCode: { LEGACY_AUTHORING_RECORD: 219 },
-    })
+    // Whole-registry ready/legacy counts and summary are owned by whichever
+    // authoring pass most recently landed (currently
+    // rpg-act4-authoring-readiness); this only re-asserts that Act I+II's
+    // own 94 records have not regressed, the same deferral rpg-act1-
+    // authoring-readiness.test.js already uses for this file.
+    for (const key of [...act1, ...act2]) expect(readyKeys.has(key), key).toBe(true)
   })
 
   it('deep-validates every Act II quest, objective, conversation, map, entity, resource, and encounter', () => {
@@ -161,11 +173,11 @@ describe('Act II production authoring readiness', () => {
 
   it('keeps all Acts III–V records and every merchant at the truthful legacy boundary', () => {
     const report = validateRPGContent()
-    const owned = new Set([...act1RecordKeys(), ...act2RecordKeys()])
+    const owned = new Set([...act1RecordKeys(), ...act2RecordKeys(), ...act4ConversationKeys()])
     const unowned = report.authoredDepth.records.filter((record) => !owned.has(recordKey(record)))
     const merchants = report.authoredDepth.records.filter((record) => record.kind === 'merchant')
 
-    expect(unowned.length).toBe(219)
+    expect(unowned.length).toBe(224)
     expect(new Set(unowned.map((record) => record.status))).toEqual(new Set(['legacy']))
     expect(merchants).toHaveLength(Object.keys(SHOP_DEFS).length)
     expect(new Set(merchants.map((record) => record.status))).toEqual(new Set(['legacy']))

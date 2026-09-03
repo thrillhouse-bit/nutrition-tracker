@@ -22,6 +22,7 @@ import {
   ACT3_MAIN_QUEST, ACT3_SIDE_QUEST, ACT3_ENCOUNTER_OWNER_QUEST,
 } from './act3Content.js'
 import { ACT3_CONVERSATIONS } from './act3Conversations.js'
+import { ACT4_CONVERSATIONS } from './act4Conversations.js'
 import { ACT3_RENDERABLE_MAPS } from './act3Runtime.js'
 import {
   ACT4_REGION, ACT4_CONNECTIONS, ACT4_ENCOUNTERS,
@@ -227,6 +228,7 @@ export const REGISTERED_CONVERSATIONS = Object.freeze({
   ...ACT1_CONVERSATIONS,
   ...ACT2_CONVERSATIONS,
   ...ACT3_CONVERSATIONS,
+  ...ACT4_CONVERSATIONS,
   ...ACT5_CONVERSATIONS,
 })
 
