@@ -1756,3 +1756,10 @@ passing mention: schema changes are additive/idempotent so there's no
 deploy risk from the gap, only a functionality gap (no cross-device
 save for live players of the game) until the owner redeploys.
 `/api/legal/status` unchanged. No fixes needed this pass.
+
+## 2026-09-03 — Check-in pass (recurring, 08:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `1256cdc`). Live site also unchanged (`f9f8374`) —
+both tracked Info items (PR #148 deploy lag, blocked new signups)
+hold, same as last pass. No fixes needed this pass.
