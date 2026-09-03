@@ -113,6 +113,8 @@ export const ITEM_DEFS = Object.freeze({
   lockpick: { id: 'lockpick', name: 'Lockpick', category: 'material', stackable: false, tier: 1 },
   'spiced-must': { id: 'spiced-must', name: 'Spiced Must', category: 'material', stackable: false, tier: 25 },
   'threshed-grain': { id: 'threshed-grain', name: 'Threshed Grain', category: 'grain', stackable: false, tier: 30 },
+  'ration-water': { id: 'ration-water', name: 'Ration Water', category: 'material', stackable: false, tier: 35 },
+  'camp-forage': { id: 'camp-forage', name: 'Camp Forage', category: 'grain', stackable: false, tier: 40 },
   drachma: { id: 'drachma', name: 'Drachma', category: 'currency', stackable: true, tier: 1 },
 })
 

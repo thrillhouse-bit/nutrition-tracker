@@ -67,6 +67,8 @@ export const SHOP_DEFS = Object.freeze({
       'bronze-fittings': Object.freeze({ itemId: 'bronze-fittings', buyPrice: 75, sellPrice: 28, baseStock: 8, maxStock: 18, restockAmount: 2 }),
       'bronze-ingot': Object.freeze({ itemId: 'bronze-ingot', buyPrice: 110, sellPrice: 42, baseStock: 6, maxStock: 14, restockAmount: 1 }),
       'sacred-flame-brand': Object.freeze({ itemId: 'sacred-flame-brand', buyPrice: 300, sellPrice: 115, baseStock: 2, maxStock: 6, restockAmount: 1 }),
+      'ration-water': Object.freeze({ itemId: 'ration-water', buyPrice: 34, sellPrice: 13, baseStock: 8, maxStock: 18, restockAmount: 2 }),
+      'camp-forage': Object.freeze({ itemId: 'camp-forage', buyPrice: 30, sellPrice: 11, baseStock: 10, maxStock: 20, restockAmount: 2 }),
     }),
   }),
   'olive-road-trader': Object.freeze({

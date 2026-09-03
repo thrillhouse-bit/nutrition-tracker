@@ -90,6 +90,16 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'slag-road-cedar', kind: 'resource', x: 700, y: 340, name: 'March Cedar', label: 'Cut the fire-scarred march cedar', skillId: 'woodcutting', itemId: 'cedar-log', level: 30, xp: 45 },
       { id: 'doros-march-quartermaster', kind: 'shop', shopId: 'forge-march-quartermaster', x: 620, y: 400, name: 'Doros', label: 'Trade campaign goods with Doros' },
       { id: 'slag-road-muster-bank', kind: 'bank', x: 560, y: 440, name: 'March Muster Strongbox', label: 'Open the march muster strongbox' },
+      {
+        id: 'slag-road-cinder-plot', kind: 'resource', x: 200, y: 470, name: 'Cinder-Fouled Plot', label: 'Tend the cinder-fouled plot',
+        skillId: 'stewardship', itemId: 'camp-forage', level: 40, xp: 70,
+        requiresFlag: 'steward:restored:slag-road:slag-road-cinder-plot',
+        restore: {
+          level: 35, xp: 60,
+          cost: [{ itemId: 'ration-water', quantity: 3 }],
+          label: 'Wash the slag ash from the plot with ration water',
+        },
+      },
     ],
     exits: [
       { id: 'plan-athena-first-edge', x: 920, y: 238, toMapId: 'bronze-foundry', spawnId: 'from-slag-road', returnSpawnId: 'from-foundry', kind: 'foot', planId: 'athena-precise-route', label: 'Take Athena\'s relief route', gate: [] },

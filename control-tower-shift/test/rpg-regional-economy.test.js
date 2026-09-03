@@ -50,7 +50,7 @@ const CRAFTED_SINK_ITEMS = [
 // the restore cost) and its gathered crop (sea-fig) to Thaleia's chandlery.
 // Neither is a crafted output, so they sit outside CRAFTED_SINK_ITEMS above
 // without changing what that list is verifying.
-const NON_CRAFTED_STEWARDSHIP_LISTINGS = ['sea-fig', 'water-cask', 'spiced-must', 'threshed-grain']
+const NON_CRAFTED_STEWARDSHIP_LISTINGS = ['sea-fig', 'water-cask', 'spiced-must', 'threshed-grain', 'ration-water', 'camp-forage']
 
 const MERCHANT_ENTITY_IDS = new Set([
   'thaleia-harbor-chandler',
