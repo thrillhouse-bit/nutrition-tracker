@@ -47,10 +47,42 @@ function quantityIn(slots, itemId) {
     .reduce((total, entry) => total + entry.quantity, 0)
 }
 
+// Physical system access is enforced per concrete world entity, so a fixture
+// that crafts from the bank must stand where the bank and kitchen interaction
+// circles overlap. On Beacon Overlook the storehouse (beacon-bank at 548,424)
+// sits 91px from the field kitchen (beacon-field-kitchen at 460,400) — closer
+// than twice SYSTEM_INTERACTION_RADIUS (112px). A player at the walkable
+// midpoint (504,412) is 46px from both, inside the 56px radius of each.
+const FIELD_KITCHEN_BANK_MIDPOINT = { x: 504, y: 412 }
+
 function openFieldKitchen(state) {
-  return applyEvent(atMap(state, 'beacon-overlook'), {
+  let next = {
+    ...state,
+    world: {
+      ...state.world,
+      mapId: 'beacon-overlook',
+      position: { ...FIELD_KITCHEN_BANK_MIDPOINT },
+    },
+  }
+  next = applyEvent(next, {
     type: 'OPEN_CRAFTING',
+    entityId: 'beacon-field-kitchen',
     stationId: 'field-kitchen',
+  })
+  return next
+}
+
+// The Bronze Foundry forge (bronze-foundry-forge at 720,380) has no bank entity
+// on its map at all, so a carried-and-bank craft there must fail closed.
+function openBronzeFoundryForge(state) {
+  let next = {
+    ...state,
+    world: { ...state.world, mapId: 'bronze-foundry', position: { x: 700, y: 370 } },
+  }
+  return applyEvent(next, {
+    type: 'OPEN_CRAFTING',
+    entityId: 'bronze-foundry-forge',
+    stationId: 'bronze-forge',
   })
 }
 
@@ -104,6 +136,7 @@ describe('bank-aware crafting reducer integration', () => {
       recipeId: 'grain-pottage',
       quantity: 1,
       sourceMode: 'carried-and-bank',
+      bankEntityId: 'beacon-bank',
     })
 
     expect(state.crafting.lastResult).toMatchObject({
@@ -127,26 +160,41 @@ describe('bank-aware crafting reducer integration', () => {
     expect(state.progression.totalXp).toBe(10)
   })
 
-  it('rejects a bank-source event when the station map has no physical bank', () => {
-    let state = withInventory(atMap(createInitialState(), 'bronze-foundry'), {
+  it('rejects missing, wrong, and distant bank IDs without recording a craft result', () => {
+    let state = withInventory(createInitialState(), {
+      bank: [{ itemId: 'barley-flatbread', quantity: 2 }],
+    })
+    state = openFieldKitchen(state)
+    const before = state.inventory
+    const base = { type: 'CRAFT', recipeId: 'grain-pottage', quantity: 1, sourceMode: 'carried-and-bank' }
+
+    expect(applyEvent(state, base)).toBe(state)
+    expect(applyEvent(state, { ...base, bankEntityId: 'myrrine-provisioner' })).toBe(state)
+
+    const distantBank = {
+      ...state,
+      world: { ...state.world, position: { x: 452, y: 400 } },
+    }
+    expect(applyEvent(distantBank, { ...base, bankEntityId: 'beacon-bank' })).toBe(distantBank)
+    expect(state.inventory).toBe(before)
+    expect(state.crafting.lastResult).toBeNull()
+  })
+
+  it('fails closed when a bank-source event has no concrete nearby bank', () => {
+    let state = withInventory(createInitialState(), {
       bank: [{ itemId: 'copper-ore', quantity: 2 }],
     })
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    state = openBronzeFoundryForge(state)
     const inventoryBefore = state.inventory
-    state = applyEvent(state, {
+    const rejected = applyEvent(state, {
       type: 'CRAFT',
       recipeId: 'copper-bar',
       quantity: 1,
       sourceMode: 'carried-and-bank',
     })
-
-    expect(state.crafting.lastResult).toMatchObject({
-      ok: false,
-      reason: 'bank_access_required',
-      detail: { sourceMode: 'carried-and-bank' },
-    })
-    expect(state.inventory).toBe(inventoryBefore)
-    expect(state.progression.skills.bronzework.xp).toBe(0)
+    expect(rejected).toBe(state)
+    expect(rejected.inventory).toBe(inventoryBefore)
+    expect(rejected.progression.skills.bronzework.xp).toBe(0)
   })
 
   it('keeps capacity failure atomic when every ingredient would come from the bank', () => {
@@ -166,6 +214,7 @@ describe('bank-aware crafting reducer integration', () => {
       recipeId: 'grain-pottage',
       quantity: 1,
       sourceMode: 'carried-and-bank',
+      bankEntityId: 'beacon-bank',
     })
 
     expect(state.crafting.lastResult).toMatchObject({
@@ -214,6 +263,7 @@ describe('bank-aware crafting UI integration', () => {
       recipeId: 'grain-pottage',
       quantity: 1,
       sourceMode: 'carried-and-bank',
+      bankEntityId: 'beacon-bank',
     })
   })
 

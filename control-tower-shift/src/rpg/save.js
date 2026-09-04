@@ -20,10 +20,12 @@ import {
 } from './state.js'
 import { normalizeInventory, normalizeSkills } from './progression.js'
 import { ALL_ITEM_DEFS, RECIPES } from './crafting.js'
-import { craftingAccessDecision } from './systemAccess.js'
 import { REGIONS_BY_ID as WILDERNESS_REGIONS_BY_ID } from './wilderness.js'
 import { SHOP_DEFS, createInitialEconomy, normalizeEconomy } from './economy.js'
 import { normalizeEquipment } from './equipment.js'
+import { normalizeWayfindingState } from './wayfinding.js'
+import { routeStateForMap } from './routeState.js'
+import { isWorldPointWalkable } from './pathfinding.js'
 import {
   createInitialResourceNodes,
   normalizeResourceNodes,
@@ -63,10 +65,17 @@ export function migrateSave(raw) {
     }
   }
   if (migrated.schemaVersion === 2) {
-    return {
+    migrated = {
       ...migrated,
       schemaVersion: 3,
       resources: createInitialResourceNodes(),
+    }
+  }
+  if (migrated.schemaVersion === 3) {
+    migrated = {
+      ...migrated,
+      schemaVersion: 4,
+      wayfinding: normalizeWayfindingState(migrated.wayfinding),
     }
   }
   return migrated.schemaVersion === SCHEMA_VERSION ? migrated : null
@@ -114,6 +123,14 @@ export function normalizeState(raw) {
 
   const safeGod = (god) => (god && TIER1_PATRON_IDS.includes(god) ? god : base.protagonist.activePatronId)
 
+  let flags = migrated.flags && typeof migrated.flags === 'object'
+    ? Object.fromEntries(Object.entries(migrated.flags).filter(([, v]) => typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string'))
+    : {}
+  // Panels and their concrete physical authorizations are live UI sessions,
+  // not save boundaries. Resume the world without a bank/shop/station lease;
+  // a player must explicitly re-open the nearby system object after load.
+  for (const key of ['rpg:active-bank-entity', 'rpg:active-shop-entity', 'rpg:active-crafting-entity']) delete flags[key]
+
   // World: pick the map from the save if it is known, else a visited shrine
   // map, else the documented spawn.
   let mapId = START_MAP
@@ -122,17 +139,41 @@ export function normalizeState(raw) {
     : []
   if (mapById(migrated.world?.mapId)) mapId = migrated.world.mapId
   else if (visitedShrines.length > 0) mapId = visitedShrines[visitedShrines.length - 1]
-  const map = mapById(mapId)
-  const requestedSpawnId = typeof migrated.world?.spawnId === 'string'
+  let map = mapById(mapId)
+  let requestedSpawnId = typeof migrated.world?.spawnId === 'string'
     ? migrated.world.spawnId
     : map.spawn?.id
-  const requestedSpawnIsKnown = Boolean(spawnById(mapId, requestedSpawnId))
-  const spawn = spawnById(mapId, requestedSpawnId) || map.spawn
-  const pos = (p) => {
-    if (!requestedSpawnIsKnown) return { x: spawn.x, y: spawn.y }
-    const x = typeof p?.x === 'number' && Number.isFinite(p.x) ? p.x : spawn.x
-    const y = typeof p?.y === 'number' && Number.isFinite(p.y) ? p.y : spawn.y
-    return { x, y }
+  const walkableSpawn = (candidateMap, preferredId) => {
+    const candidates = [
+      spawnById(candidateMap.id, preferredId),
+      candidateMap.spawn,
+      ...Object.values(candidateMap.spawns || {}),
+    ].filter(Boolean)
+    return candidates.find((candidate, index) =>
+      candidates.findIndex((other) => other.id === candidate.id) === index
+      && isWorldPointWalkable(candidateMap, candidate, { routeStateId: routeStateForMap({ flags }, candidateMap) }),
+    ) || null
+  }
+  let spawn = walkableSpawn(map, requestedSpawnId)
+  const requestedPosition = migrated.world?.position
+  const positionIsFinite = Number.isFinite(requestedPosition?.x) && Number.isFinite(requestedPosition?.y)
+  const requestedPositionIsWalkable = positionIsFinite && isWorldPointWalkable(map, requestedPosition, {
+    routeStateId: routeStateForMap({ flags }, map),
+  })
+  let position = requestedPositionIsWalkable
+    ? { x: requestedPosition.x, y: requestedPosition.y }
+    : spawn && { x: spawn.x, y: spawn.y }
+
+  // Local saves remain player-controlled until server authority exists. Never
+  // nearest-snap an untrusted position: a nearby snap can cross an authored
+  // tide/season/pressure boundary. If this map has no state-valid spawn,
+  // recover deterministically to the documented initial world.
+  if (!spawn || !position) {
+    mapId = START_MAP
+    map = mapById(mapId)
+    requestedSpawnId = START_SPAWN
+    spawn = walkableSpawn(map, requestedSpawnId)
+    position = spawn ? { x: spawn.x, y: spawn.y } : { ...base.world.position }
   }
 
   // Quests: keep only known quest defs; normalize each progress shape.
@@ -169,10 +210,6 @@ export function normalizeState(raw) {
           objectiveCounts: {},
         }
   }
-
-  let flags = migrated.flags && typeof migrated.flags === 'object'
-    ? Object.fromEntries(Object.entries(migrated.flags).filter(([, v]) => typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string'))
-    : {}
 
   const inv = migrated.inventory || {}
   const arr = (x) => (Array.isArray(x) ? x.filter((s) => typeof s === 'string') : [])
@@ -212,12 +249,13 @@ export function normalizeState(raw) {
       regionId: map.region,
       mapId,
       spawnId: spawn.id,
-      position: pos(migrated.world?.position),
+      position,
       facing: typeof migrated.world?.facing === 'number' ? migrated.world.facing : spawn.facing || 0,
     },
     mainQuestId,
     quests,
     flags,
+    wayfinding: normalizeWayfindingState(migrated.wayfinding),
     inventory: normalizedInventory,
     resources: normalizeResourceNodes(migrated.resources, playtimeTicks, {
       allowedNodeKeys: RESOURCE_NODE_KEYS,
@@ -230,7 +268,7 @@ export function normalizeState(raw) {
       totalXp: Number.isFinite(migrated.progression?.totalXp) ? Math.max(0, Math.floor(migrated.progression.totalXp)) : 0,
     },
     wilderness: normalizeWilderness(migrated.wilderness, base.wilderness),
-    crafting: normalizeCrafting(migrated.crafting, base.crafting, mapId),
+    crafting: normalizeCrafting(migrated.crafting, base.crafting),
     economy,
     combatSnapshot: null, // saves persist combat only at boundaries, never mid-frame
     playtimeTicks,
@@ -274,17 +312,13 @@ function normalizeWilderness(raw, baseline) {
   }
 }
 
-function normalizeCrafting(raw, baseline, mapId) {
-  const knownStationId = STATION_IDS.has(raw?.stationId) ? raw.stationId : null
-  const stationId = knownStationId && craftingAccessDecision(mapId, knownStationId)?.available
-    ? knownStationId
-    : null
+function normalizeCrafting(raw, baseline) {
   const lastResult = raw?.lastResult && typeof raw.lastResult === 'object' && !hasUnknownStructuredIds(raw.lastResult)
     ? raw.lastResult
     : null
   return {
     ...baseline,
-    stationId,
+    stationId: null,
     lastResult,
   }
 }

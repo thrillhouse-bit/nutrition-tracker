@@ -21,7 +21,8 @@ import {
   act2RuntimeSpawnById,
   validateAct2Runtime,
 } from '../src/rpg/act2Runtime.js'
-import { findWorldPath } from '../src/rpg/pathfinding.js'
+import { findWorldPath, isWorldPointWalkable } from '../src/rpg/pathfinding.js'
+import { applyEvent, createInitialState } from '../src/rpg/state.js'
 
 const SAFE_MARGIN = 28
 const pocketIds = Object.keys(ACT2_POCKETS)
@@ -253,6 +254,25 @@ describe('Act II tide traversal metadata', () => {
     }
   })
 
+  it('authors a Crossing-only west connector rather than pathing across the harbor/channel gap', () => {
+    const map = ACT2_RUNTIME_MAPS['breakwater-road']
+    const connector = map.traversalLanes.find((lane) => lane.id === 'crossing-harbor-connector')
+    expect(connector).toMatchObject({ stateIds: ['crossing'], points: [{ x: 72, y: 274 }, { x: 60, y: 300 }] })
+    const route = findWorldPath(map, map.spawns['from-harbor'], map.entities.find((entity) => entity.id === 'tide-well-harbor'), { routeStateId: 'crossing' })
+    expect(route.length).toBeGreaterThan(0)
+    expect(Math.hypot(route.at(-1).x - 286, route.at(-1).y - 292)).toBeLessThan(56)
+  })
+
+  it('keeps reciprocal Breakwater arrivals actionable when traversal preserves Surge', () => {
+    const map = ACT2_RUNTIME_MAPS['breakwater-road']
+    for (const spawnId of ['from-harbor', 'from-caves']) {
+      const start = map.spawns[spawnId]
+      expect(isWorldPointWalkable(map, start, { routeStateId: 'surge' }), spawnId).toBe(true)
+      const route = findWorldPath(map, start, map.entities.find((entity) => entity.id === 'tide-well-harbor'), { routeStateId: 'surge' })
+      expect(route.length, `${spawnId}: first Surge MOVE`).toBeGreaterThan(0)
+    }
+  })
+
   it('resolves every well, skiff node, and rope lift to an authored entity', () => {
     for (const map of Object.values(ACT2_RUNTIME_MAPS)) {
       for (const laneId of map.tide.laneIds) {
@@ -300,6 +320,133 @@ describe('Act II tide traversal metadata', () => {
         expect(Math.hypot(a.x - b.x, a.y - b.y), `${a.id}↔${b.id}`).toBeGreaterThanOrEqual(48)
       }
     }
+  })
+
+  it('keeps every post-combat Nereid witness within the real interaction radius and records each release once', () => {
+    const map = ACT2_RUNTIME_MAPS['nereid-caves']
+    const witnesses = ['nereid-witness-1', 'nereid-witness-2', 'nereid-witness-3']
+      .map((id) => map.entities.find((entity) => entity.id === id))
+
+    for (const routeStateId of ['ebb', 'crossing', 'surge']) {
+      for (const start of Object.values(map.spawns)) {
+        for (const witness of witnesses) {
+          const path = findWorldPath(map, start, witness, { routeStateId })
+          expect(path.length, `${routeStateId}:${start.id}→${witness.id}`).toBeGreaterThan(0)
+          expect(path.every((point) => isWorldPointWalkable(map, point, { routeStateId })), `${routeStateId}:${start.id}→${witness.id} walkability`).toBe(true)
+          const endpoint = path.at(-1)
+          expect(Math.hypot(endpoint.x - witness.x, endpoint.y - witness.y), `${routeStateId}:${start.id}→${witness.id}`).toBeLessThan(56)
+        }
+      }
+    }
+
+    let state = createInitialState()
+    state = {
+      ...state,
+      status: 'playing',
+      protagonist: { ...state.protagonist, activePatronId: 'apollo', unlockedPatronIds: ['apollo'] },
+      mainQuestId: 'mq-act2-salt-covenant',
+      flags: { ...state.flags, 'act2-nereid-caves-cleared': true, 'act2:tide-state': 'crossing' },
+      quests: {
+        ...state.quests,
+        'mq-act2-salt-covenant': { state: 'active', objectiveIndex: 2, objectiveCounts: {} },
+      },
+      world: { regionId: 'pelagos-isles', mapId: 'nereid-caves', spawnId: 'threshold', position: { x: 216, y: 284 }, facing: 0 },
+    }
+    for (const witness of witnesses) {
+      const path = findWorldPath(map, state.world.position, witness, { routeStateId: 'crossing' })
+      const endpoint = path.at(-1)
+      expect(path.length, `interaction path to ${witness.id}`).toBeGreaterThan(0)
+      state = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+      state = applyEvent(state, { type: 'INTERACT', entityId: witness.id })
+    }
+    expect(state.quests['mq-act2-salt-covenant'].objectiveCounts['free-nereid-witnesses']).toBe(3)
+    const repeated = applyEvent(state, { type: 'INTERACT', entityId: witnesses[2].id })
+    expect(repeated.quests['mq-act2-salt-covenant'].objectiveCounts['free-nereid-witnesses']).toBe(3)
+  })
+
+  it('keeps the Unmoored Heart route physically playable only in Crossing or Surge', () => {
+    const map = ACT2_RUNTIME_MAPS['nereid-caves']
+    const invitation = map.entities.find((entity) => entity.id === 'unmoored-heart-invitation')
+    const echo = map.entities.find((entity) => entity.id === 'echo-cavern')
+    const medusa = map.exits.find((exit) => exit.id === 'combat-act2-unmoored-charmed')
+
+    for (const routeStateId of ['crossing', 'surge']) {
+      for (const spawn of Object.values(map.spawns)) {
+        for (const target of [invitation, echo, medusa]) {
+          expect(interactionEndpointDistance(map, spawn, target, routeStateId), `${routeStateId}:${spawn.id}→${target.id}`).toBeLessThan(56)
+        }
+      }
+    }
+    // The invitation remains a readable landmark beside the main cavern lane,
+    // but the marker and combat gate that constitute the side branch stay
+    // outside the reducer's <56px physical-authorisation radius at Ebb.
+    for (const target of [echo, medusa]) {
+      expect(interactionEndpointDistance(map, map.spawns.threshold, target, 'ebb'), `ebb excludes ${target.id}`).toBeGreaterThanOrEqual(56)
+    }
+
+    let state = createInitialState()
+    state = {
+      ...state,
+      protagonist: { ...state.protagonist, activePatronId: 'apollo', unlockedPatronIds: ['apollo'] },
+      flags: { ...state.flags, 'act2:tide-state': 'crossing' },
+      world: { regionId: 'pelagos-isles', mapId: map.id, spawnId: 'threshold', position: { ...map.spawns.threshold }, facing: 0 },
+    }
+    const moveTo = (target) => {
+      const path = findWorldPath(map, state.world.position, target, { routeStateId: 'crossing' })
+      expect(path.length, `path to ${target.id}`).toBeGreaterThan(0)
+      const endpoint = path.at(-1)
+      state = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+    }
+    moveTo(invitation)
+    state = applyEvent(state, { type: 'INTERACT', entityId: invitation.id })
+    expect(state.quests['sq-act2-unmoored-heart']).toMatchObject({ state: 'active', objectiveIndex: 0 })
+    moveTo(echo)
+    state = applyEvent(state, { type: 'REACH', mapId: map.id, markerId: echo.id })
+    expect(state.quests['sq-act2-unmoored-heart'].objectiveIndex).toBe(1)
+    moveTo(medusa)
+    state = applyEvent(state, { type: 'ENTER_ENCOUNTER', encounterId: medusa.encounterId })
+    expect(state.status).toBe('in-combat')
+    expect(state.combatSnapshot.encounterId).toBe('enc-act2-unmoored-charmed')
+  })
+
+  it('keeps the Archive Barge Return Folio within physical interaction reach from every arrival in every tide', () => {
+    const map = ACT2_RUNTIME_MAPS['archive-barge-deck']
+    const folio = map.entities.find((entity) => entity.id === 'cipher-folio-2')
+    for (const routeStateId of ['ebb', 'crossing', 'surge']) {
+      for (const spawn of Object.values(map.spawns)) {
+        expect(interactionEndpointDistance(map, spawn, folio, routeStateId), `${routeStateId}:${spawn.id}→${folio.id}`).toBeLessThan(56)
+      }
+    }
+  })
+
+  it('keeps all required pressure shells reachable and exact-once in the crossing tide', () => {
+    const map = ACT2_RUNTIME_MAPS['nereid-caves']
+    const shells = ['pressure-shell-1', 'pressure-shell-2', 'pressure-shell-3']
+      .map((id) => map.entities.find((entity) => entity.id === id))
+
+    let state = createInitialState()
+    state = {
+      ...state,
+      status: 'playing',
+      protagonist: { ...state.protagonist, activePatronId: 'apollo', unlockedPatronIds: ['apollo'] },
+      mainQuestId: 'mq-act2-salt-covenant',
+      flags: { ...state.flags, 'act2-nereid-caves-cleared': true, 'act2:tide-state': 'crossing' },
+      quests: {
+        ...state.quests,
+        'mq-act2-salt-covenant': { state: 'active', objectiveIndex: 3, objectiveCounts: {} },
+      },
+      world: { regionId: 'pelagos-isles', mapId: 'nereid-caves', spawnId: 'threshold', position: { x: 216, y: 284 }, facing: 0 },
+    }
+    for (const shell of shells) {
+      const path = findWorldPath(map, state.world.position, shell, { routeStateId: 'crossing' })
+      expect(path.length, `crossing path to ${shell.id}`).toBeGreaterThan(0)
+      const endpoint = path.at(-1)
+      expect(Math.hypot(endpoint.x - shell.x, endpoint.y - shell.y), shell.id).toBeLessThan(56)
+      state = { ...state, world: { ...state.world, position: endpoint } }
+      state = applyEvent(state, { type: 'INTERACT', entityId: shell.id })
+    }
+    expect(state.quests['mq-act2-salt-covenant'].objectiveIndex).toBe(4)
+    expect(applyEvent(state, { type: 'INTERACT', entityId: shells[2].id })).toBe(state)
   })
 
   it('contains only fixed authored placement semantics', () => {

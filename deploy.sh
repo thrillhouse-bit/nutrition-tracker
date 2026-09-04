@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# One-command production deploy: rebuild and restart the app container with
-# GIT_SHA baked in, then prove GET /api/version actually reports it.
+# General/preview deploy: rebuild and restart the app container with GIT_SHA
+# baked in, then prove GET /api/version actually reports it. This command does
+# not make a complete-game release claim. Pass --complete-release to run the
+# complete-game gate immediately before the deploy.
 #
-#   ./deploy.sh
+#   ./deploy.sh [docker-compose-file]
+#   ./deploy.sh --complete-release [docker-compose-file]
 #
 # GET /api/version has reported {"sha":"unknown"} on every deploy so far
 # (25 Aug 2026) — not a code bug, `Dockerfile`/`docker-compose.app-only.yml`
@@ -21,7 +24,25 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+COMPLETE_RELEASE=false
+if [[ "${1:-}" == "--complete-release" ]]; then
+  COMPLETE_RELEASE=true
+  shift
+fi
 COMPOSE_FILE="${1:-docker-compose.app-only.yml}"
+
+if "$COMPLETE_RELEASE"; then
+  if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    echo "FAILED: a complete-game release requires a clean Git working tree at HEAD." >&2
+    echo "Commit, stash, or remove staged, unstaged, and untracked changes, then rerun --complete-release." >&2
+    git status --short --untracked-files=all >&2
+    exit 1
+  fi
+  echo "Running complete-game release gate before deploy ..." >&2
+  npm run verify:oathbearer:complete
+else
+  echo "General/preview deploy only; this does not certify Aegean Frontier as complete." >&2
+fi
 GIT_SHA="$(git rev-parse HEAD)"
 export GIT_SHA
 

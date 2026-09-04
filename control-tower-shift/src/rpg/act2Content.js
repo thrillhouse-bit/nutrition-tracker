@@ -481,14 +481,14 @@ export const ACT2_TIDE_STATES = deepFreeze({
   crossing: {
     id: 'crossing',
     name: 'Crossing',
-    walkableLanes: ['dry-causeway', 'waist-deep-channel'],
+    walkableLanes: ['dry-causeway', 'waist-deep-channel', 'crossing-harbor-connector'],
     lockedLanes: [],
     telegraph: { shapeGlyph: 'double-chevron', cadenceTicks: 60, label: 'Crossing — both lanes passable', motion: 'steady-pulse' },
   },
   surge: {
     id: 'surge',
     name: 'Surge',
-    walkableLanes: ['waist-deep-channel'],
+    walkableLanes: ['waist-deep-channel', 'surge-harbor-entry', 'surge-caves-entry'],
     lockedLanes: ['dry-causeway'],
     telegraph: { shapeGlyph: 'chevron-up', cadenceTicks: 30, label: 'Surge — only the channel holds', motion: 'rapid-pulse' },
   },

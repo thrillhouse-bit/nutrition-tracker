@@ -102,7 +102,7 @@ describe('Act V light-polarity shared UI integration', () => {
       },
       sun: {
         night: ['night-stair-transition', 'night-stair-sun-recovery'],
-        sky: ['false-sky-transition', 'false-sky-sun-road', 'false-sky-sun-fractures'],
+        sky: ['false-sky-transition', 'false-sky-sun-road', 'false-sky-apollo-sun-witness', 'false-sky-sun-fractures'],
       },
     }
 

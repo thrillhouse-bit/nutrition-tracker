@@ -113,13 +113,15 @@ describe('woodcutting expansion: ambrosial-ash node', () => {
 describe('gather() reducer integration for the ambrosial-ash node', () => {
   function woodcuttingReadyState(level) {
     const initial = createInitialState()
+    const map = REGISTERED_MAPS['accord-overlook']
+    const ash = map.entities.find((candidate) => candidate.id === 'accord-overlook-ambrosial-ash')
     return {
       ...initial,
       progression: {
         ...initial.progression,
         skills: { ...initial.progression.skills, woodcutting: { xp: xpForLevel(level) } },
       },
-      world: { ...initial.world, mapId: 'accord-overlook', position: { x: 770, y: 380 } },
+      world: { ...initial.world, regionId: map.region, mapId: map.id, spawnId: map.spawn.id, position: { x: ash.x, y: ash.y } },
     }
   }
 

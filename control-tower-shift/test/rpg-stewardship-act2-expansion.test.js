@@ -38,6 +38,30 @@ function atMap(state, mapId, position) {
   }
 }
 
+function atSaltGarden(state) {
+  const map = rpgMapById('pelagos-harbor')
+  const garden = map.entities.find((candidate) => candidate.id === SALT_GARDEN_ID)
+  const routeStateId = state.flags?.['act2:tide-state'] || ACT2_TIDE_ORDER[0]
+  const endpoint = findWorldPath(map, state.world.position, garden, { routeStateId }).at(-1)
+  return atMap(state, map.id, { x: endpoint.x, y: endpoint.y })
+}
+
+// Physical system access requires the concrete shop/bank entity on the current
+// map and a protagonist standing beside it. Resolve the matching entity for the
+// map the caller already set, reposition west of it (validated reachable), and
+// open through the reducer so later SHOP_*/BANK_* events carry real authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isShop ? candidate.kind === 'shop' && candidate.shopId === systemId : candidate.kind === 'bank')
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isShop ? { shopId: systemId } : {}
+  const type = isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function stewardshipState(level) {
   const base = createInitialState()
   return {
@@ -49,7 +73,7 @@ function stewardshipState(level) {
 function restoredState() {
   const base = stewardshipState(15)
   const withCask = addInventoryItem(base.inventory, 'water-cask', 3, ALL_ITEM_DEFS).inventory
-  const state = atMap({ ...base, inventory: withCask }, 'pelagos-harbor', { x: 180, y: 420 })
+  const state = atSaltGarden(atMap({ ...base, inventory: withCask }, 'pelagos-harbor'))
   const restored = applyEvent(state, { type: 'RESTORE_LAND', entityId: SALT_GARDEN_ID })
   expect(restored.flags[RESTORED_FLAG]).toBe(true)
   return restored
@@ -109,7 +133,7 @@ describe('RESTORE_LAND — the salt garden', () => {
   it('refuses to restore below the authored level gate, leaving state byte-identical', () => {
     const base = stewardshipState(14)
     const withCask = addInventoryItem(base.inventory, 'water-cask', 3, ALL_ITEM_DEFS).inventory
-    const state = atMap({ ...base, inventory: withCask }, 'pelagos-harbor', { x: 180, y: 420 })
+    const state = atSaltGarden(atMap({ ...base, inventory: withCask }, 'pelagos-harbor'))
     const result = applyEvent(state, { type: 'RESTORE_LAND', entityId: SALT_GARDEN_ID })
     expect(result).toBe(state)
   })
@@ -117,7 +141,7 @@ describe('RESTORE_LAND — the salt garden', () => {
   it('is a no-op with insufficient water casks', () => {
     const base = stewardshipState(15)
     const withCask = addInventoryItem(base.inventory, 'water-cask', 2, ALL_ITEM_DEFS).inventory
-    const state = atMap({ ...base, inventory: withCask }, 'pelagos-harbor', { x: 180, y: 420 })
+    const state = atSaltGarden(atMap({ ...base, inventory: withCask }, 'pelagos-harbor'))
     const result = applyEvent(state, { type: 'RESTORE_LAND', entityId: SALT_GARDEN_ID })
     expect(result).toBe(state)
     expect(itemQuantity(result.inventory, 'water-cask')).toBe(2)
@@ -139,7 +163,7 @@ describe('RESTORE_LAND — the salt garden', () => {
 
 describe('GATHER — the salt garden before and after restoration', () => {
   it('refuses to harvest an unrestored garden, leaving state byte-identical', () => {
-    const state = atMap(stewardshipState(20), 'pelagos-harbor', { x: 180, y: 420 })
+    const state = atSaltGarden(atMap(stewardshipState(20), 'pelagos-harbor'))
     const gathered = applyEvent(state, { type: 'GATHER', entityId: SALT_GARDEN_ID })
     expect(gathered).toBe(state)
   })
@@ -176,17 +200,17 @@ describe('GATHER — the salt garden before and after restoration', () => {
 describe('salt garden economy interaction', () => {
   it('lets Thaleia sell water casks and buy back sea figs, closing the second-tier economy loop', () => {
     let state = { ...stewardshipState(20), inventory: { ...stewardshipState(20).inventory, currency: 200 } }
-    state = atMap(state, 'pelagos-harbor', { x: 180, y: 420 })
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'pelagos-chandler' })
+    state = atSaltGarden(atMap(state, 'pelagos-harbor'))
+    state = systemOpenNear(state, 'shop', 'pelagos-chandler')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'water-cask', quantity: 3, transactionId: 'gap:cask' })
     expect(itemQuantity(bought.inventory, 'water-cask')).toBe(3)
 
-    const restored = applyEvent(bought, { type: 'RESTORE_LAND', entityId: SALT_GARDEN_ID })
+    const restored = applyEvent(atSaltGarden(atMap(bought, 'pelagos-harbor')), { type: 'RESTORE_LAND', entityId: SALT_GARDEN_ID })
     expect(restored.flags[RESTORED_FLAG]).toBe(true)
     const gathered = applyEvent(restored, { type: 'GATHER', entityId: SALT_GARDEN_ID })
     expect(itemQuantity(gathered.inventory, 'sea-fig')).toBe(1)
 
-    const reopened = applyEvent(gathered, { type: 'OPEN_SHOP', shopId: 'pelagos-chandler' })
+    const reopened = systemOpenNear(gathered, 'shop', 'pelagos-chandler')
     const sold = applyEvent(reopened, { type: 'SHOP_SELL', itemId: 'sea-fig', quantity: 1, transactionId: 'gap:fig' })
     expect(itemQuantity(sold.inventory, 'sea-fig')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(gathered.inventory.currency)
@@ -198,7 +222,7 @@ describe('salt garden economy interaction', () => {
     const caught = applyEvent(state, { type: 'GATHER', entityId: SALT_GARDEN_ID })
     expect(itemQuantity(caught.inventory, 'sea-fig')).toBe(1)
 
-    const deposited = applyEvent(caught, { type: 'BANK_DEPOSIT', itemId: 'sea-fig', quantity: 1 })
+    const deposited = applyEvent(systemOpenNear(caught, 'bank'), { type: 'BANK_DEPOSIT', itemId: 'sea-fig', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'sea-fig')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'sea-fig', quantity: 1 })
 

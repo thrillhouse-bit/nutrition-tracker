@@ -7,7 +7,9 @@ import {
   recordCombatContributions,
 } from '../src/rpg/combatProgression.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
-import { stepCombat } from '../src/rpg/combatAdapter.js'
+import { normalizeCombatMultiplier, stepCombat } from '../src/rpg/combatAdapter.js'
+import { rpgMapById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { createInitialState as createArenaState, spawnThreat } from '../src/game/state.js'
 import { createSpawner } from '../src/spawner.js'
 
@@ -35,10 +37,23 @@ function sessionWithPointBlankThreat() {
 
 function enteredStoryFight() {
   let state = createInitialState()
+  const map = rpgMapById('beacon-overlook')
+  const thessa = map.entities.find((entity) => entity.id === 'thessa')
+  const thessaPath = findWorldPath(map, state.world.position, thessa)
+  expect(thessaPath.length).toBeGreaterThan(0)
+  state = { ...state, world: { ...state.world, position: thessaPath.at(-1) } }
   state = applyEvent(state, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
   state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
+  const shrine = rpgMapById('beacon-overlook').entities.find((entity) => entity.id === 'shrine')
+  const shrinePath = findWorldPath(map, state.world.position, shrine)
+  expect(shrinePath.length).toBeGreaterThan(0)
+  state = { ...state, world: { ...state.world, position: shrinePath.at(-1) } }
   state = applyEvent(state, { type: 'INTERACT', entityId: 'shrine' })
   state = applyEvent(state, { type: 'CHOOSE_PATRON', godId: 'apollo' })
+  const exit = rpgMapById('beacon-overlook').exits.find((candidate) => candidate.id === 'to-olive-road')
+  const exitPath = findWorldPath(map, state.world.position, exit)
+  expect(exitPath.length).toBeGreaterThan(0)
+  state = { ...state, world: { ...state.world, position: exitPath.at(-1) } }
   state = applyEvent(state, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
   return applyEvent(state, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
 }
@@ -52,6 +67,21 @@ describe('action-derived combat contribution', () => {
     expect(first).toEqual({ damageByStyle: { spearcraft: 32 }, lastOffenseSkill: 'spearcraft', damageTaken: 0, guardedDamageTaken: 0 })
     const second = recordCombatContributions(first, { threats: [threat('c', 40)] }, { threats: [threat('c', 30)] }, {})
     expect(second.damageByStyle).toEqual({ spearcraft: 42 })
+  })
+
+  it('preserves canonical XP damage when accessibility tuning reduces live threat health', () => {
+    const before = { threats: [{ id: 'sun-threat', health: 60, maxHealth: 60, progressionHealth: 100 }] }
+    const after = { threats: [{ id: 'sun-threat', health: 30, maxHealth: 60, progressionHealth: 100 }] }
+    expect(observedThreatDamage(before, after)).toBe(50)
+    expect(observedThreatDamage(before, { threats: [] })).toBe(100)
+  })
+
+  it('fails subnormal and invalid encounter multipliers closed to canonical combat', () => {
+    expect(normalizeCombatMultiplier(0.05)).toBe(0.05)
+    expect(normalizeCombatMultiplier(0.09)).toBe(0.09)
+    for (const invalid of [0, 0.049, -1, NaN, Infinity, 1.01, '0.5']) {
+      expect(normalizeCombatMultiplier(invalid)).toBe(1)
+    }
   })
 
   it('uses explicit divine and ranged inputs before any fallback style', () => {

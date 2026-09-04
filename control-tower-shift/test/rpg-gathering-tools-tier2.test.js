@@ -8,6 +8,7 @@ import {
   resourceNodeKey,
 } from '../src/rpg/resources.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { rpgMapById } from '../src/rpg/registry.js'
 
 const COPPER_SEAM_KEY = resourceNodeKey('beacon-overlook', 'copper-seam')
 const THYME_KEY = resourceNodeKey('beacon-overlook', 'wild-thyme')
@@ -41,6 +42,7 @@ function stateWithCarried(itemIds) {
   }
   return { ...initial, inventory }
 }
+function atResource(state, entityId) { const map = rpgMapById('beacon-overlook'); const entity = map.entities.find((candidate) => candidate.id === entityId); return { ...state, world: { ...state.world, regionId: map.region, mapId: map.id, spawnId: map.spawn.id, position: { x: entity.x, y: entity.y } } } }
 
 describe('gathering tool items and recipes — tier 2', () => {
   it('registers iron-quarry-pick and iron-herb-sickle with the exact toolBonus contract', () => {
@@ -133,7 +135,7 @@ describe('gathering tool items and recipes — tier 2', () => {
 
 describe('gather() reducer — tier-2 tool yield bonus', () => {
   it('grants exactly 3 copper-ore (base 1 + tool bonus 2) when iron-quarry-pick is carried', () => {
-    const initial = stateWithCarried('iron-quarry-pick')
+    const initial = atResource(stateWithCarried('iron-quarry-pick'), 'copper-seam')
     expect(itemQuantity(initial.inventory, 'copper-ore')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'copper-seam' })
@@ -146,7 +148,7 @@ describe('gather() reducer — tier-2 tool yield bonus', () => {
   })
 
   it('grants exactly 3 thyme (base 1 + tool bonus 2) when iron-herb-sickle is carried — proves the mechanic is not quarrying-specific', () => {
-    const initial = stateWithCarried('iron-herb-sickle')
+    const initial = atResource(stateWithCarried('iron-herb-sickle'), 'wild-thyme')
     expect(itemQuantity(initial.inventory, 'thyme')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'wild-thyme' })
@@ -158,20 +160,20 @@ describe('gather() reducer — tier-2 tool yield bonus', () => {
   it('grants no bonus when the carried tier-2 tool does not match the gathered skill', () => {
     // iron-herb-sickle only bonuses foraging; gathering the quarrying node
     // while carrying it must yield exactly the base amount.
-    const initial = stateWithCarried('iron-herb-sickle')
+    const initial = atResource(stateWithCarried('iron-herb-sickle'), 'copper-seam')
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'copper-seam' })
     expect(itemQuantity(gathered.inventory, 'copper-ore')).toBe(1)
     expect(gathered.resources.nodes[COPPER_SEAM_KEY]).toEqual(depletedCapacityOneNode(0))
 
     // And the converse: iron-quarry-pick does not bonus foraging.
-    const initialInverse = stateWithCarried('iron-quarry-pick')
+    const initialInverse = atResource(stateWithCarried('iron-quarry-pick'), 'wild-thyme')
     const gatheredInverse = applyEvent(initialInverse, { type: 'GATHER', entityId: 'wild-thyme' })
     expect(itemQuantity(gatheredInverse.inventory, 'thyme')).toBe(1)
     expect(gatheredInverse.resources.nodes[THYME_KEY]).toEqual(depletedCapacityOneNode(0))
   })
 
   it('grants only the tier-2 bonus (not additive) when both tier-1 and tier-2 tools for the same skill are carried', () => {
-    const initial = stateWithCarried(['bronze-quarry-pick', 'iron-quarry-pick'])
+    const initial = atResource(stateWithCarried(['bronze-quarry-pick', 'iron-quarry-pick']), 'copper-seam')
     expect(itemQuantity(initial.inventory, 'copper-ore')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'copper-seam' })
@@ -182,7 +184,7 @@ describe('gather() reducer — tier-2 tool yield bonus', () => {
   })
 
   it('grants only the tier-2 bonus (not additive) for foraging when both bronze and iron sickles are carried', () => {
-    const initial = stateWithCarried(['bronze-herb-sickle', 'iron-herb-sickle'])
+    const initial = atResource(stateWithCarried(['bronze-herb-sickle', 'iron-herb-sickle']), 'wild-thyme')
     expect(itemQuantity(initial.inventory, 'thyme')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'wild-thyme' })

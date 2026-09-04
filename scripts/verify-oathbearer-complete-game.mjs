@@ -3,15 +3,28 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { evidenceArtifactFromGit, releaseEvidenceAttestationFromGit, releaseWorkingTreeFromGit } from './oathbearer-release-evidence.mjs'
+import { readdirSync, statSync } from 'node:fs'
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const root = resolve(scriptDir, '..')
-const contractPath = resolve(root, 'control-tower-shift/full-game-release.json')
+const contractArgument = process.argv.indexOf('--contract')
+if (contractArgument >= 0 && !process.argv.includes('--test-contract')) {
+  throw new Error('--contract is test-only; pass --test-contract for isolated release-gate fixtures')
+}
+const contractPath = contractArgument >= 0
+  ? resolve(root, process.argv[contractArgument + 1] || '')
+  : resolve(root, 'control-tower-shift/full-game-release.json')
 const reportOnly = process.argv.includes('--report')
 const jsonOnly = process.argv.includes('--json')
 
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'))
 const importFromRoot = (path) => import(pathToFileURL(resolve(root, path)).href)
+
+const testFiles = (directory) => readdirSync(directory).flatMap((entry) => {
+  const path = resolve(directory, entry)
+  return statSync(path).isDirectory() ? testFiles(path) : [path]
+}).map((path) => path.slice(root.length + 1))
 
 const [
   progression,
@@ -23,6 +36,8 @@ const [
   act3Content,
   act4Content,
   act5Content,
+  equipment,
+  skillLoopCapabilities,
 ] = await Promise.all([
   importFromRoot('control-tower-shift/src/rpg/progression.js'),
   importFromRoot('control-tower-shift/src/rpg/crafting.js'),
@@ -33,7 +48,49 @@ const [
   importFromRoot('control-tower-shift/src/rpg/act3Content.js'),
   importFromRoot('control-tower-shift/src/rpg/act4Content.js'),
   importFromRoot('control-tower-shift/src/rpg/act5Content.js'),
+  importFromRoot('control-tower-shift/src/rpg/equipment.js'),
+  importFromRoot('control-tower-shift/src/rpg/skillLoopCapabilities.js'),
 ])
+
+const structuredEvidence = contract.evidence?.schemaVersion === 2 ? contract.evidence : null
+const evidenceRecords = (name) => Array.isArray(structuredEvidence?.release?.[name])
+  ? structuredEvidence.release[name]
+  : []
+const validEvidenceFor = (records, evidenceType) => records
+  .map((record) => artifactEvidence(record, evidenceType))
+  .filter(Boolean)
+const skillLoopEvidence = Array.isArray(structuredEvidence?.technical?.completeSkillLoops)
+  ? structuredEvidence.technical.completeSkillLoops
+  : []
+const allEvidenceRecords = [
+  ...skillLoopEvidence,
+  ...Object.values(structuredEvidence?.release || {}).flatMap((records) => Array.isArray(records) ? records : []),
+]
+const evidenceAttestation = releaseEvidenceAttestationFromGit({ root, records: allEvidenceRecords })
+const workingTree = releaseWorkingTreeFromGit({ root })
+const artifactEvidence = (record, evidenceType) => evidenceAttestation.valid
+  ? evidenceArtifactFromGit({ root, record, evidenceType, expectedArtifactCommit: evidenceAttestation.snapshotCommit })
+  : null
+const knownSkillIds = new Set(progression.SKILL_DEFS.map((skill) => skill.id))
+const knownTestPaths = testFiles(resolve(root, 'control-tower-shift/test'))
+const skillLoopIds = skillLoopEvidence.map((record) => record?.skillId).filter((skillId) => typeof skillId === 'string')
+const duplicateSkillLoopIds = [...new Set(skillLoopIds.filter((skillId, index) => skillLoopIds.indexOf(skillId) !== index))]
+const hasDuplicateSkillLoopEvidence = !skillLoopCapabilities.hasNoDuplicateSkillEvidenceRecords(skillLoopEvidence)
+  && duplicateSkillLoopIds.length > 0
+const validSkillLoopIds = new Set((hasDuplicateSkillLoopEvidence ? [] : skillLoopEvidence)
+  .filter((record) => knownSkillIds.has(record?.skillId)
+    && (() => {
+      const artifact = artifactEvidence(record, 'completeSkillLoop')
+      return artifact?.skillId === record.skillId
+        && skillLoopCapabilities.validateCompleteSkillLoopCapability(artifact, { testPaths: knownTestPaths })
+    })())
+  .map((record) => record.skillId))
+
+const usefulEquipmentSlots = Object.values(equipment.equipmentProgressionCatalog())
+  .filter((ladder) => ladder.length >= 3
+    && new Set(ladder.map((entry) => entry.itemId)).size >= 3
+    && ladder.every((entry) => entry.item?.equipmentSlot === entry.slot && Number.isFinite(entry.utility))
+    && ladder.every((entry, index) => index === 0 || entry.utility > ladder[index - 1].utility)).length
 
 const integrity = contentValidation.validateRPGContent()
 const maps = Object.values(registry.REGISTERED_MAPS)
@@ -79,7 +136,7 @@ const delayedConsequences = act5Content.ACT5_ENDING_VARIANTS
 
 const actual = {
   skills: progression.SKILL_DEFS.length,
-  completeSkillLoops: contract.evidence.completeSkillLoops,
+  completeSkillLoops: validSkillLoopIds.size,
   items: Object.keys(crafting.ALL_ITEM_DEFS).length,
   recipes: crafting.RECIPES.length,
   regions: Object.keys(registry.REGISTERED_REGIONS).length,
@@ -97,12 +154,30 @@ const actual = {
   resourceNodes: entities.filter((entity) => entity.kind === 'resource').length,
   merchants: Object.keys(economy.SHOP_DEFS).length,
   banks: entities.filter((entity) => entity.kind === 'bank').length,
-  usefulEquipmentSlots: contract.evidence.usefulEquipmentSlots,
+  usefulEquipmentSlots,
   reactiveChoices,
   delayedConsequences,
 }
 
 const blockers = []
+if (!workingTree.clean) {
+  blockers.push({
+    code: 'WORKING_TREE_DIRTY',
+    metric: 'workingTree',
+    actual: workingTree.dirtyPaths,
+    required: 'HEAD-equivalent tree outside governed quarantine',
+    message: `complete-game verification requires a clean working tree outside governed quarantine: ${workingTree.dirtyPaths.join(', ')}`,
+  })
+}
+if (hasDuplicateSkillLoopEvidence) {
+  blockers.push({
+    code: 'DUPLICATE_SKILL_LOOP_EVIDENCE',
+    metric: 'completeSkillLoops',
+    actual: duplicateSkillLoopIds,
+    required: 'unique skill IDs',
+    message: `duplicate skill-loop evidence: ${duplicateSkillLoopIds.join(', ')}`,
+  })
+}
 for (const [metric, minimum] of Object.entries(contract.minimums)) {
   const value = actual[metric]
   if (!Number.isFinite(value) || value < minimum) {
@@ -136,26 +211,38 @@ if (integrity.summary.warnings > 0) {
 }
 
 const evidenceRequirements = {
-  blindPlaytestCount: (value) => Number.isInteger(value) && value >= 20,
-  mainStoryMedianHours: (value) => Number.isFinite(value) && value >= 35 && value <= 45,
-  substantialSideContentMedianHours: (value) => Number.isFinite(value) && value >= 55 && value <= 75,
-  fullNormalUiPlaythrough: Boolean,
-  accountSaveConflictMatrix: Boolean,
-  tradeEscrowMatrix: Boolean,
-  saveRecoveryMatrix: Boolean,
-  browserAccessibilityMatrix: Boolean,
-  performanceMatrix: Boolean,
-  economySimulation: Boolean,
-  originalityEditorialReview: Boolean,
+  blindPlaytests: (records) => validEvidenceFor(records, 'blindPlaytests').filter((artifact) => Number.isInteger(artifact.measurements.participants) && artifact.measurements.participants > 0).reduce((sum, artifact) => sum + artifact.measurements.participants, 0) >= 20,
+  mainStoryTiming: (records) => validEvidenceFor(records, 'mainStoryTiming').some((artifact) => Number.isInteger(artifact.measurements.sampleCount) && artifact.measurements.sampleCount >= 20 && Number.isFinite(artifact.measurements.medianHours) && artifact.measurements.medianHours >= 35 && artifact.measurements.medianHours <= 45),
+  substantialSideContentTiming: (records) => validEvidenceFor(records, 'substantialSideContentTiming').some((artifact) => Number.isInteger(artifact.measurements.sampleCount) && artifact.measurements.sampleCount >= 20 && Number.isFinite(artifact.measurements.medianHours) && artifact.measurements.medianHours >= 55 && artifact.measurements.medianHours <= 75),
+  fullNormalUiPlaythrough: (records) => validEvidenceFor(records, 'fullNormalUiPlaythrough').some((artifact) => artifact.measurements.completed === true && Number.isInteger(artifact.measurements.completedActs) && artifact.measurements.completedActs >= 5),
+  accountSaveConflictMatrix: (records) => validEvidenceFor(records, 'accountSaveConflictMatrix').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.caseCount) && artifact.measurements.caseCount > 0),
+  tradeEscrowMatrix: (records) => validEvidenceFor(records, 'tradeEscrowMatrix').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.caseCount) && artifact.measurements.caseCount > 0),
+  saveRecoveryMatrix: (records) => validEvidenceFor(records, 'saveRecoveryMatrix').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.caseCount) && artifact.measurements.caseCount > 0),
+  browserAccessibilityMatrix: (records) => validEvidenceFor(records, 'browserAccessibilityMatrix').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.caseCount) && artifact.measurements.caseCount > 0),
+  performanceMatrix: (records) => validEvidenceFor(records, 'performanceMatrix').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.sampleCount) && artifact.measurements.sampleCount > 0),
+  economySimulation: (records) => validEvidenceFor(records, 'economySimulation').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.runCount) && artifact.measurements.runCount > 0),
+  originalityEditorialReview: (records) => validEvidenceFor(records, 'originalityEditorialReview').some((artifact) => artifact.measurements.passed === true && Number.isInteger(artifact.measurements.reviewedRecords) && artifact.measurements.reviewedRecords > 0),
 }
 
+if (!structuredEvidence) {
+  blockers.push({ code: 'EVIDENCE_SCHEMA_INVALID', metric: 'evidence', actual: contract.evidence?.schemaVersion ?? null, required: 2, message: 'evidence must use release-proof schema version 2' })
+}
+if (allEvidenceRecords.length > 0 && !evidenceAttestation.valid) {
+  blockers.push({
+    code: 'EVIDENCE_ATTESTATION_INVALID',
+    metric: 'evidenceAttestation',
+    actual: evidenceAttestation.snapshotCommit,
+    required: 'HEAD^ snapshot with manifest-only final commit',
+    message: 'evidence records must all attest the HEAD^ snapshot and HEAD may change only full-game-release.json',
+  })
+}
 for (const [name, accepts] of Object.entries(evidenceRequirements)) {
-  const value = contract.evidence[name]
-  if (!accepts(value)) {
+  const records = evidenceRecords(name)
+  if (!accepts(records)) {
     blockers.push({
       code: 'EVIDENCE_MISSING',
       metric: name,
-      actual: value,
+      actual: records.length,
       required: true,
       message: `${name}: required release evidence is absent or outside its accepted range`,
     })

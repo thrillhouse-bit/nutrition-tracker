@@ -14,8 +14,9 @@ import {
 } from './craftingLedger.js'
 import { REGIONS, ENEMY_DEFS_BY_ID, combatLevelForSkills, protectedItemCount } from './wilderness.js'
 import { levelForXp, SKILL_DEF_BY_ID } from './progression.js'
-import { craftingAccessDecision, wildernessAccessDecision } from './systemAccess.js'
 import { rpgMapById } from './registry.js'
+import { routeStateForMap } from './routeState.js'
+import { craftingAccessDecision, physicalSystemAccessDecision, wildernessAccessDecision } from './systemAccess.js'
 
 const TABS = Object.freeze([
   { id: 'wilderness', label: 'Wilderness' },
@@ -71,7 +72,19 @@ export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
   const wilderness = state?.wilderness || {}
   const crafting = state?.crafting || {}
   const mapId = state?.world?.mapId
-  const bankAvailable = Boolean(rpgMapById(mapId)?.entities?.some((entity) => entity.kind === 'bank'))
+  const reachableBank = useMemo(() => {
+    const map = rpgMapById(mapId)
+    const position = state?.world?.position
+    if (!map || !position) return null
+    return (map.entities || []).find((entity) => entity.kind === 'bank' && physicalSystemAccessDecision({
+      mapId,
+      position,
+      entityId: entity.id,
+      kind: 'bank',
+      routeStateId: routeStateForMap(state, map),
+    })?.available) || null
+  }, [mapId, state?.world?.position?.x, state?.world?.position?.y, state?.flags])
+  const bankAvailable = Boolean(reachableBank)
   const sourceMode = useBankMaterials && bankAvailable
     ? CRAFTING_SOURCE_MODES.CARRIED_AND_BANK
     : CRAFTING_SOURCE_MODES.CARRIED_ONLY
@@ -111,14 +124,16 @@ export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
   }
   const handleStep = () => dispatch({ type: 'WILDERNESS_STEP' })
   const handleExit = () => dispatch({ type: 'WILDERNESS_EXIT' })
-  const handleOpenStation = (stationId) => {
-    if (!craftingAccessDecision(mapId, stationId)?.available) return
-    dispatch({ type: 'OPEN_CRAFTING', stationId })
-  }
   const handleCloseStation = () => dispatch({ type: 'CLOSE_CRAFTING' })
   const handleCraft = (recipeId) => {
     if (!activeCraftingAccess?.available) return
-    dispatch({ type: 'CRAFT', recipeId, quantity: 1, sourceMode })
+    dispatch({
+      type: 'CRAFT',
+      recipeId,
+      quantity: 1,
+      sourceMode,
+      ...(sourceMode === CRAFTING_SOURCE_MODES.CARRIED_AND_BANK ? { bankEntityId: reachableBank.id } : {}),
+    })
   }
   const handleEngage = () => {
     if (!onEngageEnemy || !wilderness.pendingEnemyId) return
@@ -309,17 +324,16 @@ export default function RPGSystemsPanel({ state, dispatch, onEngageEnemy }) {
                     type="button"
                     className="rsp-btn rsp-btn-secondary"
                     data-station-id={stationId}
-                    disabled={!available}
-                    aria-describedby={!available ? reasonId : undefined}
-                    onClick={() => handleOpenStation(stationId)}
+                    disabled
+                    aria-describedby={reasonId}
                   >
                     {stationLabel(stationId)}
                   </button>
-                  {!available && (
-                    <p id={reasonId} className="rsp-panel-note rsp-access-note" role="status">
-                      {reason}
-                    </p>
-                  )}
+                  <p id={reasonId} className="rsp-panel-note rsp-access-note" role="status">
+                    {available
+                      ? 'Reach this named station in the world and interact with it to begin crafting.'
+                      : reason}
+                  </p>
                 </li>
                 )
               })}

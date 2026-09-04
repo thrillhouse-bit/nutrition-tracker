@@ -115,6 +115,16 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       lane('slag-main-road', 74, ALL_PRESSURE_STATES, [point(130, 382), point(310, 366), point(500, 330), point(710, 300), point(920, 270)]),
       lane('slag-shrine-path', 50, ALL_PRESSURE_STATES, [point(244, 296), point(282, 232), point(318, 172)]),
       lane('slag-dawn-muster', 54, ALL_PRESSURE_STATES, [point(310, 366), point(460, 392), point(540, 382)]),
+      lane('slag-vault-arrival', 74, ALL_PRESSURE_STATES, [point(160, 160), point(244, 296), point(310, 366)]),
+      // The relief road turns here into the Dawn Muster's deliberation space.
+      // Keep the authored route continuous through the narrow turn so its
+      // state-lane clearance cannot strand the refugee-camp arrival.
+      lane('slag-mortal-draft-aisle', 54, ALL_PRESSURE_STATES, [point(500, 330), point(500, 370), point(540, 382)]),
+      // The quartermaster and muster strongbox are civic services on the
+      // Dawn Muster route, so they need a real pressure-safe approach rather
+      // than only being visible beside the road.
+      lane('slag-muster-services', 72, ALL_PRESSURE_STATES, [point(540, 382), point(560, 410), point(610, 390)]),
+      lane('slag-cinder-plot-spur', 76, ALL_PRESSURE_STATES, [point(130, 382), point(200, 470)]),
     ],
     decor: [
       { id: 'slag-column', kind: 'column', x: 520, y: 126 }, { id: 'slag-brazier-1', kind: 'brazier', x: 212, y: 190 },
@@ -140,6 +150,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       { id: 'pressure-valve-3', kind: 'pressure-valve', x: 662, y: 350, name: 'Lane III Pressure Valve', label: 'Cycle lane-three pressure' },
       { id: 'foundry-charred-ember', kind: 'resource', x: 240, y: 380, name: 'Lawful Furnace Embers', label: 'Gather a charred ember from the cooled furnace', skillId: 'foraging', itemId: 'charred-ember', level: 20, xp: 36 },
       { id: 'bronze-foundry-forge', kind: 'station', stationId: 'bronze-forge', x: 720, y: 380, name: 'Bronze Foundry Forge', label: 'Work metal at the foundry forge' },
+      { id: 'bronze-foundry-kiln', kind: 'station', stationId: 'kiln', x: 600, y: 400, name: 'Bronze Foundry Kiln', label: 'Fire clay in the Bronze Foundry kiln' },
     ],
     exits: [
       { id: 'foundry-to-slag-road', x: 38, y: 270, toMapId: 'slag-road', spawnId: 'from-foundry', returnSpawnId: 'from-slag-road', kind: 'foot', label: 'Return to the Slag Road', gate: [] },
@@ -155,6 +166,11 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       lane('pressure-lane-1', 52, ALL_PRESSURE_STATES, [point(38, 270), point(230, 274), point(390, 274), point(480, 274)]),
       lane('pressure-lane-2', 52, ALL_PRESSURE_STATES, [point(480, 274), point(570, 274), point(730, 274), point(922, 270)]),
       lane('pressure-lane-3', 52, ALL_PRESSURE_STATES, [point(298, 350), point(480, 402), point(662, 350)]),
+      lane('pressure-production-crossing', 74, ALL_PRESSURE_STATES, [point(480, 274), point(480, 402), point(662, 350)]),
+      // The cooled apron is accessible in every pressure mode, linking the
+      // production route to the two player-facing craft stations.
+      lane('pressure-forge-apron', 52, ALL_PRESSURE_STATES, [point(662, 350), point(600, 400), point(720, 380)]),
+      lane('pressure-cooled-ember-apron', 72, ALL_PRESSURE_STATES, [point(230, 274), point(240, 340)], 'Reach the cooled furnace embers from the foundry approach'),
     ],
     decor: [
       { id: 'foundry-furnace-1', kind: 'brazier', x: 250, y: 148 }, { id: 'foundry-furnace-2', kind: 'brazier', x: 710, y: 148 },
@@ -169,7 +185,9 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
     spawns: {
       'from-foundry': spawn('from-foundry', 72, 270, 0),
       'from-vault': spawn('from-vault', 886, 270, Math.PI),
-      'name-press-relief': spawn('name-press-relief', 480, 402, -Math.PI / 2),
+      // Combat recovery must return on—not beside—the all-pressure relief
+      // floor so the first normal MOVE is valid in every pressure state.
+      'name-press-relief': spawn('name-press-relief', 480, 376, -Math.PI / 2),
     },
     entities: [
       { id: 'heat-routing-floor', kind: 'marker', x: 480, y: 318, name: 'Heat-Routing Floor', label: 'Read the heat-routing floor' },
@@ -194,6 +212,8 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       lane('press-main-floor', 72, ALL_PRESSURE_STATES, [point(38, 270), point(240, 274), point(480, 242), point(720, 274), point(922, 270)]),
       lane('press-relief-floor', 56, ALL_PRESSURE_STATES, [point(326, 342), point(480, 376), point(634, 342)]),
       lane('press-die-aisle', 48, ALL_PRESSURE_STATES, [point(480, 242), point(480, 164)]),
+      lane('press-production-crossing', 74, ALL_PRESSURE_STATES, [point(480, 242), point(480, 376)]),
+      lane('press-iron-aisle', 80, ALL_PRESSURE_STATES, [point(720, 274), point(760, 400)]),
     ],
     decor: [
       { id: 'press-brazier-1', kind: 'brazier', x: 286, y: 188 }, { id: 'press-brazier-2', kind: 'brazier', x: 674, y: 188 },
@@ -247,6 +267,9 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       lane('vault-anchor-gallery', 50, ALL_PRESSURE_STATES, [point(270, 184), point(402, 164), point(558, 164), point(690, 184)]),
       lane('vault-side-loop', 48, ALL_PRESSURE_STATES, [point(296, 402), point(348, 420), point(414, 422)]),
       lane('vault-witness-cells', 52, ALL_PRESSURE_STATES, [point(566, 342), point(646, 388), point(712, 358), point(770, 326)]),
+      lane('vault-anchor-access', 74, ALL_PRESSURE_STATES, [point(380, 250), point(402, 164), point(270, 184), point(558, 164), point(690, 184)]),
+      lane('vault-side-access', 74, ALL_PRESSURE_STATES, [point(480, 408), point(414, 422), point(348, 420), point(296, 402), point(250, 382), point(214, 344), point(414, 360), point(380, 250)]),
+      lane('vault-witness-access', 74, ALL_PRESSURE_STATES, [point(580, 250), point(566, 342), point(646, 388), point(712, 358), point(770, 326)]),
     ],
     decor: [
       { id: 'vault-chain-1', kind: 'ruin', x: 312, y: 128 }, { id: 'vault-chain-2', kind: 'ruin', x: 648, y: 128 },
@@ -280,6 +303,7 @@ export const ACT4_RUNTIME_MAPS = deepFreeze({
       lane('constellation-main', 78, ALL_PRESSURE_STATES, [point(38, 270), point(240, 272), point(420, 270), point(574, 270), point(760, 270)]),
       lane('constellation-post-boss', 56, ALL_PRESSURE_STATES, [point(480, 402), point(520, 340), point(574, 270)]),
       lane('constellation-firmament-view', 48, ALL_PRESSURE_STATES, [point(420, 270), point(450, 208), point(480, 150)]),
+      lane('constellation-return-path', 74, ALL_PRESSURE_STATES, [point(480, 402), point(520, 340), point(574, 270)]),
     ],
     decor: [
       { id: 'constellation-brazier-1', kind: 'brazier', x: 360, y: 170 }, { id: 'constellation-brazier-2', kind: 'brazier', x: 660, y: 210 },

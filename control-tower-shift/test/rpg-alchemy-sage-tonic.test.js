@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALL_ITEM_DEFS, RECIPES } from '../src/rpg/crafting.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
 import { consumableEffect } from '../src/rpg/itemEffects.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem, xpForLevel } from '../src/rpg/progression.js'
 import { rpgMapById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
@@ -33,6 +34,26 @@ function atMap(state, mapId, position) {
       facing: map.spawn.facing || 0,
     },
   }
+}
+
+// Physical system access requires the concrete station/shop entity on the
+// current map and a protagonist standing beside it. Reposition west of the
+// entity (validated reachable) and open through the reducer so the following
+// CRAFT/SHOP_* events carry real physical authority.
+function openCraftingNear(state, entityId, stationId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  return applyEvent(near, { type: 'OPEN_CRAFTING', stationId, entityId })
+}
+
+function openShopNear(state, entityId, shopId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  return applyEvent(near, { type: 'OPEN_SHOP', shopId, entityId })
 }
 
 function alchemyState(level) {
@@ -84,7 +105,7 @@ describe('CRAFT reducer — distilling a sage tonic', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = openCraftingNear(state, 'beacon-alchemy-bench', 'alchemy-lab')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-tonic', quantity: 1 })
     expect(crafted.crafting.lastResult).toMatchObject({ ok: false, reason: 'level_too_low' })
     expect(itemQuantity(crafted.inventory, 'sage-tonic')).toBe(0)
@@ -92,7 +113,7 @@ describe('CRAFT reducer — distilling a sage tonic', () => {
 
   it('refuses to craft without both ingredients carried', () => {
     let state = atMap(alchemyState(20), 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = openCraftingNear(state, 'beacon-alchemy-bench', 'alchemy-lab')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-tonic', quantity: 1 })
     expect(crafted.crafting.lastResult.ok).toBe(false)
     expect(itemQuantity(crafted.inventory, 'sage-tonic')).toBe(0)
@@ -108,7 +129,7 @@ describe('CRAFT reducer — distilling a sage tonic', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = openCraftingNear(state, 'beacon-alchemy-bench', 'alchemy-lab')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-tonic', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1, xpAwarded: 70 })
     expect(itemQuantity(state.inventory, 'dried-herbs')).toBe(0)
@@ -122,7 +143,7 @@ describe('sage-tonic economy and consumable interaction', () => {
   it('lets Eirene sell sage-tonic at Wheat Village, alongside herbal-salve', () => {
     let state = { ...alchemyState(20), inventory: { ...alchemyState(20).inventory, currency: 500 } }
     state = atMap(state, 'wheat-village')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'wheat-village-exchange' })
+    state = openShopNear(state, 'eirene-household-steward', 'wheat-village-exchange')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'sage-tonic', quantity: 1, transactionId: 'alchemy:buy-sage-tonic' })
     expect(itemQuantity(bought.inventory, 'sage-tonic')).toBe(1)
 
@@ -141,7 +162,7 @@ describe('sage-tonic economy and consumable interaction', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = openCraftingNear(state, 'beacon-alchemy-bench', 'alchemy-lab')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-tonic', quantity: 1 })
     expect(itemQuantity(state.inventory, 'sage-tonic')).toBe(1)
 

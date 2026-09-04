@@ -10,6 +10,7 @@ import {
   resourceNodeKey,
 } from '../src/rpg/resources.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 const FALLOW_FIELD_ID = 'steward-fallow-field'
 const RESTORED_FLAG = 'steward:restored:beacon-overlook:steward-fallow-field'
@@ -34,7 +35,33 @@ function depletedCapacityOneNode(tick = 0) {
 function stateWithCarried(itemId, quantity = 1) {
   const initial = createInitialState()
   const { inventory } = addInventoryItem(initial.inventory, itemId, quantity, ALL_ITEM_DEFS)
-  return { ...initial, inventory }
+  const map = rpgMapById('beacon-overlook')
+  const field = map.entities.find((candidate) => candidate.id === FALLOW_FIELD_ID)
+  return { ...initial, inventory, world: { ...initial.world, regionId: map.region, mapId: map.id, spawnId: map.spawn.id, position: { x: field.x, y: field.y } } }
+}
+
+// Physical system access requires the concrete shop/bank entity on the current
+// map and a protagonist standing beside it. Resolve the matching entity for the
+// map the caller already set, reposition west of it (validated reachable), and
+// open through the reducer so later SHOP_*/BANK_* events carry real authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isShop ? candidate.kind === 'shop' && candidate.shopId === systemId : candidate.kind === 'bank')
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  const payload = isShop ? { shopId: systemId } : {}
+  const type = isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
+function moveNearEntity(state, entityId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  expect(endpoint, `${state.world.mapId}:${entityId}`).toBeTruthy()
+  expect(Math.hypot(endpoint.x - entity.x, endpoint.y - entity.y)).toBeLessThan(56)
+  return moveAlongWorldPath(state, endpoint)
 }
 
 function restoredState() {
@@ -227,7 +254,7 @@ describe('fallow field economy interaction', () => {
     const caught = applyEvent(restored, { type: 'GATHER', entityId: FALLOW_FIELD_ID })
     expect(itemQuantity(caught.inventory, 'barley-sheaf')).toBe(1)
 
-    const deposited = applyEvent(caught, { type: 'BANK_DEPOSIT', itemId: 'barley-sheaf', quantity: 1 })
+    const deposited = applyEvent(systemOpenNear(caught, 'bank'), { type: 'BANK_DEPOSIT', itemId: 'barley-sheaf', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'barley-sheaf')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'barley-sheaf', quantity: 1 })
 
@@ -237,17 +264,19 @@ describe('fallow field economy interaction', () => {
 
   it('lets Myrrine sell compost and buy back barley-sheaf, closing the restore-then-tend economy loop', () => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 100 } }
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'compost', quantity: 2, transactionId: 'ui:buy:compost:1' })
     expect(itemQuantity(bought.inventory, 'compost')).toBe(2)
     expect(bought.inventory.currency).toBeLessThan(100)
 
-    const restored = applyEvent(bought, { type: 'RESTORE_LAND', entityId: FALLOW_FIELD_ID })
+    // Buying compost does not grant remote authority over the field.
+    expect(applyEvent(bought, { type: 'RESTORE_LAND', entityId: FALLOW_FIELD_ID })).toBe(bought)
+    const restored = applyEvent(moveNearEntity(bought, FALLOW_FIELD_ID), { type: 'RESTORE_LAND', entityId: FALLOW_FIELD_ID })
     expect(restored.flags[RESTORED_FLAG]).toBe(true)
     const gathered = applyEvent(restored, { type: 'GATHER', entityId: FALLOW_FIELD_ID })
     expect(itemQuantity(gathered.inventory, 'barley-sheaf')).toBe(1)
 
-    const reopened = applyEvent(gathered, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    const reopened = systemOpenNear(gathered, 'shop', 'beacon-provisioner')
     const sold = applyEvent(reopened, { type: 'SHOP_SELL', itemId: 'barley-sheaf', quantity: 1, transactionId: 'ui:sell:sheaf:1' })
     expect(itemQuantity(sold.inventory, 'barley-sheaf')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(gathered.inventory.currency)

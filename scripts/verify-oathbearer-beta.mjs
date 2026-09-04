@@ -8,6 +8,8 @@ const root = process.cwd()
 const allowUntracked = process.argv.includes('--allow-untracked')
 const failures = []
 const warnings = []
+const GOVERNED_QUARANTINE_MANIFEST = 'CLAUDE-CONTINUOUS-CONTENT-EXECUTION.md'
+const GOVERNED_QUARANTINE_ARTIFACT_PREFIX = 'control-tower-shift/artifacts/hermes-dialogue/'
 
 function requireFile(path) {
   if (!existsSync(join(root, path))) failures.push(`missing ${path}`)
@@ -50,13 +52,16 @@ const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 if (!packageJson.scripts?.['test:oathbearer']) failures.push('package.json is missing test:oathbearer')
 if (!packageJson.scripts?.['verify:oathbearer']) failures.push('package.json is missing verify:oathbearer')
 
-requireText('control-tower-shift/src/GameGate.jsx', /#control-tower-rpg/, 'the exact Oathbearer hash route')
+requireText('control-tower-shift/src/GameGate.jsx', /#control-tower-rpg/, 'the exact Aegean Frontier hash route')
 requireText('render.yaml', /runtime:\s*docker/, 'the Docker runtime')
 requireText('render.yaml', /healthCheckPath:\s*\/api\/health/, 'the production health check')
 
 const duplicates = []
 walk(join(root, 'control-tower-shift'), (path) => {
-  if (/ (?:2|copy)\.[^/]+$/i.test(path)) duplicates.push(relative(root, path))
+  const relativePath = relative(root, path).replaceAll('\\', '/')
+  const governedQuarantine = relativePath === GOVERNED_QUARANTINE_MANIFEST
+    || relativePath.startsWith(GOVERNED_QUARANTINE_ARTIFACT_PREFIX)
+  if (!governedQuarantine && / (?:2|copy)\.[^/]+$/i.test(path)) duplicates.push(relativePath)
 })
 if (duplicates.length) failures.push(`stale duplicate files: ${duplicates.join(', ')}`)
 
@@ -74,8 +79,8 @@ for (const warning of warnings) console.warn(`WARN ${warning}`)
 for (const failure of failures) console.error(`FAIL ${failure}`)
 
 if (failures.length) {
-  console.error(`Oathbearer beta verification failed (${failures.length} issue${failures.length === 1 ? '' : 's'}).`)
+  console.error(`Aegean Frontier vertical-slice preview verification failed (${failures.length} issue${failures.length === 1 ? '' : 's'}).`)
   process.exit(1)
 }
 
-console.log(`Oathbearer beta release surface verified${allowUntracked ? ' (pre-commit mode)' : ''}.`)
+console.log(`Aegean Frontier vertical-slice preview surface verified${allowUntracked ? ' (pre-commit mode)' : ''}.`)

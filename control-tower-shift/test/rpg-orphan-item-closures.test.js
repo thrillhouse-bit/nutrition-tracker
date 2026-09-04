@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_ITEM_DEFS, RECIPES } from '../src/rpg/crafting.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem, xpForLevel } from '../src/rpg/progression.js'
 import { rpgMapById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
@@ -38,6 +39,25 @@ function atMap(state, mapId, position) {
   }
 }
 
+// Physical system access requires the concrete station/shop entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/SHOP_* events carry
+// real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : candidate.kind === 'shop' && candidate.shopId === systemId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isStation ? { stationId: systemId } : { shopId: systemId }
+  const type = isStation ? 'OPEN_CRAFTING' : 'OPEN_SHOP'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function skillState(skillId, level) {
   const base = createInitialState()
   return {
@@ -68,7 +88,7 @@ describe('copper-wire (Bronzework)', () => {
     const base = skillState('bronzework', 3)
     const withOre = { ...base, inventory: addInventoryItem(base.inventory, 'copper-ore', 2, ALL_ITEM_DEFS).inventory }
     let state = atMap(withOre, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    state = systemOpenNear(state, 'station', 'bronze-forge')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'copper-bar', quantity: 1 })
     expect(itemQuantity(state.inventory, 'copper-bar')).toBe(1)
 
@@ -79,7 +99,7 @@ describe('copper-wire (Bronzework)', () => {
     expect(itemQuantity(wired.inventory, 'copper-bar')).toBe(0)
 
     wired = atMap(wired, 'slag-road')
-    wired = applyEvent(wired, { type: 'OPEN_SHOP', shopId: 'forge-march-quartermaster' })
+    wired = systemOpenNear(wired, 'shop', 'forge-march-quartermaster')
     const sold = applyEvent(wired, { type: 'SHOP_SELL', itemId: 'copper-wire', quantity: 1, transactionId: 'orphan:sell-wire' })
     expect(itemQuantity(sold.inventory, 'copper-wire')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(0)
@@ -99,8 +119,8 @@ describe('olive-figurehead (Carpentry)', () => {
   it('lets a real player split an olive plank, carve a figurehead, and sell it to Thaleia at Pelagos Harbor', () => {
     const base = skillState('carpentry', 2)
     const withLogs = { ...base, inventory: addInventoryItem(base.inventory, 'olive-log', 2, ALL_ITEM_DEFS).inventory }
-    let state = atMap(withLogs, 'olive-road')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'woodwork-bench' })
+    let state = atMap(withLogs, 'pelagos-harbor')
+    state = systemOpenNear(state, 'station', 'woodwork-bench')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'olive-plank', quantity: 1 })
     expect(itemQuantity(state.inventory, 'olive-plank')).toBe(1)
 
@@ -110,7 +130,7 @@ describe('olive-figurehead (Carpentry)', () => {
     expect(itemQuantity(carved.inventory, 'olive-plank')).toBe(0)
 
     carved = atMap(carved, 'pelagos-harbor')
-    carved = applyEvent(carved, { type: 'OPEN_SHOP', shopId: 'pelagos-chandler' })
+    carved = systemOpenNear(carved, 'shop', 'pelagos-chandler')
     const sold = applyEvent(carved, { type: 'SHOP_SELL', itemId: 'olive-figurehead', quantity: 1, transactionId: 'orphan:sell-figurehead' })
     expect(itemQuantity(sold.inventory, 'olive-figurehead')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(0)
@@ -127,11 +147,24 @@ describe('woven-tape (Weaving)', () => {
     })
   })
 
+  it('keeps the restored Covenant Loom physically reachable from every Silent Loom spawn in every light state', () => {
+    const map = rpgMapById('silent-loom')
+    const loom = map.entities.find((entity) => entity.id === 'restored-covenant-loom')
+
+    for (const routeStateId of ['shadow', 'sun', 'moon']) {
+      for (const spawn of Object.values(map.spawns)) {
+        const path = findWorldPath(map, spawn, loom, { routeStateId })
+        expect(path.length, `${spawn.id}@${routeStateId}`).toBeGreaterThan(0)
+        expect(Math.hypot(path.at(-1).x - loom.x, path.at(-1).y - loom.y), `${spawn.id}@${routeStateId}`).toBeLessThan(56)
+      }
+    }
+  })
+
   it('lets a real player ret flax to fiber, weave it into tape, and sell it to Asteria at Nyx Foothold — reusing the same narrative-gated Silent Loom every other Weaving recipe already depends on', () => {
     const base = skillState('weaving', 2)
     const withThyme = { ...base, inventory: addInventoryItem(base.inventory, 'thyme', 1, ALL_ITEM_DEFS).inventory }
     let state = atMap(withThyme, 'silent-loom')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'loom' })
+    state = systemOpenNear(state, 'station', 'loom')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'flax-fiber', quantity: 1 })
     expect(itemQuantity(state.inventory, 'flax-fiber')).toBe(3)
 
@@ -141,7 +174,7 @@ describe('woven-tape (Weaving)', () => {
     expect(itemQuantity(woven.inventory, 'flax-fiber')).toBe(1)
 
     woven = atMap(woven, 'nyx-foothold')
-    woven = applyEvent(woven, { type: 'OPEN_SHOP', shopId: 'nyx-witness-exchange' })
+    woven = systemOpenNear(woven, 'shop', 'nyx-witness-exchange')
     const sold = applyEvent(woven, { type: 'SHOP_SELL', itemId: 'woven-tape', quantity: 1, transactionId: 'orphan:sell-tape' })
     expect(itemQuantity(sold.inventory, 'woven-tape')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(0)

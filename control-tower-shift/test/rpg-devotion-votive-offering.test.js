@@ -38,6 +38,27 @@ function atMap(state, mapId, position) {
   }
 }
 
+// Physical system access requires the concrete station/shop/bank entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/SHOP_*/BANK_* events
+// carry real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : isShop
+        ? candidate.kind === 'shop' && candidate.shopId === systemId
+        : candidate.kind === 'bank')
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  const payload = isStation ? { stationId: systemId } : isShop ? { shopId: systemId } : {}
+  const type = isStation ? 'OPEN_CRAFTING' : isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 describe('devotion items and recipe', () => {
   it('registers votive-oil and votive-favor', () => {
     expect(ALL_ITEM_DEFS['votive-oil']).toMatchObject({ id: 'votive-oil', name: 'Votive Oil', category: 'material', stackable: false })
@@ -99,7 +120,7 @@ describe('votive-stand access and placement', () => {
 describe('CRAFT reducer — making a votive offering', () => {
   it('refuses to craft without votive-oil carried', () => {
     const state = atMap(createInitialState(), 'beacon-overlook')
-    const open = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'votive-stand' })
+    const open = systemOpenNear(state, 'station', 'votive-stand')
     expect(open.crafting.stationId).toBe('votive-stand')
     const crafted = applyEvent(open, { type: 'CRAFT', recipeId: 'votive-offering', quantity: 1 })
     expect(crafted.crafting.lastResult.ok).toBe(false)
@@ -116,7 +137,7 @@ describe('CRAFT reducer — making a votive offering', () => {
     const base = createInitialState()
     const withOil = { ...base, inventory: addInventoryItem(base.inventory, 'votive-oil', 1, ALL_ITEM_DEFS).inventory }
     let state = atMap(withOil, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'votive-stand' })
+    state = systemOpenNear(state, 'station', 'votive-stand')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'votive-offering', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1, xpAwarded: 15 })
     expect(itemQuantity(state.inventory, 'votive-oil')).toBe(0)
@@ -128,7 +149,7 @@ describe('CRAFT reducer — making a votive offering', () => {
     const base = createInitialState()
     const withOil = { ...base, inventory: addInventoryItem(base.inventory, 'votive-oil', 3, ALL_ITEM_DEFS).inventory }
     let state = atMap(withOil, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'votive-stand' })
+    state = systemOpenNear(state, 'station', 'votive-stand')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'votive-offering', quantity: 3 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 3, xpAwarded: 45 })
     expect(itemQuantity(state.inventory, 'votive-favor')).toBe(3)
@@ -140,25 +161,26 @@ describe('devotion economy and consumable interaction', () => {
   it('lets Myrrine sell votive-oil and buy back votive-favor', () => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 200 } }
     state = atMap(state, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'votive-oil', quantity: 1, transactionId: 'devotion:buy-oil' })
     expect(itemQuantity(bought.inventory, 'votive-oil')).toBe(1)
 
-    let crafted = applyEvent(bought, { type: 'OPEN_CRAFTING', stationId: 'votive-stand' })
+    let crafted = systemOpenNear(bought, 'station', 'votive-stand')
     crafted = applyEvent(crafted, { type: 'CRAFT', recipeId: 'votive-offering', quantity: 1 })
     expect(itemQuantity(crafted.inventory, 'votive-favor')).toBe(1)
 
-    const reopened = applyEvent(crafted, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    const reopened = systemOpenNear(crafted, 'shop', 'beacon-provisioner')
     const sold = applyEvent(reopened, { type: 'SHOP_SELL', itemId: 'votive-favor', quantity: 1, transactionId: 'devotion:sell-favor' })
     expect(itemQuantity(sold.inventory, 'votive-favor')).toBe(0)
-    expect(sold.inventory.currency).toBeGreaterThan(crafted.inventory.currency)
+    expect(sold.inventory.currency).toBe(199)
+    expect(sold.inventory.currency - state.inventory.currency).toBe(-1)
   })
 
   it('lets a crafted votive-favor actually be prepared as a pre-encounter blessing through the real USE_ITEM reducer path', () => {
     const base = createInitialState()
     const withOil = { ...base, inventory: addInventoryItem(base.inventory, 'votive-oil', 1, ALL_ITEM_DEFS).inventory }
     let state = atMap(withOil, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'votive-stand' })
+    state = systemOpenNear(state, 'station', 'votive-stand')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'votive-offering', quantity: 1 })
     expect(itemQuantity(state.inventory, 'votive-favor')).toBe(1)
 

@@ -36,6 +36,20 @@ function atMap(state, mapId) {
   }
 }
 
+// Physical bank access requires the concrete storehouse/granary entity on the
+// current map and a player standing beside it. Position the protagonist just
+// west of the entity (validated reachable) and open the bank through the
+// reducer so subsequent deposits/withdrawals carry real physical authority.
+function openBankAt(state, entityId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const near = {
+    ...state,
+    world: { ...state.world, position: { x: entity.x - 8, y: entity.y } },
+  }
+  return applyEvent(near, { type: 'OPEN_BANK', entityId })
+}
+
 describe('regional bank placement', () => {
   it('places each new bank on its authored map with a stable id, name, and label', () => {
     for (const { mapId, entityId } of NEW_BANKS) {
@@ -91,7 +105,7 @@ describe('regional bank placement', () => {
 })
 
 describe('regional bank reducer integration', () => {
-  it.each(NEW_BANKS)('deposits and withdraws at $mapId without cross-region access', ({ mapId }) => {
+  it.each(NEW_BANKS)('deposits and withdraws at $mapId without cross-region access', ({ mapId, entityId }) => {
     let state = atMap(createInitialState(), mapId)
     state = { ...state, inventory: addInventoryItem(state.inventory, 'copper-ore', 1, ALL_ITEM_DEFS).inventory }
 
@@ -99,6 +113,8 @@ describe('regional bank reducer integration', () => {
     const remote = { ...state, world: { ...state.world, mapId: 'breakwater-road' } }
     expect(applyEvent(remote, { type: 'BANK_DEPOSIT', itemId: 'copper-ore', quantity: 1 })).toBe(remote)
 
+    // The player must stand beside the concrete bank and open it first.
+    state = openBankAt(state, entityId)
     const deposited = applyEvent(state, { type: 'BANK_DEPOSIT', itemId: 'copper-ore', quantity: 1 })
     expect(deposited.inventory.slots.some((entry) => entry.itemId === 'copper-ore')).toBe(false)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'copper-ore', quantity: 1 })
@@ -111,10 +127,12 @@ describe('regional bank reducer integration', () => {
   it('shares one account-wide bank: a deposit at one regional bank is withdrawable at another', () => {
     let state = atMap(createInitialState(), 'wheat-village')
     state = { ...state, inventory: addInventoryItem(state.inventory, 'copper-ore', 1, ALL_ITEM_DEFS).inventory }
+    state = openBankAt(state, 'wheat-village-granary-bank')
     state = applyEvent(state, { type: 'BANK_DEPOSIT', itemId: 'copper-ore', quantity: 1 })
     expect(state.inventory.bank.slots).toContainEqual({ itemId: 'copper-ore', quantity: 1 })
 
     state = atMap(state, 'nyx-foothold')
+    state = openBankAt(state, 'nyx-foothold-bank')
     state = applyEvent(state, { type: 'BANK_WITHDRAW', itemId: 'copper-ore', quantity: 1 })
     expect(state.inventory.slots.some((entry) => entry.itemId === 'copper-ore')).toBe(true)
     expect(state.inventory.bank.slots.some((entry) => entry.itemId === 'copper-ore')).toBe(false)

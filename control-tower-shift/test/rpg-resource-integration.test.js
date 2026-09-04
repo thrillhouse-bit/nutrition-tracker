@@ -8,6 +8,7 @@ import {
 } from '../src/rpg/resources.js'
 import { normalizeState } from '../src/rpg/save.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { rpgMapById } from '../src/rpg/registry.js'
 
 const THYME_NODE_KEY = resourceNodeKey('beacon-overlook', 'wild-thyme')
 
@@ -16,10 +17,11 @@ function itemQuantity(inventory, itemId) {
     .filter((entry) => entry.itemId === itemId)
     .reduce((total, entry) => total + entry.quantity, 0)
 }
+function atThyme(state) { const map = rpgMapById('beacon-overlook'); const entity = map.entities.find((candidate) => candidate.id === 'wild-thyme'); return { ...state, world: { ...state.world, regionId: map.region, mapId: map.id, spawnId: map.spawn.id, position: { x: entity.x, y: entity.y } } } }
 
 describe('resource-node reducer integration', () => {
   it('depletes the authored node and awards its item and XP exactly once', () => {
-    const initial = createInitialState()
+    const initial = atThyme(createInitialState())
     expect(initial.resources).toEqual({ version: RESOURCE_NODE_STATE_VERSION, nodes: {} })
     expect(itemQuantity(initial.inventory, 'thyme')).toBe(0)
     expect(initial.progression.skills.foraging.xp).toBe(0)
@@ -45,7 +47,7 @@ describe('resource-node reducer integration', () => {
   })
 
   it('does not consume the node or award XP when the complete yield cannot fit', () => {
-    let state = createInitialState()
+    let state = atThyme(createInitialState())
     const fill = addInventoryItem(
       state.inventory,
       'copper-ore',
@@ -64,7 +66,7 @@ describe('resource-node reducer integration', () => {
   })
 
   it('respawns on deterministic TICK time and permits one new exact reward', () => {
-    const initial = createInitialState()
+    const initial = atThyme(createInitialState())
     const depleted = applyEvent(initial, { type: 'GATHER', entityId: 'wild-thyme' })
 
     const beforeBoundary = applyEvent(depleted, { type: 'TICK', n: DEFAULT_RESOURCE_RESPAWN_TICKS - 1 })

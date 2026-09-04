@@ -5,6 +5,7 @@ import { normalizeState } from '../src/rpg/save.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
 import { startWildernessEncounter } from '../src/rpg/combatAdapter.js'
 import { rpgMapById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 
 function atMap(state, mapId) {
   const map = rpgMapById(mapId)
@@ -21,6 +22,32 @@ function atMap(state, mapId) {
   }
 }
 
+// Physical system access requires the concrete station/shop/bank entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/BANK_* events carry
+// real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : candidate.kind === 'bank')
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  const payload = isStation ? { stationId: systemId } : {}
+  const type = isStation ? 'OPEN_CRAFTING' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
+function atNpc(state, npcId) {
+  const map = rpgMapById(state.world.mapId)
+  const npc = map.entities.find((entity) => entity.id === npcId && entity.kind === 'npc')
+  const path = findWorldPath(map, state.world.position, npc)
+  expect(path.length).toBeGreaterThan(0)
+  return { ...state, world: { ...state.world, position: path.at(-1) } }
+}
+
 describe('crafting reducer integration', () => {
   it('crafts through the reducer, awards XP, and preserves extension items on save normalization', () => {
     let state = atMap(createInitialState(), 'bronze-foundry')
@@ -28,7 +55,7 @@ describe('crafting reducer integration', () => {
       ...state,
       inventory: addInventoryItem(state.inventory, 'copper-ore', 2, ALL_ITEM_DEFS).inventory,
     }
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    state = systemOpenNear(state, 'station', 'bronze-forge')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'copper-bar', quantity: 1 })
 
     expect(state.crafting.stationId).toBe('bronze-forge')
@@ -40,7 +67,7 @@ describe('crafting reducer integration', () => {
     const reloaded = normalizeState(JSON.parse(JSON.stringify(state)))
     expect(reloaded.inventory.slots.some((entry) => entry.itemId === 'copper-bar')).toBe(true)
     expect(reloaded.progression.skills.bronzework.xp).toBe(12)
-    expect(reloaded.crafting.stationId).toBe('bronze-forge')
+    expect(reloaded.crafting).toMatchObject({ stationId: null, lastResult: { ok: true, quantity: 1 } })
   })
 
   it('banks and withdraws crafted material without losing its item definition', () => {
@@ -52,6 +79,7 @@ describe('crafting reducer integration', () => {
     const remote = applyEvent(state, { type: 'BANK_DEPOSIT_MATERIALS' })
     expect(remote).toBe(state)
     state = atMap(state, 'beacon-overlook')
+    state = systemOpenNear(state, 'bank')
     state = applyEvent(state, { type: 'BANK_DEPOSIT_MATERIALS' })
     expect(state.inventory.bank.slots).toContainEqual({ itemId: 'copper-bar', quantity: 1 })
     state = applyEvent(state, { type: 'BANK_WITHDRAW', itemId: 'copper-bar', quantity: 1 })
@@ -61,7 +89,7 @@ describe('crafting reducer integration', () => {
 
   it('stores structured crafting failure without consuming materials', () => {
     let state = atMap(createInitialState(), 'bronze-foundry')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    state = systemOpenNear(state, 'station', 'bronze-forge')
     const before = state.inventory
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'copper-bar', quantity: 1 })
     expect(state.crafting.lastResult.reason).toBe('insufficient_materials')
@@ -72,6 +100,13 @@ describe('crafting reducer integration', () => {
 describe('wilderness reducer integration', () => {
   it('builds a deterministic one-enemy arena session from a pending wilderness encounter', () => {
     let state = createInitialState()
+    const shrine = rpgMapById('beacon-overlook').entities.find((entity) => entity.id === 'shrine')
+    state = atNpc(state, 'thessa')
+    state = applyEvent(state, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
+    state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
+    const shrinePath = findWorldPath(rpgMapById('beacon-overlook'), state.world.position, shrine)
+    expect(shrinePath.length).toBeGreaterThan(0)
+    state = { ...state, world: { ...state.world, position: shrinePath.at(-1) } }
     state = applyEvent(state, { type: 'INTERACT', entityId: 'shrine' })
     state = applyEvent(state, { type: 'CHOOSE_PATRON', godId: 'apollo' })
     state = atMap(state, 'olive-road')
@@ -184,6 +219,6 @@ describe('wilderness reducer integration', () => {
     expect(applyEvent(road, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })).toBe(road)
 
     const foundry = atMap(beacon, 'bronze-foundry')
-    expect(applyEvent(foundry, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' }).crafting.stationId).toBe('bronze-forge')
+    expect(systemOpenNear(foundry, 'station', 'bronze-forge').crafting.stationId).toBe('bronze-forge')
   })
 })

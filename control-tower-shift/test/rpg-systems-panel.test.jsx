@@ -171,7 +171,7 @@ describe('RPGSystemsPanel — Crafting tab', () => {
     await click(tab)
   }
 
-  it('offers a stable station chooser derived from recipe station ids; opening dispatches OPEN_CRAFTING', async () => {
+  it('offers a stable station chooser derived from recipe station ids, deferring opening to in-world interaction', async () => {
     const state = atMap(createInitialState(), 'bronze-foundry')
     const dispatch = vi.fn()
     await mount(<RPGSystemsPanel state={state} dispatch={dispatch} />)
@@ -179,13 +179,14 @@ describe('RPGSystemsPanel — Crafting tab', () => {
 
     const stationIds = [...new Set(RECIPES.map((r) => r.stationId))]
     const firstStationId = stationIds[0]
-    const stationRecipe = RECIPES.find((r) => r.stationId === firstStationId)
     const stationBtn = buttons().find((b) => b.dataset.stationId === firstStationId)
     expect(stationBtn).toBeTruthy()
-    expect(stationBtn.disabled).toBe(false)
+    // Opening a station is a physical in-world interaction, not a panel action:
+    // every chooser button stays disabled and the panel never dispatches
+    // OPEN_CRAFTING itself.
+    expect(stationBtn.disabled).toBe(true)
     await click(stationBtn)
-    expect(dispatch).toHaveBeenCalledWith({ type: 'OPEN_CRAFTING', stationId: firstStationId })
-    expect(stationRecipe).toBeTruthy()
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'OPEN_CRAFTING' }))
   })
 
   it('keeps remote hearth and loom stations readable but blocks their dispatch', async () => {
@@ -207,16 +208,21 @@ describe('RPGSystemsPanel — Crafting tab', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('opens the loom only while physically present in the Silent Loom', async () => {
+  it('keeps the loom disabled even while physically at the Silent Loom — opening is an in-world interaction, not a panel action', async () => {
     const state = atMap(createInitialState(), 'silent-loom')
     const dispatch = vi.fn()
     await mount(<RPGSystemsPanel state={state} dispatch={dispatch} />)
     await gotoCraftingTab()
 
     const loom = buttons().find((candidate) => candidate.dataset.stationId === 'loom')
-    expect(loom.disabled).toBe(false)
+    expect(loom.disabled).toBe(true)
+    const reason = document.getElementById(loom.getAttribute('aria-describedby'))
+    expect(reason).toBeTruthy()
+    // Physically present at the authored map, so the chooser invites the player
+    // to reach the named station in the world rather than dispatching remotely.
+    expect(reason.textContent).toContain('Reach this named station')
     await click(loom)
-    expect(dispatch).toHaveBeenCalledWith({ type: 'OPEN_CRAFTING', stationId: 'loom' })
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'OPEN_CRAFTING' }))
   })
 
   it('shows an available recipe as craftable and dispatches CRAFT for quantity 1', async () => {

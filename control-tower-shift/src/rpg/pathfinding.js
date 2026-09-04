@@ -17,7 +17,10 @@ function pointSegmentDistance(point, a, b) {
 
 function isInsideActiveLane(point, map, routeStateId, clearance) {
   const lanes = map.traversalLanes || []
-  if (!routeStateId || !lanes.some((lane) => !lane.stateIds.includes(routeStateId))) return true
+  // A route state constrains movement as soon as the map authors at least one
+  // lane for it. Only maps with no matching lane keep their unconstrained
+  // geometry, preserving static maps and unknown future state IDs.
+  if (!routeStateId || !lanes.some((lane) => lane.stateIds.includes(routeStateId))) return true
   return lanes
     .filter((lane) => lane.stateIds.includes(routeStateId))
     .some((lane) => {
@@ -114,6 +117,15 @@ function segmentIsWalkable(map, a, b, options, gridSize) {
   return true
 }
 
+// Reducer movement uses the same collision and route-state geometry as world
+// pathing.  This deliberately validates the exact segment, rather than merely
+// snapping its endpoints to nearby grid cells: an event cannot step through a
+// wall or across an inactive state lane between two individually valid points.
+export function isWorldPathStepReachable(map, start, end, options = {}) {
+  if (!isWorldPointWalkable(map, start, options) || !isWorldPointWalkable(map, end, options)) return false
+  return segmentIsWalkable(map, start, end, options, options.gridSize ?? PATH_GRID_SIZE)
+}
+
 function smoothPath(map, points, options, gridSize) {
   if (points.length < 3) return points
   const smoothed = [points[0]]
@@ -137,6 +149,12 @@ export function findWorldPath(map, start, goal, options = {}) {
 
   const startKey = cellKey(startCell)
   const goalKey = cellKey(goalCell)
+  // An interaction target can deliberately sit just outside the walkable
+  // lane while remaining within the semantic interaction radius. When its
+  // closest walkable cell is the player's current cell, that is a valid
+  // zero-length approach—not a failed route. Returning the concrete cell
+  // lets reducer-side proximity authorization distinguish it from no path.
+  if (startKey === goalKey) return [grid.point(startCell.col, startCell.row)]
   const open = [{ ...startCell, f: 0 }]
   const cameFrom = new Map()
   const gScore = new Map([[startKey, 0]])
@@ -178,8 +196,13 @@ export function findWorldPath(map, start, goal, options = {}) {
     for (const [dc, dr, cost] of directions) {
       const neighbor = { col: current.col + dc, row: current.row + dr }
       if (neighbor.col < 0 || neighbor.row < 0 || neighbor.col >= grid.cols || neighbor.row >= grid.rows) continue
+      const currentPoint = grid.point(current.col, current.row)
       const neighborPoint = grid.point(neighbor.col, neighbor.row)
       if (!isWorldPointWalkable(map, neighborPoint, options)) continue
+      // Adjacent grid centers can lie on opposite sides of a thin collision
+      // edge. Do not return a route whose individual reducer MOVE step would
+      // correctly reject that crossing.
+      if (!isWorldPathStepReachable(map, currentPoint, neighborPoint, options)) continue
       if (dc && dr) {
         const horizontal = grid.point(current.col + dc, current.row)
         const vertical = grid.point(current.col, current.row + dr)

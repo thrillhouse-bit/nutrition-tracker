@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   AUTHORING_SCHEMA_VERSION,
@@ -109,7 +110,7 @@ describe('complete-game authoring schema', () => {
 })
 
 describe('whole-registry authored-depth report', () => {
-  it('truthfully classifies the Act I+II authoring passes and the Act IV witness conversations while other later records remain legacy', () => {
+  it('locks the truthful current catalog totals and exact legacy record-set fingerprint', () => {
     const report = validateRPGContent()
     const objectiveCount = Object.values(REGISTERED_QUESTS).reduce((total, quest) => total + (quest.objectives || []).length, 0)
     const resourceCount = Object.values(REGISTERED_MAPS).reduce(
@@ -120,20 +121,11 @@ describe('whole-registry authored-depth report', () => {
       (total, map) => total + (map.entities || []).filter((entity) => !['resource', 'shop'].includes(entity.kind)).length,
       0,
     )
-    const expectedTotal = Object.keys(REGISTERED_QUESTS).length
-      + objectiveCount
-      + Object.keys(REGISTERED_CONVERSATIONS).length
-      + Object.keys(REGISTERED_MAPS).length
-      + entityCount
-      + Object.keys(REGISTERED_ENCOUNTERS).length
-      + Object.keys(SHOP_DEFS).length
-      + resourceCount
-
     expect(report.authoredDepth.counts).toEqual({
-      total: expectedTotal,
-      legacy: 224,
+      total: 372,
+      legacy: 225,
       incomplete: 0,
-      releaseReady: 102,
+      releaseReady: 147,
     })
     expect(report.authoredDepth.byKind.quest.total).toBe(Object.keys(REGISTERED_QUESTS).length)
     expect(report.authoredDepth.byKind.objective.total).toBe(objectiveCount)
@@ -145,8 +137,16 @@ describe('whole-registry authored-depth report', () => {
     expect(report.authoredDepth.byKind.entity.total).toBe(entityCount)
 
     const warnings = report.issues.filter((entry) => entry.code === 'LEGACY_AUTHORING_RECORD')
-    expect(warnings).toHaveLength(224)
+    expect(warnings).toHaveLength(225)
     expect(warnings.every((entry) => entry.severity === 'warning')).toBe(true)
+    const legacyRecordIds = report.authoredDepth.records
+      .filter((record) => record.status === 'legacy')
+      .map((record) => `${record.kind}:${record.id}`)
+      .sort()
+    // This exact sorted-set fingerprint deliberately rejects any unreviewed
+    // authoring-status drift while keeping the 225-record baseline legible.
+    expect(createHash('sha256').update(JSON.stringify(legacyRecordIds)).digest('hex'))
+      .toBe('aa956b2adaf82ba8108640b6aadb916465aa27adb13c2efb9d742476b951aaaa')
     expect(report.issues.filter((entry) => entry.code === 'INCOMPLETE_AUTHORING_RECORD')).toEqual([])
     expect(report.summary.errors).toBe(0)
   })

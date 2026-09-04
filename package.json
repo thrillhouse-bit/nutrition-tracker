@@ -17,9 +17,12 @@
     "test": "vitest run",
     "test:oathbearer": "vitest run control-tower-shift",
     "verify:oathbearer": "npm run test:oathbearer && npm run build",
-    "verify:oathbearer:beta": "node scripts/verify-oathbearer-beta.mjs && npm run verify:oathbearer",
+    "verify:oathbearer:vertical-slice": "node scripts/verify-oathbearer-beta.mjs && npm run verify:oathbearer",
+    "verify:oathbearer:beta": "npm run verify:oathbearer:vertical-slice",
     "report:oathbearer:complete": "node scripts/verify-oathbearer-complete-game.mjs --report",
     "verify:oathbearer:complete": "node scripts/verify-oathbearer-complete-game.mjs && npm run verify:oathbearer",
+    "produce:oathbearer:save-recovery-evidence": "node scripts/produce-oathbearer-save-recovery-evidence.mjs --output control-tower-shift/artifacts/save-recovery-matrix.json",
+    "produce:oathbearer:account-conflict-evidence": "node scripts/produce-oathbearer-account-conflict-evidence.mjs --output control-tower-shift/artifacts/account-conflict-matrix.json",
     "test:watch": "vitest"
   },
   "dependencies": {

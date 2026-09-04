@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALL_ITEM_DEFS, RECIPES } from '../src/rpg/crafting.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
 import { consumableEffect } from '../src/rpg/itemEffects.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem, xpForLevel } from '../src/rpg/progression.js'
 import { rpgMapById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
@@ -45,6 +46,28 @@ function alchemyState(level) {
   }
 }
 
+// Physical system access requires the concrete station/shop/bank entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/SHOP_*/BANK_* events
+// carry real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : isShop
+        ? candidate.kind === 'shop' && candidate.shopId === systemId
+        : candidate.kind === 'bank')
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isStation ? { stationId: systemId } : isShop ? { shopId: systemId } : {}
+  const type = isStation ? 'OPEN_CRAFTING' : isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 describe('ambrosia-distillate recipe', () => {
   it('registers the ambrosia-distillate recipe as Alchemy\'s fifth tier, above moly-tonic', () => {
     const recipe = RECIPES.find((candidate) => candidate.id === 'ambrosia-distillate')
@@ -83,7 +106,7 @@ describe('CRAFT reducer — distilling ambrosia', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = systemOpenNear(state, 'station', 'alchemy-lab')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'ambrosia-distillate', quantity: 1 })
     expect(crafted.crafting.lastResult).toMatchObject({ ok: false, reason: 'level_too_low' })
     expect(itemQuantity(crafted.inventory, 'ambrosia-distillate')).toBe(0)
@@ -91,7 +114,7 @@ describe('CRAFT reducer — distilling ambrosia', () => {
 
   it('refuses to craft without both ingredients carried', () => {
     let state = atMap(alchemyState(45), 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = systemOpenNear(state, 'station', 'alchemy-lab')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'ambrosia-distillate', quantity: 1 })
     expect(crafted.crafting.lastResult.ok).toBe(false)
     expect(itemQuantity(crafted.inventory, 'ambrosia-distillate')).toBe(0)
@@ -107,7 +130,7 @@ describe('CRAFT reducer — distilling ambrosia', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = systemOpenNear(state, 'station', 'alchemy-lab')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'ambrosia-distillate', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1, xpAwarded: 160 })
     expect(itemQuantity(state.inventory, 'moly-tonic')).toBe(0)
@@ -121,7 +144,7 @@ describe('ambrosia-distillate economy and full alchemy chain', () => {
   it('lets Asteria sell ambrosia-distillate at Nyx Foothold, above moly-tonic in price', () => {
     let state = { ...alchemyState(45), inventory: { ...alchemyState(45).inventory, currency: 2000 } }
     state = atMap(state, 'nyx-foothold')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'nyx-witness-exchange' })
+    state = systemOpenNear(state, 'shop', 'nyx-witness-exchange')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'ambrosia-distillate', quantity: 1, transactionId: 'alchemy:buy-distillate' })
     expect(itemQuantity(bought.inventory, 'ambrosia-distillate')).toBe(1)
 
@@ -140,7 +163,7 @@ describe('ambrosia-distillate economy and full alchemy chain', () => {
       ).inventory,
     }
     let state = atMap(withRawIngredients, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = systemOpenNear(state, 'station', 'alchemy-lab')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'moly-tonic', quantity: 1 })
     expect(itemQuantity(state.inventory, 'moly-tonic')).toBe(1)
     expect(itemQuantity(state.inventory, 'ambrosia-bloom')).toBe(2)

@@ -276,6 +276,22 @@ describe('Act III seasonal runtime metadata', () => {
     }
   })
 
+  it('keeps every Cup Between Seasons target reachable from every legitimate orchard arrival in harvest', () => {
+    const map = act3RuntimeMapById('winter-orchard')
+    const targets = [
+      'vineyard-between', 'cup-between-seasons-invitation', 'ceremonial-cup', 'seasonal-rite-table',
+    ].map((id) => act3RuntimeEntityById(map.id, id))
+
+    for (const start of Object.values(map.spawns)) {
+      for (const target of targets) {
+        const path = findWorldPath(map, start, target, { routeStateId: 'harvest' })
+        expect(path.length, `harvest:${start.id}→${target.id}`).toBeGreaterThan(0)
+        expect(path.every((point) => isWorldPointWalkable(map, point, { routeStateId: 'harvest' })), `harvest:${start.id}→${target.id} walkability`).toBe(true)
+        expect(Math.hypot(path.at(-1).x - target.x, path.at(-1).y - target.y), `harvest:${start.id}→${target.id} endpoint`).toBeLessThan(56)
+      }
+    }
+  })
+
   it('leaves Kallias on walkable terrain after either altar changes the active season', () => {
     const map = act3RuntimeMapById('winter-orchard')
     const altars = map.entities.filter((item) => item.kind === 'season-altar')
@@ -301,6 +317,29 @@ describe('Act III seasonal runtime metadata', () => {
             `${stateId}:${start.id}→${target.id}`,
           ).toBeLessThan(56)
         }
+      }
+    }
+  })
+
+  it('keeps the ordered Kore Sanctuary seals physically reachable from every arrival in either season', () => {
+    const map = act3RuntimeMapById('kore-sanctuary')
+    const seals = ['pomegranate-seal-1', 'pomegranate-seal-2', 'pomegranate-seal-3', 'pomegranate-seal-4']
+      .map((id) => act3RuntimeEntityById(map.id, id))
+    for (const stateId of ['winter', 'harvest']) {
+      for (const start of Object.values(map.spawns)) {
+        for (const seal of seals) {
+          expect(interactionEndpointDistance(map, start, seal, stateId), `${stateId}:${start.id}→${seal.id}`).toBeLessThan(56)
+        }
+      }
+    }
+  })
+
+  it('keeps the Asphodel Return Covenant table physically reachable from both arrivals in either season', () => {
+    const map = act3RuntimeMapById('asphodel-gate')
+    const table = act3RuntimeEntityById(map.id, 'return-covenant-table')
+    for (const stateId of ['winter', 'harvest']) {
+      for (const start of Object.values(map.spawns)) {
+        expect(interactionEndpointDistance(map, start, table, stateId), `${stateId}:${start.id}→${table.id}`).toBeLessThan(56)
       }
     }
   })

@@ -65,6 +65,38 @@ export function createEquippedArena(rpgState, patron, levelIndex = 0) {
   }
 }
 
+const MIN_COMBAT_MULTIPLIER = 0.05
+
+// Exported as the encounter-data boundary, not a player/save setting. Values
+// outside this narrow reduction range fail closed to the canonical profile.
+export function normalizeCombatMultiplier(value) {
+  return Number.isFinite(value) && value >= MIN_COMBAT_MULTIPLIER && value <= 1
+    ? value
+    : 1
+}
+
+// Encounter-local onboarding tuning belongs to authored encounter data rather
+// than the shared arena config. Invalid/missing values fail safely to the
+// canonical combat profile, so no save or caller can amplify an encounter.
+function applyEncounterCombatTuning(arena, tuning, patron) {
+  const threatDamageMultiplier = normalizeCombatMultiplier(tuning?.threatDamageMultiplier)
+  const threatSpeedMultiplier = normalizeCombatMultiplier(tuning?.threatSpeedMultiplier)
+  const threatHealthMultiplier = normalizeCombatMultiplier(tuning?.threatHealthMultiplier)
+  const patronThreatDamageMultiplier = normalizeCombatMultiplier(tuning?.patronThreatDamageMultipliers?.[patron])
+  if (threatDamageMultiplier === 1 && threatSpeedMultiplier === 1 && threatHealthMultiplier === 1 && patronThreatDamageMultiplier === 1) return arena
+  return {
+    ...arena,
+    config: {
+      ...arena.config,
+      threatDamage: arena.config.threatDamage * threatDamageMultiplier * patronThreatDamageMultiplier,
+      threatBaseSpeed: arena.config.threatBaseSpeed * threatSpeedMultiplier,
+      // This can only reduce an authored encounter’s per-threat health; it
+      // never allows save data or callers to amplify a combat profile.
+      threatHealthMultiplier,
+    },
+  }
+}
+
 // Pure encounter-domain action. Inventory settlement remains reducer-owned,
 // while this validates health/session/duplicate boundaries and applies only the
 // deterministic arena benefit accepted for the same use id.
@@ -144,7 +176,11 @@ export function startEncounter(rpgState, encounterId) {
   // Arena initial state: the chosen patron's god + the encounter's campaign
   // level. createInitialState starts at level 0; we re-seat it to the authored
   // encounter level so the composition (not wave pacing) is what plays.
-  const arena = createEquippedArena(rpgState, patron, levelIndex)
+  const arena = applyEncounterCombatTuning(
+    createEquippedArena(rpgState, patron, levelIndex),
+    enc.combatTuning,
+    patron,
+  )
   arena.levelIndex = levelIndex
   arena.threatsRemainingInLevel = level ? encounterSize(level) : authoredOrder.length
 
@@ -292,7 +328,10 @@ function stepAuthoredSpawner(session, arena) {
     glyph: spec.glyph,
     behavior: spec.behavior,
     speed: arena.config.threatBaseSpeed * speedMul,
-    health: spec.size * 3,
+    // Combat pacing may lower displayed hit points, but skill progression
+    // remains anchored to this enemy's untuned authored health.
+    health: spec.size * 3 * (arena.config.threatHealthMultiplier || 1),
+    progressionHealth: spec.size * 3,
     monsterType,
   }]
 }
@@ -357,6 +396,7 @@ function applyEliteOverlay(desc, overlay) {
   const sm = overlay.speedMult || 1
   const rm = overlay.radiusMult || 1
   const baseHealth = desc.health || 1
+  const baseProgressionHealth = desc.progressionHealth || baseHealth
   const baseSpeed = desc.speed || 1
   return {
     ...desc,
@@ -364,6 +404,7 @@ function applyEliteOverlay(desc, overlay) {
     radius: (desc.radius || 1) * rm,
     health: baseHealth * hm,
     maxHealth: baseHealth * hm,
+    progressionHealth: baseProgressionHealth * hm,
     speed: baseSpeed * sm,
     damageMult: overlay.damageMult || 1,
     name: overlay.name,

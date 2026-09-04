@@ -24,8 +24,21 @@ function itemQuantity(inventory, itemId) {
     .reduce((total, entry) => total + entry.quantity, 0)
 }
 
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isShop ? candidate.kind === 'shop' && candidate.shopId === systemId : candidate.kind === 'bank')
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isShop ? { shopId: systemId } : {}
+  const type = isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function atMap(state, mapId, position) {
   const map = rpgMapById(mapId)
+  const target = mapId === 'nyx-foothold' ? map.entities.find((candidate) => candidate.id === PLOT_ID) : null
   return {
     ...state,
     world: {
@@ -33,7 +46,7 @@ function atMap(state, mapId, position) {
       regionId: map.region,
       mapId,
       spawnId: map.spawn.id,
-      position: position || { x: map.spawn.x, y: map.spawn.y },
+      position: target ? { x: target.x, y: target.y } : (position || { x: map.spawn.x, y: map.spawn.y }),
       facing: map.spawn.facing || 0,
     },
   }
@@ -176,16 +189,16 @@ describe('shadowed camp plot economy interaction', () => {
   it('lets Asteria sell shadow lantern oil and buy back night forage, closing the fifth-tier economy loop', () => {
     let state = { ...stewardshipState(50), inventory: { ...stewardshipState(50).inventory, currency: 300 } }
     state = atMap(state, 'nyx-foothold', { x: 250, y: 470 })
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'nyx-witness-exchange' })
+    state = systemOpenNear(state, 'shop', 'nyx-witness-exchange')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'shadow-lantern-oil', quantity: 3, transactionId: 'gap:oil' })
     expect(itemQuantity(bought.inventory, 'shadow-lantern-oil')).toBe(3)
 
-    const restored = applyEvent(bought, { type: 'RESTORE_LAND', entityId: PLOT_ID })
+    const restored = applyEvent(atMap(bought, 'nyx-foothold'), { type: 'RESTORE_LAND', entityId: PLOT_ID })
     expect(restored.flags[RESTORED_FLAG]).toBe(true)
     const gathered = applyEvent(restored, { type: 'GATHER', entityId: PLOT_ID })
     expect(itemQuantity(gathered.inventory, 'night-forage')).toBe(1)
 
-    const reopened = applyEvent(gathered, { type: 'OPEN_SHOP', shopId: 'nyx-witness-exchange' })
+    const reopened = systemOpenNear(gathered, 'shop', 'nyx-witness-exchange')
     const sold = applyEvent(reopened, { type: 'SHOP_SELL', itemId: 'night-forage', quantity: 1, transactionId: 'gap:forage' })
     expect(itemQuantity(sold.inventory, 'night-forage')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(gathered.inventory.currency)
@@ -197,7 +210,7 @@ describe('shadowed camp plot economy interaction', () => {
     const caught = applyEvent(state, { type: 'GATHER', entityId: PLOT_ID })
     expect(itemQuantity(caught.inventory, 'night-forage')).toBe(1)
 
-    const deposited = applyEvent(caught, { type: 'BANK_DEPOSIT', itemId: 'night-forage', quantity: 1 })
+    const deposited = applyEvent(systemOpenNear(caught, 'bank'), { type: 'BANK_DEPOSIT', itemId: 'night-forage', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'night-forage')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'night-forage', quantity: 1 })
 

@@ -85,6 +85,15 @@ function authoredEntity({ question, systemsUsed, reward, consequence, recovery, 
   })
 }
 
+const wayfindingRoutePostAuthoring = (origin, destination) => authoredEntity({
+  question: `Can the ${origin} bearing remain a visible, optional route instead of a remote travel command?`,
+  systemsUsed: ['exploration', 'wayfinding'],
+  reward: `The post opens its one authored return bearing to ${destination} after its matching survey is discovered.`,
+  consequence: 'The shortcut remains a player-earned physical route and cannot alter unrelated exits or story progression.',
+  recovery: 'The post validates its exact unlock, map, spawn, route state, and collision-safe endpoint on every use; locked or stale requests do nothing.',
+  originality: 'Uses public-domain Mediterranean route-post and sounding practices; these Chartwright civic route markers are original Oathbearer expression.',
+})
+
 const ACT2_MAP_AUTHORING = deepFreeze({
   'pelagos-harbor': authoredMap({
     question: 'Can a working harbor remain open while sailors, gods, and nereids renegotiate who has authority to permit a crossing?',
@@ -134,6 +143,11 @@ const ACT2_MAP_AUTHORING = deepFreeze({
 })
 
 const ACT2_ENTITY_AUTHORING = deepFreeze({
+  'pelagos-harbor:wayfinding-post-chartwright-hall': wayfindingRoutePostAuthoring('Pelagos harbor', 'Chartwright Hall'),
+  'breakwater-road:wayfinding-post-tide-shelf': wayfindingRoutePostAuthoring('breakwater', 'First Surge shelf'),
+  'nereid-caves:wayfinding-post-enclave-current': wayfindingRoutePostAuthoring('Nereid boundary', 'threshold'),
+  'storm-anchorage:wayfinding-post-weather-lee': wayfindingRoutePostAuthoring('storm anchorage', 'rope-lift lee'),
+  'archive-barge-deck:wayfinding-post-return-course': wayfindingRoutePostAuthoring('archive barge', 'post-Leviathan deck'),
   'pelagos-harbor:melite': authoredEntity({
     question: 'Will Melite trust Kallias to distinguish a harbor welcome from permission to cross the sea?', systemsUsed: ['dialogue', 'questing'],
     reward: 'Her briefing records the meeting and places the surge witness marker.', consequence: 'She directs Kallias to the breakwater and establishes the tide-reading rule.',
@@ -331,6 +345,12 @@ const ACT2_ENTITY_AUTHORING = deepFreeze({
     recovery: 'The launch respects prerequisites and ready state; defeat returns to the authored pre-boss checkpoint with folios intact.',
     originality: 'Uses public-domain sea-monster holds and shipboard arenas; this evidence-preserving boss threshold is original.',
   }),
+  'archive-barge-deck:archive-barge-shipwright': authoredEntity({
+    question: 'Can the archive barge’s working rigging become a visible repair station without turning the recovered covenant route into a remote crafting menu?', systemsUsed: ['crafting', 'inventory', 'shipwright'],
+    reward: 'The shipwright gives authorized vessel-work recipes a concrete, collision-reachable station on the archive route and retains their outputs in inventory.', consequence: 'It closes the later shipwright placement gap while preserving the barge as a working archive rather than a boss-only arena.',
+    recovery: 'Every craft revalidates the station, ingredients, capacity, and any bank source at the moment of use; interrupted work leaves inventory unchanged.', minutes: 2, levelMin: 20, levelMax: 45,
+    originality: 'Uses public-domain Mediterranean shipwright and archive-barge practice; this evidence-route repair station is original Oathbearer design.',
+  }),
   'archive-barge-deck:archive-hippocamp-shoal': authoredEntity({
     question: 'Can the warded shoal reward patient, rare-tier harvest without turning the guarded archive deck into an ordinary fishing spot?', systemsUsed: ['fishing', 'inventory', 'resource-respawn'],
     reward: 'Its single slow-cycling charge awards one hippocamp roe and 135 Fishing XP at the authored level gate.', consequence: 'Hippocamp roe supplies the rare top-tier ingredient reserved for the archive’s warded waters.',
@@ -348,6 +368,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       'from-breakwater': spawn('from-breakwater', 884, 278, Math.PI),
       'from-barge': spawn('from-barge', 474, 470, -Math.PI / 2),
       'post-covenant': spawn('post-covenant', 442, 246, Math.PI / 2),
+      'from-chartwright': spawn('from-chartwright', 150, 430, -Math.PI / 2),
     },
     entities: [
       { id: 'melite', kind: 'npc', x: 232, y: 352, name: 'Melite', label: 'Speak with Melite', conversationId: 'act2-melite-oath-post' },
@@ -360,8 +381,9 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'thaleia-harbor-chandler', kind: 'shop', shopId: 'pelagos-chandler', x: 620, y: 250, name: 'Thaleia', label: 'Trade at the harbor chandlery' },
       { id: 'pelagos-red-mullet-run', kind: 'resource', x: 300, y: 400, name: 'Pelagos Red Mullet Run', label: 'Fish the harbor red mullet run', skillId: 'fishing', itemId: 'red-mullet', level: 15, xp: 27 },
       { id: 'pelagos-storehouse', kind: 'bank', x: 500, y: 300, name: 'Pelagos Storehouse', label: 'Open the Pelagos Storehouse' },
+      { id: 'wayfinding-post-chartwright-hall', kind: 'travel-node', wayfindingShortcutId: 'shortcut:pelagos-chartwright-hall', x: 400, y: 332, name: 'Chartwright Route Post', label: 'Take the surveyed course to Chartwright Hall' },
       {
-        id: 'steward-salt-garden', kind: 'resource', x: 180, y: 420, name: 'Salt-Damaged Garden', label: 'Tend the salt-damaged garden',
+        id: 'steward-salt-garden', kind: 'resource', x: 220, y: 420, name: 'Salt-Damaged Garden', label: 'Tend the salt-damaged garden',
         skillId: 'stewardship', itemId: 'sea-fig', level: 20, xp: 35,
         requiresFlag: 'steward:restored:pelagos-harbor:steward-salt-garden',
         restore: {
@@ -372,6 +394,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       },
     ],
     exits: [
+      { id: 'pelagos-harbor-to-chartwright-hall', x: 150, y: 464, toMapId: 'chartwright-hall', spawnId: 'from-pelagos', returnSpawnId: 'from-chartwright', kind: 'foot', gate: [] },
       { id: 'harbor-to-breakwater', x: 920, y: 278, toMapId: 'breakwater-road', spawnId: 'from-harbor', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
     ],
     collisions: [
@@ -383,6 +406,12 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       lane('harbor-promenade', 76, ACT2_TIDE_ORDER, [point(130, 390), point(300, 350), point(520, 312), point(720, 292), point(920, 278)]),
       lane('harbor-jetty', 58, ACT2_TIDE_ORDER, [point(442, 246), point(460, 348), point(474, 474)]),
       lane('harbor-shrine-steps', 44, ACT2_TIDE_ORDER, [point(300, 350), point(312, 250), point(328, 174)]),
+      lane('harbor-craft-apron', 74, ACT2_TIDE_ORDER, [point(520, 312), point(560, 340), point(740, 340)]),
+      // Ianthe's chart table is a real harbor appointment, not a remote talk
+      // target beyond the craft apron. This short all-tide spur reaches her
+      // berth without changing the adjacent service placements.
+      lane('harbor-chartwright-berth', 68, ACT2_TIDE_ORDER, [point(740, 340), point(800, 382), point(860, 420)]),
+      lane('harbor-salt-garden-spur', 72, ACT2_TIDE_ORDER, [point(150, 430), point(220, 420)]),
     ],
     decor: [
       { id: 'harbor-column-1', kind: 'column', x: 390, y: 126 }, { id: 'harbor-column-2', kind: 'column', x: 520, y: 126 },
@@ -390,7 +419,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'skiff-docks', kind: 'skiff-dock', x: 474, y: 474 },
       { id: 'harbor-amphorae', kind: 'urn', x: 202, y: 450 },
     ],
-    tide: { initialStateId: 'ebb', laneIds: ['harbor-promenade', 'harbor-jetty', 'harbor-shrine-steps'], wellIds: [], skiffNodeIds: [], ropeLiftIds: [] },
+    tide: { initialStateId: 'ebb', laneIds: ['harbor-promenade', 'harbor-jetty', 'harbor-shrine-steps', 'harbor-salt-garden-spur'], wellIds: [], skiffNodeIds: [], ropeLiftIds: [] },
   },
 
   'breakwater-road': {
@@ -408,6 +437,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'tide-well-harbor', kind: 'tide-well', x: 286, y: 292, name: 'Harbor Tide-Well', label: 'Turn the tide toward the harbor' },
       { id: 'tide-well-caves', kind: 'tide-well', x: 692, y: 290, name: 'Cavern Tide-Well', label: 'Turn the tide toward the caves' },
       { id: 'surge-witness', kind: 'marker', x: 478, y: 258, name: 'First Surge', label: 'Witness the tide change' },
+      { id: 'wayfinding-post-tide-shelf', kind: 'travel-node', wayfindingShortcutId: 'shortcut:breakwater-tide-shelf', x: 400, y: 320, name: 'Tide Shelf Route Post', label: 'Take the surveyed bearing to the First Surge shelf' },
     ],
     exits: [
       { id: 'breakwater-to-harbor', x: 38, y: 274, toMapId: 'pelagos-harbor', spawnId: 'from-breakwater', returnSpawnId: 'from-harbor', kind: 'foot', gate: [] },
@@ -424,12 +454,25 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     traversalLanes: [
       lane('dry-causeway', 72, ['ebb', 'crossing'], [point(38, 274), point(250, 238), point(478, 286), point(640, 286), point(700, 250), point(922, 250)]),
       lane('waist-deep-channel', 76, ['crossing', 'surge'], [point(38, 310), point(260, 342), point(478, 354), point(710, 326), point(922, 286)]),
+      // Reciprocal arrivals preserve the current Surge state. These short
+      // entry seams put each dry-side boundary spawn onto the live channel
+      // before its first bounded reducer MOVE.
+      lane('surge-harbor-entry', 56, ['surge'], [point(72, 274), point(60, 310)]),
+      lane('surge-caves-entry', 56, ['surge'], [point(886, 250), point(922, 286)]),
+      // Crossing alone permits a short west-side transfer between the dry
+      // harbor arrival and the waist-deep channel; without this physical
+      // seam, the adjacent grid cells straddle an unwalkable gap.
+      lane('crossing-harbor-connector', 56, ['crossing'], [point(72, 274), point(60, 300)]),
+      lane('tide-shelf-dry-approach', 60, ['ebb', 'crossing'], [point(400, 320), point(478, 286)]),
+      lane('tide-shelf-surge-approach', 60, ['crossing', 'surge'], [point(400, 320), point(478, 354)]),
+      lane('surge-witness-dry-platform', 60, ['ebb', 'crossing'], [point(478, 258), point(478, 286)]),
+      lane('surge-witness-surge-platform', 60, ['crossing', 'surge'], [point(478, 258), point(478, 354)]),
     ],
     decor: [
       { id: 'breakwater-beacon-1', kind: 'brazier', x: 206, y: 194 }, { id: 'breakwater-beacon-2', kind: 'brazier', x: 754, y: 194 },
       { id: 'breakwater-ruin', kind: 'ruin', x: 520, y: 146 }, { id: 'breakwater-marker-stone', kind: 'boundary-stone', x: 478, y: 188 },
     ],
-    tide: { initialStateId: 'ebb', laneIds: ['dry-causeway', 'waist-deep-channel'], wellIds: ['tide-well-harbor', 'tide-well-caves'], skiffNodeIds: [], ropeLiftIds: [] },
+    tide: { initialStateId: 'ebb', laneIds: ['dry-causeway', 'waist-deep-channel', 'crossing-harbor-connector', 'surge-harbor-entry', 'surge-caves-entry'], wellIds: ['tide-well-harbor', 'tide-well-caves'], skiffNodeIds: [], ropeLiftIds: [] },
   },
 
   'nereid-caves': {
@@ -441,9 +484,9 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       'threshold': spawn('threshold', 216, 284, 0),
     },
     entities: [
-      { id: 'nereid-witness-1', kind: 'witness', x: 360, y: 176, name: 'Witness of Arrival', label: 'Release the first witness' },
-      { id: 'nereid-witness-2', kind: 'witness', x: 520, y: 340, name: 'Witness of Passage', label: 'Release the second witness' },
-      { id: 'nereid-witness-3', kind: 'witness', x: 690, y: 166, name: 'Witness of Return', label: 'Release the third witness' },
+      { id: 'nereid-witness-1', kind: 'witness', x: 330, y: 290, name: 'Witness of Arrival', label: 'Release the first witness' },
+      { id: 'nereid-witness-2', kind: 'witness', x: 480, y: 330, name: 'Witness of Passage', label: 'Release the second witness' },
+      { id: 'nereid-witness-3', kind: 'witness', x: 670, y: 230, name: 'Witness of Return', label: 'Release the third witness' },
       { id: 'pressure-shell-1', kind: 'pressure-shell', x: 320, y: 352, name: 'Harbor Shell', label: 'Turn the harbor shell' },
       { id: 'pressure-shell-2', kind: 'pressure-shell', x: 522, y: 154, name: 'Boundary Shell', label: 'Turn the boundary shell' },
       { id: 'pressure-shell-3', kind: 'pressure-shell', x: 724, y: 352, name: 'Crossing Shell', label: 'Turn the crossing shell' },
@@ -452,6 +495,7 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'echo-cavern', kind: 'marker', x: 452, y: 444, name: 'Echo Cavern', label: 'Follow the remembered song' },
       { id: 'unmoored-heart-invitation', kind: 'interact', x: 414, y: 414, name: 'Unmoored Heart Echo', label: 'Listen to the unmoored heart', sideQuest: 'sq-act2-unmoored-heart' },
       { id: 'nereid-tin-vein', kind: 'resource', x: 820, y: 260, name: 'Nereid Tin Vein', label: 'Mine the sea-washed tin vein', skillId: 'quarrying', itemId: 'tin-ore', level: 5, xp: 20 },
+      { id: 'wayfinding-post-enclave-current', kind: 'travel-node', wayfindingShortcutId: 'shortcut:nereid-enclave-current', x: 280, y: 314, name: 'Boundary Current Route Post', label: 'Take the surveyed current to the cave threshold' },
     ],
     exits: [
       { id: 'caves-to-breakwater', x: 38, y: 284, toMapId: 'breakwater-road', spawnId: 'from-caves', returnSpawnId: 'from-breakwater', kind: 'foot', gate: [] },
@@ -466,14 +510,19 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('cavern-main', 68, ACT2_TIDE_ORDER, [point(38, 284), point(216, 284), point(360, 350), point(540, 360), point(690, 250), point(922, 276)]),
-      lane('cavern-echo-branch', 48, ['crossing', 'surge'], [point(360, 250), point(410, 350), point(452, 444)]),
+      // The three pressure shells are a required, order-free puzzle after the
+      // cave fight. These all-tide spurs stop within interaction range while
+      // keeping the central pillar and east support clear at playable width.
+      lane('cavern-pressure-shell-network', 68, ACT2_TIDE_ORDER, [point(360, 350), point(320, 352), point(540, 360), point(570, 330), point(570, 180), point(550, 170)]),
+      lane('cavern-pressure-shell-east', 68, ACT2_TIDE_ORDER, [point(570, 330), point(690, 250), point(724, 330)]),
+      lane('cavern-echo-branch', 68, ['crossing', 'surge'], [point(360, 250), point(410, 350), point(452, 444)]),
       lane('cavern-enclave-branch', 48, ['ebb', 'crossing'], [point(690, 250), point(778, 210)]),
     ],
     decor: [
       { id: 'caves-crystal-1', kind: 'sea-crystal', x: 182, y: 162 }, { id: 'caves-crystal-2', kind: 'sea-crystal', x: 836, y: 408 },
       { id: 'caves-column', kind: 'column', x: 570, y: 92 }, { id: 'caves-tide-pool', kind: 'tide-pool', x: 472, y: 392 },
     ],
-    tide: { initialStateId: 'ebb', laneIds: ['cavern-main', 'cavern-echo-branch', 'cavern-enclave-branch'], wellIds: [], skiffNodeIds: [], ropeLiftIds: [] },
+    tide: { initialStateId: 'ebb', laneIds: ['cavern-main', 'cavern-pressure-shell-network', 'cavern-pressure-shell-east', 'cavern-echo-branch', 'cavern-enclave-branch'], wellIds: [], skiffNodeIds: [], ropeLiftIds: [] },
   },
 
   'storm-anchorage': {
@@ -483,14 +532,17 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       'from-caves': spawn('from-caves', 74, 286, 0),
       'from-barge': spawn('from-barge', 836, 386, Math.PI),
       'rope-lift': spawn('rope-lift', 720, 174, -Math.PI / 2),
+      'from-signal-shoal': spawn('from-signal-shoal', 720, 230, -Math.PI / 2),
     },
     entities: [
       { id: 'rope-lift', kind: 'rope-lift', x: 720, y: 174, name: 'Archive Rope Lift', label: 'Raise the archive pennant' },
       { id: 'anchorage-tuna-run', kind: 'resource', x: 240, y: 320, name: 'Storm Tuna Run', label: 'Fish the storm tuna run', skillId: 'fishing', itemId: 'tuna', level: 30, xp: 45 },
       { id: 'anchorage-sturgeon-run', kind: 'resource', x: 620, y: 310, name: 'Deepwater Sturgeon Run', label: 'Fish the deepwater sturgeon run', skillId: 'fishing', itemId: 'sturgeon', level: 50, xp: 72 },
       { id: 'straton-garrison-quartermaster', kind: 'shop', shopId: 'anchorage-garrison-quartermaster', x: 780, y: 320, name: 'Straton', label: 'Trade with Straton' },
+      { id: 'wayfinding-post-weather-lee', kind: 'travel-node', wayfindingShortcutId: 'shortcut:anchorage-weather-lee', x: 560, y: 248, name: 'Weather-Lee Route Post', label: 'Take the surveyed lee course to the archive rope lift' },
     ],
     exits: [
+      { id: 'storm-anchorage-to-signal-shoal', x: 720, y: 230, toMapId: 'submerged-signal-shoal', spawnId: 'from-anchorage', returnSpawnId: 'from-signal-shoal', kind: 'skiff', gate: [] },
       { id: 'anchorage-to-caves', x: 38, y: 286, toMapId: 'nereid-caves', spawnId: 'from-anchorage', returnSpawnId: 'from-caves', kind: 'foot', gate: [] },
       { id: 'anchorage-to-barge', x: 866, y: 402, toMapId: 'archive-barge-deck', spawnId: 'from-anchorage', returnSpawnId: 'from-barge', kind: 'skiff', label: 'Take the skiff to the barge', gate: [{ kind: 'flag', flagId: 'act2-anchorage-cleared', value: true }] },
       { id: 'combat-act2-anchorage', x: 430, y: 244, kind: 'combat', encounterId: 'enc-act2-anchorage', label: 'Break the anchorage ambush', gate: [] },
@@ -503,13 +555,14 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     traversalLanes: [
       lane('anchorage-platform', 76, ACT2_TIDE_ORDER, [point(38, 286), point(240, 274), point(430, 244), point(620, 260), point(836, 386)]),
       lane('anchorage-lift-path', 52, ACT2_TIDE_ORDER, [point(430, 244), point(600, 200), point(720, 174)]),
+      lane('anchorage-lift-market-approach', 74, ACT2_TIDE_ORDER, [point(720, 230), point(720, 174), point(600, 200), point(430, 244), point(620, 260), point(780, 320)]),
     ],
     decor: [
       { id: 'anchorage-mast', kind: 'broken-mast', x: 562, y: 124 }, { id: 'anchorage-brazier-1', kind: 'brazier', x: 236, y: 182 },
       { id: 'anchorage-brazier-2', kind: 'brazier', x: 774, y: 286 }, { id: 'anchorage-ruin', kind: 'ruin', x: 404, y: 112 },
       { id: 'archive-skiff-dock', kind: 'skiff-dock', x: 836, y: 386 },
     ],
-    tide: { initialStateId: 'ebb', laneIds: ['anchorage-platform', 'anchorage-lift-path'], wellIds: [], skiffNodeIds: [], ropeLiftIds: ['rope-lift'] },
+    tide: { initialStateId: 'ebb', laneIds: ['anchorage-platform', 'anchorage-lift-path', 'anchorage-lift-market-approach'], wellIds: [], skiffNodeIds: [], ropeLiftIds: ['rope-lift'] },
   },
 
   'archive-barge-deck': {
@@ -526,6 +579,8 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
       { id: 'archive-crates', kind: 'marker', x: 262, y: 350, name: 'Archive Crates', label: 'Search the archive crates' },
       { id: 'mast-hazard', kind: 'marker', x: 492, y: 176, name: 'Leviathan Mast', label: 'Avoid the falling mast' },
       { id: 'leviathan-arena', kind: 'marker', x: 596, y: 270, name: 'Leviathan Arena', label: 'Enter the archive hold' },
+      { id: 'archive-barge-shipwright', kind: 'station', stationId: 'shipwright', x: 700, y: 300, name: 'Archive Barge Shipwright', label: 'Repair vessel work at the archive barge shipwright' },
+      { id: 'wayfinding-post-return-course', kind: 'travel-node', wayfindingShortcutId: 'shortcut:archive-return-course', x: 560, y: 282, name: 'Covenant Return Route Post', label: 'Take the surveyed return course to the post-Leviathan deck' },
       {
         id: 'archive-hippocamp-shoal', kind: 'resource', x: 300, y: 420, name: 'Archive Hippocamp Shoal',
         label: 'Draw roe from the warded hippocamp shoal', skillId: 'fishing', itemId: 'hippocamp-roe', level: 75, xp: 135,
@@ -543,7 +598,8 @@ export const ACT2_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('barge-main-deck', 78, ACT2_TIDE_ORDER, [point(38, 188), point(250, 226), point(470, 270), point(690, 300), point(880, 270)]),
-      lane('barge-lower-deck', 54, ACT2_TIDE_ORDER, [point(82, 392), point(300, 374), point(470, 332), point(690, 382)]),
+      lane('barge-lower-deck', 56, ACT2_TIDE_ORDER, [point(82, 392), point(300, 374), point(470, 332), point(690, 382)]),
+      lane('barge-return-crossing', 74, ACT2_TIDE_ORDER, [point(82, 392), point(300, 374), point(470, 332), point(470, 270), point(560, 282)]),
     ],
     decor: [
       { id: 'barge-mast', kind: 'mast', x: 492, y: 176 }, { id: 'barge-crates-1', kind: 'archive-crate', x: 244, y: 310 },

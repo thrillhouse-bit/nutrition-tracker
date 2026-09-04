@@ -5,6 +5,7 @@ import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem } from '../src/rpg/progression.js'
 import { REGISTERED_MAPS, rpgMapById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 // Guile — "Stealth, locks, traps, and misdirection" — had no obtainable XP
 // source anywhere in the game, the same severity Devotion had before its
@@ -37,6 +38,31 @@ function atMap(state, mapId, position) {
       facing: map.spawn.facing || 0,
     },
   }
+}
+
+function moveNearEntity(state, entityId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  expect(endpoint, `${state.world.mapId}:${entityId}`).toBeTruthy()
+  expect(Math.hypot(endpoint.x - entity.x, endpoint.y - entity.y)).toBeLessThan(56)
+  return moveAlongWorldPath(state, endpoint)
+}
+
+// Physical merchant access requires the concrete shop entity on the current
+// map and a protagonist standing beside it. Position west of Philyra (validated
+// reachable) and open through the reducer so the SHOP_BUY below carries real
+// physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) =>
+    kind === 'shop'
+      ? candidate.kind === 'shop' && candidate.shopId === systemId
+      : candidate.kind === 'bank')
+  const near = moveAlongWorldPath(state, entity)
+  const payload = kind === 'shop' ? { shopId: systemId } : {}
+  const type = kind === 'shop' ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
 }
 
 function stateWithLockpick(quantity = 1) {
@@ -96,7 +122,7 @@ describe('PICK_LOCK reducer', () => {
   })
 
   it('consumes exactly 1 lockpick, awards 20 Guile XP, pays out 45 drachmae, and sets the flag exact-once', () => {
-    const state = atMap(stateWithLockpick(1), 'olive-road')
+    const state = moveNearEntity(atMap(stateWithLockpick(1), 'olive-road'), CHEST_ID)
     const startingCurrency = state.inventory.currency || 0
     const opened = applyEvent(state, { type: 'PICK_LOCK', entityId: CHEST_ID })
     expect(opened).not.toBe(state)
@@ -113,7 +139,7 @@ describe('PICK_LOCK reducer', () => {
   })
 
   it('leaves surplus lockpicks untouched beyond the exact authored cost', () => {
-    const state = atMap(stateWithLockpick(3), 'olive-road')
+    const state = moveNearEntity(atMap(stateWithLockpick(3), 'olive-road'), CHEST_ID)
     const opened = applyEvent(state, { type: 'PICK_LOCK', entityId: CHEST_ID })
     expect(itemQuantity(opened.inventory, 'lockpick')).toBe(2)
   })
@@ -129,12 +155,14 @@ describe('guile economy interaction', () => {
   it('lets a real player buy a lockpick from Philyra and open the chest at Olive Road — the exact loop this closes', () => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 100 } }
     state = atMap(state, 'olive-road')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'olive-road-trader' })
+    state = systemOpenNear(state, 'shop', 'olive-road-trader')
     state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'lockpick', quantity: 1, transactionId: 'guile:buy-lockpick' })
     expect(itemQuantity(state.inventory, 'lockpick')).toBe(1)
     const afterBuying = state.inventory.currency
 
-    const opened = applyEvent(state, { type: 'PICK_LOCK', entityId: CHEST_ID })
+    // The merchant lease is not remote authority over the chest.
+    expect(applyEvent(state, { type: 'PICK_LOCK', entityId: CHEST_ID })).toBe(state)
+    const opened = applyEvent(moveNearEntity(state, CHEST_ID), { type: 'PICK_LOCK', entityId: CHEST_ID })
     expect(opened.flags[OPENED_FLAG]).toBe(true)
     expect(opened.inventory.currency).toBe(afterBuying + 45)
     expect(itemQuantity(opened.inventory, 'lockpick')).toBe(0)

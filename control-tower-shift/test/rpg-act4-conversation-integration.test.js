@@ -31,6 +31,17 @@ function atMap(state, mapId, position) {
   }
 }
 
+function atNpc(state, mapId, npcEntityId) {
+  const positioned = atMap(state, mapId)
+  const map = rpgMapById(mapId)
+  const npc = map.entities.find((entity) => entity.id === npcEntityId && entity.kind === 'npc')
+  expect(npc, `${mapId}:${npcEntityId}`).toBeTruthy()
+  const path = findWorldPath(map, positioned.world.position, npc)
+  expect(path.length, `${mapId}:${npcEntityId}`).toBeGreaterThan(0)
+  expect(Math.hypot(path.at(-1).x - npc.x, path.at(-1).y - npc.y)).toBeLessThan(56)
+  return { ...positioned, world: { ...positioned.world, position: path.at(-1) } }
+}
+
 // One representative required-choice id per conversation (the id that
 // resolves the graph's single required choice node, where one exists).
 const REPRESENTATIVE_CHOICE = {
@@ -95,7 +106,7 @@ describe('Act IV TALK / CHOOSE / DIALOGUE_END — every witness conversation', (
     })
 
     it(`${conversationId}: enters dialogue on TALK and blocks DIALOGUE_END before the required choice`, () => {
-      let state = atMap(createInitialState(), mapId)
+      let state = atNpc(createInitialState(), mapId, npcEntityId)
       state = applyEvent(state, { type: 'TALK', npcId: npcEntityId, conversationId })
       expect(state.status).toBe('in-dialogue')
 
@@ -104,7 +115,7 @@ describe('Act IV TALK / CHOOSE / DIALOGUE_END — every witness conversation', (
     })
 
     it(`${conversationId}: completes exactly once, records the choice flag, grants no material reward, and cannot re-apply on replay`, () => {
-      let state = atMap(createInitialState(), mapId)
+      let state = atNpc(createInitialState(), mapId, npcEntityId)
       state = applyEvent(state, { type: 'TALK', npcId: npcEntityId, conversationId })
       state = applyEvent(state, { type: 'CHOOSE', choiceId })
       expect(state.flags[`conversation-choice:${conversationId}:${choiceId}`]).toBe(true)
@@ -133,7 +144,7 @@ describe('Act IV TALK / CHOOSE / DIALOGUE_END — every witness conversation', (
   it('never records a testimony flag that duplicates a permanent Act IV quest-progress flag', () => {
     let state = createInitialState()
     for (const binding of EXPECTED_SPEAKER_BINDINGS) {
-      state = atMap(state, binding.mapId)
+      state = atNpc(state, binding.mapId, binding.npcEntityId)
       state = applyEvent(state, { type: 'TALK', npcId: binding.npcEntityId, conversationId: binding.conversationId })
       state = applyEvent(state, { type: 'CHOOSE', choiceId: REPRESENTATIVE_CHOICE[binding.conversationId] })
       state = applyEvent(state, { type: 'DIALOGUE_END', npcId: binding.npcEntityId, conversationId: binding.conversationId })
@@ -149,7 +160,7 @@ describe('Act IV TALK / CHOOSE / DIALOGUE_END — every witness conversation', (
 
 describe('Act IV conversation flags — save/reload round trip', () => {
   it('persists testimony completion flags across a save and reload', () => {
-    let state = atMap(createInitialState(), 'slag-road')
+    let state = atNpc(createInitialState(), 'slag-road', 'athena-march-captain')
     state = applyEvent(state, { type: 'TALK', npcId: 'athena-march-captain', conversationId: 'act4-athena-precise-route' })
     state = applyEvent(state, { type: 'CHOOSE', choiceId: 'commit-to-the-hour' })
     state = applyEvent(state, { type: 'DIALOGUE_END', npcId: 'athena-march-captain', conversationId: 'act4-athena-precise-route' })

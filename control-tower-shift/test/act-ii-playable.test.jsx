@@ -85,7 +85,9 @@ describe('Act II playable world hooks', () => {
   })
 
   it('launches the separated breakwater defense activator without consuming the Witness objective', async () => {
-    const staged = act2State(1, 'breakwater-road', { x: 560, y: 314 })
+    // Collision-aware endpoint from surge-witness to the defense activator;
+    // the activator itself sits inside its own blocked collision footprint.
+    const staged = act2State(1, 'breakwater-road', { x: 560, y: 300 })
     staged.world.spawnId = 'surge-witness'
     await mountRPG(staged)
     const defend = container.querySelector('button[aria-label="Defend the crossing"]')
@@ -160,7 +162,9 @@ describe('Act II playable world hooks', () => {
   })
 
   it('accepts the optional Unmoored Heart loop from its authored echo', async () => {
-    await mountRPG(act2State(3, 'nereid-caves', { x: 414, y: 414 }))
+    // Collision-aware threshold endpoint adjacent to the optional echo, not
+    // the echo's blocked authored coordinate.
+    await mountRPG(act2State(3, 'nereid-caves', { x: 420, y: 360 }))
     const interact = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Interact')
     await act(async () => interact.dispatchEvent(new Event('pointerdown', { bubbles: true })))
     await act(async () => { await Promise.resolve() })

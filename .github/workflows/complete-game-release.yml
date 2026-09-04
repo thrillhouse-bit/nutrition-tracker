@@ -1,0 +1,33 @@
+name: Complete-game release gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-complete-game:
+    name: Verify truthful complete-game release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Evidence is bound to HEAD^; a shallow checkout cannot prove it.
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Write complete-game report
+        run: node scripts/verify-oathbearer-complete-game.mjs --report --json > complete-game-report.json
+      - name: Enforce complete-game gate
+        run: npm run verify:oathbearer:complete
+      - name: Upload complete-game report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: complete-game-report
+          path: complete-game-report.json
+          if-no-files-found: error

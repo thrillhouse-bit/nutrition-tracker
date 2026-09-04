@@ -24,8 +24,21 @@ function itemQuantity(inventory, itemId) {
     .reduce((total, entry) => total + entry.quantity, 0)
 }
 
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isShop ? candidate.kind === 'shop' && candidate.shopId === systemId : candidate.kind === 'bank')
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isShop ? { shopId: systemId } : {}
+  const type = isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function atMap(state, mapId, position) {
   const map = rpgMapById(mapId)
+  const target = mapId === 'slag-road' ? map.entities.find((candidate) => candidate.id === PLOT_ID) : null
   return {
     ...state,
     world: {
@@ -33,7 +46,7 @@ function atMap(state, mapId, position) {
       regionId: map.region,
       mapId,
       spawnId: map.spawn.id,
-      position: position || { x: map.spawn.x, y: map.spawn.y },
+      position: target ? { x: target.x, y: target.y } : (position || { x: map.spawn.x, y: map.spawn.y }),
       facing: map.spawn.facing || 0,
     },
   }
@@ -176,16 +189,16 @@ describe('cinder-fouled plot economy interaction', () => {
   it('lets Doros sell ration water and buy back camp forage, closing the fourth-tier economy loop', () => {
     let state = { ...stewardshipState(40), inventory: { ...stewardshipState(40).inventory, currency: 300 } }
     state = atMap(state, 'slag-road', { x: 200, y: 470 })
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'forge-march-quartermaster' })
+    state = systemOpenNear(state, 'shop', 'forge-march-quartermaster')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'ration-water', quantity: 3, transactionId: 'gap:water' })
     expect(itemQuantity(bought.inventory, 'ration-water')).toBe(3)
 
-    const restored = applyEvent(bought, { type: 'RESTORE_LAND', entityId: PLOT_ID })
+    const restored = applyEvent(atMap(bought, 'slag-road'), { type: 'RESTORE_LAND', entityId: PLOT_ID })
     expect(restored.flags[RESTORED_FLAG]).toBe(true)
     const gathered = applyEvent(restored, { type: 'GATHER', entityId: PLOT_ID })
     expect(itemQuantity(gathered.inventory, 'camp-forage')).toBe(1)
 
-    const reopened = applyEvent(gathered, { type: 'OPEN_SHOP', shopId: 'forge-march-quartermaster' })
+    const reopened = systemOpenNear(gathered, 'shop', 'forge-march-quartermaster')
     const sold = applyEvent(reopened, { type: 'SHOP_SELL', itemId: 'camp-forage', quantity: 1, transactionId: 'gap:forage' })
     expect(itemQuantity(sold.inventory, 'camp-forage')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(gathered.inventory.currency)
@@ -197,7 +210,7 @@ describe('cinder-fouled plot economy interaction', () => {
     const caught = applyEvent(state, { type: 'GATHER', entityId: PLOT_ID })
     expect(itemQuantity(caught.inventory, 'camp-forage')).toBe(1)
 
-    const deposited = applyEvent(caught, { type: 'BANK_DEPOSIT', itemId: 'camp-forage', quantity: 1 })
+    const deposited = applyEvent(systemOpenNear(caught, 'bank'), { type: 'BANK_DEPOSIT', itemId: 'camp-forage', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'camp-forage')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'camp-forage', quantity: 1 })
 

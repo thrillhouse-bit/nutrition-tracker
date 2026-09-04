@@ -53,7 +53,7 @@ afterEach(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = false
 })
 
-describe('Oathbearer account boundary', () => {
+describe('Aegean Frontier account boundary', () => {
   it('never mounts the game before the owning account resolves', async () => {
     mock.api.me.mockReturnValue(new Promise(() => {}))
     await renderGate()
@@ -61,11 +61,11 @@ describe('Oathbearer account boundary', () => {
     expect(host.querySelector('[data-testid="account-game"]')).toBeNull()
   })
 
-  it('uses Oathbearer auth copy and mounts only for the authenticated user', async () => {
+  it('uses the Aegean Frontier auth surface and mounts only for the authenticated user', async () => {
     mock.api.me.mockResolvedValue({ user: null })
     await renderGate()
     const auth = host.querySelector('[data-testid="account-auth"]')
-    expect(auth.dataset.surface).toBe('oathbearer')
+    expect(auth.dataset.surface).toBe('aegean-frontier')
     await act(async () => auth.click())
     expect(host.querySelector('[data-testid="account-game"]').textContent).toBe('Game for 7')
   })
@@ -74,7 +74,7 @@ describe('Oathbearer account boundary', () => {
     mock.api.me.mockResolvedValue({ user: { id: 8, email: 'oath@example.test', legalAcceptanceRequired: true } })
     await renderGate()
     const consent = host.querySelector('[data-testid="account-consent"]')
-    expect(consent.dataset.surface).toBe('oathbearer')
+    expect(consent.dataset.surface).toBe('aegean-frontier')
     expect(host.querySelector('[data-testid="account-game"]')).toBeNull()
     await act(async () => consent.click())
     expect(host.querySelector('[data-testid="account-game"]').textContent).toBe('Game for 8')

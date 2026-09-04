@@ -6,7 +6,12 @@
 
 import { RECIPES } from './crafting.js'
 import { REGISTERED_MAPS } from './registry.js'
+import { findWorldPath } from './pathfinding.js'
 import { REGIONS } from './wilderness.js'
+
+// This is the same semantic interaction radius used by the world UI. System
+// panels are conveniences for an already-reached object, never remote menus.
+export const SYSTEM_INTERACTION_RADIUS = 56
 
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -45,6 +50,8 @@ const WILDERNESS_PLACEMENT = {
 }
 
 const CRAFTING_PLACEMENT = {
+  'chartwright-open-table': { label: 'Open Chart Table', mapIds: ['chartwright-hall'], accessLabel: 'Work at the public chart table' },
+  'signal-buoy-workbench': { label: 'Signal Buoy Workbench', mapIds: ['submerged-signal-shoal'], accessLabel: 'Work at the drowned signal buoy' },
   'bronze-forge': {
     label: 'Bronze Forge',
     mapIds: ['beacon-overlook', 'bronze-foundry'],
@@ -110,6 +117,7 @@ export const CRAFTING_ACCESS_BY_STATION = deepFreeze(Object.fromEntries(
     { stationId, ...definition, mapIds: [...definition.mapIds] },
   ]),
 ))
+
 
 function idsAtMap(definitions, mapId, idKey) {
   return Object.values(definitions)
@@ -182,6 +190,41 @@ export function craftingAccessDecision(mapId, stationId) {
     stationId,
     label: access.accessLabel,
     reason: available ? `${access.label} is physically available here.` : unavailableReason(access.label, map, access.mapIds),
+  })
+}
+
+// Resolve one concrete world object and prove that it is both close enough and
+// reachable under the active route state. Reducers call this for every
+// mutable bank, merchant, and crafting operation; matching a map alone is
+// deliberately insufficient authority.
+export function physicalSystemAccessDecision({
+  mapId,
+  position,
+  entityId,
+  kind,
+  stationId,
+  shopId,
+  routeStateId = null,
+} = {}) {
+  const map = typeof mapId === 'string' ? REGISTERED_MAPS[mapId] : null
+  if (!map || !position || !Number.isFinite(position.x) || !Number.isFinite(position.y) || typeof entityId !== 'string') return null
+  const entity = map.entities?.find((candidate) => candidate.id === entityId)
+  if (!entity || (kind && entity.kind !== kind)) return Object.freeze({ available: false, reason: 'That system object is not available here.' })
+  if (stationId && entity.stationId !== stationId) return Object.freeze({ available: false, reason: 'That is not the selected crafting station.' })
+  if (shopId && entity.shopId !== shopId) return Object.freeze({ available: false, reason: 'That is not the selected merchant.' })
+  const distance = Math.hypot(position.x - entity.x, position.y - entity.y)
+  if (distance >= SYSTEM_INTERACTION_RADIUS) return Object.freeze({ available: false, reason: 'Move closer to use this system object.' })
+  const path = findWorldPath(map, position, entity, routeStateId ? { routeStateId } : {})
+  const endpoint = path.at(-1)
+  const reachable = Boolean(endpoint) && Math.hypot(endpoint.x - entity.x, endpoint.y - entity.y) < SYSTEM_INTERACTION_RADIUS
+  return Object.freeze({
+    available: reachable,
+    mapId,
+    entityId,
+    kind: entity.kind,
+    stationId: entity.stationId || null,
+    shopId: entity.shopId || null,
+    reason: reachable ? '' : 'No clear path reaches this system object.',
   })
 }
 

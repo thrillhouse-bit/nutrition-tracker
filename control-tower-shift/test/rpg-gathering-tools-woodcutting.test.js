@@ -8,6 +8,7 @@ import {
   resourceNodeKey,
 } from '../src/rpg/resources.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { rpgMapById } from '../src/rpg/registry.js'
 
 const OLIVE_TREE_KEY = resourceNodeKey('beacon-overlook', 'olive-tree')
 
@@ -36,6 +37,7 @@ function stateWithCarried(itemId) {
   const { inventory } = addInventoryItem(initial.inventory, itemId, 1, ALL_ITEM_DEFS)
   return { ...initial, inventory }
 }
+function atResource(state, entityId) { const map = rpgMapById('beacon-overlook'); const entity = map.entities.find((candidate) => candidate.id === entityId); return { ...state, world: { ...state.world, regionId: map.region, mapId: map.id, spawnId: map.spawn.id, position: { x: entity.x, y: entity.y } } } }
 
 describe('woodcutting gathering tool items and recipes', () => {
   it('registers bronze-felling-axe and iron-felling-axe with the exact toolBonus contract', () => {
@@ -119,7 +121,7 @@ describe('woodcutting gathering tool items and recipes', () => {
 
 describe('gather() reducer — woodcutting tool yield bonus', () => {
   it('grants exactly 1 olive-log from olive-tree with no tool carried', () => {
-    const initial = createInitialState()
+    const initial = atResource(createInitialState(), 'olive-tree')
     expect(itemQuantity(initial.inventory, 'olive-log')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'olive-tree' })
@@ -129,7 +131,7 @@ describe('gather() reducer — woodcutting tool yield bonus', () => {
   })
 
   it('grants exactly 2 olive-log (base 1 + tool bonus 1) when bronze-felling-axe is carried', () => {
-    const initial = stateWithCarried('bronze-felling-axe')
+    const initial = atResource(stateWithCarried('bronze-felling-axe'), 'olive-tree')
     expect(itemQuantity(initial.inventory, 'olive-log')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'olive-tree' })
@@ -139,7 +141,7 @@ describe('gather() reducer — woodcutting tool yield bonus', () => {
   })
 
   it('grants exactly 3 olive-log (base 1 + tool bonus 2) when iron-felling-axe is carried', () => {
-    const initial = stateWithCarried('iron-felling-axe')
+    const initial = atResource(stateWithCarried('iron-felling-axe'), 'olive-tree')
     expect(itemQuantity(initial.inventory, 'olive-log')).toBe(0)
 
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'olive-tree' })
@@ -152,18 +154,18 @@ describe('gather() reducer — woodcutting tool yield bonus', () => {
     const initial = createInitialState()
     const withBronze = addInventoryItem(initial.inventory, 'bronze-felling-axe', 1, ALL_ITEM_DEFS).inventory
     const withBoth = addInventoryItem(withBronze, 'iron-felling-axe', 1, ALL_ITEM_DEFS).inventory
-    const state = { ...initial, inventory: withBoth }
+    const state = atResource({ ...initial, inventory: withBoth }, 'olive-tree')
 
     const gathered = applyEvent(state, { type: 'GATHER', entityId: 'olive-tree' })
     expect(itemQuantity(gathered.inventory, 'olive-log')).toBe(3)
   })
 
   it('grants no bonus when the carried tool does not match the gathered skill', () => {
-    const initial = stateWithCarried('bronze-felling-axe')
+    const initial = atResource(stateWithCarried('bronze-felling-axe'), 'copper-seam')
     const gathered = applyEvent(initial, { type: 'GATHER', entityId: 'copper-seam' })
     expect(itemQuantity(gathered.inventory, 'copper-ore')).toBe(1)
 
-    const initialInverse = stateWithCarried('bronze-quarry-pick')
+    const initialInverse = atResource(stateWithCarried('bronze-quarry-pick'), 'olive-tree')
     const gatheredInverse = applyEvent(initialInverse, { type: 'GATHER', entityId: 'olive-tree' })
     expect(itemQuantity(gatheredInverse.inventory, 'olive-log')).toBe(1)
     expect(gatheredInverse.resources.nodes[OLIVE_TREE_KEY]).toEqual(depletedCapacityOneNode(0))

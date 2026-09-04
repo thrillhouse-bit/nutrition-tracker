@@ -28,7 +28,9 @@ import ControlTowerRPG, {
 } from '../src/ControlTowerRPG.jsx'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
 import { rpgMapById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { saveRPG } from '../src/rpg/save.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -83,13 +85,26 @@ async function unmount() {
 
 function combatReadyState() {
   let state = createInitialState()
+  const map = rpgMapById('beacon-overlook')
+  const thessa = map.entities.find((entity) => entity.id === 'thessa')
+  const thessaPath = findWorldPath(map, state.world.position, thessa)
+  expect(thessaPath.length).toBeGreaterThan(0)
+  state = moveAlongWorldPath(state, thessa)
   state = applyEvent(state, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
   state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
+  const shrine = rpgMapById('beacon-overlook').entities.find((entity) => entity.id === 'shrine')
+  const shrinePath = findWorldPath(map, state.world.position, shrine)
+  expect(shrinePath.length).toBeGreaterThan(0)
+  state = moveAlongWorldPath(state, shrine)
   state = applyEvent(state, { type: 'INTERACT', entityId: 'shrine' })
   state = applyEvent(state, { type: 'CHOOSE_PATRON', godId: 'apollo' })
+  const exit = rpgMapById('beacon-overlook').exits.find((candidate) => candidate.id === 'to-olive-road')
+  const exitPath = findWorldPath(map, state.world.position, exit)
+  expect(exitPath.length).toBeGreaterThan(0)
+  state = moveAlongWorldPath(state, exit)
   state = applyEvent(state, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
   const gate = rpgMapById('olive-road').exits.find((exit) => exit.kind === 'combat')
-  return applyEvent(state, { type: 'MOVE', x: gate.x, y: gate.y, facing: 1 })
+  return moveAlongWorldPath(state, gate, { facing: 1 })
 }
 
 beforeEach(() => {

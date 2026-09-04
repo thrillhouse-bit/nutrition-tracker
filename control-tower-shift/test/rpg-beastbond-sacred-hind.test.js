@@ -44,6 +44,29 @@ function stateWithFigs(quantity = 1) {
   return { ...base, inventory: addInventoryItem(base.inventory, 'honeyed-figs', quantity, ALL_ITEM_DEFS).inventory }
 }
 
+function atHind(state) {
+  const map = rpgMapById('beacon-overlook')
+  const hind = map.entities.find((candidate) => candidate.id === HIND_ID)
+  return atMap(state, map.id, findWorldPath(map, map.spawn, hind).at(-1))
+}
+
+// Physical merchant access requires the concrete shop entity on the current map
+// and a protagonist standing beside it. Position west of Myrrine (validated
+// reachable) and open through the reducer so the SHOP_BUY below carries real
+// physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) =>
+    kind === 'shop'
+      ? candidate.kind === 'shop' && candidate.shopId === systemId
+      : candidate.kind === 'bank')
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = kind === 'shop' ? { shopId: systemId } : {}
+  const type = kind === 'shop' ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 describe('beastbond items', () => {
   it('registers honeyed figs and sells them at Myrrine’s table', () => {
     expect(ALL_ITEM_DEFS['honeyed-figs']).toMatchObject({ id: 'honeyed-figs', name: 'Honeyed Figs', category: 'food', stackable: false })
@@ -96,9 +119,9 @@ describe('CALM_CREATURE reducer', () => {
   })
 
   it('consumes exactly 1 honeyed figs, awards 18 Beastbond XP, pays out 30 drachmae, and sets the flag exact-once', () => {
-    const state = atMap(stateWithFigs(1), 'beacon-overlook')
+    const state = atHind(stateWithFigs(1))
     const startingCurrency = state.inventory.currency || 0
-    const calmed = applyEvent(state, { type: 'CALM_CREATURE', entityId: HIND_ID })
+    const calmed = applyEvent(atHind(state), { type: 'CALM_CREATURE', entityId: HIND_ID })
     expect(calmed).not.toBe(state)
     expect(calmed.flags[CALMED_FLAG]).toBe(true)
     expect(itemQuantity(calmed.inventory, 'honeyed-figs')).toBe(0)
@@ -113,8 +136,8 @@ describe('CALM_CREATURE reducer', () => {
   })
 
   it('leaves surplus honeyed figs untouched beyond the exact authored cost', () => {
-    const state = atMap(stateWithFigs(3), 'beacon-overlook')
-    const calmed = applyEvent(state, { type: 'CALM_CREATURE', entityId: HIND_ID })
+    const state = atHind(stateWithFigs(3))
+    const calmed = applyEvent(atHind(state), { type: 'CALM_CREATURE', entityId: HIND_ID })
     expect(itemQuantity(calmed.inventory, 'honeyed-figs')).toBe(2)
   })
 
@@ -129,12 +152,12 @@ describe('beastbond economy interaction', () => {
   it('lets a real player buy honeyed figs from Myrrine and calm the hind at Beacon Overlook — the exact loop this closes', () => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 100 } }
     state = atMap(state, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'honeyed-figs', quantity: 1, transactionId: 'beastbond:buy-figs' })
     expect(itemQuantity(state.inventory, 'honeyed-figs')).toBe(1)
     const afterBuying = state.inventory.currency
 
-    const calmed = applyEvent(state, { type: 'CALM_CREATURE', entityId: HIND_ID })
+    const calmed = applyEvent(atHind(state), { type: 'CALM_CREATURE', entityId: HIND_ID })
     expect(calmed.flags[CALMED_FLAG]).toBe(true)
     expect(calmed.inventory.currency).toBe(afterBuying + 30)
     expect(itemQuantity(calmed.inventory, 'honeyed-figs')).toBe(0)

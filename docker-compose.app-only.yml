@@ -5,7 +5,8 @@
 # app container, bound to loopback, and the resident server reverse-proxies to
 # it — see docs/DEPLOY-VERIFY.md "If the box already serves web traffic".
 #
-#   docker compose -f docker-compose.app-only.yml up -d --build
+#   docker compose -f docker-compose.app-only.yml up -d --build  # general/preview only
+#   # use ./deploy.sh --complete-release docker-compose.app-only.yml for a complete release
 #
 # The 127.0.0.1 bind is deliberate: the app must not be reachable on the bare
 # IP:3001 from the internet — TLS, HSTS, and the hostname all belong to the

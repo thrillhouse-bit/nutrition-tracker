@@ -23,7 +23,16 @@ export function observedThreatDamage(beforeArena, afterArena) {
     if (!beforeHealth || typeof before?.id !== 'string') continue
     const after = afterById.get(before.id)
     const afterHealth = after ? Math.max(0, positiveFinite(after.health)) : 0
-    damage += Math.max(0, beforeHealth - afterHealth)
+    const observedDamage = Math.max(0, beforeHealth - afterHealth)
+    const canonicalHealth = positiveFinite(before?.progressionHealth)
+    const tunedMaximum = positiveFinite(before?.maxHealth)
+    // When accessibility tuning reduced the live health pool, restore the
+    // exact proportional canonical damage for XP. Untagged arena threats keep
+    // their existing observed-health attribution unchanged.
+    const progressionDamage = canonicalHealth && tunedMaximum
+      ? observedDamage * (canonicalHealth / tunedMaximum)
+      : observedDamage
+    damage += progressionDamage
   }
   return Number(damage.toFixed(6))
 }

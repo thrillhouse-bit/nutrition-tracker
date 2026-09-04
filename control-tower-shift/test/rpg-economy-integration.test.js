@@ -9,6 +9,23 @@ function stored(raw) {
   return { getItem: (key) => key === RPG_SAVE_KEY ? JSON.stringify(raw) : null }
 }
 
+// Physical system access requires the concrete shop entity on the current map
+// and a protagonist standing beside it. Position west of Myrrine (validated
+// reachable) and open through the reducer so later SHOP_* events carry real
+// physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isShop
+      ? candidate.kind === 'shop' && candidate.shopId === systemId
+      : candidate.kind === 'bank')
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  const payload = isShop ? { shopId: systemId } : {}
+  const type = isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 describe('physical merchant reducer integration', () => {
   it('keeps Myrrine reachable from every Beacon spawn and separated from nearby targets', () => {
     const map = rpgMapById('beacon-overlook')
@@ -29,7 +46,7 @@ describe('physical merchant reducer integration', () => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 100 } }
     expect(applyEvent(state, { type: 'OPEN_SHOP', shopId: 'not-a-shop' })).toBe(state)
 
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     expect(state.economy.openShopId).toBe('beacon-provisioner')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'thyme', quantity: 2, transactionId: 'ui:buy:1' })
     expect(bought.inventory.currency).toBe(82)
@@ -42,7 +59,7 @@ describe('physical merchant reducer integration', () => {
   it('sells carried stock once, rejects malformed quantities, and closes explicitly', () => {
     let state = createInitialState()
     state = applyEvent(state, { type: 'ADD_ITEM', itemId: 'thyme', quantity: 2 })
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     for (const quantity of [0, -1, 1.5, NaN, Infinity, '1']) {
       expect(applyEvent(state, { type: 'SHOP_SELL', itemId: 'thyme', quantity, transactionId: `bad:${String(quantity)}` })).toBe(state)
     }
@@ -55,7 +72,7 @@ describe('physical merchant reducer integration', () => {
 
   it('rechecks map access on every trade and closes a forged remote session', () => {
     let state = createInitialState()
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     state = { ...state, world: { ...state.world, mapId: 'olive-road', regionId: 'olive-road' } }
     const next = applyEvent(state, { type: 'SHOP_BUY', itemId: 'thyme', quantity: 1, transactionId: 'remote:1' })
     expect(next.economy.openShopId).toBeNull()

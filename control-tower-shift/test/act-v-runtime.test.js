@@ -195,6 +195,9 @@ describe('Act V graph and encounter geometry', () => {
         ],
         shadow: ['sun-mirror-1', 'selene-return-witness'],
       },
+      'accord-overlook': {
+        shadow: ['epilogue-sky'], moon: ['epilogue-sky'], sun: ['epilogue-sky'],
+      },
     }
 
     for (const [mapId, stateTargets] of Object.entries(matrices)) {
@@ -204,6 +207,11 @@ describe('Act V graph and encounter geometry', () => {
         }
       }
     }
+  })
+
+  it('keeps the Star of Mercy match target reachable from every moonlit Night Stair arrival', () => {
+    const map = ACT5_RUNTIME_MAPS['night-stair']
+    for (const spawnId of Object.keys(map.spawns)) expectReachable('night-stair', 'moon', spawnId, ['star-deed-mercy'])
   })
 
   it('matches every static connection exactly, including gates and reciprocal spawns', () => {
@@ -385,7 +393,10 @@ describe('Act V arrival-state reducer contract', () => {
   })
 
   it('restores the destination spawn state on forward and backtrack traversal', () => {
-    let state = stateAt('night-stair', 'from-false-sky', 'sun')
+    // Traversal is intentionally local: use the foothold arrival, which is
+    // physically at the authored return bridge, rather than forging a remote
+    // gate event from the False Sky arrival.
+    let state = stateAt('night-stair', 'from-foothold', 'shadow')
     state = applyEvent(state, { type: 'TRAVERSE', viaGate: 'night-stair-to-foothold' })
     expect(state.world).toMatchObject({ mapId: 'nyx-foothold', spawnId: 'from-night-stair' })
     expect(state.flags[ACT5_LIGHT_FLAG]).toBe('shadow')

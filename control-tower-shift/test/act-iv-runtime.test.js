@@ -23,6 +23,7 @@ import {
   act4RuntimeSpawnById,
   validateAct4Runtime,
 } from '../src/rpg/act4Runtime.js'
+import { findWorldPath, isWorldPointWalkable } from '../src/rpg/pathfinding.js'
 
 const SAFE_MARGIN = 28
 const PLAYER_RADIUS = 16
@@ -296,6 +297,74 @@ describe('Act IV objective and mechanic hooks', () => {
       expect(ACT4_PRESSURE_STATES[map.pressure.initialStateId]).toBeTruthy()
       for (const laneId of map.pressure.laneIds) expect(map.traversalLanes.find((item) => item.id === laneId), `${map.id}:${laneId}`).toBeTruthy()
       for (const valveId of map.pressure.valveIds) expect(act4RuntimeEntityById(map.id, valveId), `${map.id}:${valveId}`).toBeTruthy()
+    }
+  })
+
+  it('routes every objective-owned semantic target and required exit from each legitimate arrival in every pressure state', () => {
+    // Production-lane markers are deliberate hazard telegraphs for the
+    // foundry encounter, not interaction/progression targets: the clear-
+    // encounter reducer transition owns their settlement. They are therefore
+    // excluded from this semantic-action matrix.
+    const intentionallyInertHazardIds = ['production-lane-1', 'production-lane-2', 'production-lane-3']
+    expect(intentionallyInertHazardIds.every((id) => act4RuntimeEntityById('bronze-foundry', id)?.kind === 'marker')).toBe(true)
+
+    const targetsByMap = {
+      'slag-road': ['strategy-board', 'mortal-draft-table', 'plan-athena-first-edge', 'plan-ares-first-edge'],
+      'bronze-foundry': ['combat-act4-foundry-threshold', 'foundry-to-slag-road', 'foundry-to-name-press'],
+      'name-press': ['prometheus-brazier', 'combat-act4-name-press', 'name-press-to-foundry', 'name-press-to-vault'],
+      'atlas-vault': [
+        'chain-anchor-1', 'chain-anchor-2', 'chain-anchor-3', 'chain-anchor-4',
+        'cell-hercules', 'cell-smith-1', 'cell-smith-2', 'single-crown-parley',
+        'one-more-sky-invitation', 'collapsed-side-vault', 'gate-hercules-lift', 'gate-counterweight', 'constellation-tablets',
+        'combat-act4-atlas-vault', 'vault-to-name-press', 'vault-to-constellation',
+      ],
+      'false-constellation': ['combat-act4-name-press-colossus', 'constellation-to-vault'],
+    }
+
+    for (const [mapId, targetIds] of Object.entries(targetsByMap)) {
+      const map = ACT4_RUNTIME_MAPS[mapId]
+      for (const pressureStateId of Object.keys(ACT4_PRESSURE_STATES)) {
+        for (const start of Object.values(map.spawns)) {
+          for (const targetId of targetIds) {
+            const target = map.entities.find((entity) => entity.id === targetId) || map.exits.find((exit) => exit.id === targetId)
+            expect(target, `${mapId}:${targetId}`).toBeTruthy()
+            const path = findWorldPath(map, start, target, { routeStateId: pressureStateId })
+            expect(path.length, `${mapId}:${pressureStateId}:${start.id}→${targetId}`).toBeGreaterThan(0)
+            expect(path.every((point) => isWorldPointWalkable(map, point, { routeStateId: pressureStateId })), `${mapId}:${pressureStateId}:${start.id}→${targetId} walkability`).toBe(true)
+            const endpoint = path.at(-1)
+            expect(Math.hypot(endpoint.x - target.x, endpoint.y - target.y), `${mapId}:${pressureStateId}:${start.id}→${targetId} endpoint`).toBeLessThan(56)
+          }
+        }
+      }
+    }
+  })
+
+  it('keeps the Dawn Muster and foundry craft apron reachable in every pressure state', () => {
+    const requiredRoutes = [
+      ['slag-road', 'refugee-camp', 'mortal-draft-table'],
+      ['bronze-foundry', 'from-slag-road', 'bronze-foundry-forge'],
+      ['bronze-foundry', 'from-slag-road', 'bronze-foundry-kiln'],
+    ]
+
+    for (const pressureStateId of Object.keys(ACT4_PRESSURE_STATES)) {
+      for (const [mapId, spawnId, targetId] of requiredRoutes) {
+        const map = ACT4_RUNTIME_MAPS[mapId]
+        const start = map.spawns[spawnId]
+        const target = map.entities.find((entity) => entity.id === targetId)
+        const path = findWorldPath(map, start, target, { routeStateId: pressureStateId })
+        expect(path.length, `${pressureStateId}:${mapId}:${spawnId}→${targetId}`).toBeGreaterThan(0)
+        expect(Math.hypot(path.at(-1).x - target.x, path.at(-1).y - target.y)).toBeLessThan(56)
+      }
+    }
+  })
+
+  it('returns Name-Press combat recovery to an all-pressure walkable relief spawn', () => {
+    const map = ACT4_RUNTIME_MAPS['name-press']
+    const relief = map.spawns['name-press-relief']
+    for (const pressureStateId of Object.keys(ACT4_PRESSURE_STATES)) {
+      expect(isWorldPointWalkable(map, relief, { routeStateId: pressureStateId }), pressureStateId).toBe(true)
+      const path = findWorldPath(map, relief, map.entities.find((entity) => entity.id === 'prometheus-brazier'), { routeStateId: pressureStateId })
+      expect(path.length, `${pressureStateId}: relief first MOVE`).toBeGreaterThan(0)
     }
   })
 

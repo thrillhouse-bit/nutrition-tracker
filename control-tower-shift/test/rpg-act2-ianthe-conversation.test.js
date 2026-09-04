@@ -31,6 +31,17 @@ function atMap(state, mapId, position) {
   }
 }
 
+function atNpc(state, mapId, npcId) {
+  const positioned = atMap(state, mapId)
+  const map = rpgMapById(mapId)
+  const npc = map.entities.find((entity) => entity.id === npcId && entity.kind === 'npc')
+  expect(npc, `${mapId}:${npcId}`).toBeTruthy()
+  const path = findWorldPath(map, positioned.world.position, npc)
+  expect(path.length, `${mapId}:${npcId}`).toBeGreaterThan(0)
+  expect(Math.hypot(path.at(-1).x - npc.x, path.at(-1).y - npc.y)).toBeLessThan(56)
+  return { ...positioned, world: { ...positioned.world, position: path.at(-1) } }
+}
+
 describe('Ianthe world placement', () => {
   it('places a physical npc entity at Pelagos Harbor with the authored conversation', () => {
     const map = REGISTERED_MAPS['pelagos-harbor']
@@ -136,7 +147,7 @@ describe('TALK / CHOOSE / DIALOGUE_END — meeting Ianthe', () => {
   })
 
   it('enters dialogue on TALK and refuses to end before the required choice is made', () => {
-    let state = atMap(createInitialState(), 'pelagos-harbor')
+    let state = atNpc(createInitialState(), 'pelagos-harbor', NPC_ID)
     state = applyEvent(state, { type: 'TALK', npcId: NPC_ID, conversationId: CONVERSATION_ID })
     expect(state.status).toBe('in-dialogue')
 
@@ -145,7 +156,7 @@ describe('TALK / CHOOSE / DIALOGUE_END — meeting Ianthe', () => {
   })
 
   it('completes exact-once after the required choice, setting ianthe-met and the completion flag', () => {
-    let state = atMap(createInitialState(), 'pelagos-harbor')
+    let state = atNpc(createInitialState(), 'pelagos-harbor', NPC_ID)
     state = applyEvent(state, { type: 'TALK', npcId: NPC_ID, conversationId: CONVERSATION_ID })
     state = applyEvent(state, { type: 'CHOOSE', choiceId: 'ianthe-hand-over-fragment' })
     expect(state.flags['conversation-choice:act2-ianthe-first-meeting:ianthe-hand-over-fragment']).toBe(true)
@@ -165,7 +176,7 @@ describe('TALK / CHOOSE / DIALOGUE_END — meeting Ianthe', () => {
   })
 
   it('accepts the other branch of the choice identically', () => {
-    let state = atMap(createInitialState(), 'pelagos-harbor')
+    let state = atNpc(createInitialState(), 'pelagos-harbor', NPC_ID)
     state = applyEvent(state, { type: 'TALK', npcId: NPC_ID, conversationId: CONVERSATION_ID })
     state = applyEvent(state, { type: 'CHOOSE', choiceId: 'ianthe-keep-fragment-close' })
     state = applyEvent(state, { type: 'DIALOGUE_END', npcId: NPC_ID, conversationId: CONVERSATION_ID })

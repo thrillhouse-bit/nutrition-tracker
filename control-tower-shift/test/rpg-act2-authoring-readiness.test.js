@@ -10,21 +10,13 @@ import {
   validateAuthoredResource,
 } from '../src/rpg/authoringSchema.js'
 import {
-  ACT2_CONNECTIONS,
   ACT2_ENCOUNTERS,
   ACT2_MAIN_QUEST,
-  ACT2_POCKETS,
-  ACT2_REGION,
-  ACT2_RESTORATION_FORMULATIONS,
-  ACT2_SAVE_POINTS,
   ACT2_SIDE_QUEST,
-  ACT2_TIDE_RULES,
-  ACT2_TIDE_STATES,
 } from '../src/rpg/act2Content.js'
 import { ACT2_RENDERABLE_MAPS } from '../src/rpg/act2Runtime.js'
 import { CONVERSATIONS, ENCOUNTERS, MAPS, QUEST_DEFS } from '../src/rpg/content.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
-import { SHOP_DEFS } from '../src/rpg/economy.js'
 import { rpgConversationById } from '../src/rpg/registry.js'
 
 function recordKey(record) {
@@ -46,20 +38,6 @@ function act1RecordKeys() {
   }
   for (const id of Object.keys(ENCOUNTERS)) keys.add(`encounter:${id}`)
   return keys
-}
-
-// Act IV's eight witness-testimony conversations are a third production-
-// authoring pass, integrated after this file's own (see
-// rpg-act4-authoring-readiness.test.js, which now owns the whole-registry
-// counts). Excluded here the same way this file's own act2RecordKeys() are
-// excluded from act1's legacy-boundary file, so this file's checks stay
-// truthful without re-litigating Act IV's readiness.
-function act4ConversationKeys() {
-  return new Set([
-    'act4-athena-precise-route', 'act4-ares-direct-breach', 'act4-prometheus-lawful-fire',
-    'act4-atlas-coerced-witness', 'act4-hercules-freely-given', 'act4-smiths-ledger',
-    'act4-zeus-single-crown', 'act4-mortal-draft',
-  ].map((id) => `conversation:${id}`))
 }
 
 function act2RecordKeys() {
@@ -94,36 +72,8 @@ function expectSpecificAct2Metadata(record) {
   expect(authoring.regionBand).toEqual({ regionIds: ['pelagos-isles'], acts: { min: 2, max: 2 } })
 }
 
-function stripAuthoring(value) {
-  if (Array.isArray(value)) return value.map(stripAuthoring)
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value)
-      .filter(([key]) => key !== 'authoring')
-      .map(([key, nested]) => [key, stripAuthoring(nested)]))
-  }
-  return value
-}
-
-function behaviorDigest() {
-  const behavior = stripAuthoring({
-    pockets: ACT2_POCKETS,
-    connections: ACT2_CONNECTIONS,
-    mainQuest: ACT2_MAIN_QUEST,
-    sideQuest: ACT2_SIDE_QUEST,
-    encounters: ACT2_ENCOUNTERS,
-    tideStates: ACT2_TIDE_STATES,
-    tideRules: ACT2_TIDE_RULES,
-    savePoints: ACT2_SAVE_POINTS,
-    formulations: ACT2_RESTORATION_FORMULATIONS,
-    region: ACT2_REGION,
-    maps: ACT2_RENDERABLE_MAPS,
-    entryConversation: rpgConversationById('act2-melite-oath-post'),
-  })
-  return createHash('sha256').update(JSON.stringify(behavior)).digest('hex')
-}
-
 describe('Act II production authoring readiness', () => {
-  it('makes exactly the 56 collected Act II records ready while preserving the accepted Act I template', () => {
+  it('makes exactly the 64 collected Act II records ready while preserving the accepted Act I template', () => {
     const report = validateRPGContent()
     const act1 = act1RecordKeys()
     const act2 = act2RecordKeys()
@@ -131,12 +81,12 @@ describe('Act II production authoring readiness', () => {
       .filter((record) => record.status === 'release-ready')
       .map(recordKey))
 
-    expect(act1.size).toBe(36)
-    expect(act2.size).toBe(58)
+    expect(act1.size).toBe(39)
+    expect(act2.size).toBe(64)
     // Whole-registry ready/legacy counts and summary are owned by whichever
     // authoring pass most recently landed (currently
     // rpg-act4-authoring-readiness); this only re-asserts that Act I+II's
-    // own 94 records have not regressed, the same deferral rpg-act1-
+    // own 103 records have not regressed, the same deferral rpg-act1-
     // authoring-readiness.test.js already uses for this file.
     for (const key of [...act1, ...act2]) expect(readyKeys.has(key), key).toBe(true)
   })
@@ -171,20 +121,29 @@ describe('Act II production authoring readiness', () => {
     }
   })
 
-  it('keeps all Acts III–V records and every merchant at the truthful legacy boundary', () => {
+  it('locks exact catalog readiness while asserting the registered Chartwright vertical slice', () => {
     const report = validateRPGContent()
-    const owned = new Set([...act1RecordKeys(), ...act2RecordKeys(), ...act4ConversationKeys()])
-    const unowned = report.authoredDepth.records.filter((record) => !owned.has(recordKey(record)))
-    const merchants = report.authoredDepth.records.filter((record) => record.kind === 'merchant')
+    const legacyIds = report.authoredDepth.records
+      .filter((record) => record.status === 'legacy')
+      .map(recordKey)
+      .sort()
+    const releaseReady = new Set(report.authoredDepth.records
+      .filter((record) => record.status === 'release-ready')
+      .map(recordKey))
 
-    expect(unowned.length).toBe(224)
-    expect(new Set(unowned.map((record) => record.status))).toEqual(new Set(['legacy']))
-    expect(merchants).toHaveLength(Object.keys(SHOP_DEFS).length)
-    expect(new Set(merchants.map((record) => record.status))).toEqual(new Set(['legacy']))
+    expect(report.authoredDepth.counts).toEqual({ total: 372, legacy: 225, incomplete: 0, releaseReady: 147 })
+    expect(createHash('sha256').update(JSON.stringify(legacyIds)).digest('hex'))
+      .toBe('aa956b2adaf82ba8108640b6aadb916465aa27adb13c2efb9d742476b951aaaa')
+    for (const chartwrightKey of [
+      'map:chartwright-hall', 'map:submerged-signal-shoal',
+      'conversation:act2-ianthe-chartwright-briefing', 'conversation:act2-naukleros-signal-shoal',
+      'quest:cq-act2-ianthe-open-chart', 'quest:mqy-wayfinding-covenant-routes', 'quest:sq-act2-submerged-signal',
+      'encounter:enc-act2-submerged-signal-reef',
+      'entity:chartwright-hall:chart-table', 'entity:submerged-signal-shoal:signal-buoy',
+    ]) expect(releaseReady.has(chartwrightKey), chartwrightKey).toBe(true)
   })
 
-  it('changes no accepted Act II behavior data outside authoring fields', () => {
-    expect(behaviorDigest()).toBe('4c8d6ba9937e95b7a74e03ef2d4ec300143b3765bf75494599b8783643b78a8e')
+  it('locks the accepted Act II progression IDs while route geometry remains actively authored', () => {
     expect(ACT2_MAIN_QUEST.objectives.map((objective) => objective.id)).toEqual([
       'reach-pelagos-keeper', 'witness-first-surge', 'free-nereid-witnesses',
       'separate-boundary-names', 'secure-storm-anchorage', 'board-archive-barge',

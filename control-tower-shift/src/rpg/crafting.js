@@ -18,6 +18,13 @@ import {
   xpForLevel,
 } from './progression.js'
 import { ITEM_EFFECTS } from './itemEffects.js'
+import { ACT2_CHARTWRIGHT_ITEM_DEFS, ACT2_CHARTWRIGHT_RECIPES, ACT2_CHARTWRIGHT_RESOURCE_ITEM_DEFS } from './act2ChartwrightCrafting.js'
+import { WAYFINDING_SURVEY_CONTRACTS } from './wayfinding.js'
+
+const WAYFINDING_SURVEY_REWARD_ITEMS = Object.fromEntries(WAYFINDING_SURVEY_CONTRACTS.map((contract, index) => [
+  contract.discoveryReward.itemId,
+  { id: contract.discoveryReward.itemId, name: `Wayfinding ${index + 1} Chart`, category: 'chart', stackable: false, tier: index + 1, useEffect: Object.freeze({ kind: 'wayfinding-contract-key', contractId: contract.id }) },
+]))
 
 // Re-export ITEM_DEFS so tests and integrators can import everything from
 // this module without reaching into progression.js directly.
@@ -504,9 +511,15 @@ export const ITEM_EXTENSIONS = Object.freeze({
     tier: 2,
     toolBonus: Object.freeze({ skillId: 'stewardship', yieldBonus: 2 }),
   },
+  ...ACT2_CHARTWRIGHT_RESOURCE_ITEM_DEFS,
+  ...ACT2_CHARTWRIGHT_ITEM_DEFS,
+  ...WAYFINDING_SURVEY_REWARD_ITEMS,
 })
 
-const ITEM_DEFS_WITH_EFFECTS = { ...ITEM_DEFS, ...ITEM_EXTENSIONS }
+const ITEM_DEFS_WITH_EFFECTS = {
+  ...ITEM_DEFS,
+  ...ITEM_EXTENSIONS,
+}
 
 // Consumable behavior is domain metadata, not a category guess in the UI.
 // Preserve every economy-facing field and add only the explicit effect contract.
@@ -1258,7 +1271,7 @@ const RECIPE_DEFS = [
 // Freeze the complete recipe graph, not only the top-level recipe objects.
 // Consumers can safely retain these references without ingredients or outputs
 // changing under them.
-export const RECIPES = Object.freeze(RECIPE_DEFS.map((recipe) => Object.freeze({
+export const RECIPES = Object.freeze([...RECIPE_DEFS, ...ACT2_CHARTWRIGHT_RECIPES].map((recipe) => Object.freeze({
   ...recipe,
   ingredients: Object.freeze(recipe.ingredients.map((entry) => Object.freeze({ ...entry }))),
   outputs: Object.freeze(recipe.outputs.map((entry) => Object.freeze({ ...entry }))),

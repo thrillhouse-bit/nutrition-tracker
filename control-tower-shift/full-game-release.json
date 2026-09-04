@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "product": "Aegean Frontier: The Unwritten Age",
   "releaseStatus": "blocked",
   "minimums": {
@@ -27,20 +27,22 @@
     "delayedConsequences": 8
   },
   "evidence": {
-    "blindPlaytestCount": 0,
-    "mainStoryMedianHours": null,
-    "substantialSideContentMedianHours": null,
-    "completeSkillLoops": 0,
-    "usefulEquipmentSlots": 6,
-    "contentIntegrityErrors": null,
-    "contentIntegrityWarnings": null,
-    "fullNormalUiPlaythrough": false,
-    "accountSaveConflictMatrix": false,
-    "tradeEscrowMatrix": false,
-    "saveRecoveryMatrix": false,
-    "browserAccessibilityMatrix": false,
-    "performanceMatrix": false,
-    "economySimulation": false,
-    "originalityEditorialReview": false
+    "schemaVersion": 2,
+    "technical": {
+      "completeSkillLoops": []
+    },
+    "release": {
+      "blindPlaytests": [],
+      "mainStoryTiming": [],
+      "substantialSideContentTiming": [],
+      "fullNormalUiPlaythrough": [],
+      "accountSaveConflictMatrix": [],
+      "tradeEscrowMatrix": [],
+      "saveRecoveryMatrix": [],
+      "browserAccessibilityMatrix": [],
+      "performanceMatrix": [],
+      "economySimulation": [],
+      "originalityEditorialReview": []
+    }
   }
 }

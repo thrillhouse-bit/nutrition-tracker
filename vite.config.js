@@ -78,6 +78,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': { target: API_TARGET, changeOrigin: true },
+      // These documents are served by Express, not the SPA. Without explicit
+      // dev proxies, a signed-out Aegean player following either account-gate
+      // link receives Vite's fallback and lands on the unrelated sign-in UI.
+      '/privacy': { target: API_TARGET, changeOrigin: true },
+      '/terms': { target: API_TARGET, changeOrigin: true },
     },
   },
 })

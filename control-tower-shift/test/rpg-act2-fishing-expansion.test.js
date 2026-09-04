@@ -4,7 +4,7 @@ import { ALL_ITEM_DEFS } from '../src/rpg/crafting.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
 import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem, SKILL_DEF_BY_ID, xpForLevel } from '../src/rpg/progression.js'
-import { REGISTERED_MAPS } from '../src/rpg/registry.js'
+import { REGISTERED_MAPS, rpgMapById } from '../src/rpg/registry.js'
 import {
   DEFAULT_RESOURCE_RESPAWN_TICKS,
   createInitialResourceNodes,
@@ -76,6 +76,17 @@ function itemQuantity(inventory, itemId) {
 
 function atMap(state, mapId, position) {
   return { ...state, world: { ...state.world, mapId, ...(position ? { position } : {}) } }
+}
+
+// Physical bank access requires the concrete storehouse entity on the current
+// map and a protagonist standing beside it. Position west of the bank (validated
+// reachable) and open it through the reducer so deposits/withdrawals carry real
+// physical authority.
+function openBankNear(state) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.kind === 'bank')
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  return applyEvent(near, { type: 'OPEN_BANK', entityId: entity.id })
 }
 
 describe('fishing expansion: red-mullet, sturgeon, and hippocamp-roe nodes', () => {
@@ -263,8 +274,9 @@ describe('fishing expansion: red-mullet, sturgeon, and hippocamp-roe nodes', () 
     expect(remoteDeposit).toBe(remote)
 
     // Pelagos Harbor now has its own regional bank (the Pelagos Storehouse) —
-    // no need to travel back to Beacon Overlook to secure a catch.
-    const atBank = caught
+    // no need to travel back to Beacon Overlook to secure a catch. Open it
+    // physically first so the deposit carries real authority.
+    const atBank = openBankNear(caught)
     const deposited = applyEvent(atBank, { type: 'BANK_DEPOSIT', itemId: 'red-mullet', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'red-mullet')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'red-mullet', quantity: 1 })

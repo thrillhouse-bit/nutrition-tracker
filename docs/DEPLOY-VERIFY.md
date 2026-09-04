@@ -8,6 +8,12 @@ therefore a **deployment** step — set the secrets on the host, connect once, a
 verify **from the box**. This app is portable (VPS, Vercel, Render, Fly, Docker),
 so the steps below are host-agnostic.
 
+> **Aegean Frontier scope:** the Docker and Compose commands in this document
+> are general/preview deployment paths. They do not certify a complete-game
+> release. A complete-game claim requires the manual Complete-game release gate
+> workflow, its retained JSON report, and `./deploy.sh --complete-release` from
+> a clean Git working tree (no staged, unstaged, or untracked files).
+
 > **Why "from the box":** local source cannot tell you what a remote host is
 > actually doing. Every claim of "Oura is live" must come from a probe run
 > against the deployment — that's what `scripts/verify_deploy.sh` is for.
@@ -69,7 +75,7 @@ OURA_REDIRECT_URI=https://fuel.example.com/api/oura/callback
 # optional: DATABASE_URL=postgres://...  ANTHROPIC_API_KEY=...  APPLE_INGEST_TOKEN=...
 EOF
 
-docker compose up -d --build      # builds the image, starts app + Caddy
+./deploy.sh                       # general/preview deploy; builds app + Caddy
 docker compose logs -f caddy      # watch the cert get issued
 ```
 
@@ -77,7 +83,7 @@ Because you choose the domain up front, there's **no chicken-and-egg**: set
 `SITE_ADDRESS` and `OURA_REDIRECT_URI` to your domain, register the Oura app with
 `https://<domain>/api/oura/callback`, then `docker compose up`. Open the site →
 **Connections → Connect Oura** → authorize → send me the URL to verify. To update
-later: `git pull && docker compose up -d --build`. Data lives in the `app-data`
+later: `git pull && ./deploy.sh`. Data lives in the `app-data`
 volume (survives rebuilds).
 
 ## If the box already serves web traffic (sidecar path)
@@ -105,7 +111,7 @@ cd nutrition-tracker
 # .env: OURA_CLIENT_ID / OURA_CLIENT_SECRET / OURA_REDIRECT_URI
 #       (+ optional DATABASE_URL, APPLE_INGEST_TOKEN — SITE_ADDRESS not needed;
 #        it only feeds the bundled Caddy, which this path doesn't run)
-docker compose -f docker-compose.app-only.yml up -d --build
+./deploy.sh docker-compose.app-only.yml
 curl -s http://127.0.0.1:3001/api/health   # prove the app is up before touching the proxy
 ```
 
@@ -167,7 +173,7 @@ TRAEFIK_CERT_RESOLVER=letsencrypt   # must match the resident Traefik's resolver
 ```
 
 ```bash
-docker compose -f docker-compose.app-only.yml up -d --build
+./deploy.sh docker-compose.app-only.yml
 ```
 
 No reload step: the running Traefik picks up the new container's labels and

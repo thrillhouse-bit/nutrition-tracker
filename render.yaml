@@ -11,7 +11,9 @@ services:
     runtime: docker
     plan: free                    # fine for verification; upgrade for always-on
     healthCheckPath: /api/health
-    autoDeploy: true
+    # General deployments are not an Aegean Frontier complete-game release.
+    # A complete release requires the manual complete-game CI gate first.
+    autoDeploy: false
     envVars:
       - key: NODE_ENV
         value: production

@@ -145,13 +145,15 @@ describe('foraging expansion: four new Act III gathering nodes', () => {
 describe('gather() reducer integration for the new sage node', () => {
   function forageReadyState(level) {
     const initial = createInitialState()
+    const map = REGISTERED_MAPS['wheat-village']
+    const sage = map.entities.find((candidate) => candidate.id === 'wheat-village-sage')
     return {
       ...initial,
       progression: {
         ...initial.progression,
         skills: { ...initial.progression.skills, foraging: { xp: xpForLevel(level) } },
       },
-      world: { ...initial.world, mapId: 'wheat-village', position: { x: 520, y: 120 } },
+      world: { ...initial.world, regionId: map.region, mapId: map.id, spawnId: map.spawn.id, position: { x: sage.x, y: sage.y } },
     }
   }
 

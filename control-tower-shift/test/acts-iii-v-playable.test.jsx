@@ -5,8 +5,11 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import ControlTowerRPG from '../src/ControlTowerRPG.jsx'
 import { ACT5_LIGHT_FLAG, applyEvent, conversationRequiredChoicesMet, createInitialState, currentObjective, resolveConversationId } from '../src/rpg/state.js'
-import { loadRPG, saveRPG } from '../src/rpg/save.js'
+import { loadRPG, normalizeState, saveRPG } from '../src/rpg/save.js'
 import { rpgMapById, rpgSpawnById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
+import { routeStateForMap } from '../src/rpg/routeState.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -70,7 +73,51 @@ async function waitForContent(text, attempts = 50) {
   expect(container?.textContent).toContain(text)
 }
 
-const send = (state, type, payload = {}) => applyEvent(state, { type, ...payload })
+function moveToWorldAction(state, type, payload) {
+  const map = rpgMapById(state.world.mapId)
+  const targetId = type === 'TRAVERSE'
+    ? payload.viaGate
+    : payload.entityId || payload.npcId || payload.markerId
+  const target = (type === 'TRAVERSE' ? map.exits : map.entities)
+    ?.find((candidate) => candidate.id === targetId)
+  if (!target) return state
+  const path = findWorldPath(map, state.world.position, target, {
+    routeStateId: routeStateForMap(state, map),
+  })
+  if (!path.length) return state
+  return moveAlongWorldPath(state, path.at(-1))
+}
+
+// Setup-only placement: take the endpoint that the collision-aware pathfinder
+// reaches from an authored spawn in the current route state. UI assertions
+// still click the visible target; this avoids seeding entities/exits inside
+// their own collision geometry.
+function placeAtReachableTarget(state, targetId, spawnId = state.world.spawnId) {
+  const map = rpgMapById(state.world.mapId)
+  const spawn = rpgSpawnById(map.id, spawnId)
+  const target = [...(map.entities || []), ...(map.exits || [])]
+    .find((candidate) => candidate.id === targetId)
+  const path = findWorldPath(map, spawn, target, {
+    routeStateId: routeStateForMap(state, map),
+  })
+  expect(path.length, `reachable setup ${map.id}:${spawnId}→${targetId}`).toBeGreaterThan(0)
+  return {
+    ...state,
+    world: { ...state.world, spawnId: spawn.id, position: path.at(-1) },
+  }
+}
+
+const send = (state, type, payload = {}) => {
+  if (type === 'CHOOSE' && typeof payload.choiceId === 'string') {
+    const table = rpgMapById(state.world.mapId)?.entities?.find((entity) =>
+      entity.kind === 'choice' && entity.choiceIds?.includes(payload.choiceId))
+    if (table) payload = { ...payload, entityId: table.id }
+  }
+  if (type === 'MOVE') return moveAlongWorldPath(state, payload)
+  const physicalTypes = new Set(['TALK', 'INTERACT', 'TRAVERSE', 'REACH', 'CHOOSE'])
+  const positioned = physicalTypes.has(type) ? moveToWorldAction(state, type, payload) : state
+  return applyEvent(positioned, { type, ...payload })
+}
 
 // Build the real Act V boss boundary through public story events. Only the
 // accepted Act IV chapter boundary is seeded; map changes use authored gates.
@@ -102,6 +149,12 @@ function actFiveGuardianBoundary() {
   for (const entityId of ['memory-anchor-1', 'memory-anchor-2', 'memory-anchor-3', 'memory-anchor-4']) {
     state = send(state, 'INTERACT', { entityId })
   }
+  // Selene's reflection is on the moon route. Turn the nearby reachable
+  // witness control first, exactly as the normal physical path requires.
+  state = send(state, 'INTERACT', { entityId: 'selene-witness' })
+  // The witness changes the route state. Continue from the authored moon
+  // overlook rather than retaining its now-inactive shadow-lane endpoint.
+  state = placeAtReachableTarget(state, 'selene', 'selene-overlook')
   state = send(state, 'TALK', { npcId: 'selene', conversationId: 'act5-selene-reflection' })
   state = send(state, 'DIALOGUE_END', { npcId: 'selene', conversationId: 'act5-selene-reflection' })
   state = send(state, 'TRAVERSE', { viaGate: 'night-stair-to-false-sky' })
@@ -126,7 +179,7 @@ function actFiveRegentTestimony() {
     expect(state.status).toBe('in-combat')
     state = send(state, 'COMBAT_WON', { encounterId })
   }
-  expect(currentObjective(state)?.id).toBe('write-the-new-accord')
+  expect(currentObjective(state)?.id).toBe('confront-quiet-regent')
   return send(state, 'BEGIN_DIALOGUE', { conversationId: 'act5-regent-interruption' })
 }
 
@@ -162,24 +215,48 @@ function threeLightsReadyState({ mainObjectiveIndex = 4, completedDefaults = tru
 function placeAtNpc(state, mapId, npcId) {
   const map = rpgMapById(mapId)
   const npc = map.entities.find((entity) => entity.id === npcId && entity.kind === 'npc')
-  const spawnId = Object.keys(map.spawns || {})[0]
+  const lightStateId = npcId === 'apollo' ? 'sun' : 'moon'
+  const spawnId = npcId === 'apollo' ? 'mirrors-aligned'
+    : npcId === 'helios' ? 'from-night-stair'
+      : npcId === 'selene' ? 'selene-overlook'
+        : Object.keys(map.spawns || {})[0]
+  const spawn = rpgSpawnById(mapId, spawnId)
   expect(npc, `${mapId}:${npcId}`).toBeTruthy()
-  expect(rpgSpawnById(mapId, spawnId), `${mapId}:${spawnId}`).toBeTruthy()
+  expect(spawn, `${mapId}:${spawnId}`).toBeTruthy()
+  const path = findWorldPath(map, spawn, npc, { routeStateId: lightStateId })
+  expect(path.length, `${mapId}:${lightStateId}:${spawnId}→${npcId}`).toBeGreaterThan(0)
   return {
     state: {
       ...state,
       status: 'playing',
+      flags: { ...state.flags, [ACT5_LIGHT_FLAG]: lightStateId },
       world: {
         regionId: map.region,
         mapId,
         spawnId,
-        position: { x: npc.x, y: npc.y },
+        position: path.at(-1),
         facing: 0,
       },
     },
     npc,
   }
 }
+
+it('keeps each three-lights speaker reachable from every authored spawn in its intended light state', () => {
+  for (const [mapId, npcId, lightStateId] of [
+    ['false-sky', 'apollo', 'sun'],
+    ['false-sky', 'helios', 'moon'],
+    ['night-stair', 'selene', 'moon'],
+  ]) {
+    const map = rpgMapById(mapId)
+    const npc = map.entities.find((entity) => entity.id === npcId)
+    for (const spawn of Object.values(map.spawns)) {
+      const path = findWorldPath(map, spawn, npc, { routeStateId: lightStateId })
+      expect(path.length, `${mapId}:${lightStateId}:${spawn.id}→${npcId}`).toBeGreaterThan(0)
+      expect(Math.hypot(path.at(-1).x - npc.x, path.at(-1).y - npc.y)).toBeLessThan(56)
+    }
+  }
+})
 
 function contributeLight(state, mapId, npcId) {
   const placed = placeAtNpc(state, mapId, npcId)
@@ -302,7 +379,7 @@ describe('Acts III–V shared playable UI', () => {
 
   it('does not launch the Quiet Regent arena before the Loom Guardian is defeated', async () => {
     let state = actFiveGuardianBoundary()
-    state = send(state, 'MOVE', { x: 592, y: 240 })
+    state = moveToWorldAction(state, 'TRAVERSE', { viaGate: 'combat-act5-quiet-regent' })
     await mountRPG(state)
 
     await clickWorldTarget('Begin the Quiet Regent boss encounter with testimony interruption')
@@ -318,7 +395,7 @@ describe('Acts III–V shared playable UI', () => {
     expect(state.status).toBe('in-combat')
     state = send(state, 'COMBAT_WON', { encounterId: 'boss-act5-loom-guardian' })
     expect(state.flags['act5-loom-guardian-defeated']).toBe(true)
-    state = send(state, 'MOVE', { x: 336, y: 294 })
+    state = moveToWorldAction(state, 'TRAVERSE', { viaGate: 'combat-act5-loom-guardian' })
     await mountRPG(state)
 
     await clickWorldTarget('Begin the Loom Guardian boss encounter')
@@ -329,6 +406,17 @@ describe('Acts III–V shared playable UI', () => {
   })
 
   it('requires exactly one authored Regent witness before dialogue completion', () => {
+    let postCombat = actFiveGuardianBoundary()
+    for (const encounterId of ['boss-act5-loom-guardian', 'boss-act5-quiet-regent']) {
+      postCombat = send(postCombat, 'ENTER_ENCOUNTER', { encounterId })
+      postCombat = send(postCombat, 'COMBAT_WON', { encounterId })
+    }
+    // No Accord can be ratified from the victory boundary before a witnessed
+    // account is chosen and completed, including the fallback variant.
+    for (const choiceId of ['bounded-patrons', 'mortal-witness', 'renewed-compact']) {
+      expect(applyEvent(postCombat, { type: 'CHOOSE', choiceId })).toBe(postCombat)
+    }
+
     const testimony = actFiveRegentTestimony()
     expect(testimony.status).toBe('in-dialogue')
     expect(conversationRequiredChoicesMet(testimony, 'act5-regent-interruption')).toBe(false)
@@ -356,6 +444,58 @@ describe('Acts III–V shared playable UI', () => {
     expect(completed.flags['conversation:completed:act5-regent-interruption']).toBe(true)
     expect(completed.flags['act5-neutral-keeper-testified']).toBe(true)
     expect(completed.flags['act5-ianthe-testified']).toBeUndefined()
+    expect(currentObjective(completed)?.id).toBe('write-the-new-accord')
+
+    const ratified = send(completed, 'CHOOSE', { choiceId: 'renewed-compact' })
+    expect(ratified.flags['act5-ending']).toBe('renewed-compact')
+    expect(ratified.status).toBe('playing')
+    expect(currentObjective(ratified)?.id).toBe('witness-the-last-name')
+    expect(applyEvent(ratified, { type: 'CHOOSE', choiceId: 'renewed-compact' })).toBe(ratified)
+  })
+
+  it('recovers a post-Regent legacy boundary through testimony after normalization', () => {
+    const legacy = normalizeState(laterState({
+      questId: 'mq-act5-last-name', objectiveIndex: 8,
+      mapId: 'silent-loom', spawnId: 'accord-chamber', position: { x: 718, y: 266 },
+      flags: {
+        'act5-quiet-regent-defeated': true,
+        'choice:ratify-salt-covenant': 'shared-crossing',
+        'choice:join-the-covenant': 'witnessed-cycle',
+        'choice:ratify-mortal-draft': 'revocable-hearths',
+      },
+    }))
+    expect(legacy.status).toBe('playing')
+    expect(currentObjective(legacy)?.id).toBe('write-the-new-accord')
+    expect(applyEvent(legacy, { type: 'CHOOSE', choiceId: 'renewed-compact' })).toBe(legacy)
+
+    let recovered = send(legacy, 'BEGIN_DIALOGUE', { conversationId: 'act5-regent-interruption' })
+    expect(recovered.status).toBe('in-dialogue')
+    recovered = send(recovered, 'CHOOSE', { choiceId: 'keeper-testimony' })
+    recovered = send(recovered, 'DIALOGUE_END', { conversationId: 'act5-regent-interruption' })
+    expect(recovered.flags['act5-regent-testimony-heard']).toBe(true)
+    const ratified = send(recovered, 'CHOOSE', { choiceId: 'renewed-compact' })
+    expect(ratified.flags['act5-ending']).toBe('renewed-compact')
+    expect(currentObjective(ratified)?.id).toBe('witness-the-last-name')
+  })
+
+  it('reopens the mandatory Regent testimony in the normal UI after reload', async () => {
+    await mountRPG(laterState({
+      questId: 'mq-act5-last-name', objectiveIndex: 8,
+      mapId: 'silent-loom', spawnId: 'accord-chamber', position: { x: 718, y: 266 },
+      flags: { 'act5-quiet-regent-defeated': true },
+    }))
+    await waitForContent('If no promise can be named')
+    const continueButton = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue')
+    expect(continueButton).toBeTruthy()
+    await act(async () => continueButton.click())
+    const witness = [...container.querySelectorAll('button')].find((button) => button.textContent.includes('Melite enters the neutral Keeper testimony'))
+    expect(witness).toBeTruthy()
+    await act(async () => witness.click())
+    const skip = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Skip')
+    expect(skip).toBeTruthy()
+    await act(async () => skip.click())
+    expect(container.textContent).toContain('Write the New Accord')
+    expect(loadRPG(window.localStorage).save.flags['act5-regent-testimony-heard']).toBe(true)
   })
 
   it('records Apollo, Helios, and Selene in any order and rewards only the third unique contribution', () => {
@@ -503,7 +643,7 @@ describe('Acts III–V shared playable UI', () => {
     })
 
     const moon = map.entities.find((entity) => entity.id === 'selene-witness')
-    await mountRPG({ ...base, quests: { ...base.quests, 'mq-act5-last-name': quest }, world: { ...base.world, position: { x: moon.x, y: moon.y } } })
+    await mountRPG(placeAtReachableTarget({ ...base, quests: { ...base.quests, 'mq-act5-last-name': quest } }, moon.id, 'anchors-stable'))
     await clickWorldTarget(moon.accessibleLabel)
     let saved = loadRPG(window.localStorage).save
     expect(saved.flags[ACT5_LIGHT_FLAG]).toBe('moon')
@@ -511,7 +651,7 @@ describe('Acts III–V shared playable UI', () => {
 
     await unmountRPG()
     const selene = map.entities.find((entity) => entity.id === 'selene')
-    await mountRPG({ ...saved, status: 'playing', world: { ...saved.world, position: { x: selene.x, y: selene.y } } })
+    await mountRPG(placeAtReachableTarget({ ...saved, status: 'playing' }, selene.id, 'selene-overlook'))
     await clickWorldTarget(selene.accessibleLabel)
     expect(container.textContent).toContain('Reflection is not a lesser truth.')
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Skip').click())
@@ -524,21 +664,21 @@ describe('Acts III–V shared playable UI', () => {
     // state position on geometry that is intentionally not moon-walkable.
     await unmountRPG()
     const shadow = map.entities.find((entity) => entity.id === 'nyx-seal')
-    await mountRPG({ ...saved, status: 'playing', world: { ...saved.world, spawnId: 'anchors-stable', position: { x: shadow.x, y: shadow.y } } })
+    await mountRPG(placeAtReachableTarget({ ...saved, status: 'playing' }, shadow.id, 'anchors-stable'))
     await clickWorldTarget(shadow.accessibleLabel)
     saved = loadRPG(window.localStorage).save
     expect(saved.flags[ACT5_LIGHT_FLAG]).toBe('shadow')
 
     await unmountRPG()
     const encounter = map.exits.find((exit) => exit.id === 'combat-act5-night-stair')
-    await mountRPG({ ...saved, status: 'playing', world: { ...saved.world, position: { x: encounter.x, y: encounter.y } } })
+    await mountRPG(placeAtReachableTarget({ ...saved, status: 'playing' }, encounter.id, 'anchors-stable'))
     await clickWorldTarget(encounter.accessibleLabel)
     await waitForContent('Erasure on the Stair')
     expect(container.textContent).toContain('Begin encounter')
 
     await unmountRPG()
     const bridge = map.exits.find((exit) => exit.id === 'night-stair-to-false-sky')
-    await mountRPG({ ...moonReady, status: 'playing', world: { ...moonReady.world, position: { x: bridge.x, y: bridge.y } } })
+    await mountRPG(placeAtReachableTarget({ ...moonReady, status: 'playing' }, bridge.id, 'selene-overlook'))
     await clickWorldTarget(bridge.accessibleLabel)
     expect(loadRPG(window.localStorage).save.world).toMatchObject({ mapId: 'false-sky', spawnId: 'from-night-stair' })
   })
@@ -553,7 +693,7 @@ describe('Acts III–V shared playable UI', () => {
 
     for (const [index, mirrorId] of ['sun-mirror-1', 'sun-mirror-2', 'sun-mirror-3'].entries()) {
       const mirror = map.entities.find((entity) => entity.id === mirrorId)
-      staged = { ...staged, status: 'playing', world: { ...staged.world, position: { x: mirror.x, y: mirror.y } } }
+      staged = placeAtReachableTarget({ ...staged, status: 'playing' }, mirror.id, 'from-night-stair')
       await mountRPG(staged)
       await clickWorldTarget(mirror.accessibleLabel)
       const saved = loadRPG(window.localStorage).save
@@ -565,14 +705,14 @@ describe('Acts III–V shared playable UI', () => {
     }
 
     const encounter = map.exits.find((exit) => exit.id === 'combat-act5-false-sky')
-    await mountRPG({ ...staged, status: 'playing', world: { ...staged.world, position: { x: encounter.x, y: encounter.y } } })
+    await mountRPG(placeAtReachableTarget({ ...staged, status: 'playing' }, encounter.id, 'from-night-stair'))
     await clickWorldTarget(encounter.accessibleLabel)
     expect(container.textContent).toContain('Counterfeit Dawn')
     expect(container.textContent).toContain('Begin encounter')
 
     await unmountRPG()
     const fractureExit = map.entities.find((entity) => entity.id === 'fracture-exit')
-    await mountRPG({ ...staged, status: 'playing', world: { ...staged.world, position: { x: fractureExit.x, y: fractureExit.y } } })
+    await mountRPG(placeAtReachableTarget({ ...staged, status: 'playing' }, fractureExit.id, 'from-night-stair'))
     await clickWorldTarget(fractureExit.accessibleLabel)
     const saved = loadRPG(window.localStorage).save
     expect(saved.quests['mq-act5-last-name'].objectiveIndex).toBe(5)

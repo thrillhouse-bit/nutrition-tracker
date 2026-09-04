@@ -1,8 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import { rpgMapById, rpgSpawnById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState, currentObjective } from '../src/rpg/state.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
+import { routeStateForMap } from '../src/rpg/routeState.js'
 
-const send = (state, type, payload = {}) => applyEvent(state, { type, ...payload })
+const send = (state, type, payload = {}) => {
+  // The five-act route uses the same local target contract as the normal UI:
+  // move the harness to the concrete authored interaction before dispatching.
+  // This remains a reducer playthrough, but no longer relies on remote events
+  // that production deliberately rejects.
+  if (type === 'INTERACT' && typeof payload.entityId === 'string') {
+    const target = rpgMapById(state.world.mapId)?.entities?.find((entity) => entity.id === payload.entityId)
+    if (target) state = { ...state, world: { ...state.world, position: { x: target.x, y: target.y } } }
+  }
+  if (type === 'TALK' && typeof payload.npcId === 'string') {
+    const map = rpgMapById(state.world.mapId)
+    const target = map?.entities?.find((entity) => entity.id === payload.npcId)
+    const path = target && findWorldPath(map, state.world.position, target, {
+      routeStateId: routeStateForMap(state, map),
+    })
+    if (path?.length) state = { ...state, world: { ...state.world, position: path.at(-1) } }
+  }
+  if (type === 'REACH' && typeof payload.markerId === 'string') {
+    const target = rpgMapById(state.world.mapId)?.entities?.find((entity) => entity.id === payload.markerId)
+    if (target) state = { ...state, world: { ...state.world, position: { x: target.x, y: target.y } } }
+  }
+  if (type === 'CHOOSE' && typeof payload.choiceId === 'string') {
+    const target = rpgMapById(state.world.mapId)?.entities?.find((entity) =>
+      entity.kind === 'choice' && entity.choiceIds?.includes(payload.choiceId))
+    if (target) {
+      state = { ...state, world: { ...state.world, position: { x: target.x, y: target.y } } }
+      payload = { ...payload, entityId: target.id }
+    }
+  }
+  return applyEvent(state, { type, ...payload })
+}
 
 function atMap(state, mapId, spawnId) {
   const map = rpgMapById(mapId)
@@ -24,6 +56,12 @@ function atMap(state, mapId, spawnId) {
 
 function clearEncounter(state, encounterId, mapId, spawnId) {
   let next = atMap(state, mapId, spawnId)
+  // Production combat activation is physically bound to its concrete world
+  // marker. The contract test enters at that marker rather than relying on a
+  // remote reducer event from an arbitrary arrival spawn.
+  const activator = rpgMapById(mapId)?.exits?.find((exit) => exit.kind === 'combat' && exit.encounterId === encounterId)
+  expect(activator, `${mapId}:${encounterId} activator`).toBeTruthy()
+  next = { ...next, world: { ...next.world, position: { x: activator.x, y: activator.y } } }
   next = send(next, 'ENTER_ENCOUNTER', { encounterId })
   expect(next.status, encounterId).toBe('in-combat')
   next = send(next, 'COMBAT_WON', { encounterId })
@@ -58,7 +96,7 @@ describe('registered five-act playthrough contract', () => {
     expect(state.world.mapId).toBe('pelagos-harbor')
 
     state = finishDialogue(state, 'melite', 'act2-melite-oath-post')
-    state = send(state, 'REACH', { mapId: 'breakwater-road', markerId: 'surge-witness' })
+    state = send(atMap(state, 'breakwater-road', 'from-harbor'), 'REACH', { mapId: 'breakwater-road', markerId: 'surge-witness' })
     state = clearEncounter(state, 'enc-act2-nereid-caves', 'nereid-caves', 'from-breakwater')
     for (const entityId of ['nereid-witness-1', 'nereid-witness-2', 'nereid-witness-3']) state = send(state, 'INTERACT', { entityId })
     for (const entityId of ['pressure-shell-1', 'pressure-shell-2', 'pressure-shell-3']) state = send(state, 'INTERACT', { entityId })
@@ -110,6 +148,9 @@ describe('registered five-act playthrough contract', () => {
     state = finishDialogue(state, 'thessa', 'act5-nyx-muster')
     state = atMap(state, 'night-stair', 'from-foothold')
     for (const entityId of ['memory-anchor-1', 'memory-anchor-2', 'memory-anchor-3', 'memory-anchor-4']) state = send(state, 'INTERACT', { entityId })
+    // The moon witness is the authored, reachable state transition from the
+    // anchor route to Selene’s reflected-light testimony.
+    state = send(state, 'INTERACT', { entityId: 'selene-witness' })
     state = finishDialogue(state, 'selene', 'act5-selene-reflection')
     state = atMap(state, 'false-sky', 'from-night-stair')
     for (const entityId of ['sun-mirror-1', 'sun-mirror-2', 'sun-mirror-3']) state = send(state, 'INTERACT', { entityId })
@@ -118,12 +159,13 @@ describe('registered five-act playthrough contract', () => {
     for (const entityId of ['seal-far-sighted', 'seal-salt-covenant', 'seal-she-who-returns', 'seal-shared-fire']) state = send(state, 'INTERACT', { entityId })
     state = clearEncounter(state, 'boss-act5-loom-guardian', 'silent-loom', 'from-approach')
     state = clearEncounter(state, 'boss-act5-quiet-regent', 'silent-loom', 'regent-phase')
-    expect(currentObjective(state).id).toBe('write-the-new-accord')
+    expect(currentObjective(state).id).toBe('confront-quiet-regent')
     state = send(state, 'BEGIN_DIALOGUE', { conversationId: 'act5-regent-interruption' })
     state = send(state, 'CHOOSE', { choiceId: 'keeper-testimony' })
     state = send(state, 'DIALOGUE_END', { conversationId: 'act5-regent-interruption' })
     expect(state.flags['act5-neutral-keeper-testified']).toBe(true)
     expect(state.flags['act5-regent-testimony-heard']).toBe(true)
+    expect(currentObjective(state).id).toBe('write-the-new-accord')
     state = send(state, 'CHOOSE', { choiceId: 'renewed-compact' })
     expect(state.flags['act5-ending']).toBe('renewed-compact')
     state = atMap(state, 'silent-loom', 'accord-chamber')

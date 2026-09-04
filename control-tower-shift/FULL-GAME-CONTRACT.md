@@ -1,4 +1,4 @@
-# Oathbearer Complete-Game Contract
+# Aegean Frontier: The Unwritten Age Complete-Game Contract
 
 Status: **active production contract**  
 Release model: **one cohesive complete-game beta; no partial-system production releases**  
@@ -6,7 +6,7 @@ Canonical route: `/#control-tower-rpg`
 
 ## Product promise
 
-Oathbearer is an original Greek-mythology, classless, open-zone role-playing
+Aegean Frontier: The Unwritten Age is an original Greek-mythology, classless, open-zone role-playing
 game. Its durable play grammar is familiar to players of classic point-and-click
 skill RPGs: travel, gather, fight, bank, craft, trade, quest, equip, improve, and
 return to a changed world. Its names, characters, mythology synthesis, story,
@@ -94,7 +94,23 @@ game and must not be described, tagged, deployed, or marketed as one.
 - Player-to-player trade and any market/auction surface are server-authoritative,
   idempotent, auditable, and settled through escrow. Client reducers never grant
   another player inventory or currency.
-- Oathbearer contains no real-money market, purchasable power, or tokenized asset.
+- Aegean Frontier contains no real-money market, purchasable power, or tokenized asset.
+
+### Legal and product-authority floor
+
+- A public Aegean Frontier release is blocked until Aegean-specific Terms and
+  Privacy Policy are approved in writing by the product owner and counsel,
+  identify the Aegean operator and intended domain(s), and are published at the
+  linked URLs. A reachable URL or an OmniFuel template is not approval.
+- The approved review must cover the actual Aegean account and gameplay-save data
+  lifecycle (including local/cache and server-backed copies, export, deletion,
+  conflict/restore behavior), any gameplay telemetry or diagnostics, the truth
+  of any no-ads/no-analytics/no-sale claim, virtual items/currency and any player
+  trading or purchase policy (or an explicit statement that each is absent),
+  minors/age treatment, and every actual third-party processor/service.
+- The release record must retain a dated, versioned approval reference sufficient
+  for protected-branch review; it must not expose privileged advice, credentials,
+  or personal data.
 
 ### Experience and accessibility floor
 
@@ -108,7 +124,12 @@ game and must not be described, tagged, deployed, or marketed as one.
 - Performance budgets cover input latency, frame cadence, memory, canvas backing
   pixels, asset loading, and background/hidden rendering.
 
-## Current audited baseline — 2026-09-02
+## Historical audited baseline — 2026-09-02 (`a352344296a12a1e3855017cdda6ad52e0273621`)
+
+This table is a historical snapshot from the recorded 2026-09-02 commit, not
+the current game status. The authoritative current measurement is
+`npm run report:oathbearer:complete`; its blocked/ready result and derived
+counts supersede this snapshot for planning and release decisions.
 
 | Surface | Current | Complete-game floor |
 |---|---:|---:|
@@ -160,8 +181,83 @@ game. Production deployment remains blocked until all gates pass.
 
 ## Release rules
 
+### Manual legal-product blocker
+
+The current complete-game verifier does not infer legal scope from source code.
+Protected review must block any Aegean public release without the approval
+reference required above; a green build, working `/terms` and `/privacy` URLs,
+or a generic legal acceptance flow is insufficient.
+
+### Release-proof evidence schema
+
+`full-game-release.json` uses evidence schema version 2. Release evidence is
+fail-closed: a claimed count, boolean, or `releaseStatus: ready` is never proof.
+Every human or browser evidence record must name an immutable artifact below
+`control-tower-shift/artifacts/`, the tested snapshot commit immediately before
+the final manifest commit (`artifactCommit`, exactly `HEAD^`), a canonical UTC
+ISO-8601 timestamp (`YYYY-MM-DDTHH:mm:ss.sssZ`),
+and a SHA-256 digest; the artifact JSON contains the metric-specific measurements.
+The artifact blob at that snapshot, at `HEAD`, and in the working tree must all
+match. The final manifest commit may change only `full-game-release.json`; this
+allows a later manifest commit to register an already-produced artifact without
+self-referential hashing. The gate
+recomputes the digest and rejects absent, untracked, locally modified,
+future-dated, stale, unbound, or malformed records. There is intentionally no
+independent maximum-age rule: immutable ancestor provenance invalidates changed
+evidence, while an arbitrary age cutoff would invalidate a still-reproducible
+long study.
+
+Git provenance proves that a reviewed artifact is unchanged; it does not prove
+that its measurements were truthfully generated. Until producer-signed or
+replayable attestations exist, protected-branch review and manual complete-release
+authorization are the trust boundary for evidence generation.
+
+The release record is only a provenance index (`id`, `artifactPath`, `artifactCommit`,
+`createdAt`, and `sha256`); it must not carry trusted measurements. The bound
+artifact is JSON with `{ "schemaVersion": 1, "evidenceType", "measurements" }`.
+`evidenceType` must equal the release metric name (or `completeSkillLoop` for a
+per-skill proof), and the gate derives all thresholds from that artifact's
+measurements. A skill-loop artifact also repeats its `skillId`, which must equal
+the index record's known skill id.
+
+#### Save-recovery producer
+
+The following are legacy-compatible technical command identifiers. `npm run
+produce:oathbearer:save-recovery-evidence` runs only the allowlisted
+save normalization, account-save client, and account-save UI Vitest suites. It
+requires successful machine-readable Vitest output for every suite and derives
+`saveRecoveryMatrix.measurements.caseCount` from the executed passing assertions.
+It writes a schema-v1 `saveRecoveryMatrix` artifact only to the explicit
+`control-tower-shift/artifacts/` output path. Producing an artifact does not
+register release evidence: protected review must first create the required final
+manifest attestation commit described above.
+
+#### Account-conflict producer
+
+`npm run produce:oathbearer:account-conflict-evidence` runs only the allowlisted
+account-save API, restore-history, client, UI, and account-gate suites. It
+derives `accountSaveConflictMatrix.measurements.caseCount` from passing Vitest
+assertions only. Its artifact is scoped to in-process and API contract coverage;
+it is not deployed Postgres or network proof, and it is not release evidence
+until the reviewed final manifest attestation is committed.
+
+Both deterministic producers reject preexisting or symlinked output targets and
+publish only after a complete allowlisted test report validates, using exclusive
+same-directory POSIX hard-link allocation (never an overwriting rename). Their
+subprocess and path-mutation seams are module-only injections for isolated
+producer tests, not production CLI options; protected review remains the trust
+boundary for real evidence.
+
+Complete skill loops are individually evidenced by known skill id and a bound
+artifact proving learn, practice, mastery, and five level bands; only validated
+distinct records contribute to the technical count. Useful equipment slots are
+derived at gate time from the live equipment progression catalog, not JSON.
+Evidence records belong in the release JSON only after the referenced artifact
+has been produced by its real test, study, or review; placeholder evidence is
+forbidden.
+
 1. `main` and production may continue receiving unrelated OmniFuel fixes, but
-   the Oathbearer complete-game branch is not merged or deployed in fragments.
+   the Aegean Frontier complete-game branch is not merged or deployed in fragments.
 2. No lane may call a module “done” unless its sources, sinks, UI, save behavior,
    failure paths, quests, and browser behavior are integrated.
 3. Generated bulk prose or maps do not count until they pass editorial,

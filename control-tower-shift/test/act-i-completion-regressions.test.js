@@ -14,6 +14,8 @@ import {
 } from '../src/rpg/state.js'
 import { loadRPG, saveRPG } from '../src/rpg/save.js'
 import { startEncounter, stepCombat, arenaProgress, sessionEliteName, OUTCOME_WON } from '../src/rpg/combatAdapter.js'
+import { rpgMapById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 
 const MAIN_QUEST = 'mq-act1-ash-at-dawn'
 const ENTRY_ENCOUNTER = 'enc-act1-entry'
@@ -28,22 +30,35 @@ function memoryStore() {
   }
 }
 
+function atNpc(state, npcId) {
+  const map = rpgMapById(state.world.mapId)
+  const npc = map.entities.find((entity) => entity.id === npcId && entity.kind === 'npc')
+  const path = findWorldPath(map, state.world.position, npc)
+  expect(path.length, `reachable ${map.id}:${npcId}`).toBeGreaterThan(0)
+  return { ...state, world: { ...state.world, position: path.at(-1) } }
+}
+
 // Drive only public RPG events. This is deliberately the same ordered path a
 // player takes, so the tests cannot pass by manufacturing an impossible quest
 // state or by awarding progress from combat score.
 function clearEntryCourt() {
   let state = createInitialState()
+  const shrine = rpgMapById('beacon-overlook').entities.find((entity) => entity.id === 'shrine')
+  state = atNpc(state, 'thessa')
   state = applyEvent(state, {
     type: 'TALK',
     npcId: 'thessa',
     conversationId: 'act1-thessa-overlook',
   })
+  state = { ...state, world: { ...state.world, position: { x: shrine.x, y: shrine.y } } }
   state = applyEvent(state, {
     type: 'DIALOGUE_END',
     conversationId: 'act1-thessa-overlook',
   })
   state = applyEvent(state, { type: 'INTERACT', entityId: 'shrine' })
   state = applyEvent(state, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
+  const exit = rpgMapById('beacon-overlook').exits.find((candidate) => candidate.id === 'to-olive-road')
+  state = { ...state, world: { ...state.world, position: { x: exit.x, y: exit.y } } }
   state = applyEvent(state, {
     type: 'TRAVERSE',
     viaGate: 'to-olive-road',
@@ -64,6 +79,7 @@ function finishExitConversation() {
   let state = clearSunCourt()
   const objective = currentObjective(state)
   if (!objective || objective.kind !== 'talk') return state
+  state = atNpc(state, objective.npcId)
   state = applyEvent(state, {
     type: 'TALK',
     npcId: objective.npcId,
@@ -187,7 +203,9 @@ describe('Act I completion reducer', () => {
     expect(error).toBe('unknown')
     expect(save?.world.mapId).toBe('beacon-overlook')
     expect(save?.world.spawnId).toBe('start')
-    expect(save?.world.position).toEqual({ x: 160, y: 400 })
+    // Unknown spawns retain a valid saved position when it is still walkable;
+    // normalization no longer overwrites it with the map's default spawn.
+    expect(save?.world.position).toEqual({ x: 430, y: 300 })
   })
 })
 
@@ -245,6 +263,7 @@ describe('Act I progression guards', () => {
   it('rejects premature Sun Court entry before Entry Court is cleared', () => {
     // Reach the Sun Court gate on Beacon Overlook but do NOT clear Entry.
     let state = createInitialState()
+    state = atNpc(state, 'thessa')
     state = applyEvent(state, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
     state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
     state = applyEvent(state, { type: 'INTERACT', entityId: 'shrine' })

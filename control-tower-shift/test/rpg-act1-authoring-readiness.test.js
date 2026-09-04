@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   validateAuthoredConversation,
@@ -14,44 +15,7 @@ import {
   MAPS,
   QUEST_DEFS,
 } from '../src/rpg/content.js'
-import {
-  ACT2_ENCOUNTERS,
-  ACT2_MAIN_QUEST,
-  ACT2_SIDE_QUEST,
-} from '../src/rpg/act2Content.js'
-import { ACT2_RENDERABLE_MAPS } from '../src/rpg/act2Runtime.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
-import { SHOP_DEFS } from '../src/rpg/economy.js'
-import {
-  REGISTERED_CONVERSATIONS,
-  REGISTERED_ENCOUNTERS,
-  REGISTERED_MAPS,
-  REGISTERED_QUESTS,
-} from '../src/rpg/registry.js'
-
-// Act II is a second production-authoring pass, released after Act I (see
-// rpg-act2-authoring-readiness.test.js for its own template/count contract).
-// This file only owns the Act I template and the still-legacy Acts III-V +
-// merchants boundary, so it must not re-litigate whole-registry counts that
-// the Act II template file already owns.
-function act2RecordIds() {
-  const mapIds = new Set(Object.keys(ACT2_RENDERABLE_MAPS))
-  const questIds = new Set([ACT2_MAIN_QUEST.id, ACT2_SIDE_QUEST.id])
-  const conversationIds = new Set(['act2-melite-oath-post', 'act2-ianthe-first-meeting'])
-  const encounterIds = new Set(Object.keys(ACT2_ENCOUNTERS))
-  return { mapIds, questIds, conversationIds, encounterIds }
-}
-
-// Act IV's eight witness-testimony conversations are a third production-
-// authoring pass (see rpg-act4-authoring-readiness.test.js, which owns the
-// current whole-registry counts). Excluded here the same way act2RecordIds()
-// excludes Act II's own conversations, so this file's legacy-boundary check
-// stays truthful without re-litigating Act IV's readiness.
-const ACT4_CONVERSATION_IDS = new Set([
-  'act4-athena-precise-route', 'act4-ares-direct-breach', 'act4-prometheus-lawful-fire',
-  'act4-atlas-coerced-witness', 'act4-hercules-freely-given', 'act4-smiths-ledger',
-  'act4-zeus-single-crown', 'act4-mortal-draft',
-])
 
 function act1RecordKeys() {
   const keys = new Set()
@@ -101,7 +65,7 @@ describe('Act I canonical production-authoring template', () => {
       .filter((record) => record.status === 'release-ready')
       .map(recordKey))
 
-    expect(expected.size).toBe(36)
+    expect(expected.size).toBe(39)
     for (const key of expected) expect(readyKeys.has(key), key).toBe(true)
   })
 
@@ -136,40 +100,29 @@ describe('Act I canonical production-authoring template', () => {
     expect(QUEST_DEFS['sq-lost-witness'].authoring.expectedMinutes).toBe(5)
   })
 
-  it('leaves every collected Act III–V record at the truthful legacy boundary', () => {
+  it('reconciles the exact current legacy set while Chartwright records are registered release-ready', () => {
     const report = validateRPGContent()
-    const act2 = act2RecordIds()
-    const laterMapIds = new Set(Object.keys(REGISTERED_MAPS).filter((id) => !MAPS[id] && !act2.mapIds.has(id)))
-    const laterQuestIds = new Set(Object.keys(REGISTERED_QUESTS).filter((id) => !QUEST_DEFS[id] && !act2.questIds.has(id)))
-    const laterConversationIds = new Set(Object.keys(REGISTERED_CONVERSATIONS)
-      .filter((id) => !CONVERSATIONS[id] && !act2.conversationIds.has(id) && !ACT4_CONVERSATION_IDS.has(id)))
-    const laterEncounterIds = new Set(Object.keys(REGISTERED_ENCOUNTERS)
-      .filter((id) => !ENCOUNTERS[id] && !act2.encounterIds.has(id)))
-    const laterMerchantIds = new Set(Object.values(SHOP_DEFS)
-      .filter((shop) => shop.mapIds.some((mapId) => laterMapIds.has(mapId)))
-      .map((shop) => shop.id))
-
-    const later = report.authoredDepth.records.filter((record) => {
-      if (record.kind === 'quest') return laterQuestIds.has(record.id)
-      if (record.kind === 'objective') return laterQuestIds.has(record.id.split(':')[0])
-      if (record.kind === 'conversation') return laterConversationIds.has(record.id)
-      if (record.kind === 'map') return laterMapIds.has(record.id)
-      if (record.kind === 'entity' || record.kind === 'resource') return laterMapIds.has(record.id.split(':')[0])
-      if (record.kind === 'encounter') return laterEncounterIds.has(record.id)
-      if (record.kind === 'merchant') return laterMerchantIds.has(record.id)
-      return false
-    })
-
-    expect(later.length).toBeGreaterThan(0)
-    expect(new Set(later.map((record) => record.status))).toEqual(new Set(['legacy']))
+    const key = (record) => `${record.kind}:${record.id}`
+    const legacyIds = report.authoredDepth.records.filter((record) => record.status === 'legacy').map(key).sort()
+    const releaseReady = new Set(report.authoredDepth.records.filter((record) => record.status === 'release-ready').map(key))
+    expect(report.authoredDepth.counts).toEqual({ total: 372, legacy: 225, incomplete: 0, releaseReady: 147 })
+    expect(createHash('sha256').update(JSON.stringify(legacyIds)).digest('hex'))
+      .toBe('aa956b2adaf82ba8108640b6aadb916465aa27adb13c2efb9d742476b951aaaa')
+    for (const chartwrightKey of [
+      'map:chartwright-hall', 'map:submerged-signal-shoal',
+      'conversation:act2-ianthe-chartwright-briefing', 'conversation:act2-naukleros-signal-shoal',
+      'quest:cq-act2-ianthe-open-chart', 'quest:mqy-wayfinding-covenant-routes', 'quest:sq-act2-submerged-signal',
+      'encounter:enc-act2-submerged-signal-reef',
+      'entity:chartwright-hall:chart-table', 'entity:submerged-signal-shoal:signal-buoy',
+    ]) expect(releaseReady.has(chartwrightKey), chartwrightKey).toBe(true)
   })
 
   it('preserves the accepted Act I gameplay IDs, prose, geometry, effects, rewards, and counts', () => {
     expect(Object.keys(MAPS)).toEqual(['beacon-overlook', 'olive-road'])
     expect(MAPS['beacon-overlook'].bounds).toEqual({ w: 900, h: 470 })
     expect(MAPS['olive-road'].bounds).toEqual({ w: 900, h: 470 })
-    expect(MAPS['beacon-overlook'].entities).toHaveLength(14)
-    expect(MAPS['olive-road'].entities).toHaveLength(6)
+    expect(MAPS['beacon-overlook'].entities).toHaveLength(16)
+    expect(MAPS['olive-road'].entities).toHaveLength(7)
     expect(MAPS['beacon-overlook'].exits.map((exit) => exit.id)).toEqual(['to-olive-road', 'to-sun-court'])
     expect(MAPS['olive-road'].exits.map((exit) => exit.id)).toEqual(['to-beacon', 'to-entry-court'])
 

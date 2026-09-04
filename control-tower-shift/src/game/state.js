@@ -100,6 +100,9 @@ export function spawnThreat(state, opts = {}) {
     radius: opts.radius || threatRadius,
     health: opts.health || threatBaseHealth,
     maxHealth: opts.health || threatBaseHealth,
+    // Optional authored baseline for progression attribution. Arena health can
+    // be encounter-tuned for accessibility without lowering earned XP.
+    progressionHealth: opts.progressionHealth || opts.health || threatBaseHealth,
     speed: opts.speed || threatBaseSpeed,
     monsterType: opts.monsterType || 'hydra',
     glyph: opts.glyph || 'hydra',

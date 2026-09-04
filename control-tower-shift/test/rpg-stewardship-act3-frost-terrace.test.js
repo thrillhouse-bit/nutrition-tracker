@@ -6,6 +6,7 @@ import { addInventoryItem, xpForLevel } from '../src/rpg/progression.js'
 import { REGISTERED_MAPS, rpgMapById } from '../src/rpg/registry.js'
 import { resourceNodeKey } from '../src/rpg/resources.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 // Stewardship had two tiers (Beacon Overlook's Act I fallow field, Pelagos
 // Harbor's Act II salt garden) but no third — short of the contract's "at
@@ -26,8 +27,24 @@ function itemQuantity(inventory, itemId) {
     .reduce((total, entry) => total + entry.quantity, 0)
 }
 
+// Physical system access requires the concrete shop/bank entity on the current
+// map and a protagonist standing beside it. Resolve the matching entity for the
+// map the caller already set, reposition west of it (validated reachable), and
+// open through the reducer so later SHOP_*/BANK_* events carry real authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isShop ? candidate.kind === 'shop' && candidate.shopId === systemId : candidate.kind === 'bank')
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  const payload = isShop ? { shopId: systemId } : {}
+  const type = isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function atMap(state, mapId, position) {
   const map = rpgMapById(mapId)
+  const target = mapId === 'wheat-village' ? map.entities.find((candidate) => candidate.id === TERRACE_ID) : null
   return {
     ...state,
     world: {
@@ -35,10 +52,19 @@ function atMap(state, mapId, position) {
       regionId: map.region,
       mapId,
       spawnId: map.spawn.id,
-      position: position || { x: map.spawn.x, y: map.spawn.y },
+      position: target ? { x: target.x, y: target.y } : (position || { x: map.spawn.x, y: map.spawn.y }),
       facing: map.spawn.facing || 0,
     },
   }
+}
+
+function moveNearEntity(state, entityId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  expect(endpoint, `${state.world.mapId}:${entityId}`).toBeTruthy()
+  expect(Math.hypot(endpoint.x - entity.x, endpoint.y - entity.y)).toBeLessThan(56)
+  return moveAlongWorldPath(state, endpoint)
 }
 
 function stewardshipState(level) {
@@ -178,16 +204,18 @@ describe('frost terrace economy interaction', () => {
   it('lets Eirene sell spiced must and buy back threshed grain, closing the third-tier economy loop', () => {
     let state = { ...stewardshipState(30), inventory: { ...stewardshipState(30).inventory, currency: 200 } }
     state = atMap(state, 'wheat-village', { x: 670, y: 410 })
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'wheat-village-exchange' })
+    state = systemOpenNear(state, 'shop', 'wheat-village-exchange')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'spiced-must', quantity: 2, transactionId: 'gap:must' })
     expect(itemQuantity(bought.inventory, 'spiced-must')).toBe(2)
 
-    const restored = applyEvent(bought, { type: 'RESTORE_LAND', entityId: TERRACE_ID })
+    // Eirene's merchant panel is not remote authority over the terrace.
+    expect(applyEvent(bought, { type: 'RESTORE_LAND', entityId: TERRACE_ID })).toBe(bought)
+    const restored = applyEvent(moveNearEntity(bought, TERRACE_ID), { type: 'RESTORE_LAND', entityId: TERRACE_ID })
     expect(restored.flags[RESTORED_FLAG]).toBe(true)
     const gathered = applyEvent(restored, { type: 'GATHER', entityId: TERRACE_ID })
     expect(itemQuantity(gathered.inventory, 'threshed-grain')).toBe(1)
 
-    const reopened = applyEvent(gathered, { type: 'OPEN_SHOP', shopId: 'wheat-village-exchange' })
+    const reopened = systemOpenNear(gathered, 'shop', 'wheat-village-exchange')
     const sold = applyEvent(reopened, { type: 'SHOP_SELL', itemId: 'threshed-grain', quantity: 1, transactionId: 'gap:grain' })
     expect(itemQuantity(sold.inventory, 'threshed-grain')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(gathered.inventory.currency)
@@ -199,7 +227,7 @@ describe('frost terrace economy interaction', () => {
     const caught = applyEvent(state, { type: 'GATHER', entityId: TERRACE_ID })
     expect(itemQuantity(caught.inventory, 'threshed-grain')).toBe(1)
 
-    const deposited = applyEvent(caught, { type: 'BANK_DEPOSIT', itemId: 'threshed-grain', quantity: 1 })
+    const deposited = applyEvent(systemOpenNear(caught, 'bank'), { type: 'BANK_DEPOSIT', itemId: 'threshed-grain', quantity: 1 })
     expect(itemQuantity(deposited.inventory, 'threshed-grain')).toBe(0)
     expect(deposited.inventory.bank.slots).toContainEqual({ itemId: 'threshed-grain', quantity: 1 })
 

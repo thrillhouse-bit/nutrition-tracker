@@ -121,8 +121,19 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('village-main', 76, SEASONS, [point(74, 390), point(260, 354), point(474, 330), point(690, 320), point(922, 286)]),
+      // Winter arrival used to stop just beyond Demeter's semantic radius.
+      // This narrow spur is deliberately seasonal: it joins the shared road
+      // to her winter testimony without opening a separate harvest route.
+      lane('village-demeter-winter-spur', 50, ['winter'], [point(260, 354), point(280, 308)]),
+      // Keep Eirene's household exchange on a collision-safe continuation of
+      // the shared village route so the granary arrival can reach the actual
+      // merchant within the semantic interaction radius.
+      lane('village-household-market', 64, SEASONS, [point(690, 320), point(650, 400)]),
       lane('village-threshing-road', 58, SEASONS, [point(474, 330), point(510, 220), point(478, 86), point(478, 40)]),
       lane('village-shrine-path', 46, SEASONS, [point(260, 354), point(284, 252), point(300, 174)]),
+      // Cultivation routes stay clear of the granary walls in every season.
+      lane('village-sage-row-spur', 72, SEASONS, [point(510, 220), point(520, 120)]),
+      lane('village-frost-terrace-spur', 76, SEASONS, [point(474, 330), point(600, 460)]),
     ],
     decor: [
       { id: 'village-sheaf-1', kind: 'wheat-sheaf', x: 360, y: 420 }, { id: 'village-sheaf-2', kind: 'wheat-sheaf', x: 786, y: 370 },
@@ -159,7 +170,7 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('orchard-main', 76, SEASONS, [point(38, 286), point(238, 286), point(480, 326), point(714, 286), point(922, 286)]),
-      lane('orchard-harvest-loop', 54, ['harvest'], [point(238, 286), point(314, 362), point(470, 436), point(610, 420), point(714, 286)]),
+      lane('orchard-harvest-loop', 58, ['harvest'], [point(238, 286), point(314, 362), point(470, 436), point(610, 420), point(714, 286)]),
       lane('orchard-winter-cut', 64, ['winter'], [point(314, 362), point(480, 248), point(646, 354)]),
     ],
     decor: [
@@ -197,7 +208,8 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('sanctuary-main', 76, SEASONS, [point(38, 286), point(240, 300), point(480, 338), point(720, 300), point(922, 286)]),
-      lane('sanctuary-seals', 50, SEASONS, [point(240, 300), point(292, 344), point(410, 248), point(552, 248), point(670, 344), point(720, 300)]),
+      lane('sanctuary-seals', 56, SEASONS, [point(240, 300), point(292, 344), point(410, 248), point(552, 248), point(670, 344), point(720, 300)]),
+      lane('sanctuary-moly-spur', 80, SEASONS, [point(480, 338), point(480, 420)]),
     ],
     decor: [
       { id: 'sanctuary-column-1', kind: 'column', x: 350, y: 170 }, { id: 'sanctuary-column-2', kind: 'column', x: 612, y: 170 },
@@ -229,7 +241,8 @@ export const ACT3_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('asphodel-main', 76, SEASONS, [point(38, 286), point(230, 300), point(430, 320), point(666, 286), point(850, 286)]),
-      lane('asphodel-testimony', 50, SEASONS, [point(230, 300), point(306, 354), point(430, 320), point(610, 354), point(784, 286)]),
+      lane('asphodel-testimony', 56, SEASONS, [point(230, 300), point(306, 354), point(430, 320), point(610, 354), point(784, 286)]),
+      lane('asphodel-bloom-spur', 80, SEASONS, [point(430, 320), point(480, 180)]),
     ],
     decor: [
       { id: 'asphodel-flame-1', kind: 'brazier', x: 260, y: 194 }, { id: 'asphodel-flame-2', kind: 'brazier', x: 730, y: 194 },

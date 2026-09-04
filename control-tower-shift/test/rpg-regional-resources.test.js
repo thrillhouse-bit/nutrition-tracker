@@ -22,6 +22,8 @@ const REQUIRED_SOURCE_ITEMS = [
 const NEW_ENTITY_IDS = new Set([
   'pelagos-woodwork-bench',
   'pelagos-shipwright',
+  'olive-road-carpenter-bench',
+  'archive-barge-shipwright',
   'nereid-tin-vein',
   'anchorage-tuna-run',
   'wheat-village-hearth',
@@ -31,6 +33,9 @@ const NEW_ENTITY_IDS = new Set([
   'slag-road-cedar',
   'foundry-charred-ember',
   'bronze-foundry-forge',
+  'bronze-foundry-kiln',
+  'beacon-field-kitchen',
+  'beacon-shrine-fire',
   'nyx-laurel',
   'nyx-field-kitchen',
   'nyx-shrine-fire',
@@ -104,6 +109,17 @@ describe('regional gathering sources and crafting stations', () => {
     for (const { map, entity } of placements) {
       expect(CRAFTING_ACCESS_BY_STATION[entity.stationId].mapIds, `${map.id}:${entity.id}`).toContain(map.id)
       expectReachableFromEverySpawn(map, entity)
+    }
+
+    // Every advertised map placement is a real world object, not a map-wide
+    // permission that can be opened remotely from the Systems journal.
+    for (const [stationId, access] of Object.entries(CRAFTING_ACCESS_BY_STATION)) {
+      for (const mapId of access.mapIds) {
+        const map = REGISTERED_MAPS[mapId]
+        const entity = map.entities.find((candidate) => candidate.kind === 'station' && candidate.stationId === stationId)
+        expect(entity, `${stationId}:${mapId} concrete station`).toBeTruthy()
+        expectReachableFromEverySpawn(map, entity)
+      }
     }
   })
 

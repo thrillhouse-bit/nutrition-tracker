@@ -7,6 +7,7 @@ import RPGShopPanel from '../src/rpg/RPGShopPanel.jsx'
 import { addInventoryItem } from '../src/rpg/progression.js'
 import { ALL_ITEM_DEFS } from '../src/rpg/crafting.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { rpgMapById } from '../src/rpg/registry.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -31,7 +32,11 @@ afterEach(async () => {
 function openShopState(currency = 100) {
   let state = createInitialState()
   state = { ...state, inventory: { ...state.inventory, currency } }
-  return applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+  // Physical merchant access requires standing beside the concrete shop entity.
+  const map = rpgMapById('beacon-overlook')
+  const shop = map.entities.find((candidate) => candidate.shopId === 'beacon-provisioner')
+  const near = { ...state, world: { ...state.world, position: { x: shop.x - 8, y: shop.y } } }
+  return applyEvent(near, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner', entityId: shop.id })
 }
 
 describe('RPGShopPanel', () => {

@@ -10,7 +10,8 @@
 #        OURA_CLIENT_SECRET=...
 #        OURA_REDIRECT_URI=https://fuel.example.com/api/oura/callback
 #        # optional: DATABASE_URL=postgres://...  ANTHROPIC_API_KEY=...  FDC_API_KEY=...  APPLE_INGEST_TOKEN=...
-#   3. docker compose up -d --build
+#   3. docker compose up -d --build  # general/preview deployment only
+#      # use ./deploy.sh --complete-release only after the complete-game gate passes
 #
 # The JSON store persists in the `app-data` volume, so a plain single-box deploy
 # keeps Oura tokens across restarts with no external database. Set DATABASE_URL

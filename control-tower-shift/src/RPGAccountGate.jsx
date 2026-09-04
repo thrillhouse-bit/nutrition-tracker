@@ -62,12 +62,12 @@ export default function RPGAccountGate() {
   if (auth.status === 'loading') return <LoadingAccount />
   if (auth.status === 'error') return <AccountFailure onRetry={() => setAttempt((value) => value + 1)} />
   if (auth.status === 'out') {
-    return <Auth surface="oathbearer" onAuthed={(user) => setAuth({ status: user.legalAcceptanceRequired ? 'consent' : 'in', user })} />
+    return <Auth surface="aegean-frontier" onAuthed={(user) => setAuth({ status: user.legalAcceptanceRequired ? 'consent' : 'in', user })} />
   }
   if (auth.status === 'consent') {
     return (
       <LegalReconsent
-        surface="oathbearer"
+        surface="aegean-frontier"
         user={auth.user}
         onAccepted={(user) => setAuth({ status: 'in', user })}
         onLogout={logout}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALL_ITEM_DEFS, RECIPES } from '../src/rpg/crafting.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
 import { consumableEffect } from '../src/rpg/itemEffects.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem, xpForLevel } from '../src/rpg/progression.js'
 import { rpgMapById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
@@ -32,6 +33,28 @@ function atMap(state, mapId, position) {
       facing: map.spawn.facing || 0,
     },
   }
+}
+
+// Physical system access requires the concrete station/shop/bank entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/SHOP_*/BANK_* events
+// carry real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const isShop = kind === 'shop'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : isShop
+        ? candidate.kind === 'shop' && candidate.shopId === systemId
+        : candidate.kind === 'bank')
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isStation ? { stationId: systemId } : isShop ? { shopId: systemId } : {}
+  const type = isStation ? 'OPEN_CRAFTING' : isShop ? 'OPEN_SHOP' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
 }
 
 function cookingState(level) {
@@ -83,7 +106,7 @@ describe('CRAFT reducer — simmering a sage-barley broth', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'wheat-village')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'hearth' })
+    state = systemOpenNear(state, 'station', 'hearth')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-barley-broth', quantity: 1 })
     expect(crafted.crafting.lastResult).toMatchObject({ ok: false, reason: 'level_too_low' })
     expect(itemQuantity(crafted.inventory, 'sage-barley-broth')).toBe(0)
@@ -91,7 +114,7 @@ describe('CRAFT reducer — simmering a sage-barley broth', () => {
 
   it('refuses to craft without both ingredients carried', () => {
     let state = atMap(cookingState(12), 'wheat-village')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'hearth' })
+    state = systemOpenNear(state, 'station', 'hearth')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-barley-broth', quantity: 1 })
     expect(crafted.crafting.lastResult.ok).toBe(false)
     expect(itemQuantity(crafted.inventory, 'sage-barley-broth')).toBe(0)
@@ -121,7 +144,7 @@ describe('CRAFT reducer — simmering a sage-barley broth', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'wheat-village')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'hearth' })
+    state = systemOpenNear(state, 'station', 'hearth')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-barley-broth', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1, xpAwarded: 40 })
     expect(itemQuantity(state.inventory, 'barley-sheaf')).toBe(0)
@@ -135,7 +158,7 @@ describe('sage-barley-broth economy interaction', () => {
   it('lets Eirene sell sage-barley-broth at Wheat Village, alongside herb-cake', () => {
     let state = { ...cookingState(12), inventory: { ...cookingState(12).inventory, currency: 500 } }
     state = atMap(state, 'wheat-village')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'wheat-village-exchange' })
+    state = systemOpenNear(state, 'shop', 'wheat-village-exchange')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'sage-barley-broth', quantity: 1, transactionId: 'cooking:buy-broth' })
     expect(itemQuantity(bought.inventory, 'sage-barley-broth')).toBe(1)
 
@@ -154,11 +177,13 @@ describe('sage-barley-broth economy interaction', () => {
       ...withBarley,
       progression: { ...withBarley.progression, skills: { ...withBarley.progression.skills, foraging: { xp: xpForLevel(10) } } },
     }
-    let state = atMap(forageState, 'wheat-village')
+    const map = rpgMapById('wheat-village')
+    const sage = map.entities.find((entity) => entity.id === 'wheat-village-sage')
+    let state = atMap(forageState, 'wheat-village', findWorldPath(map, map.spawn, sage).at(-1))
     state = applyEvent(state, { type: 'GATHER', entityId: 'wheat-village-sage' })
     expect(itemQuantity(state.inventory, 'sage')).toBe(1)
 
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'hearth' })
+    state = systemOpenNear(state, 'station', 'hearth')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'sage-barley-broth', quantity: 1 })
     expect(itemQuantity(state.inventory, 'sage-barley-broth')).toBe(1)
   })

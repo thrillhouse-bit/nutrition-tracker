@@ -30,6 +30,9 @@ import {
   ACT5_LIGHT_FLAG,
 } from './rpg/state.js'
 import { ACT5_LIGHT_POLARITY_RULES, ACT5_LIGHT_POLARITY_STATES } from './rpg/act5Content.js'
+import { hasAcceptedAct5LightContract, routeStateForMap } from './rpg/routeState.js'
+import { surveyContractById } from './rpg/wayfinding.js'
+import { act5ChartwrightCodaFor, selectAct5ChartwrightConsequence } from './rpg/act5ChartwrightConsequences.js'
 import { saveRPG, loadRPG, clearSave } from './rpg/save.js'
 import {
   confirmLegacyRpgImport,
@@ -339,27 +342,7 @@ function dist(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by)
 }
 
-function hasAcceptedAct5LightContract(map) {
-  if (map?.act !== 5 || !map.light || !Array.isArray(map.light.laneIds)) return false
-  const accepted = ACT5_LIGHT_POLARITY_RULES.stateIds
-  if (!accepted.includes(map.light.initialStateId)) return false
-  const lanes = new Map((map.traversalLanes || []).map((lane) => [lane.id, lane]))
-  return map.light.laneIds.every((laneId) => {
-    const lane = lanes.get(laneId)
-    return lane && Array.isArray(lane.stateIds) && lane.stateIds.every((id) => accepted.includes(id))
-  })
-}
-
-export function routeStateForMap(state, map) {
-  if (map?.act === 2) return currentTideStateId(state)
-  if (map?.act === 3) return state.flags['act3:season-state'] || map.season?.initialStateId || 'winter'
-  if (map?.act === 4) return state.flags['act4:pressure-state'] || map.pressure?.initialStateId || 'safe'
-  if (hasAcceptedAct5LightContract(map)) {
-    const current = state.flags[ACT5_LIGHT_FLAG]
-    return ACT5_LIGHT_POLARITY_RULES.stateIds.includes(current) ? current : map.light.initialStateId
-  }
-  return null
-}
+export { routeStateForMap } from './rpg/routeState.js'
 
 const ACT5_LIGHT_GLYPH_MARKS = Object.freeze({
   'filled-crescent': '◕',
@@ -631,6 +614,28 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
     if (opts.persist !== false) enqueueSave(next)
   }, [enqueueSave])
 
+  // The combat-end card is deliberately ephemeral. If the browser closes
+  // after the Quiet Regent falls, an older boundary save resumes in the world
+  // rather than with that card, so restore the required testimony through the
+  // same reducer-validated dialogue path. The player still chooses the
+  // witness; this only makes the mandatory scene reachable again.
+  useEffect(() => {
+    const objective = currentObjective(state)
+    const testimonyPending = started
+      && state.status === 'playing'
+      && !dialogue
+      && !combatEnd
+      && state.flags['act5-quiet-regent-defeated']
+      && !state.flags['act5-regent-testimony-heard']
+      && (objective?.id === 'confront-quiet-regent' || objective?.id === 'write-the-new-accord')
+    if (!testimonyPending) return
+    const conversationId = 'act5-regent-interruption'
+    const convo = rpgConversationById(conversationId)
+    if (!convo) return
+    dispatch({ type: 'BEGIN_DIALOGUE', conversationId })
+    setDialogue({ id: conversationId, convo, node: convo.nodes[convo.start], index: 0, npcId: null })
+  }, [started, state, dialogue, combatEnd, dispatch])
+
   // Persisted playtime is the deterministic clock for renewable nodes and
   // merchant restocks. Batch it once per second to avoid a 30 Hz React render.
   useEffect(() => {
@@ -642,18 +647,39 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
   }, [started, paused, state.status, dispatch])
 
   const closePanel = useCallback(() => {
+    if (panelOpenRef.current === 'bank') dispatch({ type: 'CLOSE_BANK' }, { persist: false })
     if (panelOpenRef.current === 'shop') dispatch({ type: 'CLOSE_SHOP' }, { persist: false })
+    if (panelOpenRef.current === 'systems') dispatch({ type: 'CLOSE_CRAFTING' }, { persist: false })
     setPanelOpen(null)
   }, [dispatch])
 
   const toggleRecordPanel = useCallback((panelId) => {
+    if (panelOpenRef.current === 'bank') dispatch({ type: 'CLOSE_BANK' }, { persist: false })
     if (panelOpenRef.current === 'shop') dispatch({ type: 'CLOSE_SHOP' }, { persist: false })
+    if (panelOpenRef.current === 'systems') dispatch({ type: 'CLOSE_CRAFTING' }, { persist: false })
     setPanelOpen((current) => current === panelId ? null : panelId)
   }, [dispatch])
+
+  // Movement invalidates reducer-side physical context. Dismiss the matching
+  // local panel as well so it cannot look usable after its world object is no
+  // longer within interaction reach.
+  useEffect(() => {
+    if (panelOpen === 'bank' && !state.flags['rpg:active-bank-entity']) setPanelOpen(null)
+    if (panelOpen === 'shop' && !state.flags['rpg:active-shop-entity']) setPanelOpen(null)
+    if (panelOpen === 'systems' && state.crafting?.stationId && !state.flags['rpg:active-crafting-entity']) setPanelOpen(null)
+  }, [panelOpen, state.flags, state.crafting?.stationId])
 
   const queueCombatAction = useCallback((action) => {
     combatActionRef.current = { ...combatActionRef.current, ...action }
   }, [])
+
+  // Pointer activation fires pointerdown followed by a click. Keep the fast
+  // pointer response, while accepting the detail-0 click browsers emit for
+  // native Enter/Space button activation without queuing the same action twice.
+  const activateCombatControl = useCallback((action, event) => {
+    if (event?.type === 'click' && event.detail !== 0) return
+    queueCombatAction(action)
+  }, [queueCombatAction])
 
   const syncKeyboardInput = useCallback(() => {
     inputRef.current = directionalInputFromKeys(keysRef.current)
@@ -942,7 +968,10 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         return
       }
       if (shrineOpenRef.current) {
-        if (e.key === 'Escape') setShrineOpen(false)
+        if (e.key === 'Escape') {
+          dispatch({ type: 'CLOSE_SHRINE' }, { persist: false })
+          setShrineOpen(false)
+        }
         return
       }
       if (choicePromptRef.current) {
@@ -993,6 +1022,14 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
   }, [dispatch])
 
   const startConversation = useCallback((npc) => {
+    if (npc.questAcceptance?.trigger === 'talk') {
+      dispatch({
+        type: 'ACCEPT_QUEST',
+        questId: npc.questAcceptance.questId,
+        entityId: npc.id,
+        trigger: 'talk',
+      })
+    }
     // Stable authored metadata resolves main/default scenes before any active
     // optional multi-speaker contribution. Display text is never consulted.
     const convoId = resolveConversationId(stateRef.current, npc)
@@ -1132,13 +1169,40 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
         }
         setSkillAction({ entityId: ent.id, name: ent.name, itemId: ent.itemId, skillId: ent.skillId, duration: 850 })
       } else if (ent.kind === 'bank') {
-        setPanelOpen('bank')
+        dispatch({ type: 'OPEN_BANK', entityId: ent.id }, { persist: false })
+        if (stateRef.current.flags['rpg:active-bank-entity'] === ent.id) setPanelOpen('bank')
       } else if (ent.kind === 'shop') {
-        dispatch({ type: 'OPEN_SHOP', shopId: ent.shopId }, { persist: false })
+        dispatch({ type: 'OPEN_SHOP', shopId: ent.shopId, entityId: ent.id }, { persist: false })
         if (stateRef.current.economy?.openShopId === ent.shopId) setPanelOpen('shop')
+      } else if (ent.kind === 'station') {
+        if (ent.questAcceptance?.trigger === 'station') {
+          dispatch({
+            type: 'ACCEPT_QUEST',
+            questId: ent.questAcceptance.questId,
+            entityId: ent.id,
+            trigger: 'station',
+          })
+        }
+        if (ent.postEliteInteraction) dispatch({ type: 'INTERACT', entityId: ent.id })
+        dispatch({ type: 'OPEN_CRAFTING', stationId: ent.stationId, entityId: ent.id }, { persist: false })
+        if (stateRef.current.crafting?.stationId === ent.stationId) setPanelOpen('systems')
+      } else if (ent.kind === 'survey-marker') {
+        const before = stateRef.current
+        dispatch({ type: 'SURVEY_WAYFINDING', entityId: ent.id, surveyContractId: ent.surveyContractId })
+        const after = stateRef.current
+        const discovered = after.wayfinding?.discoveries?.[ent.surveyContractId] && !before.wayfinding?.discoveries?.[ent.surveyContractId]
+        const chartId = surveyContractById(ent.surveyContractId)?.discoveryReward?.itemId
+        setSaveNote(discovered
+          ? `Survey recorded. ${ALL_ITEM_DEFS[chartId]?.name || 'A chart'} has been added to your backpack.`
+          : after === before ? 'That bearing cannot be surveyed yet.' : 'Survey practice recorded.')
       } else if (ent.kind === 'shrine') {
-        setShrineOpen(true)
+        const before = stateRef.current
         dispatch({ type: 'INTERACT', entityId: ent.id }, { persist: false })
+        if (stateRef.current.flags['rpg:shrine-open']) {
+          setShrineOpen(true)
+        } else if (before === stateRef.current && ent.patron && !stateRef.current.protagonist.activePatronId) {
+          setSaveNote('Speak with Thessa before swearing a first oath.')
+        }
       } else if (ent.kind === 'npc') {
         startConversation(ent)
       } else if (ent.kind === 'locked-chest' || ent.kind === 'wild-creature') {
@@ -1179,6 +1243,13 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
           ? (ent.choiceIds || []).filter((id) => objective.choiceIds?.includes(id) && choiceIsAvailable(st, id))
           : []
         if (allowed.length) setChoicePrompt({ entityId: ent.id, title: ent.name, choiceIds: allowed, options: ent.options || [] })
+      } else if (ent.kind === 'travel-node' && ent.wayfindingShortcutId) {
+        const before = stateRef.current
+        dispatch({ type: 'TRAVERSE_WAYFINDING_SHORTCUT', entityId: ent.id, shortcutId: ent.wayfindingShortcutId })
+        const after = stateRef.current
+        setSaveNote(after === before
+          ? 'That surveyed route is not available yet.'
+          : `Course set: ${rpgMapById(after.world.mapId)?.name || after.world.mapId}.`)
       } else if (['interact', 'tide-well', 'season-altar', 'pressure-valve', 'witness', 'pressure-shell', 'rope-lift', 'travel-node'].includes(ent.kind)) {
         dispatch({ type: 'INTERACT', entityId: ent.id })
       }
@@ -1607,6 +1678,17 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
   const nextAct = completedAct < 5 ? completedAct + 1 : null
   const nextRegion = nextAct ? rpgRegionByAct(nextAct) : null
   const transition = nextAct ? ACT_TRANSITIONS[nextAct] : null
+  // This is a pure resolution-screen projection of two already-persisted Act
+  // II choices. It never writes flags or alters the Act V completion path.
+  // The testimony check keeps malformed/early ending state from exposing a
+  // coda before the Accord's required witness boundary is truly complete.
+  const chartwrightResolution = (() => {
+    if (state.status !== 'ending' || nextAct || !state.flags['act5-regent-testimony-heard']) return null
+    const accordChoice = state.flags['act5-accord-choice'] || state.flags['act5-ending']
+    const consequence = selectAct5ChartwrightConsequence(state.flags)
+    const coda = act5ChartwrightCodaFor(consequence.id, accordChoice)
+    return coda ? { consequence, coda } : null
+  })()
 
   // Honest document title for the RPG route, kept in sync with state.
   useEffect(() => {
@@ -2403,7 +2485,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                   </button>
                 )
               })}
-            <button type="button" aria-label="Melee attack" disabled={!combatReady} onPointerDown={() => queueCombatAction({ attack: true })} className="min-h-12 rounded border border-[#e8b64c] bg-[#7d2b1f]/95 px-5 py-2 text-xs font-bold uppercase tracking-widest text-[#fff1d0] disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="button" aria-label="Melee attack" aria-keyshortcuts="j" disabled={!combatReady} onPointerDown={(event) => activateCombatControl({ attack: true }, event)} onClick={(event) => activateCombatControl({ attack: true }, event)} className="min-h-12 rounded border border-[#e8b64c] bg-[#7d2b1f]/95 px-5 py-2 text-xs font-bold uppercase tracking-widest text-[#fff1d0] disabled:cursor-not-allowed disabled:opacity-40">
               Attack <span className="ml-1 text-[9px] text-[#e8c995]">J</span>
             </button>
             <button
@@ -2422,7 +2504,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
               const ready = powerReady(session.arena, power.id)
               const hotkey = ['K', 'L', ';'][index] || ''
               return (
-                <button key={power.id} type="button" disabled={!combatReady || !ready} onPointerDown={() => queueCombatAction({ powerId: power.id })} className="min-h-12 max-w-[150px] rounded border border-[#5a4a2a] bg-[#1d2633]/95 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-[#f3e6c8] disabled:cursor-not-allowed disabled:opacity-40">
+                <button key={power.id} type="button" aria-label={`${power.name}, keyboard ${hotkey}`} disabled={!combatReady || !ready} onPointerDown={(event) => activateCombatControl({ powerId: power.id }, event)} onClick={(event) => activateCombatControl({ powerId: power.id }, event)} className="min-h-12 max-w-[150px] rounded border border-[#5a4a2a] bg-[#1d2633]/95 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-[#f3e6c8] disabled:cursor-not-allowed disabled:opacity-40">
                   {power.name} {hotkey && <span className="ml-1 text-[9px] text-[#e8b64c]">{hotkey}</span>}
                 </button>
               )
@@ -2437,7 +2519,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
               <h2 className="rpg-serif mt-1 text-2xl text-[#f3e6c8]">
                 {session.wilderness?.enemyName || rpgEncounterById(session.encounterId)?.title || 'Stand and fight'}
               </h2>
-              <p className="my-3 text-sm text-[#b8a888]">The encounter is frozen until you begin.</p>
+              <p className="my-3 text-sm text-[#b8a888]">The encounter is frozen until you begin. Keyboard: J attack · hold G to guard · K / L / ; powers · WASD move and aim.</p>
               <button type="button" autoFocus onClick={armCombat} className="rpg-btn rpg-btn-primary min-h-12 w-full">
                 Begin encounter
               </button>
@@ -2570,7 +2652,10 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
               <span>Patron switching is allowed only here, outside combat.</span>
               <button
                 type="button"
-                onClick={() => setShrineOpen(false)}
+                onClick={() => {
+                  dispatch({ type: 'CLOSE_SHRINE' }, { persist: false })
+                  setShrineOpen(false)
+                }}
                 className="rpg-btn rpg-btn-quiet min-h-11 px-3 text-[10px]"
               >
                 Close
@@ -2596,7 +2681,7 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                       key={choiceId}
                       type="button"
                       onClick={() => {
-                        dispatch({ type: 'CHOOSE', choiceId })
+                        dispatch({ type: 'CHOOSE', choiceId, entityId: choicePrompt.entityId })
                         setChoicePrompt(null)
                       }}
                       className="rpg-btn rpg-btn-secondary min-h-12 w-full text-left"
@@ -2686,6 +2771,20 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
                   ? transition?.copy
                   : 'The covenant is published with its benefits, costs, and safeguards intact. The roads reopen, the witnesses remain named, and Kallias may return to the world he helped revise.'}
               </p>
+              {chartwrightResolution && (
+                <section data-testid="act5-chartwright-resolution" className="rpg-reveal rpg-reveal-2 mt-4 border-t border-[#5a4a2a] pt-4 text-sm leading-relaxed text-[#cfc0a3]" aria-label="Chartwright witness">
+                  <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#a5761f]">Chartwright witness</p>
+                  <p className="mb-3">{chartwrightResolution.consequence.publicConsequence}</p>
+                  {chartwrightResolution.consequence.lines.map((line) => (
+                    <p key={`${chartwrightResolution.consequence.id}:${line.speakerId}`} className="mb-2">
+                      <span className="font-bold text-[#e8dcc0]">{line.speakerId}.</span> {line.text}
+                    </p>
+                  ))}
+                  <p className="mt-3 border-t border-[#3e3424] pt-3">
+                    <span className="font-bold text-[#e8dcc0]">{chartwrightResolution.coda.speakerId}.</span> {chartwrightResolution.coda.text}
+                  </p>
+                </section>
+              )}
               <button
                 type="button"
                 onClick={() => dispatch(nextAct ? { type: 'BEGIN_ACT', act: nextAct } : { type: 'ACK_ENDING' })}
@@ -2722,12 +2821,6 @@ export default function ControlTowerRPG({ accountUser = null, accountSaveApi = d
               <button type="button" onClick={() => setShowHelp((v) => !v)} className="rpg-btn rpg-btn-quiet w-full">
                 {showHelp ? 'Hide controls' : 'Controls'}
               </button>
-              <a
-                href="#control-tower"
-                className="rpg-btn rpg-btn-quiet w-full"
-              >
-                Exit to Arena
-              </a>
             </div>
             {showHelp && (
               <div className="mt-3 border-t border-[#2a2318] pt-3 text-[10px] leading-relaxed text-[#8f8168]">

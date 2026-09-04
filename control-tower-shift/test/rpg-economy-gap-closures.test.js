@@ -50,6 +50,24 @@ function atMap(state, mapId, position) {
   }
 }
 
+// Physical system access requires the concrete station/shop entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/SHOP_* events carry
+// real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : candidate.kind === 'shop' && candidate.shopId === systemId)
+  const near = { ...state, world: { ...state.world, position: { x: entity.x - 8, y: entity.y } } }
+  const payload = isStation ? { stationId: systemId } : { shopId: systemId }
+  const type = isStation ? 'OPEN_CRAFTING' : 'OPEN_SHOP'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 describe('new merchants: tin-ore and iron-ore', () => {
   const MERCHANTS = [
     { mapId: 'olive-road', entityId: 'philyra-roadside-stall', shopId: 'olive-road-trader', itemId: 'tin-ore', routeStates: null },
@@ -91,7 +109,7 @@ describe('new merchants: tin-ore and iron-ore', () => {
   it.each(MERCHANTS)('sells $itemId at $mapId for real currency through the reducer', ({ mapId, shopId, itemId }) => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 200 } }
     state = atMap(state, mapId)
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId })
+    state = systemOpenNear(state, 'shop', shopId)
     expect(state.economy.openShopId).toBe(shopId)
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId, quantity: 1, transactionId: `test:buy:${itemId}` })
     expect(bought.inventory.slots.some((entry) => entry.itemId === itemId)).toBe(true)
@@ -144,12 +162,12 @@ describe('bronze-forge access widened to the Act I hub', () => {
     expect(state.inventory.slots.filter((entry) => entry.itemId === 'copper-ore')).toHaveLength(3)
 
     state = atMap(state, 'olive-road')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'olive-road-trader' })
+    state = systemOpenNear(state, 'shop', 'olive-road-trader')
     state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'tin-ore', quantity: 1, transactionId: 'gap-closure:tin' })
     expect(state.inventory.slots.some((entry) => entry.itemId === 'tin-ore')).toBe(true)
 
     state = atMap(state, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    state = systemOpenNear(state, 'station', 'bronze-forge')
     expect(state.crafting.stationId).toBe('bronze-forge')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'bronze-bar', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
@@ -194,7 +212,7 @@ describe('alchemy-lab access widened to the Act I hub', () => {
       inventory: { ...addInventoryItem(base.inventory, 'thyme', 3, ALL_ITEM_DEFS).inventory },
     }
     state = atMap(state, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'alchemy-lab' })
+    state = systemOpenNear(state, 'station', 'alchemy-lab')
     expect(state.crafting.stationId).toBe('alchemy-lab')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'dried-herbs', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
@@ -212,7 +230,7 @@ describe('cypress-log now purchasable alongside iron-ore', () => {
   it('is sold at Straton’s Garrison Stores', () => {
     let state = { ...createInitialState(), inventory: { ...createInitialState().inventory, currency: 200 } }
     state = atMap(state, 'storm-anchorage')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'anchorage-garrison-quartermaster' })
+    state = systemOpenNear(state, 'shop', 'anchorage-garrison-quartermaster')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'cypress-log', quantity: 2, transactionId: 'gap-closure:cypress' })
     expect(bought.inventory.slots.filter((entry) => entry.itemId === 'cypress-log')).toHaveLength(2)
   })
@@ -229,21 +247,21 @@ describe('cypress-log now purchasable alongside iron-ore', () => {
     }
 
     state = atMap(state, 'storm-anchorage')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'anchorage-garrison-quartermaster' })
+    state = systemOpenNear(state, 'shop', 'anchorage-garrison-quartermaster')
     state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'iron-ore', quantity: 2, transactionId: 'iron-hoe-chain:ore' })
     state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'cypress-log', quantity: 2, transactionId: 'iron-hoe-chain:log' })
     expect(state.inventory.slots.filter((entry) => entry.itemId === 'iron-ore')).toHaveLength(2)
     expect(state.inventory.slots.filter((entry) => entry.itemId === 'cypress-log')).toHaveLength(2)
 
     state = atMap(state, 'pelagos-harbor')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'woodwork-bench' })
+    state = systemOpenNear(state, 'station', 'woodwork-bench')
     expect(state.crafting.stationId).toBe('woodwork-bench')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'cypress-plank', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
     expect(state.inventory.slots.some((entry) => entry.itemId === 'cypress-plank')).toBe(true)
 
     state = atMap(state, 'beacon-overlook')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    state = systemOpenNear(state, 'station', 'bronze-forge')
     expect(state.crafting.stationId).toBe('bronze-forge')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'iron-hoe', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })
@@ -293,13 +311,15 @@ describe('kiln access widened to the Act I hub', () => {
   it('lets a real player mold a clay brick at Beacon Overlook with no travel at all — the exact gap this closes', () => {
     const base = createInitialState()
     let state = atMap(base, 'beacon-overlook')
+    const copper = rpgMapById('beacon-overlook').entities.find((entity) => entity.id === 'copper-seam')
+    state = { ...state, world: { ...state.world, position: { x: copper.x, y: copper.y } } }
     state = applyEvent(state, { type: 'GATHER', entityId: 'copper-seam' })
     expect(state.inventory.slots.some((entry) => entry.itemId === 'copper-ore')).toBe(true)
     state = applyEvent(state, { type: 'TICK', n: 300 })
     state = applyEvent(state, { type: 'GATHER', entityId: 'copper-seam' })
     expect(state.inventory.slots.filter((entry) => entry.itemId === 'copper-ore')).toHaveLength(2)
 
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'kiln' })
+    state = systemOpenNear(state, 'station', 'kiln')
     expect(state.crafting.stationId).toBe('kiln')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'clay-brick', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1 })

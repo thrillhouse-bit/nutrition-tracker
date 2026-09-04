@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 vi.mock('../../src/api/client.js', () => ({
   api: {
@@ -49,6 +50,7 @@ const {
   startEncounter, stepCombat,
   OUTCOME_WON, OUTCOME_FAILED, OUTCOME_NONE,
 } = await import('../src/rpg/combatAdapter.js')
+const { findWorldPath } = await import('../src/rpg/pathfinding.js')
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -64,6 +66,38 @@ const unmount = async () => {
   if (root) await act(async () => root.unmount())
   if (container) document.body.removeChild(container)
   container = root = null
+}
+
+function onboardPatron(state, godId = TIER1_PATRON_IDS[0]) {
+  let next = atEntity(state, 'beacon-overlook', 'thessa')
+  next = applyEvent(next, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
+  next = applyEvent(next, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
+  next = atEntity(next, 'beacon-overlook', 'shrine')
+  next = applyEvent(next, { type: 'INTERACT', entityId: 'shrine' })
+  return applyEvent(next, { type: 'CHOOSE_PATRON', godId })
+}
+
+function enterOliveRoad(state) {
+  const exit = mapById('beacon-overlook').exits.find((candidate) => candidate.id === 'to-olive-road')
+  const next = moveAlongWorldPath(state, exit)
+  return applyEvent(next, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+}
+function atEntity(state, mapId, entityId) {
+  const map = mapById(mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const origin = state.world.mapId === mapId ? state : {
+    ...state,
+    world: {
+      ...state.world,
+      regionId: map.region,
+      mapId,
+      spawnId: Object.values(map.spawns)[0].id,
+      position: { x: Object.values(map.spawns)[0].x, y: Object.values(map.spawns)[0].y },
+    },
+  }
+  const path = findWorldPath(map, origin.world.position, entity)
+  expect(path.length, `reachable ${mapId}:${entityId}`).toBeGreaterThan(0)
+  return moveAlongWorldPath(origin, entity)
 }
 
 afterEach(async () => {
@@ -124,7 +158,7 @@ describe('schema v1 + documented spawn', () => {
   it('a fresh save is schema v1 and starts at the Beacon Overlook start', () => {
     const s = createInitialState()
     expect(s.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(SCHEMA_VERSION).toBe(3)
+    expect(SCHEMA_VERSION).toBe(4)
     expect(s.world.mapId).toBe(START_MAP)
     expect(s.world.spawnId).toBe(START_SPAWN)
     const spawn = mapById(START_MAP).spawn
@@ -172,7 +206,7 @@ describe('story entry and dialogue controls', () => {
 
   it('continues a valid save and Skip dismisses dialogue while preserving its deterministic effect', async () => {
     let positioned = createInitialState()
-    positioned = applyEvent(positioned, { type: 'MOVE', x: 662, y: 280, facing: 1 })
+    positioned = moveAlongWorldPath(positioned, { x: 662, y: 280 }, { facing: 1 })
     expect(saveRPG(window.localStorage, positioned)).toBe(true)
     await mount(<ControlTowerRPG />)
 
@@ -213,14 +247,9 @@ describe('story entry and dialogue controls', () => {
       })
     }
 
-    let prepared = createInitialState()
-    prepared = applyEvent(prepared, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'shrine' })
-    prepared = applyEvent(prepared, { type: 'CHOOSE_PATRON', godId: 'apollo' })
-    prepared = applyEvent(prepared, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let prepared = enterOliveRoad(onboardPatron(createInitialState(), 'apollo'))
     const gate = mapById('olive-road').exits.find((exit) => exit.kind === 'combat')
-    prepared = applyEvent(prepared, { type: 'MOVE', x: gate.x, y: gate.y, facing: 1 })
+    prepared = moveAlongWorldPath(prepared, gate, { facing: 1 })
     expect(saveRPG(window.localStorage, prepared)).toBe(true)
     await mount(<ControlTowerRPG />)
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue').click())
@@ -258,6 +287,7 @@ describe('story entry and dialogue controls', () => {
     // frozen, unarmed boundary rather than implicitly beginning combat.
     await act(async () => pause.click())
     expect(container.textContent).toContain('Paused')
+    expect(container.querySelector('a[href="#control-tower"]')).toBeNull()
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Resume').click())
     expect(combatCanvas.dataset.combatReady).toBe('false')
     expect(combatHud.dataset.arenaTick).toBe('0')
@@ -319,14 +349,9 @@ describe('story entry and dialogue controls', () => {
       })
     }
 
-    let prepared = createInitialState()
-    prepared = applyEvent(prepared, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'shrine' })
-    prepared = applyEvent(prepared, { type: 'CHOOSE_PATRON', godId: 'apollo' })
-    prepared = applyEvent(prepared, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let prepared = enterOliveRoad(onboardPatron(createInitialState(), 'apollo'))
     const gate = mapById('olive-road').exits.find((exit) => exit.kind === 'combat')
-    prepared = applyEvent(prepared, { type: 'MOVE', x: gate.x, y: gate.y, facing: 1 })
+    prepared = moveAlongWorldPath(prepared, gate, { facing: 1 })
     expect(saveRPG(window.localStorage, prepared)).toBe(true)
     await mount(<ControlTowerRPG />)
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue').click())
@@ -382,12 +407,7 @@ describe('story entry and dialogue controls', () => {
   })
 
   it('stages wilderness combat behind the same explicit ready boundary', async () => {
-    let prepared = createInitialState()
-    prepared = applyEvent(prepared, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'shrine' })
-    prepared = applyEvent(prepared, { type: 'CHOOSE_PATRON', godId: 'apollo' })
-    prepared = applyEvent(prepared, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let prepared = enterOliveRoad(onboardPatron(createInitialState(), 'apollo'))
     prepared = applyEvent(prepared, { type: 'WILDERNESS_ENTER', regionId: 'olive-road' })
     prepared = {
       ...prepared,
@@ -432,7 +452,7 @@ describe('story entry and dialogue controls', () => {
       inventory: { ...prepared.inventory, epithetFragments: ['far-sighted'] },
     }
     prepared = applyEvent(prepared, { type: 'BEGIN_ACT', act: 2 })
-    prepared = applyEvent(prepared, { type: 'MOVE', x: 232, y: 352, facing: 1 })
+    prepared = moveAlongWorldPath(prepared, { x: 232, y: 352 }, { facing: 1 })
     expect(saveRPG(window.localStorage, prepared)).toBe(true)
 
     await mount(<ControlTowerRPG />)
@@ -458,6 +478,7 @@ describe('quest events advance objectives only in order and only once', () => {
   it('talking to Thessa advances talk-thessa (in order)', () => {
     let s = createInitialState()
     expect(currentObjective(s).id).toBe('talk-thessa')
+    s = atEntity(s, 'beacon-overlook', 'thessa')
     s = applyEvent(s, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
     expect(s.status).toBe('in-dialogue')
     s = applyEvent(s, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
@@ -465,6 +486,7 @@ describe('quest events advance objectives only in order and only once', () => {
     expect(currentObjective(s).id).toBe('choose-patron')
     // Repeating the conversation later does NOT re-advance (once-only).
     const idxAfter = currentObjective(s).id
+    s = atEntity(s, 'beacon-overlook', 'thessa')
     s = applyEvent(s, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
     s = applyEvent(s, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
     expect(currentObjective(s).id).toBe(idxAfter)
@@ -479,25 +501,15 @@ describe('quest events advance objectives only in order and only once', () => {
   })
 
   it('traversing to Olive Road advances reach-olive-road only when current', () => {
-    let s = createInitialState()
-    s = applyEvent(s, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    // choose a patron at the shrine
-    s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-    s = applyEvent(s, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
+    let s = onboardPatron(createInitialState())
     expect(currentObjective(s).id).toBe('reach-olive-road')
-    s = applyEvent(s, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    s = enterOliveRoad(s)
     expect(s.world.mapId).toBe('olive-road')
     expect(currentObjective(s).id).toBe('clear-entry')
   })
 
   it('the clear-encounter objective completes exactly once and does not end Act I early', () => {
-    let s = createInitialState()
-    s = applyEvent(s, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-    s = applyEvent(s, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    s = applyEvent(s, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let s = enterOliveRoad(onboardPatron(createInitialState()))
     // enter the encounter
     const enc = encounterById('enc-act1-entry')
     s = applyEvent(s, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
@@ -524,19 +536,15 @@ describe('quest events advance objectives only in order and only once', () => {
 
 describe('optional quest does not gate the main quest', () => {
   it('reading the tablet auto-accepts the side quest; ignoring it never blocks the main path', () => {
-    let s = createInitialState()
+    let s = onboardPatron(createInitialState())
     // On Beacon Overlook first: with no shrine/patron, the main path still
     // flows even when the optional tablet is never touched.
-    s = applyEvent(s, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-    s = applyEvent(s, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    s = applyEvent(s, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    s = enterOliveRoad(s)
     // Even though the side quest is untouched, the main objective is clear-entry.
     expect(currentObjective(s).id).toBe('clear-entry')
 
     // Now interact with the optional tablet: it starts the side quest.
-    const tab = applyEvent(s, { type: 'INTERACT', entityId: 'tablet' })
+    const tab = applyEvent(atEntity(s, 'olive-road', 'tablet'), { type: 'INTERACT', entityId: 'tablet' })
     expect(tab.quests['sq-lost-witness']).toBeDefined()
     expect(tab.quests['sq-lost-witness'].state).toBe('active')
     // The main quest is unaffected by starting the side quest.
@@ -558,9 +566,7 @@ describe('every selectable Tier 1 patron resolves via the canonical loadout', ()
 
   it('choosing any Tier 1 patron at the shrine binds it', () => {
     for (const godId of TIER1_PATRON_IDS) {
-      let s = createInitialState()
-      s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-      s = applyEvent(s, { type: 'CHOOSE_PATRON', godId })
+      let s = onboardPatron(createInitialState(), godId)
       expect(s.protagonist.activePatronId).toBe(godId)
       expect(s.protagonist.unlockedPatronIds).toContain(godId)
     }
@@ -570,11 +576,7 @@ describe('every selectable Tier 1 patron resolves via the canonical loadout', ()
 describe('patron changes: rejected in combat, accepted at the shrine', () => {
   it('rejects a patron choice during combat', () => {
     let s = createInitialState()
-    s = applyEvent(s, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-    s = applyEvent(s, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    s = applyEvent(s, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    s = enterOliveRoad(onboardPatron(createInitialState()))
     s = applyEvent(s, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
     expect(s.status).toBe('in-combat')
     const before = s.protagonist.activePatronId
@@ -583,9 +585,7 @@ describe('patron changes: rejected in combat, accepted at the shrine', () => {
   })
 
   it('accepts a patron change at the shrine outside combat', () => {
-    let s = createInitialState()
-    s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-    s = applyEvent(s, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
+    let s = onboardPatron(createInitialState())
     expect(s.protagonist.activePatronId).toBe(TIER1_PATRON_IDS[0])
   })
 
@@ -599,14 +599,12 @@ describe('patron changes: rejected in combat, accepted at the shrine', () => {
 describe('save round trip, corrupt JSON, future schema, unknown IDs', () => {
   it('round-trips a real save and reloads equivalent state', () => {
     const store = window.localStorage
-    let s = createInitialState()
-    s = applyEvent(s, { type: 'INTERACT', entityId: 'shrine' })
-    s = applyEvent(s, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[2] })
+    let s = onboardPatron(createInitialState(), TIER1_PATRON_IDS[2])
     expect(saveRPG(store, s)).toBe(true)
     expect(hasSave(store)).toBe(true)
     const { save, error } = loadRPG(store)
     expect(error).toBe('none')
-    expect(save.schemaVersion).toBe(3)
+    expect(save.schemaVersion).toBe(4)
     expect(save.protagonist.activePatronId).toBe(TIER1_PATRON_IDS[2])
     expect(save.world.mapId).toBe('beacon-overlook')
     clearSave(store)
@@ -656,7 +654,7 @@ describe('save round trip, corrupt JSON, future schema, unknown IDs', () => {
 
   it('migrateSave upgrades v1 and returns null for corrupt/future', () => {
     expect(migrateSave({ schemaVersion: 1 })).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       economy: { openShopId: null },
       resources: { version: 1, nodes: {} },
     })
@@ -668,7 +666,7 @@ describe('save round trip, corrupt JSON, future schema, unknown IDs', () => {
   it('normalizeState sanitizes a hostile but parseable save into a valid v1 state', () => {
     const n = normalizeState({ schemaVersion: 1, quests: 'bogus', flags: { x: () => 1 } })
     expect(n).not.toBeNull()
-    expect(n.schemaVersion).toBe(3)
+    expect(n.schemaVersion).toBe(4)
     expect(n.status).toBe('playing')
     expect(n.world.mapId).toBe('beacon-overlook')
   })
@@ -694,11 +692,9 @@ describe('combat adapter: exactly-once victory, checkpoint restore, fixed seed',
   })
 
   it('startEncounter anchors to the deterministic acropolis-entry composition', () => {
-    let rpg = createInitialState()
-    rpg = applyEvent(rpg, { type: 'INTERACT', entityId: 'shrine' })
-    rpg = applyEvent(rpg, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
+    let rpg = onboardPatron(createInitialState())
     // ENTER_ENCOUNTER requires being on the activation map (olive-road gate).
-    rpg = applyEvent(rpg, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    rpg = enterOliveRoad(rpg)
     const s = startEncounter(rpg, 'enc-act1-entry')
     expect(s).not.toBeNull()
     expect(s.campaignLevelId).toBe('acropolis-entry')
@@ -713,9 +709,7 @@ describe('combat adapter: exactly-once victory, checkpoint restore, fixed seed',
   })
 
   it('casts a canonical directional patron power through the adapter', () => {
-    let rpg = createInitialState()
-    rpg = applyEvent(rpg, { type: 'INTERACT', entityId: 'shrine' })
-    rpg = applyEvent(rpg, { type: 'CHOOSE_PATRON', godId: 'apollo' })
+    let rpg = enterOliveRoad(onboardPatron(createInitialState(), 'apollo'))
     let session = startEncounter(rpg, 'enc-act1-entry')
     session = stepCombat(session, {}) // authored first spawn
     const before = session.arena.tokenUsage
@@ -726,12 +720,7 @@ describe('combat adapter: exactly-once victory, checkpoint restore, fixed seed',
   })
 
   it('failure restores the pre-encounter checkpoint', () => {
-    let rpg = createInitialState()
-    rpg = applyEvent(rpg, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    rpg = applyEvent(rpg, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    rpg = applyEvent(rpg, { type: 'INTERACT', entityId: 'shrine' })
-    rpg = applyEvent(rpg, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    rpg = applyEvent(rpg, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let rpg = enterOliveRoad(onboardPatron(createInitialState()))
     const checkpoint = rpg
     const entered = applyEvent(rpg, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
     expect(entered.status).toBe('in-combat')
@@ -746,10 +735,7 @@ describe('combat adapter: exactly-once victory, checkpoint restore, fixed seed',
   })
 
   it('stepCombat settles exactly once and never re-emits', () => {
-    let rpg = createInitialState()
-    rpg = applyEvent(rpg, { type: 'INTERACT', entityId: 'shrine' })
-    rpg = applyEvent(rpg, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    rpg = applyEvent(rpg, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let rpg = enterOliveRoad(onboardPatron(createInitialState()))
     let session = startEncounter(rpg, 'enc-act1-entry')
     // Step many frames (some of them as no-ops with nothing spawned yet). The
     // session must eventually settle WON (the composition clears) or we step
@@ -795,7 +781,7 @@ describe('presentation: title surface, dialogue portraits, act boundary', () => 
 
   it('speaker portraits map by stable speaker ID (not display text), with useful alt text only when needed', async () => {
     let positioned = createInitialState()
-    positioned = applyEvent(positioned, { type: 'MOVE', x: 662, y: 280, facing: 1 })
+    positioned = moveAlongWorldPath(positioned, { x: 662, y: 280 }, { facing: 1 })
     expect(saveRPG(window.localStorage, positioned)).toBe(true)
     await mount(<ControlTowerRPG />)
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue').click())
@@ -829,15 +815,10 @@ describe('presentation: title surface, dialogue portraits, act boundary', () => 
   })
 
   it('the keeper portrait resolves for the Amonides side quest via stable ID', async () => {
-    let prepared = createInitialState()
-    prepared = applyEvent(prepared, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'shrine' })
-    prepared = applyEvent(prepared, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    prepared = applyEvent(prepared, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
-    prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'tablet' })
+    let prepared = enterOliveRoad(onboardPatron(createInitialState()))
+    prepared = applyEvent(atEntity(prepared, 'olive-road', 'tablet'), { type: 'INTERACT', entityId: 'tablet' })
     // Stand next to the keeper on Olive Road.
-    prepared = applyEvent(prepared, { type: 'MOVE', x: 760, y: 150, facing: 1 })
+    prepared = moveAlongWorldPath(prepared, { x: 760, y: 150 }, { facing: 1 })
     expect(saveRPG(window.localStorage, prepared)).toBe(true)
     await mount(<ControlTowerRPG />)
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'Continue').click())
@@ -852,17 +833,13 @@ describe('presentation: title surface, dialogue portraits, act boundary', () => 
   })
 
   it('the Act-I boundary is a chapter transition using the Ianthe reveal with honest copy', async () => {
-    let completed = createInitialState()
-    completed = applyEvent(completed, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-    completed = applyEvent(completed, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-    completed = applyEvent(completed, { type: 'INTERACT', entityId: 'shrine' })
-    completed = applyEvent(completed, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-    completed = applyEvent(completed, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+    let completed = enterOliveRoad(onboardPatron(createInitialState()))
     completed = applyEvent(completed, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
     completed = applyEvent(completed, { type: 'COMBAT_WON', encounterId: 'enc-act1-entry' })
     completed = applyEvent(completed, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-sun' })
     completed = applyEvent(completed, { type: 'COMBAT_WON', encounterId: 'enc-act1-sun' })
     const objective = currentObjective(completed)
+    completed = atEntity(completed, completed.world.mapId, objective.npcId)
     completed = applyEvent(completed, { type: 'TALK', npcId: objective.npcId, conversationId: objective.conversationId })
     completed = applyEvent(completed, { type: 'DIALOGUE_END', conversationId: objective.conversationId })
     expect(completed.status).toBe('ending')
@@ -894,6 +871,8 @@ describe('presentation: title surface, dialogue portraits, act boundary', () => 
   it('the in-world HUD keeps one objective strip, identity, patron, and pause', async () => {
     await mount(<ControlTowerRPG />)
     await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent === 'New Story').click())
+    expect(container.querySelector('canvas[aria-label="Beacon Overlook exploration view"]')).toBeTruthy()
+    expect(container.querySelector('canvas[aria-label="Sun Court combat view"]')).toBeNull()
     // Exactly one objective strip, live-announced.
     const objectives = container.querySelectorAll('.rpg-objective')
     expect(objectives.length).toBe(1)
@@ -945,19 +924,14 @@ describe('presentation: title surface, dialogue portraits, act boundary', () => 
       it('after Entry victory the Sun Court gate launches the authored Sun encounter', async () => {
         // Drive the reducer to the exact post-Entry state, then stand Kallias at
         // the visible Sun Court gate on Beacon Overlook.
-        let prepared = createInitialState()
-        prepared = applyEvent(prepared, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-        prepared = applyEvent(prepared, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-        prepared = applyEvent(prepared, { type: 'INTERACT', entityId: 'shrine' })
-        prepared = applyEvent(prepared, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-        prepared = applyEvent(prepared, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+        let prepared = enterOliveRoad(onboardPatron(createInitialState()))
         prepared = applyEvent(prepared, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
         prepared = applyEvent(prepared, { type: 'COMBAT_WON', encounterId: 'enc-act1-entry' })
         expect(currentObjective(prepared).encounterId).toBe('enc-act1-sun')
 
         const sunGate = mapById('beacon-overlook').exits.find((exit) => exit.kind === 'combat' && exit.encounterId === 'enc-act1-sun')
         expect(sunGate).toBeTruthy()
-        prepared = applyEvent(prepared, { type: 'MOVE', x: sunGate.x, y: sunGate.y, facing: 1 })
+        prepared = moveAlongWorldPath(prepared, sunGate, { facing: 1 })
         expect(saveRPG(window.localStorage, prepared)).toBe(true)
 
         await mount(<ControlTowerRPG />)
@@ -972,17 +946,13 @@ describe('presentation: title surface, dialogue portraits, act boundary', () => 
 
       it('the Act-II boundary card enters playable Pelagos', async () => {
         // Drive the reducer to the completed Act-I state (status 'ending').
-        let completed = createInitialState()
-        completed = applyEvent(completed, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
-        completed = applyEvent(completed, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
-        completed = applyEvent(completed, { type: 'INTERACT', entityId: 'shrine' })
-        completed = applyEvent(completed, { type: 'CHOOSE_PATRON', godId: TIER1_PATRON_IDS[0] })
-        completed = applyEvent(completed, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
+        let completed = enterOliveRoad(onboardPatron(createInitialState()))
         completed = applyEvent(completed, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-entry' })
         completed = applyEvent(completed, { type: 'COMBAT_WON', encounterId: 'enc-act1-entry' })
         completed = applyEvent(completed, { type: 'ENTER_ENCOUNTER', encounterId: 'enc-act1-sun' })
         completed = applyEvent(completed, { type: 'COMBAT_WON', encounterId: 'enc-act1-sun' })
         const objective = currentObjective(completed)
+        completed = atEntity(completed, completed.world.mapId, objective.npcId)
         completed = applyEvent(completed, { type: 'TALK', npcId: objective.npcId, conversationId: objective.conversationId })
         completed = applyEvent(completed, { type: 'DIALOGUE_END', conversationId: objective.conversationId })
         expect(completed.status).toBe('ending')

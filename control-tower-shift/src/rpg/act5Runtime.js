@@ -127,13 +127,18 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('foothold-ascent', 76, allLightStates, [point(86, 382), point(256, 350), point(438, 330), point(650, 300), point(922, 276)], 'Open witness-camp route to the Night Stair'),
-      lane('foothold-shrine-path', 48, allLightStates, [point(256, 350), point(214, 270), point(176, 206)], 'Safe branch to the Nyx shrine'),
+      lane('foothold-shrine-path', 72, allLightStates, [point(256, 350), point(214, 270), point(176, 206)], 'Safe branch to the Nyx shrine'),
+      // The witness camp's merchant, kitchen, and cache are services on the
+      // physical camp route in every light state, never remote panels.
+      lane('foothold-camp-services', 72, allLightStates, [point(438, 330), point(460, 400), point(420, 430)], 'Witness camp service path to the kitchen and cache'),
+      lane('foothold-broker-path', 72, allLightStates, [point(650, 300), point(640, 365)], 'Witness camp broker path'),
+      lane('foothold-shade-plot-spur', 76, allLightStates, [point(86, 382), point(250, 470)], 'Safe cultivation spur at the witness camp'),
     ],
     decor: [
       { id: 'foothold-brazier-1', kind: 'brazier', x: 302, y: 176 }, { id: 'foothold-brazier-2', kind: 'brazier', x: 608, y: 324 },
       { id: 'foothold-witness-flags', kind: 'witness-flags', x: 448, y: 118 }, { id: 'foothold-tent', kind: 'archive-tent', x: 540, y: 408 },
     ],
-    light: { initialStateId: 'shadow', controllerIds: ['shadow-seal-first'], laneIds: ['foothold-ascent', 'foothold-shrine-path'] },
+    light: { initialStateId: 'shadow', controllerIds: ['shadow-seal-first'], laneIds: ['foothold-ascent', 'foothold-shrine-path', 'foothold-shade-plot-spur'] },
   },
 
   'night-stair': {
@@ -155,7 +160,7 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'selene-path-split', kind: 'marker', x: 500, y: 240, name: 'Moonlit Path Split', label: 'Follow the stable witness signs' },
       { id: 'true-sky-invitation', kind: 'interact', x: 446, y: 196, name: 'Unmapped Starlight', label: 'Begin The Light No Map Remembers', sideQuest: 'sq-act5-light-no-map-remembers' },
       { id: 'anchor-3-landing', kind: 'marker', x: 548, y: 322, name: 'Third Anchor Landing', label: 'Rejoin the Night Stair' },
-      { id: 'star-deed-mercy', kind: 'interact', interactionType: 'match', x: 370, y: 122, name: 'Star of Mercy', label: 'Match mercy to its witnessed deed' },
+      { id: 'star-deed-mercy', kind: 'interact', interactionType: 'match', x: 489, y: 173, name: 'Star of Mercy', label: 'Match mercy to its witnessed deed' },
       { id: 'star-deed-vigil', kind: 'interact', interactionType: 'match', x: 420, y: 94, name: 'Star of Vigil', label: 'Match vigilance to its witnessed deed' },
       { id: 'star-deed-return', kind: 'interact', interactionType: 'match', x: 528, y: 98, name: 'Star of Return', label: 'Match return to its witnessed deed' },
       { id: 'star-deed-refusal', kind: 'interact', interactionType: 'match', x: 578, y: 128, name: 'Star of Refusal', label: 'Match refusal to its witnessed deed' },
@@ -219,6 +224,10 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       lane('false-sky-moon-arrival', 92, ['moon'], [point(38, 382), point(76, 382), point(244, 336), point(348, 334), point(388, 314)], 'Moonlit arrival route to Helios and the first sun control'),
       lane('false-sky-transition', 96, allLightStates, [point(324, 344), point(348, 334), point(388, 314), point(420, 300)], 'Shared transition landing containing sun and moon controls'),
       lane('false-sky-sun-road', 92, ['sun'], [point(388, 314), point(492, 260), point(576, 238), point(650, 188), point(820, 190), point(922, 150)], 'Sun bridge, rayed disc route through the remaining mirrors to the Loom approach'),
+      // Apollo's optional three-lights testimony belongs to the exposed sun
+      // route; this safe spur avoids the fracture pillar while keeping him
+      // unavailable from the moon arrival before the mirror is turned.
+      lane('false-sky-apollo-sun-witness', 50, ['sun'], [point(576, 238), point(556, 300), point(556, 416), point(574, 416)], 'Sunlit spur to Apollo’s three-lights testimony'),
       lane('false-sky-sun-fractures', 76, ['sun'], [point(388, 314), point(420, 404), point(508, 430), point(704, 322), point(820, 190)], 'Sun route through fixed fracture A then B, never a rewind of player input'),
       lane('false-sky-shadow-recovery', 92, ['shadow'], [point(76, 382), point(244, 336), point(348, 334), point(388, 314)], 'Shadow-state recovery route to the shared transition controls'),
     ],
@@ -226,7 +235,7 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
       { id: 'false-dawn-disc', kind: 'false-sun', x: 492, y: 88 }, { id: 'fracture-obelisk-a', kind: 'time-obelisk', x: 420, y: 404 },
       { id: 'fracture-obelisk-b', kind: 'time-obelisk', x: 704, y: 322 },
     ],
-    light: { initialStateId: 'moon', controllerIds: ['sun-mirror-1', 'selene-return-witness'], laneIds: ['false-sky-moon-arrival', 'false-sky-transition', 'false-sky-sun-road', 'false-sky-sun-fractures', 'false-sky-shadow-recovery'] },
+    light: { initialStateId: 'moon', controllerIds: ['sun-mirror-1', 'selene-return-witness'], laneIds: ['false-sky-moon-arrival', 'false-sky-transition', 'false-sky-sun-road', 'false-sky-apollo-sun-witness', 'false-sky-sun-fractures', 'false-sky-shadow-recovery'] },
   },
 
   'silent-loom-approach': {
@@ -308,12 +317,13 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
     traversalLanes: [
       lane('loom-boss-processional', 88, allLightStates, [point(38, 400), point(210, 356), point(336, 294), point(480, 274), point(592, 240), point(718, 266), point(922, 118)], 'Ordered Guardian, Regent, Accord, and epilogue route'),
       lane('loom-safe-boundary', 50, allLightStates, [point(336, 382), point(480, 360), point(592, 350), point(718, 330)], 'Safe checkpoint lane between boss encounters'),
+      lane('loom-restored-workbench', 72, allLightStates, [point(718, 266), point(738, 370)], 'Reach the restored Covenant Loom from the accord route'),
     ],
     decor: [
       { id: 'loom-column-1', kind: 'thread-column', x: 210, y: 162 }, { id: 'loom-column-2', kind: 'thread-column', x: 760, y: 170 },
       { id: 'loom-witness-fire', kind: 'brazier', x: 718, y: 190 },
     ],
-    light: { initialStateId: 'shadow', controllerIds: [], laneIds: ['loom-boss-processional', 'loom-safe-boundary'] },
+    light: { initialStateId: 'shadow', controllerIds: [], laneIds: ['loom-boss-processional', 'loom-safe-boundary', 'loom-restored-workbench'] },
   },
 
   'accord-overlook': {
@@ -341,13 +351,14 @@ export const ACT5_RUNTIME_MAPS = deepFreeze({
     ],
     traversalLanes: [
       lane('accord-public-path', 82, allLightStates, [point(38, 358), point(240, 330), point(480, 280), point(700, 326), point(890, 284)], 'Open public route through the Accord overlook'),
-      lane('accord-sky-path', 48, allLightStates, [point(480, 280), point(480, 180), point(480, 112)], 'Safe overlook path to the plural sky'),
+      lane('accord-sky-path', 56, allLightStates, [point(480, 280), point(410, 260), point(410, 160), point(480, 112)], 'Safe overlook path around the Accord plinth to the plural sky'),
+      lane('accord-ash-grove-spur', 76, allLightStates, [point(700, 326), point(770, 380)], 'Open path to the covenant-grown ash'),
     ],
     decor: [
       { id: 'accord-column-1', kind: 'column', x: 304, y: 154 }, { id: 'accord-column-2', kind: 'column', x: 656, y: 154 },
       { id: 'accord-brazier-1', kind: 'brazier', x: 360, y: 360 }, { id: 'accord-brazier-2', kind: 'brazier', x: 600, y: 360 },
     ],
-    light: { initialStateId: 'sun', controllerIds: [], laneIds: ['accord-public-path', 'accord-sky-path'] },
+    light: { initialStateId: 'sun', controllerIds: [], laneIds: ['accord-public-path', 'accord-sky-path', 'accord-ash-grove-spur'] },
   },
 })
 

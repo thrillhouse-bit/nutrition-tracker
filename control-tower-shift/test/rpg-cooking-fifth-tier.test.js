@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALL_ITEM_DEFS, RECIPES } from '../src/rpg/crafting.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
 import { consumableEffect } from '../src/rpg/itemEffects.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import { addInventoryItem, xpForLevel } from '../src/rpg/progression.js'
 import { rpgMapById } from '../src/rpg/registry.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
@@ -37,6 +38,25 @@ function atMap(state, mapId, position) {
   }
 }
 
+// Physical system access requires the concrete station/shop entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/SHOP_* events carry
+// real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : candidate.kind === 'shop' && candidate.shopId === systemId)
+  const endpoint = findWorldPath(map, state.world.position, entity).at(-1)
+  const near = { ...state, world: { ...state.world, position: { x: endpoint.x, y: endpoint.y } } }
+  const payload = isStation ? { stationId: systemId } : { shopId: systemId }
+  const type = isStation ? 'OPEN_CRAFTING' : 'OPEN_SHOP'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function cookingState(level) {
   const base = createInitialState()
   return {
@@ -55,20 +75,22 @@ describe('clay-loaf recipe', () => {
     })
   })
 
-  it('lets a real player buy barley-flatbread at Myrrine\'s, bake a loaf, and sell it back — all at Beacon Overlook', () => {
+  it('lets a real player buy barley-flatbread at Myrrine\'s, bake it at the Nyx field kitchen (the only physical field kitchen), and sell it back at Myrrine\'s', () => {
     let state = { ...cookingState(1), inventory: { ...cookingState(1).inventory, currency: 100 } }
     state = atMap(state, 'beacon-overlook')
     const startingFlatbread = itemQuantity(state.inventory, 'barley-flatbread')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     state = applyEvent(state, { type: 'SHOP_BUY', itemId: 'barley-flatbread', quantity: 1, transactionId: 'cooking:buy-flatbread' })
     expect(itemQuantity(state.inventory, 'barley-flatbread')).toBe(startingFlatbread + 1)
 
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'field-kitchen' })
+    state = atMap(state, 'nyx-foothold')
+    state = systemOpenNear(state, 'station', 'field-kitchen')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'clay-loaf', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1, xpAwarded: 8 })
     expect(itemQuantity(state.inventory, 'clay-loaf')).toBe(1)
 
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'beacon-provisioner' })
+    state = atMap(state, 'beacon-overlook')
+    state = systemOpenNear(state, 'shop', 'beacon-provisioner')
     const sold = applyEvent(state, { type: 'SHOP_SELL', itemId: 'clay-loaf', quantity: 1, transactionId: 'cooking:sell-loaf' })
     expect(itemQuantity(sold.inventory, 'clay-loaf')).toBe(0)
     expect(sold.inventory.currency).toBeGreaterThan(0)
@@ -114,7 +136,7 @@ describe('ambrosial-roe-feast (Cooking\'s fifth tier)', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'nyx-foothold')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'field-kitchen' })
+    state = systemOpenNear(state, 'station', 'field-kitchen')
     const crafted = applyEvent(state, { type: 'CRAFT', recipeId: 'ambrosial-roe-feast', quantity: 1 })
     expect(crafted.crafting.lastResult).toMatchObject({ ok: false, reason: 'level_too_low' })
     expect(itemQuantity(crafted.inventory, 'ambrosial-roe-feast')).toBe(0)
@@ -130,7 +152,7 @@ describe('ambrosial-roe-feast (Cooking\'s fifth tier)', () => {
       ).inventory,
     }
     let state = atMap(withIngredients, 'nyx-foothold')
-    state = applyEvent(state, { type: 'OPEN_CRAFTING', stationId: 'field-kitchen' })
+    state = systemOpenNear(state, 'station', 'field-kitchen')
     state = applyEvent(state, { type: 'CRAFT', recipeId: 'ambrosial-roe-feast', quantity: 1 })
     expect(state.crafting.lastResult).toMatchObject({ ok: true, quantity: 1, xpAwarded: 260 })
     expect(itemQuantity(state.inventory, 'hippocamp-roe')).toBe(0)
@@ -142,7 +164,7 @@ describe('ambrosial-roe-feast (Cooking\'s fifth tier)', () => {
   it('lets Asteria sell the feast at Nyx Foothold, above every other cooked food', () => {
     let state = { ...cookingState(60), inventory: { ...cookingState(60).inventory, currency: 2000 } }
     state = atMap(state, 'nyx-foothold')
-    state = applyEvent(state, { type: 'OPEN_SHOP', shopId: 'nyx-witness-exchange' })
+    state = systemOpenNear(state, 'shop', 'nyx-witness-exchange')
     const bought = applyEvent(state, { type: 'SHOP_BUY', itemId: 'ambrosial-roe-feast', quantity: 1, transactionId: 'cooking:buy-feast' })
     expect(itemQuantity(bought.inventory, 'ambrosial-roe-feast')).toBe(1)
 

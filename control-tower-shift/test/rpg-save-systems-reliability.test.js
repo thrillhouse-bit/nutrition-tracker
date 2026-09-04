@@ -4,6 +4,7 @@ import { addInventoryItem } from '../src/rpg/progression.js'
 import { loadRPG, normalizeState, RPG_SAVE_KEY } from '../src/rpg/save.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
 import { rpgMapById } from '../src/rpg/registry.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 function atMap(state, mapId) {
   const map = rpgMapById(mapId)
@@ -20,6 +21,24 @@ function atMap(state, mapId) {
   }
 }
 
+// Physical system access requires the concrete station/shop/bank entity on the
+// current map and a protagonist standing beside it. Resolve the matching entity
+// for the map the caller already set, reposition west of it (validated
+// reachable), and open through the reducer so later CRAFT/BANK_* events carry
+// real physical authority.
+function systemOpenNear(state, kind, systemId) {
+  const map = rpgMapById(state.world.mapId)
+  const isStation = kind === 'station'
+  const entity = map.entities.find((candidate) =>
+    isStation
+      ? candidate.kind === 'station' && candidate.stationId === systemId
+      : candidate.kind === 'bank')
+  const near = moveAlongWorldPath(state, entity)
+  const payload = isStation ? { stationId: systemId } : {}
+  const type = isStation ? 'OPEN_CRAFTING' : 'OPEN_BANK'
+  return applyEvent(near, { type, entityId: entity.id, ...payload })
+}
+
 function storeFor(raw) {
   return {
     getItem(key) {
@@ -33,6 +52,57 @@ function inventoryWith(state, itemId, quantity) {
 }
 
 describe('save normalization system boundaries', () => {
+  it('rejects corrupt or inactive-lane positions and recovers to a deterministic valid spawn', () => {
+    const raw = createInitialState()
+    raw.world = {
+      ...raw.world,
+      regionId: 'pelagos-isles',
+      mapId: 'nereid-caves',
+      spawnId: 'threshold',
+      // The echo branch is excluded at ebb, even though this point is in
+      // bounds and would otherwise be usable to forge a physical interaction.
+      position: { x: 452, y: 420 },
+    }
+    raw.flags = { ...raw.flags, 'act2:tide-state': 'ebb' }
+    const normalized = normalizeState(raw)
+    const caves = rpgMapById('nereid-caves')
+    expect(normalized.world).toMatchObject({ mapId: 'nereid-caves', spawnId: 'threshold', position: { x: caves.spawns.threshold.x, y: caves.spawns.threshold.y } })
+  })
+
+  it('recovers first-thaw and name-press checkpoints using the first state-valid declared spawn', () => {
+    const firstThaw = createInitialState()
+    firstThaw.flags = { ...firstThaw.flags, 'act3:season-state': 'harvest' }
+    firstThaw.world = {
+      ...firstThaw.world,
+      regionId: rpgMapById('wheat-village').region,
+      mapId: 'wheat-village',
+      spawnId: 'first-thaw',
+      position: { x: 474, y: 282 },
+    }
+    const recoveredThaw = normalizeState(firstThaw)
+    expect(recoveredThaw.world).toMatchObject({
+      mapId: 'wheat-village',
+      spawnId: 'granary',
+      position: { x: rpgMapById('wheat-village').spawns.granary.x, y: rpgMapById('wheat-village').spawns.granary.y },
+    })
+
+    const namePress = createInitialState()
+    namePress.flags = { ...namePress.flags, 'act4:pressure-state': 'critical' }
+    namePress.world = {
+      ...namePress.world,
+      regionId: rpgMapById('name-press').region,
+      mapId: 'name-press',
+      spawnId: 'name-press-relief',
+      position: { x: 480, y: 402 },
+    }
+    const recoveredPress = normalizeState(namePress)
+    expect(recoveredPress.world).toMatchObject({
+      mapId: 'name-press',
+      spawnId: 'name-press-relief',
+      position: { x: rpgMapById('name-press').spawns['name-press-relief'].x, y: rpgMapById('name-press').spawns['name-press-relief'].y },
+    })
+  })
+
   it('derives wilderness risk from the authored region and retains only a local pending enemy', () => {
     const raw = createInitialState()
     raw.wilderness = {
@@ -111,13 +181,23 @@ describe('save normalization system boundaries', () => {
     expect(restarted.wilderness.activeEncounterKey).toBe('olive-road:3:wild-boar')
   })
 
-  it('retains a crafting station only on a map where it is physically accessible', () => {
+  it('clears live system leases on reload while retaining the last crafting result', () => {
     const atFoundry = atMap(createInitialState(), 'bronze-foundry')
     atFoundry.crafting = { stationId: 'bronze-forge', lastResult: { ok: true, quantity: 1 } }
-    expect(normalizeState(atFoundry).crafting.stationId).toBe('bronze-forge')
+    atFoundry.economy.openShopId = 'beacon-provisioner'
+    atFoundry.flags = {
+      ...atFoundry.flags,
+      'rpg:active-bank-entity': 'beacon-bank',
+      'rpg:active-shop-entity': 'myrrine-provisioner',
+      'rpg:active-crafting-entity': 'bronze-foundry-forge',
+    }
+    const normalized = normalizeState(atFoundry)
+    expect(normalized.crafting).toEqual({ stationId: null, lastResult: { ok: true, quantity: 1 } })
+    expect(normalized.economy.openShopId).toBeNull()
+    expect(normalized.flags['rpg:active-bank-entity']).toBeUndefined()
+    expect(normalized.flags['rpg:active-shop-entity']).toBeUndefined()
+    expect(normalized.flags['rpg:active-crafting-entity']).toBeUndefined()
 
-    // Beacon Overlook now also has a bronze-forge, so use a map with no
-    // bronze-forge access at all to exercise the remote/stale case.
     const remote = atMap(createInitialState(), 'olive-road')
     remote.crafting = { stationId: 'bronze-forge', lastResult: { ok: true, quantity: 1 } }
     expect(normalizeState(remote).crafting).toMatchObject({ stationId: null })
@@ -148,7 +228,7 @@ describe('reducer quantity and access hardening', () => {
       ...base,
       inventory: inventoryWith(base, 'copper-ore', 6),
     }
-    base = applyEvent(base, { type: 'OPEN_CRAFTING', stationId: 'bronze-forge' })
+    base = systemOpenNear(base, 'station', 'bronze-forge')
 
     for (const quantity of [0, -1, 1.5, NaN, Infinity, -Infinity]) {
       const rejected = applyEvent(base, { type: 'CRAFT', recipeId: 'copper-bar', quantity })
@@ -178,7 +258,8 @@ describe('reducer quantity and access hardening', () => {
     }
 
     const added = applyEvent(state, { type: 'ADD_ITEM', itemId: 'copper-ore' })
-    const withdrawn = applyEvent(state, { type: 'BANK_WITHDRAW', itemId: 'copper-ore' })
+    const opened = systemOpenNear(state, 'bank')
+    const withdrawn = applyEvent(opened, { type: 'BANK_WITHDRAW', itemId: 'copper-ore' })
     expect(added.inventory.slots.some((entry) => entry.itemId === 'copper-ore')).toBe(true)
     expect(withdrawn.inventory.bank.slots).toContainEqual({ itemId: 'copper-ore', quantity: 3 })
   })

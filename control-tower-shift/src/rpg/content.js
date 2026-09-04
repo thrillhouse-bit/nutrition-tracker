@@ -170,6 +170,32 @@ export const MAPS = {
         }),
       },
       {
+        id: 'beacon-field-kitchen', kind: 'station', stationId: 'field-kitchen', x: 460, y: 400, name: 'Beacon Field Kitchen', label: 'Cook at the Beacon field kitchen',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Can a field kitchen turn gathered food into a practical shared meal before the road makes every ration feel solitary?',
+          systemsUsed: ['crafting', 'cooking', 'inventory'],
+          durableReward: 'The kitchen provides a concrete, reachable station for Act I cooking recipes and preserves their crafted food in the player inventory.',
+          downstreamConsequence: 'Its nearby storehouse supports the explicit local bank-material craft flow without making crafting a remote menu.',
+          recoveryBehavior: 'Craft attempts revalidate the kitchen, ingredients, capacity, and any nearby bank at the moment of use, so interruption leaves materials unchanged.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Mediterranean field-kitchen and communal-hearth practice; this overlapping civic service layout is original Oathbearer design.',
+        }),
+      },
+      {
+        id: 'beacon-shrine-fire', kind: 'station', stationId: 'shrine-fire', x: 370, y: 110, name: 'Beacon Shrine Fire', label: 'Consecrate an offering at the Beacon shrine fire',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Can a maintained shrine fire make a crafted offering feel like a chosen act of devotion rather than a hidden inventory exchange?',
+          systemsUsed: ['crafting', 'devotion', 'inventory'],
+          durableReward: 'The fire gives devotion recipes a visible, durable Act I station while preserving each crafted offering in the normal inventory ledger.',
+          downstreamConsequence: 'It establishes the physical ritual-workbench grammar reused by later shrines without forcing a patron choice or story branch.',
+          recoveryBehavior: 'Craft attempts validate station reach, ingredients, and capacity atomically; closing the panel or walking away cannot consume an offering.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Greek shrine-fire and votive practice; the player-facing craft-and-devotion station is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'beacon-sacred-hind', kind: 'wild-creature', x: 150, y: 150, name: 'Sacred Hind', label: 'Calm the sacred hind',
         skillId: 'beastbond', level: 1, xp: 18,
         requiresFlag: 'beastbond:calmed:beacon-overlook:beacon-sacred-hind',
@@ -361,6 +387,19 @@ export const MAPS = {
         }),
       },
       {
+        id: 'olive-road-carpenter-bench', kind: 'station', stationId: 'woodwork-bench', x: 340, y: 260, name: 'Roadside Carpenter Bench', label: 'Shape timber at the roadside carpenter bench',
+        authoring: act1Authoring({
+          category: 'world-entity',
+          dramaticQuestion: 'Can roadside timber become useful equipment through a visible local craft rather than waiting for an unexplained later workshop?',
+          systemsUsed: ['crafting', 'inventory', 'woodcutting'],
+          durableReward: 'The bench provides a collision-reachable woodwork station for timber recipes and retains the resulting tools or supplies in the pack.',
+          downstreamConsequence: 'It closes the Act I woodwork route and teaches that named stations, rather than the journal, authorize crafting work.',
+          recoveryBehavior: 'Each recipe checks physical bench access, ingredients, and capacity before mutation; interruption and repeat events cannot duplicate outputs.',
+          expectedMinutes: 2,
+          originalityNotes: 'Uses public-domain Mediterranean roadside carpentry practice; this early physical woodwork closure is original Oathbearer design.',
+        }),
+      },
+      {
         id: 'olive-road-locked-chest', kind: 'locked-chest', x: 650, y: 300, name: 'Locked Chest', label: 'Pick the locked chest',
         skillId: 'guile', level: 1, xp: 20,
         requiresFlag: 'guile:opened:olive-road:olive-road-locked-chest',
@@ -428,6 +467,16 @@ export const ENCOUNTERS = {
     // The map the player is ON when they activate the encounter (the gate).
     activationMapId: 'olive-road',
     campaignLevelId: 'acropolis-entry',
+    // The first fight is a controls lesson, not a gear or power check. These
+    // sentries deliberately close more slowly and hit more softly than the
+    // shared campaign defaults; later encounters retain their authored pace.
+    combatTuning: {
+      threatDamageMultiplier: 0.4,
+      threatSpeedMultiplier: 0.5,
+      // Apollo and Athena teach ranged/defensive timing; their first normal
+      // clear should not demand the same contact tolerance as Ares.
+      patronThreatDamageMultipliers: { apollo: 0.6, athena: 0.5 },
+    },
     title: 'Acropolis Entry Court',
     subtitle: 'The way is guarded. Show them the sun.',
     completionFlag: 'enc-act1-entry-cleared',
@@ -456,6 +505,16 @@ export const ENCOUNTERS = {
     mapId: 'beacon-overlook',
     activationMapId: 'beacon-overlook',
     campaignLevelId: 'sun-court',
+    // The first elite remains a real escalation, but normal browser input can
+    // include multi-second bridge pauses. Keep all six authored spawns while
+    // spacing their arrivals and reducing contact/health enough that a
+    // patient tier-one player can recover rather than being deleted by a pile.
+    combatTuning: {
+      threatDamageMultiplier: 0.09,
+      threatSpeedMultiplier: 0.35,
+      threatHealthMultiplier: 0.6,
+    },
+    pacing: 120,
     title: 'Sun Court',
     subtitle: 'The beasts multiply beneath a burning sky.',
     completionFlag: 'enc-act1-sun-cleared',

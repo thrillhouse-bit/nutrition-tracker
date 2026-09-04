@@ -3,6 +3,7 @@ import { ACT3_CONVERSATIONS, act3ConversationById } from '../src/rpg/act3Convers
 import { ACT3_MAIN_QUEST_ID } from '../src/rpg/act3Content.js'
 import { ACT3_RUNTIME_MAPS } from '../src/rpg/act3Runtime.js'
 import { validateRPGContent } from '../src/rpg/contentValidation.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 import {
   REGISTERED_CONVERSATIONS,
   rpgConversationById,
@@ -44,6 +45,20 @@ function stateAtObjective(objectiveIndex, mapId, spawnId = 'test-spawn') {
         objectiveCounts: {},
       },
     },
+  }
+}
+
+function atNpc(state, npcId) {
+  const map = ACT3_RUNTIME_MAPS[state.world.mapId]
+  const npc = map?.entities.find((entity) => entity.id === npcId && entity.kind === 'npc')
+  expect(npc, `${state.world.mapId}:${npcId}`).toBeTruthy()
+  const spawn = map.spawns[state.world.spawnId] || Object.values(map.spawns)[0]
+  const path = findWorldPath(map, spawn, npc)
+  expect(path.length, `${map.id}:${npcId}`).toBeGreaterThan(0)
+  expect(Math.hypot(path.at(-1).x - npc.x, path.at(-1).y - npc.y)).toBeLessThan(56)
+  return {
+    ...state,
+    world: { ...state.world, spawnId: spawn.id, position: path.at(-1) },
   }
 }
 
@@ -119,6 +134,7 @@ describe('Act III conversation progression compatibility', () => {
 
     for (let index = 0; index < witnesses.length; index += 1) {
       const [npcId, conversationId] = witnesses[index]
+      state = atNpc(state, npcId)
       state = applyEvent(state, { type: 'TALK', npcId, conversationId })
       expect(state.status, conversationId).toBe('in-dialogue')
       state = applyEvent(state, { type: 'DIALOGUE_END', npcId, conversationId })
@@ -133,6 +149,7 @@ describe('Act III conversation progression compatibility', () => {
     }
 
     const completed = state
+    state = atNpc(state, 'demeter')
     state = applyEvent(state, {
       type: 'TALK', npcId: 'demeter', conversationId: 'act3-demeter-stilled-year',
     })
@@ -144,6 +161,7 @@ describe('Act III conversation progression compatibility', () => {
 
   it('advances Kleio testimony once while retaining its authored witness effects', () => {
     let state = stateAtObjective(4, 'asphodel-gate', 'from-sanctuary')
+    state = atNpc(state, 'kleio')
     state = applyEvent(state, {
       type: 'TALK', npcId: 'kleio', conversationId: 'act3-kleio-testimony',
     })

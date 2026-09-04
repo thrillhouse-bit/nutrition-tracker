@@ -13,13 +13,28 @@ import {
 } from '../src/rpg/itemEffects.js'
 import { normalizeState } from '../src/rpg/save.js'
 import { applyEvent, createInitialState } from '../src/rpg/state.js'
+import { rpgMapById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
 
 function entryCourtState() {
   let state = createInitialState()
+  const map = rpgMapById('beacon-overlook')
+  const thessa = map.entities.find((entity) => entity.id === 'thessa')
+  const thessaPath = findWorldPath(map, state.world.position, thessa)
+  expect(thessaPath.length).toBeGreaterThan(0)
+  state = { ...state, world: { ...state.world, position: thessaPath.at(-1) } }
   state = applyEvent(state, { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-overlook' })
   state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'act1-thessa-overlook' })
+  const shrine = rpgMapById('beacon-overlook').entities.find((entity) => entity.id === 'shrine')
+  const shrinePath = findWorldPath(map, state.world.position, shrine)
+  expect(shrinePath.length).toBeGreaterThan(0)
+  state = { ...state, world: { ...state.world, position: shrinePath.at(-1) } }
   state = applyEvent(state, { type: 'INTERACT', entityId: 'shrine' })
   state = applyEvent(state, { type: 'CHOOSE_PATRON', godId: 'apollo' })
+  const exit = rpgMapById('beacon-overlook').exits.find((candidate) => candidate.id === 'to-olive-road')
+  const exitPath = findWorldPath(map, state.world.position, exit)
+  expect(exitPath.length).toBeGreaterThan(0)
+  state = { ...state, world: { ...state.world, position: exitPath.at(-1) } }
   return applyEvent(state, { type: 'TRAVERSE', viaGate: 'to-olive-road', toMapId: 'olive-road', spawnId: 'from-beacon' })
 }
 

@@ -16,7 +16,10 @@ import {
   ACT2_REGION, ACT2_CONNECTIONS, ACT2_ENCOUNTERS,
   ACT2_MAIN_QUEST, ACT2_SIDE_QUEST, ACT2_ENCOUNTER_OWNER_QUEST, act2Authoring,
 } from './act2Content.js'
-import { ACT2_RENDERABLE_MAPS } from './act2Runtime.js'
+import { ACT2_RENDERABLE_MAPS, ACT2_RUNTIME_MAPS } from './act2Runtime.js'
+import { ACT2_CHARTWRIGHT_RUNTIME_MAPS } from './act2ChartwrightRuntime.js'
+import { ACT2_CHARTWRIGHT_CHARACTER_QUEST, ACT2_CHARTWRIGHT_MASTERY_QUEST, ACT2_CHARTWRIGHT_SIDE_QUEST, ACT2_CHARTWRIGHT_ENCOUNTERS } from './act2ChartwrightContent.js'
+import { ACT2_CHARTWRIGHT_CONVERSATIONS } from './act2ChartwrightConversations.js'
 import {
   ACT3_REGION, ACT3_CONNECTIONS, ACT3_ENCOUNTERS,
   ACT3_MAIN_QUEST, ACT3_SIDE_QUEST, ACT3_ENCOUNTER_OWNER_QUEST,
@@ -39,6 +42,10 @@ import { ACT5_RENDERABLE_MAPS } from './act5Runtime.js'
 const LATER_REGIONS = [ACT2_REGION, ACT3_REGION, ACT4_REGION, ACT5_REGION]
 const SCAFFOLD_POCKETS = {}
 const LATER_CONNECTIONS = [...ACT2_CONNECTIONS, ...ACT3_CONNECTIONS, ...ACT4_CONNECTIONS, ...ACT5_CONNECTIONS]
+const ACT2_CHARTWRIGHT_EXTERNAL_SPAWN_MAPS = Object.freeze({
+  'pelagos-harbor': Object.freeze({ ...ACT2_RENDERABLE_MAPS['pelagos-harbor'], spawns: { ...ACT2_RENDERABLE_MAPS['pelagos-harbor'].spawns, 'from-chartwright': ACT2_RUNTIME_MAPS['pelagos-harbor'].spawns['from-chartwright'] } }),
+  'storm-anchorage': Object.freeze({ ...ACT2_RENDERABLE_MAPS['storm-anchorage'], spawns: { ...ACT2_RENDERABLE_MAPS['storm-anchorage'].spawns, 'from-signal-shoal': ACT2_RUNTIME_MAPS['storm-anchorage'].spawns['from-signal-shoal'] } }),
+})
 
 function finiteCoordinate(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -102,6 +109,8 @@ export const REGISTERED_MAPS = Object.freeze({
   // Act II has accepted render geometry. Consume that canonical merge rather
   // than normalizing its authored coordinates back to zero-valued scaffolds.
   ...ACT2_RENDERABLE_MAPS,
+  ...ACT2_CHARTWRIGHT_EXTERNAL_SPAWN_MAPS,
+  ...ACT2_CHARTWRIGHT_RUNTIME_MAPS,
   ...ACT3_RENDERABLE_MAPS,
   ...ACT4_RENDERABLE_MAPS,
   ...ACT5_RENDERABLE_MAPS,
@@ -208,6 +217,9 @@ export const REGISTERED_QUESTS = Object.freeze({
   ...ACT1_QUESTS,
   [ACT2_MAIN_QUEST.id]: ACT2_MAIN_QUEST,
   [ACT2_SIDE_QUEST.id]: ACT2_SIDE_QUEST,
+  [ACT2_CHARTWRIGHT_CHARACTER_QUEST.id]: ACT2_CHARTWRIGHT_CHARACTER_QUEST,
+  [ACT2_CHARTWRIGHT_MASTERY_QUEST.id]: ACT2_CHARTWRIGHT_MASTERY_QUEST,
+  [ACT2_CHARTWRIGHT_SIDE_QUEST.id]: ACT2_CHARTWRIGHT_SIDE_QUEST,
   [ACT3_MAIN_QUEST.id]: ACT3_MAIN_QUEST,
   [ACT3_SIDE_QUEST.id]: ACT3_SIDE_QUEST,
   [ACT4_MAIN_QUEST.id]: ACT4_MAIN_QUEST,
@@ -219,6 +231,7 @@ export const REGISTERED_QUESTS = Object.freeze({
 export const REGISTERED_ENCOUNTERS = Object.freeze({
   ...ACT1_ENCOUNTERS,
   ...ACT2_ENCOUNTERS,
+  ...ACT2_CHARTWRIGHT_ENCOUNTERS,
   ...ACT3_ENCOUNTERS,
   ...ACT4_ENCOUNTERS,
   ...ACT5_ENCOUNTERS,
@@ -227,6 +240,7 @@ export const REGISTERED_ENCOUNTERS = Object.freeze({
 export const REGISTERED_CONVERSATIONS = Object.freeze({
   ...ACT1_CONVERSATIONS,
   ...ACT2_CONVERSATIONS,
+  ...ACT2_CHARTWRIGHT_CONVERSATIONS,
   ...ACT3_CONVERSATIONS,
   ...ACT4_CONVERSATIONS,
   ...ACT5_CONVERSATIONS,
@@ -235,6 +249,7 @@ export const REGISTERED_CONVERSATIONS = Object.freeze({
 export const REGISTERED_ENCOUNTER_OWNER_QUEST = Object.freeze({
   ...ACT1_ENCOUNTER_OWNERS,
   ...ACT2_ENCOUNTER_OWNER_QUEST,
+  'enc-act2-submerged-signal-reef': ACT2_CHARTWRIGHT_SIDE_QUEST.id,
   ...ACT3_ENCOUNTER_OWNER_QUEST,
   ...ACT4_ENCOUNTER_OWNER_QUEST,
   ...ACT5_ENCOUNTER_OWNER_QUEST,

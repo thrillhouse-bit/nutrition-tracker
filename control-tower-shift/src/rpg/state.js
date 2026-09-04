@@ -8,6 +8,9 @@ import { ACT2_TIDE_ORDER, ACT2_TIDE_RULES, ACT2_TIDE_STATES, ACT2_RESTORATION_FO
 import { ACT3_RESTORATION_FORMULATIONS } from './act3Content.js'
 import { ACT4_PRESSURE_RULES, ACT4_RESTORATION_FORMULATIONS } from './act4Content.js'
 import { ACT5_ENDING_VARIANTS, ACT5_LIGHT_POLARITY_RULES } from './act5Content.js'
+import { createWayfindingState, surveyWayfindingContract, WAYFINDING_SHORTCUT_DESTINATION_SEAMS } from './wayfinding.js'
+import { currentTideRouteStateId, routeStateForMap } from './routeState.js'
+import { findWorldPath, isWorldPathStepReachable, isWorldPointWalkable } from './pathfinding.js'
 import {
   rpgRegionByAct,
   rpgMapById as mapById,
@@ -51,7 +54,7 @@ import {
   createInitialResourceNodes,
   harvestResourceNode,
 } from './resources.js'
-import { craftingAccessDecision, wildernessAccessDecision } from './systemAccess.js'
+import { craftingAccessDecision, physicalSystemAccessDecision, wildernessAccessDecision } from './systemAccess.js'
 import {
   buyFromShop,
   createInitialEconomy,
@@ -66,13 +69,17 @@ import {
   wildernessCombatRewards,
 } from './wilderness.js'
 
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 // Stable, documented spawn for a new schema-v2 save.
 export const START_MAP = 'beacon-overlook'
 export const START_SPAWN = 'start'
 export const ACT2_TIDE_FLAG = 'act2:tide-state'
 export const ACT5_LIGHT_FLAG = 'act5:light-state'
+// The UI commits world locomotion at 10 Hz. A dashing Kallias covers under
+// 32px per commit (dt is capped at 50ms), so 64px leaves jitter headroom while
+// making a forged cross-map or cross-lane MOVE event fail closed.
+export const MAX_WORLD_MOVE_STEP = 64
 
 function arrivalLightStateId(spawn) {
   const lightStateId = spawn?.arrivalState?.lightStateId
@@ -134,6 +141,7 @@ export function createInitialState(opts = {}) {
     mainQuestId: 'mq-act1-ash-at-dawn',
     quests,
     flags: {},
+    wayfinding: createWayfindingState(),
     inventory: createInitialInventory(),
     resources: createInitialResourceNodes(),
     progression: { rank: 0, powerUnlocks: [], shrineIds: [], skills: createInitialSkills(), totalXp: 0 },
@@ -428,6 +436,9 @@ export function applyEvent(state, event) {
     case 'BEGIN_ACT': return beginAct(state, event.act)
     case 'CHOOSE': return choose(state, event)
     case 'TALK_COMPLETE': return talkComplete(state, event)
+    case 'ACCEPT_QUEST': return acceptQuest(state, event)
+    case 'SURVEY_WAYFINDING': return surveyWayfinding(state, event)
+    case 'TRAVERSE_WAYFINDING_SHORTCUT': return traverseWayfindingShortcut(state, event)
     case 'GAIN_XP': return awardSkillXp(state, event.skillId, event.amount)
     case 'ADD_ITEM': {
       const quantity = positiveIntegerQuantity(event.quantity)
@@ -453,6 +464,9 @@ export function applyEvent(state, event) {
     case 'OPEN_CRAFTING': return openCrafting(state, event)
     case 'CRAFT': return craftAtStation(state, event)
     case 'CLOSE_CRAFTING': return closeCrafting(state)
+    case 'CLOSE_SHRINE': return closeShrine(state)
+    case 'OPEN_BANK': return openBank(state, event)
+    case 'CLOSE_BANK': return closeBank(state)
     case 'OPEN_SHOP': return openShop(state, event)
     case 'CLOSE_SHOP': return closeShop(state)
     case 'SHOP_BUY': return tradeAtShop(state, event, 'buy')
@@ -494,8 +508,30 @@ function positiveIntegerQuantity(quantity) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null
 }
 
-function bankIsPhysicallyAvailable(state) {
-  return Boolean(mapById(state.world?.mapId)?.entities?.some((entity) => entity.kind === 'bank'))
+const ACTIVE_BANK_ENTITY_FLAG = 'rpg:active-bank-entity'
+const ACTIVE_SHOP_ENTITY_FLAG = 'rpg:active-shop-entity'
+const ACTIVE_CRAFTING_ENTITY_FLAG = 'rpg:active-crafting-entity'
+const ACTIVE_SHRINE_ENTITY_FLAG = 'rpg:active-shrine-entity'
+const SHRINE_OPEN_FLAG = 'rpg:shrine-open'
+
+function hasPhysicalSystemAccess(state, { entityId, kind, stationId, shopId }) {
+  const map = mapById(state.world?.mapId)
+  return Boolean(physicalSystemAccessDecision({
+    mapId: state.world?.mapId,
+    position: state.world?.position,
+    entityId,
+    kind,
+    stationId,
+    shopId,
+    routeStateId: routeStateForMap(state, map),
+  })?.available)
+}
+
+function bankIsPhysicallyAvailable(state, entityId = state.flags[ACTIVE_BANK_ENTITY_FLAG]) {
+  return hasPhysicalSystemAccess(state, {
+    entityId,
+    kind: 'bank',
+  })
 }
 
 // Active conversation is stored in flags so the documented schema stays intact.
@@ -514,6 +550,104 @@ function objectiveForQuest(state, questId) {
   const def = questDefById(questId)
   if (!progress || !def || progress.state !== 'active') return null
   return def.objectives[progress.objectiveIndex] || null
+}
+
+function entityIsPhysicallyReachable(state, entity) {
+  const map = mapById(state.world?.mapId)
+  const position = state.world?.position
+  if (!map || !entity || !Number.isFinite(position?.x) || !Number.isFinite(position?.y)) return false
+  if (Math.hypot(position.x - entity.x, position.y - entity.y) >= 56) return false
+  const path = findWorldPath(map, position, entity, { routeStateId: routeStateForMap(state, map) })
+  const endpoint = path.at(-1)
+  return Boolean(endpoint) && Math.hypot(endpoint.x - entity.x, endpoint.y - entity.y) < 56
+}
+
+function acceptQuest(state, event) {
+  if (state.status !== 'playing' || typeof event.questId !== 'string' || typeof event.entityId !== 'string') return state
+  const definition = questDefById(event.questId)
+  const progress = state.quests[event.questId] || freshQuest(event.questId)
+  const map = mapById(state.world.mapId)
+  const entity = map?.entities?.find((candidate) => candidate.id === event.entityId)
+  const acceptance = entity?.questAcceptance
+  if (!definition || definition.kind === 'main' || !progress || progress.state !== 'available') return state
+  if (!acceptance || acceptance.questId !== event.questId || acceptance.trigger !== event.trigger) return state
+  if (!entityIsPhysicallyReachable(state, entity)) return state
+  return {
+    ...state,
+    quests: {
+      ...state.quests,
+      [event.questId]: { ...progress, state: 'active', acceptedAtTick: state.playtimeTicks },
+    },
+  }
+}
+
+function carriedChartIds(inventory) {
+  return (inventory?.slots || [])
+    .filter((slot) => slot?.quantity > 0 && typeof slot.itemId === 'string')
+    .map((slot) => slot.itemId)
+}
+
+function surveyWayfinding(state, event) {
+  if (state.status !== 'playing' || typeof event.entityId !== 'string') return state
+  const map = mapById(state.world.mapId)
+  const marker = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'survey-marker')
+  if (!marker || !entityIsPhysicallyReachable(state, marker)) return state
+  if (event.surveyContractId && event.surveyContractId !== marker.surveyContractId) return state
+  const outcome = surveyWayfindingContract({
+    state: state.wayfinding,
+    contractId: marker.surveyContractId,
+    playtimeTicks: state.playtimeTicks,
+    skillXp: state.progression?.skills?.wayfinding?.xp || 0,
+    chartIds: carriedChartIds(state.inventory),
+  })
+  if (!outcome.ok) return state
+  let next = { ...state, wayfinding: outcome.state }
+  if (outcome.reward.kind === 'discovery') {
+    const reward = outcome.reward.discoveryReward
+    const added = addInventoryItem(next.inventory, reward.itemId, 1, ALL_ITEM_DEFS)
+    if (added.added !== 1) return state
+    next = { ...next, inventory: added.inventory }
+  }
+  next = awardSkillXp(next, outcome.reward.skillId, outcome.reward.xp)
+  if (outcome.reward.kind !== 'discovery') return next
+  for (const questId of registeredQuestIds()) {
+    const objective = objectiveForQuest(next, questId)
+    if (!objective) continue
+    if (objective.kind === 'survey' && objective.surveyContractId === marker.surveyContractId) {
+      next = advanceQuest(next, questId)
+    } else if (objective.kind === 'interact' && matchEntityObjective(objective, marker.id)) {
+      next = recordObjectiveEntity(next, questId, objective, marker.id)
+    }
+  }
+  return next
+}
+
+function traverseWayfindingShortcut(state, event) {
+  if (state.status !== 'playing' || typeof event.entityId !== 'string' || typeof event.shortcutId !== 'string') return state
+  const map = mapById(state.world.mapId)
+  const entity = map?.entities?.find((candidate) => candidate.id === event.entityId && candidate.kind === 'travel-node')
+  const shortcut = WAYFINDING_SHORTCUT_DESTINATION_SEAMS.find((candidate) => candidate.id === event.shortcutId)
+  if (!entity || !shortcut || entity.wayfindingShortcutId !== shortcut.id || shortcut.fromMapId !== map.id) return state
+  if (!state.wayfinding?.shortcuts?.[shortcut.id] || !entityIsPhysicallyReachable(state, entity)) return state
+  if ((event.toMapId && event.toMapId !== shortcut.toMapId) || (event.spawnId && event.spawnId !== shortcut.toSpawnId)) return state
+  const destination = mapById(shortcut.toMapId)
+  const spawn = spawnById(shortcut.toMapId, shortcut.toSpawnId)
+  if (!destination || !spawn || !isWorldPointWalkable(destination, spawn, { routeStateId: routeStateForMap(state, destination) })) return state
+  let next = {
+    ...state,
+    flags: dropFlags(state.flags, [ACTIVE_BANK_ENTITY_FLAG, ACTIVE_SHOP_ENTITY_FLAG, ACTIVE_CRAFTING_ENTITY_FLAG]),
+    crafting: state.crafting?.stationId ? { stationId: null, lastResult: state.crafting.lastResult } : state.crafting,
+    economy: state.economy?.openShopId ? { ...state.economy, openShopId: null } : state.economy,
+    world: {
+      regionId: destination.region,
+      mapId: destination.id,
+      spawnId: spawn.id,
+      position: { x: spawn.x, y: spawn.y },
+      facing: spawn.facing || 0,
+    },
+  }
+  next = restoreSpawnArrivalState(next, spawn)
+  return reach(next, { mapId: destination.id, markerId: spawn.id })
 }
 
 function matchingActiveQuest(state, predicate) {
@@ -601,6 +735,14 @@ function recordObjectiveEntity(state, questId, objective, entityId) {
 
 function reach(state, event) {
   if (state.status !== 'playing') return state
+  // A reach objective tied to a visible marker/spawn is world state, not an
+  // abstract client assertion. Narrative-only reaches remain supported where
+  // no concrete target is authored.
+  if (state.world.mapId !== event.mapId) return state
+  const map = mapById(event.mapId)
+  const marker = map?.entities?.find((entity) => entity.id === event.markerId)
+  if (marker && !entityIsPhysicallyReachable(state, marker)) return state
+  if (!marker && map?.spawns?.[event.markerId] && state.world.spawnId !== event.markerId) return state
   if (currentMainMatch(state, { kind: 'reach', mapId: event.mapId, markerId: event.markerId })) {
     return advanceMain(state)
   }
@@ -616,10 +758,28 @@ function move(state, event) {
   const x = typeof event.x === 'number' ? event.x : state.world.position.x
   const y = typeof event.y === 'number' ? event.y : state.world.position.y
   const facing = typeof event.facing === 'number' ? event.facing : state.world.facing
-  return {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return state
+  const map = mapById(state.world.mapId)
+  const position = { x, y }
+  const routeStateId = routeStateForMap(state, map)
+  if (
+    !map
+    || Math.hypot(x - state.world.position.x, y - state.world.position.y) > MAX_WORLD_MOVE_STEP
+    || !isWorldPathStepReachable(map, state.world.position, position, { routeStateId })
+  ) return state
+  let next = {
     ...state,
-    world: { ...state.world, position: { x, y }, facing },
+    world: { ...state.world, position, facing },
   }
+  const stale = []
+  if (next.flags[ACTIVE_BANK_ENTITY_FLAG] && !bankIsPhysicallyAvailable(next)) stale.push(ACTIVE_BANK_ENTITY_FLAG)
+  if (next.flags[ACTIVE_SHOP_ENTITY_FLAG] && !hasPhysicalSystemAccess(next, { entityId: next.flags[ACTIVE_SHOP_ENTITY_FLAG], kind: 'shop', shopId: next.economy?.openShopId })) stale.push(ACTIVE_SHOP_ENTITY_FLAG)
+  if (next.flags[ACTIVE_CRAFTING_ENTITY_FLAG] && !hasPhysicalSystemAccess(next, { entityId: next.flags[ACTIVE_CRAFTING_ENTITY_FLAG], kind: 'station', stationId: next.crafting?.stationId })) stale.push(ACTIVE_CRAFTING_ENTITY_FLAG)
+  const activeShrine = mapById(next.world.mapId)?.entities?.find((entity) => entity.id === next.flags[ACTIVE_SHRINE_ENTITY_FLAG])
+  if (next.flags[ACTIVE_SHRINE_ENTITY_FLAG] && !entityIsPhysicallyReachable(next, activeShrine)) {
+    stale.push(ACTIVE_SHRINE_ENTITY_FLAG, SHRINE_OPEN_FLAG)
+  }
+  return stale.length ? { ...next, flags: dropFlags(next.flags, stale) } : next
 }
 
 // Carrying a matching gathering tool anywhere in the backpack grants extra
@@ -649,6 +809,7 @@ function gather(state, event) {
   const map = mapById(state.world.mapId)
   const resource = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'resource')
   if (!resource || !ALL_ITEM_DEFS[resource.itemId]) return state
+  if (!entityIsPhysicallyReachable(state, resource)) return state
   if (resource.requiresFlag && !state.flags[resource.requiresFlag]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
   if (levelForXp(xp) < (resource.level || 1)) return state
@@ -689,6 +850,7 @@ function restoreLand(state, event) {
   const map = mapById(state.world.mapId)
   const resource = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'resource' && entity.restore)
   if (!resource) return state
+  if (!entityIsPhysicallyReachable(state, resource)) return state
   const flagId = resource.requiresFlag
   if (!flagId || state.flags[flagId]) return state
   const xp = state.progression?.skills?.[resource.skillId]?.xp || 0
@@ -751,6 +913,7 @@ function claimExactOnceReward(state, target) {
 function pickLock(state, event) {
   const map = mapById(state.world.mapId)
   const chest = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'locked-chest')
+  if (!entityIsPhysicallyReachable(state, chest)) return state
   return claimExactOnceReward(state, chest)
 }
 
@@ -761,6 +924,7 @@ function pickLock(state, event) {
 function calmCreature(state, event) {
   const map = mapById(state.world.mapId)
   const creature = map?.entities?.find((entity) => entity.id === event.entityId && entity.kind === 'wild-creature')
+  if (!entityIsPhysicallyReachable(state, creature)) return state
   return claimExactOnceReward(state, creature)
 }
 
@@ -927,7 +1091,12 @@ function wildernessExit(state) {
 function openCrafting(state, event) {
   if (state.status !== 'playing' || !RECIPES.some((recipe) => recipe.stationId === event.stationId)) return state
   if (!craftingAccessDecision(state.world?.mapId, event.stationId)?.available) return state
-  return { ...state, crafting: { stationId: event.stationId, lastResult: null } }
+  if (!hasPhysicalSystemAccess(state, { entityId: event.entityId, kind: 'station', stationId: event.stationId })) return state
+  return {
+    ...state,
+    flags: { ...state.flags, [ACTIVE_CRAFTING_ENTITY_FLAG]: event.entityId },
+    crafting: { stationId: event.stationId, lastResult: null },
+  }
 }
 
 function craftAtStation(state, event) {
@@ -935,22 +1104,20 @@ function craftAtStation(state, event) {
   if (!craftingAccessDecision(state.world?.mapId, state.crafting.stationId)?.available) {
     return { ...state, crafting: { stationId: null, lastResult: null } }
   }
+  if (!hasPhysicalSystemAccess(state, {
+    entityId: state.flags[ACTIVE_CRAFTING_ENTITY_FLAG],
+    kind: 'station',
+    stationId: state.crafting.stationId,
+  })) return state
   const sourceMode = event.sourceMode ?? CRAFTING_SOURCE_MODES.CARRIED_ONLY
   if (
     sourceMode === CRAFTING_SOURCE_MODES.CARRIED_AND_BANK
-    && !bankIsPhysicallyAvailable(state)
+    // Bank-backed crafting is a simultaneous physical interaction, not a
+    // remembered bank-panel session. The event must identify the bank so the
+    // reducer can prove it is still close and path-reachable at craft time.
+    && !bankIsPhysicallyAvailable(state, event.bankEntityId)
   ) {
-    return {
-      ...state,
-      crafting: {
-        ...state.crafting,
-        lastResult: {
-          ok: false,
-          reason: 'bank_access_required',
-          detail: { sourceMode, mapId: state.world.mapId },
-        },
-      },
-    }
+    return state
   }
   const outcome = executeCraftingLedger({
     inventory: state.inventory,
@@ -975,13 +1142,34 @@ function craftAtStation(state, event) {
 
 function closeCrafting(state) {
   if (!state.crafting?.stationId) return state
-  return { ...state, crafting: { stationId: null, lastResult: state.crafting.lastResult } }
+  return {
+    ...state,
+    flags: dropFlag(state.flags, ACTIVE_CRAFTING_ENTITY_FLAG),
+    crafting: { stationId: null, lastResult: state.crafting.lastResult },
+  }
+}
+
+function closeShrine(state) {
+  if (!state.flags[SHRINE_OPEN_FLAG] && !state.flags[ACTIVE_SHRINE_ENTITY_FLAG]) return state
+  return { ...state, flags: dropFlags(state.flags, [SHRINE_OPEN_FLAG, ACTIVE_SHRINE_ENTITY_FLAG]) }
+}
+
+function openBank(state, event) {
+  if (state.status !== 'playing' || !hasPhysicalSystemAccess(state, { entityId: event.entityId, kind: 'bank' })) return state
+  return setFlag(state, ACTIVE_BANK_ENTITY_FLAG, event.entityId)
+}
+
+function closeBank(state) {
+  if (!state.flags[ACTIVE_BANK_ENTITY_FLAG]) return state
+  return { ...state, flags: dropFlag(state.flags, ACTIVE_BANK_ENTITY_FLAG) }
 }
 
 function openShop(state, event) {
   if (state.status !== 'playing' || !shopAccessDecision(state.world?.mapId, event.shopId)?.available) return state
+  if (!hasPhysicalSystemAccess(state, { entityId: event.entityId, kind: 'shop', shopId: event.shopId })) return state
   return {
     ...state,
+    flags: { ...state.flags, [ACTIVE_SHOP_ENTITY_FLAG]: event.entityId },
     economy: {
       ...restockEconomy(state.economy, state.playtimeTicks),
       openShopId: event.shopId,
@@ -992,7 +1180,11 @@ function openShop(state, event) {
 
 function closeShop(state) {
   if (!state.economy?.openShopId) return state
-  return { ...state, economy: { ...state.economy, openShopId: null } }
+  return {
+    ...state,
+    flags: dropFlag(state.flags, ACTIVE_SHOP_ENTITY_FLAG),
+    economy: { ...state.economy, openShopId: null },
+  }
 }
 
 function tradeAtShop(state, event, operation) {
@@ -1001,6 +1193,11 @@ function tradeAtShop(state, event, operation) {
   if (!shopAccessDecision(state.world?.mapId, shopId)?.available) {
     return { ...state, economy: { ...state.economy, openShopId: null, lastResult: null } }
   }
+  if (!hasPhysicalSystemAccess(state, {
+    entityId: state.flags[ACTIVE_SHOP_ENTITY_FLAG],
+    kind: 'shop',
+    shopId,
+  })) return state
   const quantity = positiveIntegerQuantity(event.quantity)
   if (!quantity) return state
   const resolve = operation === 'buy' ? buyFromShop : sellToShop
@@ -1019,14 +1216,15 @@ function tradeAtShop(state, event, operation) {
 
 function talk(state, event) {
   if (state.status !== 'playing') return state
+  // Every dialogue path, including the compatibility fallback below, is a
+  // concrete NPC interaction rather than a remote objective advance.
+  const map = mapById(state.world.mapId)
+  const npc = map && map.entities.find((e) => e.id === event.npcId && e.kind === 'npc')
+  if (!npc || !entityIsPhysicallyReachable(state, npc) || resolveConversationId(state, npc) !== event.conversationId) return state
   // Later-act scaffolds can author a talk objective before its line graph is
   // integrated. Exact authored IDs may complete through the same TALK event;
   // Act I conversations still enter dialogue and require DIALOGUE_END.
   if (!conversationById(event.conversationId)) return talkComplete(state, event)
-  // The NPC must be on the current map and match the requested speaker.
-  const map = mapById(state.world.mapId)
-  const npc = map && map.entities.find((e) => e.id === event.npcId && (e.kind === 'npc'))
-  if (!npc || resolveConversationId(state, npc) !== event.conversationId) return state
   return {
     ...state,
     status: 'in-dialogue',
@@ -1040,6 +1238,17 @@ function talk(state, event) {
 
 function beginDialogue(state, event) {
   if (state.status !== 'playing' || !conversationById(event.conversationId)) return state
+  // The Regent's testimony is a post-combat interruption, not a dialogue the
+  // player can pre-clear from an arbitrary Act V state. It remains available
+  // for both the normal pending objective and older saves which had already
+  // advanced to the accord choice before this gate existed.
+  if (event.conversationId === 'act5-regent-interruption') {
+    const objective = currentObjective(state)
+    const isPendingRegentBoundary = state.flags['act5-quiet-regent-defeated'] &&
+      !state.flags['act5-regent-testimony-heard'] &&
+      (objective?.id === 'confront-quiet-regent' || objective?.id === 'write-the-new-accord')
+    if (!isPendingRegentBoundary) return state
+  }
   return {
     ...state,
     status: 'in-dialogue',
@@ -1049,6 +1258,14 @@ function beginDialogue(state, event) {
 
 function talkComplete(state, event) {
   if (state.status !== 'playing') return state
+  const map = mapById(state.world.mapId)
+  const npc = map?.entities.find((entity) => entity.id === event.npcId && entity.kind === 'npc')
+  if (
+    !npc
+    || !entityIsPhysicallyReachable(state, npc)
+    || typeof event.conversationId !== 'string'
+    || resolveConversationId(state, npc) !== event.conversationId
+  ) return state
   const questId = matchingActiveQuest(state, (objective) =>
     (objective.kind === 'talk' || objective.kind === 'multi-talk') &&
     (!objective.conversationId || objective.conversationId === event.conversationId) &&
@@ -1105,6 +1322,16 @@ function dialogueEnd(state, event) {
   // the older TALK fallback the only way to advance them.
   const mainTalk = currentObjective(next)
   if (mainTalk?.kind === 'talk' && mainTalk.conversationId === convoId && (!mainTalk.npcId || mainTalk.npcId === resolvedNpcId)) {
+    next = advanceMain(next)
+  } else if (
+    mainTalk?.kind === 'clear-encounter'
+    && mainTalk.conversationId === convoId
+    && mainTalk.requiredWitnessRuleId
+    && isEncounterCleared(next, mainTalk.encounterId)
+    && next.flags['act5-regent-testimony-heard']
+  ) {
+    // The Quiet Regent fight establishes the post-combat boundary; the
+    // mandatory witnessed testimony, not the victory event, advances it.
     next = advanceMain(next)
   } else if (
     mainTalk?.kind === 'multi-talk'
@@ -1183,6 +1410,10 @@ function interact(state, event) {
   if (state.status !== 'playing') return state
   const map = mapById(state.world.mapId)
   const ent = map && map.entities.find((e) => e.id === event.entityId)
+  // Every interaction effect (including tide/season controls and shrines)
+  // is bound to the concrete reachable world target. UI proximity is useful
+  // affordance only; forged reducer events must not operate the world.
+  if (!entityIsPhysicallyReachable(state, ent)) return state
 
   // Pelagos' tide is deterministic and player-driven. Only authored wells
   // may cycle it; dialogue/combat cannot reach this branch, and the string
@@ -1211,10 +1442,33 @@ function interact(state, event) {
 
   if (ent?.requiredFlagId && !normalizedProgressFlags(state)[ent.requiredFlagId]) return state
 
+  // The signal buoy remains a crafting station, but after the authored elite
+  // falls it also settles the active public-relighting objective. This is an
+  // explicit entity contract, never an inference from a station or quest ID.
+  if (ent?.postEliteInteraction) {
+    const { questId, objectiveId, requiresEncounterId } = ent.postEliteInteraction
+    const objective = objectiveForQuest(state, questId)
+    if (
+      objective?.id === objectiveId
+      && isEncounterCleared(state, requiresEncounterId)
+      && entityIsPhysicallyReachable(state, ent)
+    ) return recordObjectiveEntity(state, questId, objective, ent.id)
+  }
+
   // Shrine interaction opens patron selection (UI shows the picker). The
   // objective completes on the actual patron commitment (CHOOSE_PATRON).
   if (ent?.kind === 'shrine') {
-    return { ...state, flags: { ...state.flags, 'rpg:shrine-open': true } }
+    // The first shrine is a real story boundary, not a menu shortcut. Opening
+    // it before Thessa's completed introduction used to allow a patron to be
+    // bound while the quest still asked for Thessa, stranding the Entry Court
+    // gate. Other shrines remain available for ordinary patron switching.
+    if (ent.patron && !state.protagonist.activePatronId && !matchEntityObjective(currentObjective(state), ent.id)) {
+      return state
+    }
+    return {
+      ...state,
+      flags: { ...state.flags, [SHRINE_OPEN_FLAG]: true, [ACTIVE_SHRINE_ENTITY_FLAG]: ent.id },
+    }
   }
 
   // Optional tablet interaction drives the side quest, never the main quest.
@@ -1293,6 +1547,16 @@ function chooseObjective(state, event) {
     objective.kind === 'choose' && Array.isArray(objective.choiceIds) && objective.choiceIds.includes(choiceId))
   if (!questId) return state
   const objective = objectiveForQuest(state, questId)
+  // Only world-authored choice tables impose entity context. Dialogue and
+  // other non-spatial narrative decisions retain their existing event shape.
+  const map = mapById(state.world.mapId)
+  const table = map?.entities?.find((entity) =>
+    entity.kind === 'choice' && Array.isArray(entity.choiceIds) && entity.choiceIds.includes(choiceId))
+  if (table && (event.entityId !== table.id || !entityIsPhysicallyReachable(state, table))) return state
+  // All Act V accords require the Quiet Regent interruption to have been
+  // completed durably. This is reducer-side so stale UI state, malformed
+  // events, and legacy saves cannot ratify an ending without testimony.
+  if (objective.id === 'write-the-new-accord' && !state.flags['act5-regent-testimony-heard']) return state
   if (objective.eligibility === 'ending-evidence-thresholds' && !choiceIsAvailable(state, choiceId)) return state
   const next = setFlag(state, `choice:${objective.id}`, choiceId)
   return advanceQuest(next, questId, { choiceId })
@@ -1334,15 +1598,28 @@ export function choiceIsAvailable(state, choiceId) {
 function choosePatron(state, event) {
   // Patron switching is allowed only at a shrine and never during combat.
   if (state.status !== 'playing') return state
-  if (!state.flags['rpg:shrine-open']) return state
+  if (!state.flags[SHRINE_OPEN_FLAG]) return state
   if (!TIER1_PATRON_IDS.includes(event.godId)) return state
   const map = mapById(state.world.mapId)
   const hasShrine = Boolean(map && map.entities.some((e) => e.kind === 'shrine'))
   if (!hasShrine) return state
+  const activeShrine = map.entities.find((entity) => entity.id === state.flags[ACTIVE_SHRINE_ENTITY_FLAG] && entity.kind === 'shrine')
+  if (!activeShrine || !entityIsPhysicallyReachable(state, activeShrine)) return state
+
+  // A fresh oath cannot be taken ahead of the authored Thessa conversation.
+  // Existing saves which already have a patron remain recoverable: after the
+  // conversation resolves they can select that same bound card once to settle
+  // the pending shrine objective without duplicating any reward.
+  const firstPatronShrine = map.entities.find((entity) => entity.kind === 'shrine' && entity.patron)
+  if (
+    firstPatronShrine
+    && !state.protagonist.activePatronId
+    && !matchEntityObjective(currentObjective(state), firstPatronShrine.id)
+  ) return state
 
   let next = {
     ...state,
-    flags: { ...state.flags, 'rpg:shrine-open': false },
+    flags: dropFlags(state.flags, [SHRINE_OPEN_FLAG, ACTIVE_SHRINE_ENTITY_FLAG]),
     protagonist: {
       ...state.protagonist,
       activePatronId: event.godId,
@@ -1370,19 +1647,24 @@ function traverse(state, event) {
   const map = mapById(state.world.mapId)
   const exit = map && map.exits.find((e) => e.id === event.viaGate || e.toMapId === event.toMapId)
   if (!exit) return state
+  // A matching exit ID is not authority to teleport. The player must still
+  // stand within the semantic interaction radius on a collision-valid route.
+  if (!entityIsPhysicallyReachable(state, exit)) return state
   // The selected authored exit is the authority. A caller cannot pair a valid
   // gate ID with an unrelated destination to teleport across the registry.
   if (event.toMapId && event.toMapId !== exit.toMapId) return state
+  if (event.spawnId && event.spawnId !== exit.spawnId) return state
   if (exit.kind === 'combat') return state // combat exits go through ENTER_ENCOUNTER
   if (exit.gate?.length && !prerequisitesMet(state, exit.gate)) return state
   if (exit.planId && state.flags['choice:choose-march-plan'] !== exit.planId) return state
   const dest = mapById(exit.toMapId)
   if (!dest) return state
   // Validate the named spawn (never silently accept an arbitrary spawn id).
-  const spawn = spawnById(exit.toMapId, event.spawnId || exit.spawnId)
+  const spawn = spawnById(exit.toMapId, exit.spawnId)
   if (!spawn) return state
   let next = {
     ...state,
+    flags: dropFlags(state.flags, [ACTIVE_BANK_ENTITY_FLAG, ACTIVE_SHOP_ENTITY_FLAG, ACTIVE_CRAFTING_ENTITY_FLAG, ACTIVE_SHRINE_ENTITY_FLAG, SHRINE_OPEN_FLAG]),
     crafting: state.crafting?.stationId ? { stationId: null, lastResult: state.crafting.lastResult } : state.crafting,
     economy: state.economy?.openShopId ? { ...state.economy, openShopId: null } : state.economy,
     world: {
@@ -1478,7 +1760,12 @@ function combatWon(state, event) {
   const owner = rpgEncounterOwnerQuestId(enc.id)
   const objective = owner && objectiveForQuest(next, owner)
   if (objective?.kind === 'clear-encounter' && objective.encounterId === enc.id) {
-    next = advanceQuest(next, owner)
+    // A clear-encounter objective with a required interruption waits for the
+    // conversation to record its valid witness. The defeated flag above is
+    // intentionally durable so reload recovery can re-open that dialogue.
+    if (!objective.conversationId || !objective.requiredWitnessRuleId) {
+      next = advanceQuest(next, owner)
+    }
   }
   next = awardSkillXpBundle(next, combatXpFromContributions(event.combatContributions || {
     damageByStyle: event.damageByStyle,
@@ -1534,10 +1821,7 @@ export function currentObjectiveLabel(state) {
 }
 
 export function currentTideStateId(state) {
-  const candidate = state?.flags?.[ACT2_TIDE_FLAG]
-  return typeof candidate === 'string' && ACT2_TIDE_STATES[candidate]
-    ? candidate
-    : ACT2_TIDE_ORDER[0]
+  return currentTideRouteStateId(state)
 }
 
 export function currentTideState(state) {

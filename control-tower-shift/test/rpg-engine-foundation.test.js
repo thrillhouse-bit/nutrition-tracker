@@ -13,6 +13,19 @@ import {
 import { applyEvent, createInitialState, currentObjective } from '../src/rpg/state.js'
 import { normalizeState } from '../src/rpg/save.js'
 import { arenaProgress, startEncounter, stepCombat } from '../src/rpg/combatAdapter.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
+import { routeStateForMap } from '../src/rpg/routeState.js'
+
+function atNpc(state, npcId) {
+  const map = rpgMapById(state.world.mapId)
+  const npc = map?.entities?.find((entity) => entity.id === npcId)
+  expect(npc, `${state.world.mapId}:${npcId}`).toBeTruthy()
+  const path = findWorldPath(map, state.world.position, npc, {
+    routeStateId: routeStateForMap(state, map),
+  })
+  expect(path.length, `${state.world.mapId}:${npcId} reachable`).toBeGreaterThan(0)
+  return { ...state, world: { ...state.world, position: path.at(-1) } }
+}
 
 function act1BoundaryState() {
   const state = createInitialState()
@@ -38,7 +51,7 @@ function act2State(objectiveIndex = 0, mapId = 'pelagos-harbor', spawnId = 'keep
       regionId: rpgMapById(mapId).region,
       mapId,
       spawnId,
-      position: { x: 0, y: 0 },
+      position: { x: rpgSpawnById(mapId, spawnId).x, y: rpgSpawnById(mapId, spawnId).y },
       facing: 0,
     },
     quests: {
@@ -53,8 +66,8 @@ function act2State(objectiveIndex = 0, mapId = 'pelagos-harbor', spawnId = 'keep
 
 describe('canonical multi-act registry', () => {
   it('registers Acts I-V without replacing the Act I objects', () => {
-    expect(Object.keys(REGISTERED_MAPS)).toHaveLength(23)
-    expect(Object.keys(REGISTERED_QUESTS)).toHaveLength(10)
+    expect(Object.keys(REGISTERED_MAPS)).toHaveLength(25)
+    expect(Object.keys(REGISTERED_QUESTS)).toHaveLength(13)
     expect(Object.keys(REGISTERED_ENCOUNTERS).length).toBeGreaterThan(10)
     expect(rpgMapById('beacon-overlook')?.bounds).toEqual({ w: 900, h: 470 })
     expect(rpgMapById('pelagos-harbor')?.region).toBe('pelagos-isles')
@@ -84,6 +97,16 @@ describe('canonical multi-act registry', () => {
 })
 
 describe('generic registered progression', () => {
+  it('keeps Demeter’s winter testimony reachable from every Wheat Village arrival', () => {
+    const map = rpgMapById('wheat-village')
+    const demeter = map.entities.find((entity) => entity.id === 'demeter')
+    for (const spawn of Object.values(map.spawns)) {
+      const path = findWorldPath(map, spawn, demeter, { routeStateId: 'winter' })
+      expect(path.length, `wheat-village:winter:${spawn.id}→demeter`).toBeGreaterThan(0)
+      expect(Math.hypot(path.at(-1).x - demeter.x, path.at(-1).y - demeter.y)).toBeLessThan(56)
+    }
+  })
+
   it('begins Act II through its authored entry without changing the initial Act I path', () => {
     const initial = createInitialState()
     expect(applyEvent(initial, { type: 'BEGIN_ACT', act: 2 })).toBe(initial)
@@ -98,20 +121,26 @@ describe('generic registered progression', () => {
 
   it('advances scaffold talk, counted interact, and choice objectives from exact authored IDs', () => {
     let state = act2State()
+    state = atNpc(state, 'melite')
     state = applyEvent(state, { type: 'TALK', npcId: 'melite', conversationId: 'act2-melite-oath-post' })
     expect(state.status).toBe('in-dialogue')
     state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'act2-melite-oath-post' })
     expect(currentObjective(state)?.id).toBe('witness-first-surge')
 
     state = act2State(3, 'nereid-caves', 'threshold')
+    state = { ...state, flags: { ...state.flags, 'act2:tide-state': 'crossing' } }
     for (const entityId of ['pressure-shell-1', 'pressure-shell-2', 'pressure-shell-3']) {
+      const entity = rpgMapById('nereid-caves').entities.find((candidate) => candidate.id === entityId)
+      state = { ...state, world: { ...state.world, position: { x: entity.x, y: entity.y } } }
       state = applyEvent(state, { type: 'INTERACT', entityId })
     }
     expect(currentObjective(state)?.id).toBe('secure-storm-anchorage')
     expect(state.quests[state.mainQuestId].objectiveCounts['separate-boundary-names']).toBe(3)
 
     state = act2State(7)
-    state = applyEvent(state, { type: 'CHOOSE', choiceId: 'shared-crossing' })
+    const table = rpgMapById(state.world.mapId).entities.find((entity) => entity.id === 'salt-covenant-table')
+    state = { ...state, world: { ...state.world, position: { x: table.x, y: table.y } } }
+    state = applyEvent(state, { type: 'CHOOSE', choiceId: 'shared-crossing', entityId: table.id })
     expect(state.quests['mq-act2-salt-covenant'].state).toBe('completed')
     expect(state.flags['choice:ratify-salt-covenant']).toBe('shared-crossing')
     expect(state.flags['region:fields-of-kore:unlocked']).toBe(true)
@@ -120,6 +149,8 @@ describe('generic registered progression', () => {
 
   it('rejects repeated counted interactions', () => {
     let state = act2State(3, 'nereid-caves', 'threshold')
+    const shell = rpgMapById('nereid-caves').entities.find((candidate) => candidate.id === 'pressure-shell-1')
+    state = { ...state, world: { ...state.world, position: { x: shell.x, y: shell.y } } }
     state = applyEvent(state, { type: 'INTERACT', entityId: 'pressure-shell-1' })
     state = applyEvent(state, { type: 'INTERACT', entityId: 'pressure-shell-1' })
     expect(state.quests[state.mainQuestId].objectiveCounts['separate-boundary-names']).toBe(1)
@@ -152,7 +183,7 @@ describe('generic registered progression', () => {
       ...state,
       world: {
         regionId: 'pelagos-isles', mapId: 'breakwater-road', spawnId: 'from-harbor',
-        position: { x: 286, y: 350 }, facing: 0,
+        position: (() => { const well = rpgMapById('breakwater-road').entities.find((candidate) => candidate.id === 'tide-well-harbor'); return { x: well.x, y: well.y } })(), facing: 0,
       },
     }
     state = applyEvent(state, { type: 'INTERACT', entityId: 'tide-well-harbor' })
@@ -172,9 +203,11 @@ describe('generic registered progression', () => {
         'sq-lost-witness': { state: 'active', objectiveIndex: 1, objectiveCounts: {} },
       },
     }
+    state = atNpc(state, 'keeper')
     state = applyEvent(state, { type: 'TALK', npcId: 'keeper', conversationId: 'sq-lost-witness-return' })
     state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'sq-lost-witness-return' })
     const firstCurrency = state.inventory.currency
+    state = atNpc(state, 'keeper')
     state = applyEvent(state, { type: 'TALK', npcId: 'keeper', conversationId: 'sq-lost-witness-return' })
     state = applyEvent(state, { type: 'DIALOGUE_END', conversationId: 'sq-lost-witness-return' })
     expect(firstCurrency).toBe(50)
