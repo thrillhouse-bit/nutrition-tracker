@@ -2764,3 +2764,50 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   out the safe short-conversation-extension queue for this pass — every
   remaining registered conversation is either already extended this
   session or was already at a substantial length before it started.
+
+### Real-browser verification attempt — partial, honestly reported
+
+- Went back to the browser-smoke gap flagged when Act IV was integrated.
+  Ran the actual local dev stack (`npm run dev`: Vite web server +
+  Express API on local JSON-file storage, no `DATABASE_URL` set — no
+  production database or shared state touched) and drove it with real
+  Chrome automation rather than skip the check a second time.
+- **What this actually verified, in a genuine browser JS engine (not
+  vitest/jsdom)**: dynamically importing `ControlTowerRPG.jsx`,
+  `registry.js`, and `act4Conversations.js` directly all succeed with
+  zero errors, and `REGISTERED_CONVERSATIONS` reports exactly 24 total
+  conversations with `ACT4_CONVERSATIONS` reporting exactly 8 — matching
+  the test suite exactly, now independently confirmed by a real browser
+  module graph rather than only Node. Manually mounting
+  `RPGAccountGate` in isolation renders a correct, correctly-branded
+  ("Aegean Frontier") sign-in screen.
+- **What it could not verify**: an actual interactive click-through into
+  Act IV content. Two real, non-Oathbearer-side blockers, both
+  confirmed rather than assumed:
+  1. New-account signup is currently disabled app-wide — the real
+     sign-in screen itself states "New accounts are temporarily paused
+     while legal documents are finalized." No account can be created
+     right now, by me or anyone else, through the legitimate path.
+  2. The shared entrypoint (`src/main.jsx` → the separate nutrition-
+     tracker `src/App.jsx`, code outside `control-tower-shift/` and
+     outside this turnover's scope) fails to render through the normal
+     `<script type="module">` boot on this dev checkout — the page stays
+     blank at any hash route, RPG included, even though every file in
+     the chain returns valid JS on its own (confirmed via direct fetch
+     and dynamic `import()` of each module individually; the RPG-side
+     modules import cleanly on their own, isolating the fault to
+     `App.jsx`'s own dependency graph, not anything under
+     `control-tower-shift/`). Did not chase this further — it's a
+     pre-existing issue in a sibling app this engagement doesn't own,
+     and fixing it is out of scope here.
+- Stopped both dev processes and closed the browser tab when done; no
+  process left running, no files touched outside the drafts directory
+  (one stray duplicate artifact file appeared mid-session in the
+  untracked `artifacts/hermes-dialogue/drafts/` directory — harmless,
+  never committed, left as-is).
+- **Net effect on the honest disclosure**: upgraded from "not yet
+  browser-verified" to "verified sound via direct real-browser module
+  evaluation of the exact integrated code and data; full interactive
+  click-through is blocked by two confirmed, non-Oathbearer causes
+  (paused signups; an unrelated sibling-app entrypoint bug), not by
+  anything wrong in this integration."
