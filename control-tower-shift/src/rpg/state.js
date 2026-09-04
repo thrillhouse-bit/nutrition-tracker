@@ -13,6 +13,7 @@ import { currentTideRouteStateId, routeStateForMap } from './routeState.js'
 import { findWorldPath, isWorldPathStepReachable, isWorldPointWalkable } from './pathfinding.js'
 import {
   rpgRegionByAct,
+  rpgRegionById,
   rpgMapById as mapById,
   rpgQuestDefById as questDefById,
   rpgEncounterById as encounterById,
@@ -34,6 +35,7 @@ import {
   depositBankItem,
   depositAllMaterials,
   levelForXp,
+  SKILL_DEF_BY_ID,
   removeInventoryItem,
   withdrawBankItem,
 } from './progression.js'
@@ -244,46 +246,16 @@ function advanceQuest(state, questId, context = {}) {
   const def = questDefById(questId)
   if (!q || !def || q.state !== 'active') return state
   const objective = def.objectives[q.objectiveIndex]
-  state = applyObjectiveEffects(state, objective, context)
-  q = state.quests[questId]
   const nextIndex = q.objectiveIndex + 1
   if (nextIndex >= def.objectives.length) {
-    let next = { ...state, quests: { ...state.quests, [questId]: { ...q, state: 'completed', objectiveIndex: nextIndex, completedAtTick: state.playtimeTicks } } }
-    next = applyRewards(next, def.rewards || [])
-    const act = Math.max(1, Number(def.act) || 1)
-    next = awardSkillXpBundle(next, def.kind === 'main'
-      ? [
-          { skillId: 'oathkeeping', amount: 320 * act },
-          { skillId: 'wayfinding', amount: 140 * act },
-        ]
-      : [
-          { skillId: 'oathkeeping', amount: 90 * act },
-          { skillId: 'wayfinding', amount: 55 * act },
-        ])
-    const region = def.kind === 'main' ? rpgRegionByAct(def.act) : null
-    if (region?.act > 1 && region.exit) {
-      next = applyRewards(next, region.exit.effects || [])
-      const map = mapById(region.exit.mapId)
-      const spawn = spawnById(region.exit.mapId, region.exit.spawnId)
-      if (map && spawn) {
-        next = {
-          ...next,
-          // Every completed chapter owns the same explicit boundary state.
-          // The UI either begins the next registered act or, after Act V,
-          // acknowledges the epilogue and returns to free exploration.
-          status: 'ending',
-          world: {
-            regionId: map.region,
-            mapId: map.id,
-            spawnId: spawn.id,
-            position: { x: spawn.x, y: spawn.y },
-            facing: spawn.facing || 0,
-          },
-        }
-      }
-    }
-    return next
+    const plan = planQuestCompletion(state, questId, objective, context)
+    if (!plan) return state
+    let next = applyCompletionEffects(state, plan.effects)
+    if (!next) return state // defensive: preflight and commit must agree.
+    return commitQuestCompletion(next, questId, plan)
   }
+  state = applyObjectiveEffects(state, objective, context)
+  q = state.quests[questId]
   return { ...state, quests: { ...state.quests, [questId]: { ...q, objectiveIndex: nextIndex } } }
 }
 
@@ -325,6 +297,186 @@ function applyRewards(state, effects) {
     }
   }
   return next
+}
+
+const MAX_COMPLETION_REWARD = 1_000_000
+const MAX_COMPLETION_CURRENCY = 1_000_000_000
+const MAX_COMPLETION_XP = 1_000_000_000
+const SAFE_COMPLETION_ID = /^[a-z0-9][a-z0-9:-]{0,95}$/
+
+function safeCompletionId(value) {
+  return typeof value === 'string' && SAFE_COMPLETION_ID.test(value)
+}
+
+function resolvedObjectiveEffects(objective, context = {}) {
+  if (!objective || (objective.effects != null && !Array.isArray(objective.effects))) return null
+  const effects = (objective.effects || []).map((effect) => {
+    if (!effect || typeof effect !== 'object') return null
+    if (effect.kind === 'set-ending' && effect.idFromChoice) return { ...effect, choiceId: context.choiceId }
+    if (effect.kind === 'flag' && effect.valueFromChoice) return { ...effect, value: context.choiceId }
+    return effect
+  })
+  if (effects.includes(null)) return null
+  if (objective.grantsItem) {
+    effects.push(ALL_ITEM_DEFS[objective.grantsItem]
+      ? { kind: 'item', itemId: objective.grantsItem, quantity: 1 }
+      : { kind: 'quest-item', itemId: objective.grantsItem, quantity: 1 })
+  }
+  const implicitFlag = OBJECTIVE_COMPLETION_FLAGS[objective.id]
+  if (implicitFlag) effects.push({ kind: 'flag', id: implicitFlag, value: true })
+  return effects
+}
+
+function completionXpRewards(def) {
+  const act = Math.max(1, Number(def.act) || 1)
+  return def.kind === 'main'
+    ? [{ kind: 'xp', skillId: 'oathkeeping', amount: 320 * act }, { kind: 'xp', skillId: 'wayfinding', amount: 140 * act }]
+    : [{ kind: 'xp', skillId: 'oathkeeping', amount: 90 * act }, { kind: 'xp', skillId: 'wayfinding', amount: 55 * act }]
+}
+
+function normalizeCompletionEffect(effect) {
+  if (!effect || typeof effect !== 'object' || typeof effect.kind !== 'string') return null
+  if (effect.kind === 'item') {
+    // `id` is retained only for authored legacy data. New canonical rewards
+    // must use itemId; ambiguity fails closed rather than picking one value.
+    const itemId = effect.itemId ?? effect.id
+    if (!ALL_ITEM_DEFS[itemId] || (effect.itemId && effect.id && effect.itemId !== effect.id)) return null
+    const quantity = effect.quantity ?? 1
+    return Number.isSafeInteger(quantity) && quantity > 0 && quantity <= MAX_COMPLETION_REWARD
+      ? { kind: 'item', itemId, quantity }
+      : null
+  }
+  if (effect.kind === 'quest-item') {
+    const quantity = effect.quantity ?? 1
+    return safeCompletionId(effect.itemId) && Number.isSafeInteger(quantity) && quantity > 0 && quantity <= MAX_COMPLETION_REWARD
+      ? { kind: 'quest-item', itemId: effect.itemId, quantity }
+      : null
+  }
+  if (effect.kind === 'currency') {
+    return Number.isSafeInteger(effect.amount) && effect.amount > 0 && effect.amount <= MAX_COMPLETION_REWARD ? effect : null
+  }
+  if (effect.kind === 'xp') {
+    return SKILL_DEF_BY_ID[effect.skillId] && Number.isSafeInteger(effect.amount) && effect.amount > 0 && effect.amount <= MAX_COMPLETION_REWARD ? effect : null
+  }
+  if (effect.kind === 'flag' || effect.kind === 'epithet') return safeCompletionId(effect.id) ? effect : null
+  if (effect.kind === 'unlock-region') return rpgRegionById(effect.regionId) ? effect : null
+  if (effect.kind === 'codex') return safeCompletionId(effect.entryId) ? effect : null
+  if (effect.kind === 'epilogue') return safeCompletionId(effect.treatment) ? effect : null
+  if (effect.kind === 'set-ending') return ACT5_ENDING_VARIANTS.some((ending) => ending.id === effect.choiceId) ? effect : null
+  // Save metadata and postgame reopening are declarative exit effects in the
+  // authored Act V contract. Their durable transition is represented by the
+  // validated exit below; retain them as bounded, explicit no-op metadata
+  // until dedicated registries own their runtime state.
+  if (effect.kind === 'save') return safeCompletionId(effect.savePointId) && typeof effect.recordsEndingId === 'boolean' ? effect : null
+  if (effect.kind === 'reopen-witness-paths') return typeof effect.preserveBossDefeats === 'boolean' ? effect : null
+  return null
+}
+
+function applyCompletionEffects(state, effects) {
+  let next = state
+  for (const raw of effects) {
+    const effect = normalizeCompletionEffect(raw)
+    if (!effect) return null
+    if (effect.kind === 'item') {
+      const added = addInventoryItem(next.inventory, effect.itemId, effect.quantity, ALL_ITEM_DEFS)
+      if (added.added !== effect.quantity) return null
+      next = { ...next, inventory: added.inventory }
+    } else if (effect.kind === 'quest-item') {
+      const questItems = [...(next.inventory.questItems || [])]
+      if (!questItems.includes(effect.itemId)) questItems.push(effect.itemId)
+      next = { ...next, inventory: { ...next.inventory, questItems } }
+    } else if (effect.kind === 'currency') {
+      const current = next.inventory?.currency
+      if (!Number.isSafeInteger(current) || current < 0 || current > MAX_COMPLETION_CURRENCY - effect.amount) return null
+      next = { ...next, inventory: { ...next.inventory, currency: current + effect.amount } }
+    } else if (effect.kind === 'xp') {
+      const current = next.progression?.skills?.[effect.skillId]?.xp
+      const total = next.progression?.totalXp
+      if (
+        !Number.isSafeInteger(current) || current < 0 || current > MAX_COMPLETION_XP - effect.amount
+        || !Number.isSafeInteger(total) || total < 0 || total > MAX_COMPLETION_XP - effect.amount
+      ) return null
+      next = awardSkillXp(next, effect.skillId, effect.amount)
+    } else if (effect.kind === 'flag') next = setFlag(next, effect.id, effect.value ?? true)
+    else if (effect.kind === 'epithet') next = collectEpithet(next, effect.id)
+    else if (effect.kind === 'unlock-region') next = setFlag(next, `region:${effect.regionId}:unlocked`, true)
+    else if (effect.kind === 'codex') next = setFlag(next, `codex:${effect.entryId}`, true)
+    else if (effect.kind === 'epilogue') next = setFlag(next, `epilogue:${effect.treatment}`, true)
+    else if (effect.kind === 'set-ending') next = setFlag(next, 'act5-ending', effect.choiceId)
+  }
+  return next
+}
+
+// The sole final-objective settlement boundary. It validates and simulates
+// every final effect before the objective marker, encounter flag, choice,
+// survey discovery, completion bit, XP, or chapter transition can commit.
+function planQuestCompletion(state, questId, objective, context = {}) {
+  const def = questDefById(questId)
+  return def?.id === questId ? planQuestCompletionForDefinition(state, def, objective, context) : null
+}
+
+// Exported for authored-content validation and regression tests. The reducer
+// remains its only committer; callers receive a plan or null, never a partial
+// state mutation.
+export function planQuestCompletionForDefinition(state, def, objective, context = {}) {
+  const progress = state?.quests?.[def?.id]
+  if (!progress || !def || progress.state !== 'active' || def.objectives?.[progress.objectiveIndex]?.id !== objective?.id) return null
+  const objectiveEffects = resolvedObjectiveEffects(objective, context)
+  if (!objectiveEffects || !Array.isArray(def.rewards)) return null
+  const region = def.kind === 'main' ? rpgRegionByAct(def.act) : null
+  const exitEffects = region?.act > 1 && region.exit ? region.exit.effects : []
+  if (!Array.isArray(exitEffects)) return null
+  const effects = [...objectiveEffects, ...def.rewards, ...completionXpRewards(def), ...exitEffects]
+  let exit = null
+  if (region?.act > 1 && region.exit) {
+    const map = mapById(region.exit.mapId)
+    const spawn = spawnById(region.exit.mapId, region.exit.spawnId)
+    if (!map || !spawn) return null
+    exit = { map, spawn }
+  }
+  return applyCompletionEffects(state, effects) ? { effects, exit } : null
+}
+
+function commitQuestCompletion(state, questId, plan) {
+  const progress = state.quests[questId]
+  const def = questDefById(questId)
+  if (!progress || !def || progress.state !== 'active') return state
+  let next = {
+    ...state,
+    quests: {
+      ...state.quests,
+      [questId]: { ...progress, state: 'completed', objectiveIndex: progress.objectiveIndex + 1, completedAtTick: state.playtimeTicks },
+    },
+  }
+  if (plan.exit) {
+    const { map, spawn } = plan.exit
+    next = {
+      ...next,
+      status: 'ending',
+      world: { regionId: map.region, mapId: map.id, spawnId: spawn.id, position: { x: spawn.x, y: spawn.y }, facing: spawn.facing || 0 },
+    }
+  }
+  return next
+}
+
+function applyAct1ExitTransition(state, conversationId) {
+  if (conversationId !== 'act1-thessa-exit') return state
+  const post = spawnById('beacon-overlook', 'post-mission')
+  const postMap = mapById('beacon-overlook')
+  return post && postMap
+    ? {
+        ...state,
+        status: 'ending',
+        world: { regionId: postMap.region, mapId: 'beacon-overlook', spawnId: post.id, position: { x: post.x, y: post.y }, facing: post.facing || 0 },
+      }
+    : state
+}
+
+function canCompleteQuest(state, questId, objective, context = {}) {
+  const progress = state.quests[questId]
+  const def = questDefById(questId)
+  if (!progress || !def || progress.state !== 'active' || def.objectives[progress.objectiveIndex]?.id !== objective?.id) return false
+  return progress.objectiveIndex !== def.objectives.length - 1 || Boolean(planQuestCompletion(state, questId, objective, context))
 }
 
 const OBJECTIVE_COMPLETION_FLAGS = Object.freeze({
@@ -601,6 +753,48 @@ function surveyWayfinding(state, event) {
     chartIds: carriedChartIds(state.inventory),
   })
   if (!outcome.ok) return state
+  // A discovery can settle a final survey objective. Build the entire event
+  // bundle before persisting its lease, chart, XP, quest reward, or completion.
+  if (outcome.reward.kind === 'discovery') {
+    const discoveryEffects = [
+      { kind: 'item', itemId: outcome.reward.discoveryReward.itemId, quantity: 1 },
+      { kind: 'xp', skillId: outcome.reward.skillId, amount: outcome.reward.xp },
+    ]
+    for (const questId of registeredQuestIds()) {
+      const objective = objectiveForQuest(state, questId)
+      const matchesSurvey = objective?.kind === 'survey' && objective.surveyContractId === marker.surveyContractId
+      const matchesInteract = objective?.kind === 'interact' && matchEntityObjective(objective, marker.id)
+      if (!matchesSurvey && !matchesInteract) continue
+      const progress = state.quests[questId]
+      const definition = questDefById(questId)
+      if (progress?.objectiveIndex !== definition?.objectives?.length - 1) continue
+      const afterDiscovery = applyCompletionEffects(state, discoveryEffects)
+      if (!afterDiscovery) return state
+      let preflightState = afterDiscovery
+      if (matchesInteract) {
+        const seenFlag = `objective:${questId}:${objective.id}:${marker.id}`
+        const prior = Number(progress?.objectiveCounts?.[objective.id]) || 0
+        const target = Math.max(1, objective.count || objective.entityIds?.length || 1)
+        if (!progress || state.flags[seenFlag] || prior + 1 < target) continue
+        if (Array.isArray(objective.entityIds) && (objective.orderFree === false || objective.ordered || Array.isArray(objective.fixedActOrder)) && objective.entityIds[prior] !== marker.id) return state
+        preflightState = {
+          ...afterDiscovery,
+          flags: { ...afterDiscovery.flags, [seenFlag]: true },
+          quests: { ...afterDiscovery.quests, [questId]: { ...progress, objectiveCounts: { ...progress.objectiveCounts, [objective.id]: prior + 1 } } },
+        }
+      }
+      const plan = planQuestCompletion(preflightState, questId, objective)
+      if (!plan) return state
+      const applied = applyCompletionEffects({ ...state, wayfinding: outcome.state }, [...discoveryEffects, ...plan.effects])
+      if (!applied) return state
+      const committed = matchesInteract ? {
+        ...applied,
+        flags: preflightState.flags,
+        quests: { ...applied.quests, [questId]: { ...applied.quests[questId], objectiveCounts: preflightState.quests[questId].objectiveCounts } },
+      } : applied
+      return commitQuestCompletion(committed, questId, plan)
+    }
+  }
   let next = { ...state, wayfinding: outcome.state }
   if (outcome.reward.kind === 'discovery') {
     const reward = outcome.reward.discoveryReward
@@ -717,6 +911,10 @@ function recordObjectiveEntity(state, questId, objective, entityId) {
     if (objective.entityIds[prior] !== entityId) return state
   }
   const count = prior + 1
+  const target = Math.max(1, objective.count || objective.entityIds?.length || 1)
+  // The entity marker itself is a durable reward boundary. If this is the
+  // final required entity, validate the entire completion before recording it.
+  if (count >= target && !canCompleteQuest(state, questId, objective)) return state
   let next = {
     ...state,
     flags: { ...state.flags, [seenFlag]: true },
@@ -728,7 +926,6 @@ function recordObjectiveEntity(state, questId, objective, entityId) {
       },
     },
   }
-  const target = Math.max(1, objective.count || objective.entityIds?.length || 1)
   if (count >= target) next = advanceQuest(next, questId)
   return next
 }
@@ -1306,6 +1503,37 @@ function dialogueEnd(state, event) {
   // malformed direct DIALOGUE_END event. Keep the exact dialogue state active
   // until one valid choice from every required group has been accepted.
   if (!conversationRequiredChoicesMet(state, convo)) return state
+  // Final talk scenes are a single transaction: conversation effects, the
+  // completed marker/status transition, final objective effects, rewards, XP,
+  // and any regional exit either all commit or leave the dialogue untouched.
+  const finalTalkQuestId = [state.mainQuestId, ...registeredQuestIds().filter((id) => id !== state.mainQuestId)]
+    .find((questId) => {
+      const progress = state.quests[questId]
+      const definition = questDefById(questId)
+      const objective = definition?.objectives?.[progress?.objectiveIndex]
+      return progress?.state === 'active'
+        && progress.objectiveIndex === definition.objectives.length - 1
+        && objective?.kind === 'talk'
+        && !Array.isArray(objective.npcIds)
+        && !Array.isArray(objective.speakerIds)
+        && objective.conversationId === convoId
+        && (!objective.npcId || objective.npcId === resolvedNpcId)
+    })
+  if (finalTalkQuestId) {
+    const conversationEffects = state.flags[`conversation:completed:${convoId}`] ? [] : collectConversationEffects(convo)
+    const afterConversation = applyCompletionEffects(state, conversationEffects)
+    const finalObjective = objectiveForQuest(state, finalTalkQuestId)
+    const plan = afterConversation && planQuestCompletion(afterConversation, finalTalkQuestId, finalObjective)
+    if (!plan) return state
+    let next = applyCompletionEffects({
+      ...state,
+      status: 'playing',
+      flags: dropFlags(state.flags, [ACTIVE_CONVO_FLAG, ACTIVE_CONVO_NPC_FLAG]),
+    }, [...conversationEffects, ...plan.effects])
+    if (!next) return state
+    if (!state.flags[`conversation:completed:${convoId}`]) next = setFlag(next, `conversation:completed:${convoId}`, true)
+    return applyAct1ExitTransition(commitQuestCompletion(next, finalTalkQuestId, plan), convoId)
+  }
   // Apply the conversation's deterministic effects — the union of all node
   // effects plus any top-level effects — so SKIPPING and VIEWING land on the
   // exact same end-state (blueprint requirement). Only the once-guard on each
@@ -1367,24 +1595,7 @@ function dialogueEnd(state, event) {
   // finished (advanceMain above moved it to 'completed') and Kallias stands at
   // the post-mission overlook with the Act-II boundary raised. Only the exit
   // conversation triggers this — the intro conversation never does.
-  if (convoId === 'act1-thessa-exit') {
-    const post = spawnById('beacon-overlook', 'post-mission')
-    const postMap = mapById('beacon-overlook')
-    if (post && postMap) {
-      next = {
-        ...next,
-        status: 'ending',
-        world: {
-          regionId: postMap.region,
-          mapId: 'beacon-overlook',
-          spawnId: post.id,
-          position: { x: post.x, y: post.y },
-          facing: post.facing || 0,
-        },
-      }
-    }
-  }
-  return next
+  return applyAct1ExitTransition(next, convoId)
 }
 
 // Acknowledge the Act-II boundary card → back to controllable play at the
@@ -1558,6 +1769,7 @@ function chooseObjective(state, event) {
   // events, and legacy saves cannot ratify an ending without testimony.
   if (objective.id === 'write-the-new-accord' && !state.flags['act5-regent-testimony-heard']) return state
   if (objective.eligibility === 'ending-evidence-thresholds' && !choiceIsAvailable(state, choiceId)) return state
+  if (!canCompleteQuest(state, questId, objective, { choiceId })) return state
   const next = setFlag(state, `choice:${objective.id}`, choiceId)
   return advanceQuest(next, questId, { choiceId })
 }
@@ -1616,6 +1828,10 @@ function choosePatron(state, event) {
     && !state.protagonist.activePatronId
     && !matchEntityObjective(currentObjective(state), firstPatronShrine.id)
   ) return state
+
+  const beforeObjective = currentObjective(state)
+  if (beforeObjective?.kind === 'interact' && String(beforeObjective.entityId || '').split(':').at(-1) === 'shrine'
+    && !canCompleteQuest(state, state.mainQuestId, beforeObjective)) return state
 
   let next = {
     ...state,
@@ -1729,6 +1945,16 @@ function combatWon(state, event) {
   const enc = encounterById(snap.encounterId)
   if (!enc) return state
 
+  const owner = rpgEncounterOwnerQuestId(enc.id)
+  const ownerObjective = owner && objectiveForQuest(state, owner)
+  if (
+    !state.flags[enc.completionFlag]
+    && ownerObjective?.kind === 'clear-encounter'
+    && ownerObjective.encounterId === enc.id
+    && (!ownerObjective.conversationId || !ownerObjective.requiredWitnessRuleId)
+    && !canCompleteQuest(state, owner, ownerObjective)
+  ) return state
+
   // Return to the story world at the encounter's map (the return location),
   // clearing the combat session.
   const returnMapId = enc.returnMapId || enc.mapId
@@ -1757,7 +1983,6 @@ function combatWon(state, event) {
   }
   let next = setFlag(returned, enc.completionFlag, true)
   // Advance the owning quest's clear-encounter objective exactly once.
-  const owner = rpgEncounterOwnerQuestId(enc.id)
   const objective = owner && objectiveForQuest(next, owner)
   if (objective?.kind === 'clear-encounter' && objective.encounterId === enc.id) {
     // A clear-encounter objective with a required interruption waits for the
