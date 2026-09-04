@@ -396,6 +396,13 @@ export const ITEM_EXTENSIONS = Object.freeze({
     stackable: false,
     tier: 1,
   },
+  'votive-benediction': {
+    id: 'votive-benediction',
+    name: 'Votive Benediction',
+    category: 'herb',
+    stackable: false,
+    tier: 3,
+  },
   'clay-brick': {
     id: 'clay-brick',
     name: 'Clay Brick',
@@ -1053,6 +1060,19 @@ const RECIPE_DEFS = [
     xp: 15,
     ingredients: [{ itemId: 'votive-oil', quantity: 1 }],
     outputs: [{ itemId: 'votive-favor', quantity: 1 }],
+  }),
+  Object.freeze({
+    id: 'votive-benediction',
+    name: 'Make a Votive Benediction',
+    skillId: 'devotion',
+    stationId: 'votive-stand',
+    level: 20,
+    xp: 70,
+    ingredients: [
+      { itemId: 'votive-oil', quantity: 2 },
+      { itemId: 'sage', quantity: 1 },
+    ],
+    outputs: [{ itemId: 'votive-benediction', quantity: 1 }],
   }),
 
   // ── Weaving ──

@@ -27,6 +27,7 @@ export const SHOP_DEFS = Object.freeze({
       'barley-sheaf': Object.freeze({ itemId: 'barley-sheaf', buyPrice: 14, sellPrice: 5, baseStock: 6, maxStock: 16, restockAmount: 2 }),
       'votive-oil': Object.freeze({ itemId: 'votive-oil', buyPrice: 10, sellPrice: 4, baseStock: 10, maxStock: 20, restockAmount: 2 }),
       'votive-favor': Object.freeze({ itemId: 'votive-favor', buyPrice: 60, sellPrice: 22, baseStock: 3, maxStock: 8, restockAmount: 1 }),
+      'votive-benediction': Object.freeze({ itemId: 'votive-benediction', buyPrice: 150, sellPrice: 56, baseStock: 3, maxStock: 6, restockAmount: 1 }),
       'honeyed-figs': Object.freeze({ itemId: 'honeyed-figs', buyPrice: 16, sellPrice: 6, baseStock: 8, maxStock: 18, restockAmount: 2 }),
     }),
   }),
