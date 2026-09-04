@@ -19,12 +19,20 @@ const [
   registry,
   economy,
   contentValidation,
+  act2Content,
+  act3Content,
+  act4Content,
+  act5Content,
 ] = await Promise.all([
   importFromRoot('control-tower-shift/src/rpg/progression.js'),
   importFromRoot('control-tower-shift/src/rpg/crafting.js'),
   importFromRoot('control-tower-shift/src/rpg/registry.js'),
   importFromRoot('control-tower-shift/src/rpg/economy.js'),
   importFromRoot('control-tower-shift/src/rpg/contentValidation.js'),
+  importFromRoot('control-tower-shift/src/rpg/act2Content.js'),
+  importFromRoot('control-tower-shift/src/rpg/act3Content.js'),
+  importFromRoot('control-tower-shift/src/rpg/act4Content.js'),
+  importFromRoot('control-tower-shift/src/rpg/act5Content.js'),
 ])
 
 const integrity = contentValidation.validateRPGContent()
@@ -42,6 +50,32 @@ const dialogueWords = conversations.reduce((sum, conversation) => sum + Object.v
 const uniqueNamedNpcs = new Set(entities
   .filter((entity) => entity.kind === 'npc' && (entity.name || entity.label))
   .map((entity) => entity.name || entity.label))
+
+// A "reactive choice" is a real, reachable main-quest 'choose' objective
+// whose selection provably changes downstream game state, not just tone:
+// each Act II/III/IV restoration formulation carries an evidenceWeight that
+// feeds endingEvidenceScores() in state.js, which gates which Act V ending
+// the player may ratify. Verified reachable via each formulation's id
+// appearing as a real choiceId on a main-quest objective
+// (e.g. 'harbor-first' on Act II's ratify-salt-covenant,
+// 'licensed-flame' on Act IV's ratify-mortal-draft) — never counts a
+// tone-only or cosmetic dialogue choice.
+const restorationFormulations = [
+  ...act2Content.ACT2_RESTORATION_FORMULATIONS,
+  ...act3Content.ACT3_RESTORATION_FORMULATIONS,
+  ...act4Content.ACT4_RESTORATION_FORMULATIONS,
+]
+const reactiveChoices = restorationFormulations
+  .filter((formulation) => formulation.evidenceWeight && Object.keys(formulation.evidenceWeight).length > 0).length
+
+// A "delayed consequence" is a downstream effect that manifests only much
+// later as a direct, gated result of earlier choices — not something
+// always available regardless of what the player chose. Counts Act V
+// ending variants whose eligibility is actually gated by an evidence
+// threshold (excludes the always-available fallback ending, whose
+// threshold field is never consulted by choiceIsAvailable() in state.js).
+const delayedConsequences = act5Content.ACT5_ENDING_VARIANTS
+  .filter((ending) => ending.threshold && Object.keys(ending.threshold).length > 0 && !ending.fallback).length
 
 const actual = {
   skills: progression.SKILL_DEFS.length,
@@ -64,8 +98,8 @@ const actual = {
   merchants: Object.keys(economy.SHOP_DEFS).length,
   banks: entities.filter((entity) => entity.kind === 'bank').length,
   usefulEquipmentSlots: contract.evidence.usefulEquipmentSlots,
-  reactiveChoices: contract.evidence.reactiveChoices,
-  delayedConsequences: contract.evidence.delayedConsequences,
+  reactiveChoices,
+  delayedConsequences,
 }
 
 const blockers = []

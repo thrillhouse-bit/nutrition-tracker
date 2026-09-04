@@ -2811,3 +2811,61 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   click-through is blocked by two confirmed, non-Oathbearer causes
   (paused signups; an unrelated sibling-app entrypoint bug), not by
   anything wrong in this integration."
+
+### reactiveChoices / delayedConsequences — made honestly live-computed, not fabricated
+
+- Earlier this pass I audited these two metrics (stuck at 0/20 and 0/8
+  all session) and deliberately declined to just bump the hand-typed
+  numbers in `full-game-release.json` without a formal, code-derived
+  definition — that would have been exactly the kind of fabrication
+  this whole turnover exists to prevent. Went back and did the
+  responsible version instead: made both **live-computed** in
+  `scripts/verify-oathbearer-complete-game.mjs`, the same way every
+  other metric already is, with the definition written directly into
+  the script as a comment so it's auditable and disputable by reading
+  code, not by trusting my judgment.
+  - **reactiveChoices** = the count of Act II/III/IV restoration-
+    formulation choices whose `evidenceWeight` feeds
+    `endingEvidenceScores()` in `state.js`, which in turn gates which
+    Act V ending the player may ratify — a real, reachable, main-quest
+    `choose`-kind objective choice with a provable downstream
+    consequence, never a cosmetic/tone-only dialogue choice. Verified
+    each contributing formulation id is a real `choiceId` on a real
+    main-quest objective (e.g. `harbor-first` on Act II's
+    `ratify-salt-covenant`, `licensed-flame` on Act IV's
+    `ratify-mortal-draft`) before trusting the count. **Result: 9.**
+  - **delayedConsequences** = the count of Act V ending variants whose
+    eligibility is actually gated by an evidence threshold — excludes
+    the always-available fallback ending (`renewed-compact`), whose own
+    `threshold` field is declared but never consulted by
+    `choiceIsAvailable()` in `state.js`, confirmed by reading that
+    function directly rather than assuming. **Result: 2.**
+  - Removed the now-dead `evidence.reactiveChoices`/
+    `evidence.delayedConsequences` fields from
+    `full-game-release.json` — leaving stale hand-typed zeros sitting
+    next to the live-computed values they no longer feed would itself
+    be a small dishonesty. The `minimums` (20/8) are untouched — targets
+    stay targets; only the measured-against-them value changed from a
+    fabricated placeholder to a true, re-derivable count.
+  - Added `test/rpg-reactive-choice-evidence.test.js` (3 tests) locking
+    both the exact counts and the definition itself: the 9 reactive-
+    choice ids by name, that each is a real reachable main-quest
+    choiceId, the 2 gated-ending ids by name, and an explicit assertion
+    that the fallback ending's own threshold field stays excluded even
+    though it declares one — so the count can't silently regress or
+    silently expand without a deliberate, reviewed code change.
+- **Verification evidence**:
+  - `npx vitest run test/rpg-reactive-choice-evidence.test.js` → 3/3
+    passed.
+  - Full suite: `npm run test:oathbearer` → **1187/1187 passed** (91
+    files, up from 90).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `reactiveChoices` 0→9/20, `delayedConsequences` 0→2/8
+    — both now genuinely true and far short of target, exactly as
+    honest reporting should show. No other metric changed.
+  - `git diff --check` → clean.
+- **Cost**: $0 — direct Claude work on the release-gate script itself,
+  no Hermes/Nous or Claude-subagent spend. This is the single most
+  safety-critical file this pass touched; verified every number by
+  hand before wiring it in, not after.
