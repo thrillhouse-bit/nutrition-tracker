@@ -2667,3 +2667,100 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
 - **Running total across all seven dialogue batches this pass**:
   dialogueWords 927→6503 (+5576), combined Nous spend
   **≈$0.0573** across 7 dispatches and 53 API calls total.
+
+### Votive Benediction — Devotion's second tier, closed directly (no Hermes/subagent)
+
+- Devotion was the shallowest crafting skill in the game: exactly one
+  recipe (`votive-offering`, level 1) since an earlier pass built its
+  "first loop" (it had previously been one of three fully-dead skills).
+  Checked `test/rpg-devotion-votive-offering.test.js` first for any
+  exact-tier-count lock (like Cooking/Alchemy's "exactly five distinct
+  level bands" tests) — none exists for Devotion, so a second tier is a
+  safe, precedented addition, the same shape as this pass's Carpentry fix.
+  - Added **`votive-benediction`** (level 20, 70 XP, 2× `votive-oil` + 1×
+    `sage` → 1× Votive Benediction, same `votive-stand` station as the
+    tier-1 recipe — Beacon Overlook, reachable throughout the game the
+    same way Carpentry's single `woodwork-bench` already is). A
+    stronger, defense-leaning blessing consumable
+    (`incomingDamageMultiplier: 0.85, maxHealthBonus: 8`) that
+    genuinely outperforms tier-1's `votive-favor` rather than
+    sidegrading it — real progression, not a reskin.
+  - Sold alongside `votive-favor` at the same Beacon Overlook shop
+    (`beacon-provisioner`/Myrrine's) rather than one of the four
+    regional hub shops — this keeps it outside the exact-equality
+    `CRAFTED_SINK_ITEMS` lock in `test/rpg-regional-economy.test.js`
+    (that lock only governs the four regional hubs), so no test file
+    needed editing at all for this one, unlike Covenant Figurehead.
+  - Independently verified end-to-end via a direct `node -e` reducer
+    smoke test (`OPEN_CRAFTING` → `CRAFT`): crafted successfully from 2
+    carried `votive-oil` + 1 `sage`, awarded exactly 70 Devotion XP,
+    yielded exactly 1 `votive-benediction`.
+- **Verification evidence**:
+  - Targeted: `test/rpg-devotion-votive-offering.test.js`,
+    `test/rpg-crafting.test.js`, `test/rpg-economy.test.js`,
+    `test/rpg-economy-integration.test.js` → **104/104 passed**.
+  - Full suite: `npm run test:oathbearer` → **1184/1184 passed**.
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `items` 98→99, `recipes` 59→60.
+  - `git diff --check` → clean.
+- **Cost**: $0 — direct Claude work, no Hermes/Nous or Claude-subagent
+  spend, done in parallel with the eighth dialogue batch below while
+  that Hermes worker ran.
+
+### Act V regent-interruption batch — accepted and integrated (eighth governed Hermes batch)
+
+- Extended `act5-regent-interruption` (damas-quiet-regent+ianthe+melite+
+  kallias, 62 words before this batch), the scene where the Quiet Regent
+  tries to erase a promise from the record moments before the game's
+  final accord — the last remaining untouched conversation short enough
+  to safely extend this pass. Structurally different from every prior
+  extension target: it has TWO parallel terminal nodes (`elia-condition`
+  and `keeper-condition`, reached by two mutually-exclusive testimony
+  choices) rather than one, so this batch extended BOTH branches in
+  parallel instead of a single linear chain.
+  - Checked first: `test/act-v-content.test.js` regex-matches
+    (`.toMatch()`, not exact-equals) both branch nodes' existing text
+    and locks the `choose-witness` choice→branch wiring — none of that
+    is touched by appending after each branch's existing terminal.
+    `test/five-act-playthrough.test.js` exercises the real
+    `BEGIN_DIALOGUE`→`CHOOSE`→`DIALOGUE_END` flow through the
+    `keeper-testimony` branch specifically and asserts
+    `act5-regent-testimony-heard` is set immediately after
+    `DIALOGUE_END` — confirmed this still holds, since the reducer
+    unions all node effects across the completed graph once the
+    required choice resolves, regardless of how many additional
+    trailing nodes exist past the original terminal.
+  - Cost **$0.0047**, 5 API calls. Two new nodes, one per branch (70
+    words total): after the Elia testimony, Damas admits he'd bet on
+    her silence and lost — "you did not preserve words, you preserved a
+    witness"; after the neutral Keeper testimony, he notes he came to
+    break a name and met a form instead, and is now bound by the same
+    neutral term he tried to escape. Genuinely distinct reactions, not
+    a reskin of one line — independently re-verified this and the
+    ending-neutrality requirement (no ending formulation named in
+    either branch).
+  - Integration: `elia-condition.next` and `keeper-condition.next`
+    rewired from absent to `'elia-condition-ext-1'`/
+    `'keeper-condition-ext-1'` respectively, each new node its own
+    terminal (`next: null`), `cameraCue: 'reveal'` matching the branch
+    nodes' own convention.
+- **Verification evidence**:
+  - `npx vitest run test/act-v-content.test.js test/five-act-
+    playthrough.test.js` → 41/41 passed, no test-file edit needed.
+  - Full suite: `npm run test:oathbearer` → **1184/1184 passed**
+    (covering this batch and the Votive Benediction recipe above
+    together).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 6503→6573 (+70, exact match);
+    `conversations` unchanged at 24.
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.33 + $0.0047 ≈ **$9.34**,
+  still well under the $20 stop.
+- **Running total across all eight dialogue batches this pass**:
+  dialogueWords 927→6573 (+5646), combined Nous spend
+  **≈$0.0620** across 8 dispatches and 58 API calls total. This closes
+  out the safe short-conversation-extension queue for this pass — every
+  remaining registered conversation is either already extended this
+  session or was already at a substantial length before it started.

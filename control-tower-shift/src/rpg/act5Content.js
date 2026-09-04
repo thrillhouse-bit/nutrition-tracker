@@ -333,8 +333,10 @@ export const ACT5_CONVERSATIONS = deepFreeze({
           { id: 'keeper-testimony', text: 'Melite enters the neutral Keeper testimony.', effects: [{ kind: 'flag', id: 'act5-neutral-keeper-testified', value: true }], next: 'keeper-condition' },
         ],
       },
-      'elia-condition': { speakerId: 'kallias', text: 'Elia did not ask to erase the gods. She asked that refusal remain inside every future agreement.', cameraCue: 'reveal', effects: [{ kind: 'flag', id: 'act5-regent-testimony-heard', value: true }] },
-      'keeper-condition': { speakerId: 'kallias', text: 'Melite kept both terms in the neutral record: power may offer a covenant, and every witness may refuse it without disappearing.', cameraCue: 'reveal', effects: [{ kind: 'flag', id: 'act5-regent-testimony-heard', value: true }] },
+      'elia-condition': { speakerId: 'kallias', text: 'Elia did not ask to erase the gods. She asked that refusal remain inside every future agreement.', cameraCue: 'reveal', effects: [{ kind: 'flag', id: 'act5-regent-testimony-heard', value: true }], next: 'elia-condition-ext-1' },
+      'elia-condition-ext-1': { speakerId: 'damas-quiet-regent', text: 'I had bet on her silence lasting. It did not. A refusal read aloud has a body behind it; a filed clause does not. You did not preserve words, you preserved a witness. That is worse, for me.', cameraCue: 'reveal', next: null },
+      'keeper-condition': { speakerId: 'kallias', text: 'Melite kept both terms in the neutral record: power may offer a covenant, and every witness may refuse it without disappearing.', cameraCue: 'reveal', effects: [{ kind: 'flag', id: 'act5-regent-testimony-heard', value: true }], next: 'keeper-condition-ext-1' },
+      'keeper-condition-ext-1': { speakerId: 'damas-quiet-regent', text: 'I came to break a name, and met a form. No one weeps in this record. No one need. A term kept neutrally binds both directions, and I am inside it now.', cameraCue: 'reveal', next: null },
     },
   },
   'act5-epilogue': {
