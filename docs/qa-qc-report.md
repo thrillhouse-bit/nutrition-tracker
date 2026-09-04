@@ -1799,3 +1799,10 @@ Nothing new in the repo — `origin/main` unchanged since the last
 check-in (still `210c9f5`). Live site also unchanged (`f9f8374`,
 ~58 hours behind `main` now) — both tracked Info items hold, seventh
 consecutive quiet pass. No fixes needed this pass.
+
+## 2026-09-04 — Check-in pass (recurring, 16:36 UTC)
+
+Nothing new in the repo — `origin/main` unchanged since the last
+check-in (still `2db91a8`). Live site also unchanged (`f9f8374`) —
+both tracked Info items hold, eighth consecutive quiet pass. No fixes
+needed this pass.
