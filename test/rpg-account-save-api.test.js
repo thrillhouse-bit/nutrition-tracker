@@ -1,15 +1,17 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   RPG_SAVE_MAX_BYTES,
   validateRpgSavePutBody,
   validateRpgSaveRestoreBody,
 } from '../server/rpgSave.js'
+import { createRpgAuthorityBootstrap, validateRpgAuthorityBootstrapBody } from '../server/rpgAuthority.js'
+import { signupIpLimiter } from '../server/authRateLimit.js'
 
 const fake = vi.hoisted(() => {
-  const state = { users: [], saves: new Map(), histories: new Map(), nextUserId: 0 }
+  const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), nextUserId: 0 }
   const clone = (value) => value == null ? value : structuredClone(value)
   const publicSave = (row) => row && ({
     payload: clone(row.payload),
@@ -26,6 +28,10 @@ const fake = vi.hoisted(() => {
     })
     state.histories.set(uid, history.slice(0, 20))
   }
+  const publicAuthority = (row) => row && ({
+    story: clone(row.story), storyRevision: row.storyRevision,
+    authoritative: clone(row.authoritative), inventoryRevision: row.inventoryRevision,
+  })
   const store = {
     createUser: async ({ email, password_hash, legal_version }) => {
       const now = new Date().toISOString()
@@ -84,6 +90,17 @@ const fake = vi.hoisted(() => {
       appendHistory(uid, row)
       return { outcome: 'written', save: publicSave(row) }
     },
+    getRpgAuthority: async (userId) => publicAuthority(state.authorities.get(Number(userId)) || null),
+    bootstrapRpgAuthority: async (userId, bootstrap) => {
+      const uid = Number(userId)
+      if (state.saves.has(uid)) return { outcome: 'legacy', authority: null }
+      const existing = state.authorities.get(uid)
+      if (existing) return { outcome: 'exists', authority: publicAuthority(existing) }
+      const row = { ...clone(bootstrap) }
+      state.authorities.set(uid, row)
+      state.authorityHistory.set(uid, [{ storyRevision: row.storyRevision, story: clone(row.story) }])
+      return { outcome: 'bootstrapped', authority: publicAuthority(row) }
+    },
     exportUserData: async (userId) => {
       const user = state.users.find((candidate) => candidate.id === Number(userId))
       return {
@@ -99,13 +116,15 @@ const fake = vi.hoisted(() => {
       state.users = state.users.filter((user) => user.id !== uid)
       state.saves.delete(uid)
       state.histories.delete(uid)
+      state.authorities.delete(uid)
+      state.authorityHistory.delete(uid)
       return state.users.length < before
     },
   }
   return { state, store }
 })
 
-vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'memory-test' }))
+vi.mock('../server/db.js', () => ({ store: fake.store, backend: 'postgres' }))
 
 let server
 let base
@@ -145,6 +164,7 @@ beforeAll(async () => {
     LEGAL_CONTACT_EMAIL: 'privacy@example.test',
     LEGAL_YEAR: '2026',
     LEGAL_REVIEWED: 'true',
+    AUTH_SIGNUP_IP_MAX: '100',
   })
   const { default: app } = await import('../server/index.js')
   server = app.listen(0)
@@ -153,6 +173,10 @@ beforeAll(async () => {
 })
 
 afterAll(() => server?.close())
+
+// The API's in-memory credential limiter is shared by this integration file.
+// Reset its test fixture between cases rather than raising production limits.
+beforeEach(() => signupIpLimiter.reset())
 
 describe('RPG save request validation', () => {
   it('accepts the exact versioned envelope and rejects extra ownership, invalid revisions, and non-object payloads', () => {
@@ -180,6 +204,12 @@ describe('RPG save request validation', () => {
       expect(error.status).toBe(413)
       expect(error.code).toBe('RPG_SAVE_TOO_LARGE')
     }
+  })
+
+  it('allows only an empty server-generated authority bootstrap body', () => {
+    expect(validateRpgAuthorityBootstrapBody({})).toEqual({})
+    expect(() => validateRpgAuthorityBootstrapBody({ inventory: { currency: 999 } })).toThrow(/empty object/i)
+    expect(() => validateRpgAuthorityBootstrapBody([])).toThrow(/empty object/i)
   })
 })
 
@@ -282,6 +312,68 @@ describe('authenticated RPG save API', () => {
     const exported = await (await request('/api/account/export', { cookie: owner.cookie })).json()
     expect(exported.rpg_save_history).toHaveLength(3)
     expect(exported.rpg_save_history[0].payload).toEqual({ checkpoint: 'first' })
+  })
+})
+
+describe('Postgres-only RPG authority v2 API', () => {
+  it('bootstraps server-owned state once, isolates accounts, and never promotes a v1 save', async () => {
+    const one = await signup('rpg-v2-one@example.test')
+    const two = await signup('rpg-v2-two@example.test')
+
+    expect((await request('/api/rpg/save/v2')).status).toBe(401)
+    expect(await (await request('/api/rpg/save/v2', { cookie: one.cookie })).json()).toEqual({ save: null })
+
+    const forgedBootstrap = await request('/api/rpg/save/v2', {
+      cookie: one.cookie, method: 'POST', body: { inventory: { currency: 999 } },
+    })
+    expect(forgedBootstrap.status).toBe(400)
+
+    const bootstrapped = await request('/api/rpg/save/v2', { cookie: one.cookie, method: 'POST', body: {} })
+    expect(bootstrapped.status).toBe(201)
+    const first = await bootstrapped.json()
+    expect(first).toMatchObject({ idempotent: false, save: { storyRevision: 1, inventoryRevision: 1 } })
+    expect(first.save.story).toEqual(createRpgAuthorityBootstrap().story)
+    expect(first.save.state.inventory).toEqual(createRpgAuthorityBootstrap().authoritative.inventory)
+    expect(await (await request('/api/rpg/save/v2', { cookie: two.cookie })).json()).toEqual({ save: null })
+
+    const retry = await request('/api/rpg/save/v2', { cookie: one.cookie, method: 'POST', body: {} })
+    expect(retry.status).toBe(200)
+    expect(await retry.json()).toMatchObject({ idempotent: true, save: { storyRevision: 1, inventoryRevision: 1 } })
+    expect(fake.state.authorityHistory.get(one.user.id)).toHaveLength(1)
+
+    await request('/api/rpg/save', {
+      cookie: two.cookie, method: 'PUT', body: { payload: { legacy: true }, gameSchemaVersion: 1, expectedRevision: 0 },
+    })
+    const legacy = await request('/api/rpg/save/v2', { cookie: two.cookie, method: 'POST', body: {} })
+    expect(legacy.status).toBe(409)
+    expect(await legacy.json()).toMatchObject({ code: 'RPG_AUTHORITY_LEGACY_PROMOTION_DENIED' })
+  })
+
+  it('rejects all client-composed story snapshots, including forged patron and Act V state, without mutating the immutable bootstrap ledger', async () => {
+    const account = await signup('rpg-v2-story@example.test')
+    const created = await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+    const baseline = await created.json()
+    const before = structuredClone(fake.state.authorities.get(account.user.id))
+    const forged = structuredClone(baseline.save.story)
+    forged.mainQuestId = 'write-the-new-accord'
+    forged.flags = { 'rpg:chosen-patron': 'zeus', 'act5:ending': 'renewed-compact' }
+    forged.quests = [{ id: 'act5', objectiveIndex: 999, status: 'complete' }]
+
+    const response = await request('/api/rpg/save/v2', {
+      cookie: account.cookie,
+      method: 'PUT',
+      body: { expectedStoryRevision: 1, story: forged, inventory: { currency: 999999 } },
+    })
+    expect(response.status).toBe(501)
+    expect(await response.json()).toMatchObject({ code: 'RPG_AUTHORITY_STORY_COMMANDS_NOT_IMPLEMENTED' })
+    expect(fake.state.authorities.get(account.user.id)).toEqual(before)
+    expect(fake.state.authorityHistory.get(account.user.id)).toHaveLength(1)
+
+    const staleRetry = await request('/api/rpg/save/v2', {
+      cookie: account.cookie, method: 'PUT', body: { expectedStoryRevision: 0, story: forged },
+    })
+    expect(staleRetry.status).toBe(501)
+    expect(fake.state.authorities.get(account.user.id)).toEqual(before)
   })
 })
 

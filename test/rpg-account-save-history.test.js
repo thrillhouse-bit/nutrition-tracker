@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { JsonStore, PgStore } from '../server/db.js'
+import { createRpgAuthorityBootstrap } from '../server/rpgAuthority.js'
 
 const dirs = []
 
@@ -105,5 +106,57 @@ describe('PgStore restore history SQL contract', () => {
     expect(restore.values.filter((value) => value === 77).length).toBeGreaterThanOrEqual(5)
     expect(restore.values).toContain(8)
     expect(restore.values).toContain(4)
+  })
+})
+
+describe('PgStore authority bootstrap SQL contract', () => {
+  it('creates or repairs the ledger/story pair in one CTE while refusing legacy v1 rows', async () => {
+    const store = new PgStore('postgres://unused')
+    const calls = []
+    store.sql = (strings, ...values) => {
+      const query = strings.join('?').replace(/\s+/g, ' ').trim()
+      calls.push({ query, values })
+      if (query.startsWith('with eligible as')) {
+        return [{
+          story: { status: 'playing' }, story_revision: 1,
+          authoritative: { inventory: {} }, inventory_revision: 1,
+        }]
+      }
+      throw new Error(`unexpected SQL: ${query}`)
+    }
+
+    const result = await store.bootstrapRpgAuthority(77, createRpgAuthorityBootstrap())
+    expect(result).toMatchObject({ outcome: 'bootstrapped', authority: { storyRevision: 1, inventoryRevision: 1 } })
+    const bootstrap = calls[0]
+    expect(bootstrap.query).toContain('not exists (select 1 from rpg_saves where user_id = ?)')
+    expect(bootstrap.query).toContain('available_ledger as')
+    expect(bootstrap.query).toContain('from rpg_authority_ledgers existing')
+    expect(bootstrap.query).toContain('on conflict (user_id) do nothing')
+    expect(bootstrap.query).toContain('insert into rpg_story_projection_history')
+    expect(bootstrap.query).toContain('from story join available_ledger ledger')
+    expect(bootstrap.values.filter((value) => value === 77).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('treats a concurrent story-pair completion as an idempotent existing authority', async () => {
+    const store = new PgStore('postgres://unused')
+    const calls = []
+    store.sql = (strings, ...values) => {
+      const query = strings.join('?').replace(/\s+/g, ' ').trim()
+      calls.push({ query, values })
+      if (query.startsWith('with eligible as')) return []
+      if (query.startsWith('select projection.story')) {
+        return [{
+          story: { status: 'playing' }, story_revision: 1,
+          authoritative: { inventory: {} }, inventory_revision: 1,
+        }]
+      }
+      throw new Error(`unexpected SQL: ${query}`)
+    }
+
+    expect(await store.bootstrapRpgAuthority(88, createRpgAuthorityBootstrap())).toMatchObject({
+      outcome: 'exists', authority: { storyRevision: 1, inventoryRevision: 1 },
+    })
+    expect(calls[0].query).toContain('on conflict (user_id) do nothing')
+    expect(calls[1].query).toContain('join rpg_authority_ledgers ledger')
   })
 })

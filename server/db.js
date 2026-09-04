@@ -992,6 +992,66 @@ export class PgStore {
       : { outcome: 'not_found', save: current }
   }
 
+  // --- Postgres-only RPG authority v2 --------------------------------------
+  // Neon supports the following as one atomic statement. Avoid an emulated
+  // interactive transaction: the CTE is the bootstrap/recovery boundary.
+  async getRpgAuthority(userId) {
+    const sql = await this.ready()
+    const rows = await sql`
+      select projection.story, projection.story_revision,
+             ledger.authoritative, ledger.inventory_revision
+      from rpg_story_projections projection
+      join rpg_authority_ledgers ledger on ledger.user_id = projection.user_id
+      where projection.user_id = ${userId} limit 1`
+    const row = rows[0]
+    return row && {
+      story: row.story,
+      storyRevision: Number(row.story_revision),
+      authoritative: row.authoritative,
+      inventoryRevision: Number(row.inventory_revision),
+    }
+  }
+
+  async bootstrapRpgAuthority(userId, bootstrap) {
+    const sql = await this.ready()
+    const rows = await sql`
+      with eligible as (
+        select ${userId}::bigint as user_id
+        where not exists (select 1 from rpg_saves where user_id = ${userId})
+          and not exists (select 1 from rpg_story_projections where user_id = ${userId})
+      ), ledger as (
+        insert into rpg_authority_ledgers (user_id, authoritative, inventory_revision)
+        select user_id, ${JSON.stringify(bootstrap.authoritative)}::jsonb, ${bootstrap.inventoryRevision} from eligible
+        on conflict (user_id) do nothing
+        returning user_id, authoritative, inventory_revision
+      ), available_ledger as (
+        select user_id, authoritative, inventory_revision from ledger
+        union all
+        select existing.user_id, existing.authoritative, existing.inventory_revision
+        from rpg_authority_ledgers existing
+        join eligible using (user_id)
+        where not exists (select 1 from ledger)
+      ), story as (
+        insert into rpg_story_projections (user_id, story, story_revision)
+        select user_id, ${JSON.stringify(bootstrap.story)}::jsonb, ${bootstrap.storyRevision} from available_ledger
+        on conflict (user_id) do nothing
+        returning user_id, story, story_revision, created_at, updated_at
+      ), history as (
+        insert into rpg_story_projection_history (user_id, story_revision, story, created_at, saved_at)
+        select user_id, story_revision, story, created_at, updated_at from story
+      )
+      select story.story, story.story_revision, ledger.authoritative, ledger.inventory_revision
+      from story join available_ledger ledger using (user_id)`
+    if (rows[0]) return { outcome: 'bootstrapped', authority: {
+      story: rows[0].story, storyRevision: Number(rows[0].story_revision),
+      authoritative: rows[0].authoritative, inventoryRevision: Number(rows[0].inventory_revision),
+    } }
+    const authority = await this.getRpgAuthority(userId)
+    if (authority) return { outcome: 'exists', authority }
+    const legacy = await sql`select 1 from rpg_saves where user_id = ${userId} limit 1`
+    return { outcome: legacy[0] ? 'legacy' : 'conflict', authority: null }
+  }
+
   // Complete account-owned data export. Credentials, OAuth tokens, Apple
   // ingest tokens, password hashes, and the shared food lookup cache are
   // deliberately excluded. Nutrition values used by a log entry are joined

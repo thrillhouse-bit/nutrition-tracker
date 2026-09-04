@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import { store, backend } from './db.js'
+import { createRpgAuthorityBootstrap, presentRpgAuthority, validateRpgAuthorityBootstrapBody } from './rpgAuthority.js'
 import {
   hashPassword,
   verifyPassword,
@@ -451,6 +452,49 @@ requireAuthRouter.post('/rpg/save/restore', asyncH(async (req, res) => {
     return res.status(404).json({ error: 'RPG save history revision not found.', code: 'RPG_SAVE_HISTORY_NOT_FOUND' })
   }
   res.json({ save: result.save })
+}))
+
+// --- Postgres-only RPG authority v2 ----------------------------------------
+// v2 deliberately does not accept client-composed story snapshots. Until the
+// server replays an allowlisted narrative command against the current state,
+// PUT is a typed capability boundary rather than a forgery-prone write path.
+function rpgAuthorityPostgresOnly(res) {
+  return res.status(501).json({
+    error: 'RPG authority v2 requires the Postgres backend.',
+    code: 'RPG_AUTHORITY_POSTGRES_REQUIRED',
+  })
+}
+
+requireAuthRouter.get('/rpg/save/v2', asyncH(async (req, res) => {
+  if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
+  res.json({ save: presentRpgAuthority(await store.getRpgAuthority(req.userId)) })
+}))
+
+requireAuthRouter.post('/rpg/save/v2', asyncH(async (req, res) => {
+  if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
+  validateRpgAuthorityBootstrapBody(req.body)
+  const result = await store.bootstrapRpgAuthority(req.userId, createRpgAuthorityBootstrap())
+  if (result.outcome === 'legacy') {
+    return res.status(409).json({
+      error: 'Legacy RPG saves cannot be promoted to authority v2.',
+      code: 'RPG_AUTHORITY_LEGACY_PROMOTION_DENIED',
+    })
+  }
+  if (result.outcome === 'conflict') {
+    return res.status(409).json({ error: 'RPG authority bootstrap conflict.', code: 'RPG_AUTHORITY_BOOTSTRAP_CONFLICT' })
+  }
+  res.status(result.outcome === 'bootstrapped' ? 201 : 200).json({
+    save: presentRpgAuthority(result.authority),
+    idempotent: result.outcome === 'exists',
+  })
+}))
+
+requireAuthRouter.put('/rpg/save/v2', asyncH(async (req, res) => {
+  if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
+  res.status(501).json({
+    error: 'RPG authority story commands are not implemented yet.',
+    code: 'RPG_AUTHORITY_STORY_COMMANDS_NOT_IMPLEMENTED',
+  })
 }))
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------

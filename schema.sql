@@ -56,6 +56,36 @@ create table if not exists rpg_save_history (
 create index if not exists rpg_save_history_user_revision_idx
   on rpg_save_history (user_id, revision desc);
 
+-- Postgres-only v2 authority split. Narrative projection and the economic
+-- ledger have independent revisions. Story writes remain reserved for
+-- server-replayed commands; this first slice exposes only read/bootstrap.
+-- v1 rows are deliberately not promoted: bootstrap is server-generated for
+-- accounts without either authority state or a legacy rpg_saves row.
+create table if not exists rpg_authority_ledgers (
+  user_id             bigint primary key references users (id) on delete cascade,
+  authoritative       jsonb not null,
+  inventory_revision  bigint not null check (inventory_revision > 0),
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+create table if not exists rpg_story_projections (
+  user_id             bigint primary key references users (id) on delete cascade,
+  story               jsonb not null,
+  story_revision      bigint not null check (story_revision > 0),
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+create table if not exists rpg_story_projection_history (
+  user_id             bigint not null references users (id) on delete cascade,
+  story_revision      bigint not null check (story_revision > 0),
+  story               jsonb not null,
+  created_at          timestamptz not null,
+  saved_at            timestamptz not null default now(),
+  primary key (user_id, story_revision)
+);
+create index if not exists rpg_story_projection_history_user_revision_idx
+  on rpg_story_projection_history (user_id, story_revision desc);
+
 -- A durable, digest-only redemption ledger. `user_id` is deliberately set
 -- null (not cascaded) on account deletion: deleting an alpha account must not
 -- make its invitation reusable. The users-table digest supplies a second
