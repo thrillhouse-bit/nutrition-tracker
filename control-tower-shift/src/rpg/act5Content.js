@@ -341,7 +341,9 @@ export const ACT5_CONVERSATIONS = deepFreeze({
     id: 'act5-epilogue', speakerIds: ['kallias', 'thessa'], start: 'publish',
     nodes: {
       publish: { speakerId: 'kallias', text: 'A name survives when power, place, witness, and deed remain answerable to one another.', cameraCue: 'wide', next: 'thessa-closes' },
-      'thessa-closes': { speakerId: 'thessa', text: 'Then leave room beneath it for the next refusal.', cameraCue: 'restore', effects: [{ kind: 'flag', id: 'act5-last-name-witnessed', value: true }] },
+      'thessa-closes': { speakerId: 'thessa', text: 'Then leave room beneath it for the next refusal.', cameraCue: 'restore', effects: [{ kind: 'flag', id: 'act5-last-name-witnessed', value: true }], next: 'epilogue-ext-1' },
+      'epilogue-ext-1': { speakerId: 'kallias', text: 'Then let the last page stay uncut. I was a map with one road on it once, and called that courage. You drew the blank coast first, and named the distance far-sighted.', cameraCue: 'speaker', next: 'epilogue-ext-2' },
+      'epilogue-ext-2': { speakerId: 'thessa', text: 'Every blank was a promise, not an absence. Walk into one slowly. The pen stays warm for whoever reads next.', cameraCue: 'restore', next: null },
     },
   },
 })

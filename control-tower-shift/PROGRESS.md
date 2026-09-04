@@ -2593,3 +2593,77 @@ Rewrite on branch `codex/control-tower-mythic-rebuild` (from `46a6165`):
   click-through). Flagging honestly rather than claiming full Priority 1
   completion — the reducer/data layer is fully verified; the UI-smoke
   layer is the remaining gap before this can be called fully closed.
+
+### Audit finding: reactiveChoices/delayedConsequences (not acted on — recorded for the next reviewer)
+
+- `reactiveChoices: 0/20` and `delayedConsequences: 0/8` have read zero all
+  session because they are hand-maintained self-reported numbers in
+  `control-tower-shift/full-game-release.json`'s `evidence` block — unlike
+  every other metric (items/recipes/dialogueWords/etc.), they are NOT
+  computed live from the registries by `scripts/verify-oathbearer-
+  complete-game.mjs`.
+- A real mechanism that plausibly satisfies both definitions already
+  exists and is already tested: `ACT2_RESTORATION_FORMULATIONS` /
+  `ACT3_RESTORATION_FORMULATIONS` / `ACT4_RESTORATION_FORMULATIONS` (9
+  choices total, each carrying an `evidenceWeight` toward `authority`/
+  `autonomy`/`reciprocity`/`plurality`) feed `endingEvidenceScores()` in
+  `src/rpg/state.js`, which `choiceIsAvailable()` uses to gate which of
+  the three `ACT5_ENDING_VARIANTS` (`bounded-patrons`, `mortal-witness`,
+  `renewed-compact`) the player can ratify at the very end of Act V. A
+  choice made in Act II/III/IV having an effect that only manifests in
+  Act V is exactly the shape of a "delayed consequence"; each contributing
+  formulation choice is exactly the shape of a "reactive choice."
+- **Not acted on**: I did not bump these numbers. Unlike the objectively-
+  countable metrics I've moved directly this pass (items, recipes), these
+  two have no formal definition anywhere in the docs I could find, and the
+  release manifest is the single most safety-critical file in the repo —
+  writing a number into it that I inferred rather than one a validator
+  can re-derive would be exactly the kind of fabrication this whole
+  turnover is built to prevent. The honest, bounded fix is to make these
+  two metrics live-computed (like every other one already is) with an
+  explicit, test-backed definition of what counts — that's real,
+  reviewable work for a future checkpoint, not a same-turn edit to a
+  hand-typed number.
+
+### Act V epilogue batch — accepted and integrated (seventh governed Hermes batch)
+
+- Extended `act5-epilogue` (kallias+thessa, the literal closing scene of
+  the entire game, played at the Accord Overlook after ratification —
+  only 23 words/2 nodes before this batch, never touched earlier this
+  pass). Checked first: no exact-text lock on either node (only
+  structural references to `savePointId`/`recordsEndingId` in
+  `test/act-v-content.test.js`, none to the dialogue text itself).
+  - Explicitly instructed the worker to stay valid across all three
+    possible endings (`bounded-patrons`, `mortal-witness`,
+    `renewed-compact`) by naming none of them and writing about
+    witnessing/revision in general rather than any specific accord
+    model — independently re-verified the delivered text contains none
+    of the three ending names or their defining phrases.
+  - Cost **$0.0088**, 8 API calls. Two new nodes (`epilogue-ext-1/2`, 52
+    words): Kallias closes on "the last page stay uncut," calling back
+    to Thessa naming him "far-sighted" all the way back in Act I; Thessa
+    answers that every blank space in the map was a promise, not an
+    absence, and "the pen stays warm for whoever reads next" — a fitting
+    last line for a game about authored, revisable consent.
+  - Independently re-verified: word count (52, within 50–90), 2/2 unique
+    node ids, chain fully internal with exactly one `next: null`, zero
+    forbidden fields, no ending formulation named.
+  - Integration: `thessa-closes.next` rewired from absent to
+    `'epilogue-ext-1'`, chain terminates at `epilogue-ext-2.next: null`,
+    `cameraCue` added by Claude (`'speaker'`/`'restore'`, matching the
+    conversation's own convention).
+- **Verification evidence**:
+  - `npx vitest run test/act-v-content.test.js test/five-act-
+    playthrough.test.js` → 41/41 passed, no test-file edit needed.
+  - Full suite: `npm run test:oathbearer` → **1184/1184 passed** (90
+    files).
+  - `npm run build` → succeeded.
+  - `npm run report:oathbearer:complete` → correctly remains
+    **BLOCKED**; `dialogueWords` 6451→6503 (+52, exact match);
+    `conversations` unchanged at 24.
+  - `git diff --check` → clean.
+- **Spend**: cumulative Nous spend now ≈$9.32 + $0.0088 ≈ **$9.33**,
+  still well under the $20 stop.
+- **Running total across all seven dialogue batches this pass**:
+  dialogueWords 927→6503 (+5576), combined Nous spend
+  **≈$0.0573** across 7 dispatches and 53 API calls total.
