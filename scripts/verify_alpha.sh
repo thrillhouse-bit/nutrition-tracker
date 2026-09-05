@@ -2,8 +2,8 @@
 # Read-only release gate for the invite-only Body Current alpha.
 #
 # Usage:
-#   scripts/verify_alpha.sh https://omnifuelapp.tech
-#   EXPECTED_SHA=<full-git-sha> scripts/verify_alpha.sh https://omnifuelapp.tech
+#   scripts/verify_alpha.sh https://bodycurrent.app
+#   EXPECTED_SHA=<full-git-sha> scripts/verify_alpha.sh https://bodycurrent.app
 set -uo pipefail
 
 BASE="${1:-${BASE:-}}"

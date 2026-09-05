@@ -116,7 +116,7 @@ serving; a restart stops the healthy server to load the broken one.
 *Resident Caddy* — append to `/etc/caddy/Caddyfile`:
 
 ```
-omnifuelapp.tech {
+bodycurrent.app {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:3001
 }
@@ -129,12 +129,12 @@ systemctl reload caddy                          # reload, not restart
 
 Caddy fetches the certificate automatically on first request.
 
-*Resident nginx* — new file `/etc/nginx/sites-available/omnifuelapp.tech`:
+*Resident nginx* — new file `/etc/nginx/sites-available/bodycurrent.app`:
 
 ```nginx
 server {
     listen 80;
-    server_name omnifuelapp.tech;
+    server_name bodycurrent.app www.bodycurrent.app;
     location / {
         proxy_pass http://127.0.0.1:3001;
         proxy_set_header Host $host;
@@ -145,10 +145,10 @@ server {
 ```
 
 ```bash
-ln -s /etc/nginx/sites-available/omnifuelapp.tech /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/bodycurrent.app /etc/nginx/sites-enabled/
 nginx -t                                        # must pass before reload
 systemctl reload nginx
-certbot --nginx -d omnifuelapp.tech             # adds the HTTPS server block
+certbot --nginx -d bodycurrent.app -d www.bodycurrent.app # adds the HTTPS server block
 ```
 
 *Resident Traefik* (Docker, `--providers.docker=true`) is different in kind from
@@ -162,7 +162,9 @@ the entrypoint names and the cert resolver's name (its
 project's example, not a given), then in `.env`:
 
 ```bash
-SITE_ADDRESS=omnifuelapp.tech
+SITE_ADDRESS=bodycurrent.app
+SITE_ADDRESS_WWW=www.bodycurrent.app
+SITE_ADDRESS_LEGACY=omnifuelapp.tech
 TRAEFIK_CERT_RESOLVER=letsencrypt   # must match the resident Traefik's resolver name
 ```
 
@@ -177,7 +179,7 @@ where an ACME failure (rate limit, DNS not yet propagated) would show up.
 **3. Verify from outside, same as any other deploy:**
 
 ```bash
-scripts/verify_deploy.sh https://omnifuelapp.tech
+scripts/verify_deploy.sh https://bodycurrent.app
 ```
 
 The sidecar and standard paths serve the identical app — only who terminates
@@ -187,7 +189,7 @@ TLS differs. Data still lives in the `app-data` volume either way.
 
 1. Create an app at the [Oura developer portal](https://cloud.ouraring.com/oauth/applications) → note the **client id** and **client secret**.
 2. Set its **Redirect URI** to `https://<your-domain>/api/oura/callback` (exactly; for local dev `http://localhost:5173/api/oura/callback`).
-3. Scopes requested by the app: `email personal daily`.
+3. Scopes requested by the app: `email personal daily workout`.
 
 ## 2. Set the secrets on the host (never in git, argv, or chat)
 

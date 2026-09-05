@@ -1552,6 +1552,9 @@ describe('GET /api/today: real Oura data beats Garmin\'s default demo (Task 1 pr
     expect(body.signals.workout.provider).toBe('oura')
     expect(body.signals.workout.demo).toBe(false)
     expect(body.signals.workout.value.kind).toBe('run')
+    expect(body.providers.find((provider) => provider.id === 'oura')).toMatchObject({
+      id: 'oura', demo: false,
+    })
     // The label a real backfilled Oura workout gets is derived from its own
     // `activity` field ("Running"), never the fixed demo scenario's label —
     // this is the concrete tell that Garmin's canned data did NOT win.

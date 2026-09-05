@@ -25,8 +25,8 @@ the Docker image. Do not invent or manually overwrite Render secrets.
 
 ## Post-deploy smoke
 
-1. `curl -fsS https://omnifuelapp.tech/api/health`
-2. Open `https://omnifuelapp.tech/#control-tower-rpg` in a fresh browser.
+1. `curl -fsS https://bodycurrent.app/api/health`
+2. Open `https://bodycurrent.app/#control-tower-rpg` in a fresh browser.
 3. Start a story, click across Beacon Overlook, and verify Kallias visibly
    accelerates, alternates weight, turns in both directions, and settles.
 4. Verify WASD, touch controls, Pause/Resume, Thessa dialogue, shrine patron

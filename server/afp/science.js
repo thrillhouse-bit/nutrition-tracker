@@ -33,7 +33,7 @@ export const AFP_SCIENCE = Object.freeze({
   // Goal adjustment is a transparent product safety policy, not a claim that
   // one source validates a fixed personal deficit/surplus.
   goal: Object.freeze({
-    ...source('product-goal-policy-v1', 'Body Current conservative goal policy', 'https://omnifuelapp.tech/terms', null, 'Eligible self-selected adults only.', 'Product guardrail: no static weight forecast, no automatic endurance deficit, muscle surplus capped at 5%.', 'product_policy', 'policy'),
+    ...source('product-goal-policy-v1', 'Body Current conservative goal policy', 'https://bodycurrent.app/terms', null, 'Eligible self-selected adults only.', 'Product guardrail: no static weight forecast, no automatic endurance deficit, muscle surplus capped at 5%.', 'product_policy', 'policy'),
   }),
   carbohydrate: Object.freeze({
     ...source('burke-2011-carbohydrate', 'Carbohydrates for training and competition', 'https://doi.org/10.1080/02640414.2011.585473', 'https://doi.org/10.1080/02640414.2011.585473', 'Athletes and exercising adults.', 'Sport-nutrition ranges are planning ranges, not medical prescriptions; gastrointestinal tolerance varies.', 'review', 'moderate'),

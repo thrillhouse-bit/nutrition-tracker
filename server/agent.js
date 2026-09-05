@@ -45,7 +45,7 @@ const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'
 // can correct it with a restartless env change in dev and so tests can
 // exercise both the set and unset branches.
 function publicBaseUrl() {
-  return (process.env.BODY_CURRENT_PUBLIC_URL || process.env.OMNIFUEL_PUBLIC_URL || 'https://omnifuelapp.tech').replace(/\/+$/, '')
+  return (process.env.BODY_CURRENT_PUBLIC_URL || process.env.OMNIFUEL_PUBLIC_URL || 'https://bodycurrent.app').replace(/\/+$/, '')
 }
 
 // Bearer parse for THIS surface only. Same regex as index.js's

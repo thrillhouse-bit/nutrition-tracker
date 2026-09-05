@@ -139,6 +139,37 @@ describe('Today header: honest alternate messages — demo-only and no-connectio
     expect(onGoToConnections).toHaveBeenCalledTimes(1)
   })
 
+  it("shows a linked Oura account as connected while today's readings are still pending", async () => {
+    const onGoToConnections = vi.fn()
+    const el = await renderToday({
+      ...BASE,
+      providers: [{ id: 'oura', name: 'Oura', status: 'connected', demo: false }],
+      // A never-connected provider's demo signal may still be present; it
+      // must not hide the account-level truth that Oura is linked.
+      signals: { workout: { value: { label: 'Evening Run' }, provider: 'garmin', demo: true } },
+    }, { onGoToConnections })
+
+    expect(el.textContent).toMatch(/OURA · CONNECTED/)
+    expect(el.textContent).toMatch(/Oura is connected — awaiting today's readings\./)
+    expect(el.textContent).not.toMatch(/No wearable connected yet|Showing sample recovery data/)
+    expect(el.querySelector('[aria-label="Refresh Oura data"]')).toBeTruthy()
+    const manage = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Manage connection'))
+    expect(manage).toBeTruthy()
+    await act(async () => { manage.click() })
+    expect(onGoToConnections).toHaveBeenCalledTimes(1)
+  })
+
+  it('flags a linked provider that is stale and has no current-day reading', async () => {
+    const el = await renderToday({
+      ...BASE,
+      providers: [{ id: 'oura', name: 'Oura', status: 'stale', demo: false, sync_error: 'refresh_token_expired' }],
+      signals: {},
+    })
+    expect(el.textContent).toMatch(/OURA · NEEDS ATTENTION/)
+    expect(el.textContent).toMatch(/recent readings have not arrived/)
+    expect(el.textContent).not.toMatch(/No wearable connected yet/)
+  })
+
   it('CONTROL: the Connect CTA does not render when a live signal is present', async () => {
     const onGoToConnections = vi.fn()
     const el = await renderToday({

@@ -355,6 +355,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const targets = data?.adjusted || data?.baseline || {}
   const rec = data?.recommendation
   const signals = data?.signals || {}
+  const providerStates = data?.providers || []
 
   const calTarget = num(targets.calories)
   const calDone = num(totals.calories)
@@ -391,6 +392,11 @@ export default function Today({ date, data, dataError, entries, loading, online,
   // sample readings or that nothing is connected. Never imply a live sync.
   const present = ['readiness', 'sleep', 'workout'].map((k) => signals[k]).filter(Boolean)
   const liveProviders = [...new Set(present.filter((s) => !s.demo && s.provider).map((s) => s.provider.toUpperCase()))]
+  const linkedProviders = providerStates.filter((p) => ['connected', 'syncing', 'stale'].includes(p.status))
+  const linkedProviderDisplayNames = [...new Set(linkedProviders.map((p) => String(p.name || p.id || '')).filter(Boolean))]
+  const linkedProviderNames = linkedProviderDisplayNames.map((name) => name.toUpperCase())
+  const connectedWithoutData = liveProviders.length === 0 && linkedProviders.length > 0
+  const linkedNeedsAttention = linkedProviders.some((p) => p.status === 'stale' || p.sync_error)
 
   // Wearable refresh / honest per-provider capability, for the header below.
   // Oura is the only one of the three with a real "ask for fresh data"
@@ -410,6 +416,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const ouraLive = present.some((s) => s.provider === 'oura' && !s.demo)
   const garminLive = present.some((s) => s.provider === 'garmin' && !s.demo)
   const appleLive = present.some((s) => s.provider === 'apple' && !s.demo)
+  const ouraConnected = linkedProviders.some((p) => p.id === 'oura')
 
   const refreshOura = async () => {
     setOuraBusy(true)
@@ -447,6 +454,14 @@ export default function Today({ date, data, dataError, entries, loading, online,
       syncText = `${liveProviders.join(' + ')} · SYNCED${syncTime ? ` ${syncTime}` : ''}`
     }
     daySentence = daySentenceParts({ rd, sl, wo, hm, isHistoricalDay })
+  } else if (connectedWithoutData) {
+    const names = linkedProviderNames.join(' + ')
+    const displayNames = linkedProviderDisplayNames.join(' + ')
+    const verb = linkedProviderNames.length === 1 ? 'is' : 'are'
+    syncText = `${names} · ${linkedNeedsAttention ? 'NEEDS ATTENTION' : 'CONNECTED'}`
+    altMessage = linkedNeedsAttention
+      ? `${displayNames} ${verb} connected, but recent readings have not arrived. Check the connection.`
+      : `${displayNames} ${verb} connected — awaiting today's readings.`
   } else if (present.length > 0) {
     syncText = 'SAMPLE SIGNALS · NOT A LIVE SYNC'
     altMessage = 'Showing sample recovery data — connect a wearable for your own.'
@@ -532,7 +547,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
         </div>
 
         <div className="mt-1 flex items-center gap-2">
-          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive ? 'border border-alert bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
+          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive || linkedNeedsAttention ? 'border border-alert bg-transparent' : connectedWithoutData ? 'border border-cobalt bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
           <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{dataError && todayLoading ? 'COULD NOT LOAD TODAY' : todayLoading ? 'LOADING…' : syncText}</span>
         </div>
 
@@ -556,9 +571,9 @@ export default function Today({ date, data, dataError, entries, loading, online,
             at all for a disconnected or all-demo account — an empty strip
             under an honest demo/unavailable state is correct, not a bug to
             fill with a fake control. */}
-        {(ouraLive || garminLive || appleLive || ouraError) && (
+        {(ouraLive || ouraConnected || garminLive || appleLive || ouraError) && (
           <div className="mt-2 space-y-2">
-            {ouraLive && (
+            {(ouraLive || ouraConnected) && (
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10.5px] leading-snug text-muted">
                   Pull the latest readiness, sleep, and workouts from Oura.
@@ -612,7 +627,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
             <>
               <p className="text-[14.5px] leading-snug text-muted">{altMessage}</p>
               {onGoToConnections && (
-                <TextButton chevron onClick={onGoToConnections} className="-ml-2 text-[13px]">Connect a wearable</TextButton>
+                <TextButton chevron onClick={onGoToConnections} className="-ml-2 text-[13px]">{connectedWithoutData ? 'Manage connection' : 'Connect a wearable'}</TextButton>
               )}
             </>
           )}

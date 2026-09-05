@@ -1319,10 +1319,15 @@ async function buildPlan(userId, date, nowDate, bounds = null) {
 async function todayComposite(userId, date, nowDate, bounds = null) {
   const plan = await buildPlan(userId, date, nowDate, bounds)
   const { from, to } = bounds || dayRange(date)
-  const [entries, waterEntries, hydrationPreferences] = await Promise.all([
+  const [entries, waterEntries, hydrationPreferences, providers] = await Promise.all([
     store.listEntries(userId, { from, to }),
     store.listWaterEntries(userId, { from, to }),
     store.getHydrationPreferences(userId),
+    // Today must distinguish "this provider is connected but has not
+    // published a reading for this calendar day yet" from "no wearable is
+    // connected." Connections already owns this account-level truth; include
+    // that same provider status instead of guessing from metric presence.
+    allProviderStatuses(store, userId, nowDate),
   ])
   const intake = sumIntake(entries)
   const nowHour = localHourForRequest(nowDate, bounds)
@@ -1335,7 +1340,7 @@ async function todayComposite(userId, date, nowDate, bounds = null) {
   }
   return {
     date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale,
-    signals: plan.signals, recommendation, entries,
+    signals: plan.signals, providers, recommendation, entries,
     hydration: { entries: waterEntries, total_ml: waterEntries.reduce((sum, entry) => sum + (Number(entry.amount_ml) || 0), 0), preferences: hydrationPreferences },
     generatedAt: nowDate.toISOString(),
     plan: plan.adaptive, profileReady: plan.profileReady, frozen: plan.frozen,

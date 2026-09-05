@@ -176,6 +176,15 @@ already covered, copy says so directly instead of prescribing a negative or
 unnecessary catch-up amount. The expandable rationale remains the place where
 the app names the signals that drove the recommendation.
 
+### Today wearable state
+
+Today consumes the same account-level provider status as Connections. The
+absence of a reading for the viewed calendar day does not mean the provider is
+disconnected. A linked provider with no current-day signal is labelled
+"connected — awaiting today's readings," retains Oura's real refresh action,
+and routes connection management to Connections. Only an account with no linked
+provider and no live signal may show "No wearable connected."
+
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Select/Listbox | Native select | Shared `inputCls` styling plus browser semantics | Domain option sets only | Component tests and browser walkthrough |

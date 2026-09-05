@@ -24,8 +24,8 @@ Oura/Garmin as the developer application's privacy-policy and terms URLs):
 
 | File | URL |
 |---|---|
-| `privacy-policy.html` | https://omnifuelapp.tech/privacy |
-| `terms-of-service.html` | https://omnifuelapp.tech/terms |
+| `privacy-policy.html` | https://bodycurrent.app/privacy |
+| `terms-of-service.html` | https://bodycurrent.app/terms |
 
 The Express server owns `/privacy` and `/terms`. It renders these source
 templates only when the legal launch gate is complete; otherwise both routes

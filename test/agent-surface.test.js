@@ -264,7 +264,7 @@ describe('GET /.well-known/agent-card.json', () => {
     expect(card.url).toBe('https://agent.example.test/a2a')
     delete process.env.OMNIFUEL_PUBLIC_URL
     card = await (await get('/.well-known/agent-card.json')).json()
-    expect(card.url).toBe('https://omnifuelapp.tech/a2a')
+    expect(card.url).toBe('https://bodycurrent.app/a2a')
   })
 
   it('prefers the Body Current public URL over its legacy alias', async () => {

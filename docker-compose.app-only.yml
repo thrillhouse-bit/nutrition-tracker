@@ -15,7 +15,8 @@
 # with the Docker provider (`--providers.docker=true` in its own container
 # args) — on any other resident server (Caddy, nginx) nothing reads Docker
 # labels, so they're harmless to leave in. Set SITE_ADDRESS in .env to the
-# app's domain; a running Traefik auto-discovers the router the moment the
+# canonical app domain and SITE_ADDRESS_LEGACY / SITE_ADDRESS_WWW to any
+# migration aliases; a running Traefik auto-discovers the router the moment the
 # label appears on `docker compose up`, no Traefik restart needed. Match
 # TRAEFIK_CERT_RESOLVER to the resolver NAME in the resident Traefik's own
 # `--certificatesresolvers.<name>.acme.*` flags (inspect its container args
@@ -39,7 +40,7 @@ services:
       - "127.0.0.1:3001:3001"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.fuel.rule=Host(`${SITE_ADDRESS}`)"
+      - "traefik.http.routers.fuel.rule=Host(`${SITE_ADDRESS}`) || Host(`${SITE_ADDRESS_WWW}`) || Host(`${SITE_ADDRESS_LEGACY}`)"
       - "traefik.http.routers.fuel.entrypoints=websecure"
       - "traefik.http.routers.fuel.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
       - "traefik.http.services.fuel.loadbalancer.server.port=3001"

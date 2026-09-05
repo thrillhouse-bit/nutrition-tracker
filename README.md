@@ -422,7 +422,7 @@ Honest refusals, in the same spirit as the rest of the app:
 | Env var | Meaning |
 |---|---|
 | `BODY_CURRENT_A2A_TOKEN` | Bearer token for the fueling tier. Takes precedence over the legacy `OMNIFUEL_A2A_TOKEN` alias. Both unset = tier off. |
-| `BODY_CURRENT_PUBLIC_URL` | Public origin written into the agent card's `url` (default `https://omnifuelapp.tech`). Takes precedence over the legacy `OMNIFUEL_PUBLIC_URL` alias. |
+| `BODY_CURRENT_PUBLIC_URL` | Public origin written into the agent card's `url` (default `https://bodycurrent.app`). Takes precedence over the legacy `OMNIFUEL_PUBLIC_URL` alias. |
 
 Agent metadata identifies the product as `displayName: "Body Current"` and
 `serviceId: "body-current"`; its existing `service` field and artifact name remain
@@ -505,7 +505,7 @@ prefilling signup.
 After deployment and secret configuration, run the read-only alpha gate:
 
 ```bash
-EXPECTED_SHA="$(git rev-parse HEAD)" scripts/verify_alpha.sh https://omnifuelapp.tech
+EXPECTED_SHA="$(git rev-parse HEAD)" scripts/verify_alpha.sh https://bodycurrent.app
 ```
 
 ```bash
