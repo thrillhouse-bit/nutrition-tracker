@@ -76,5 +76,13 @@ describe('RPG authority v2 JSON backend boundary', () => {
     })
     expect(command.status).toBe(501)
     expect(await command.json()).toMatchObject({ code: 'RPG_AUTHORITY_POSTGRES_REQUIRED' })
+
+    const oversizedCommand = await fetch(`${base}/api/rpg/save/v2/commands`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ padding: 'x'.repeat(5_000) }),
+    })
+    expect(oversizedCommand.status).toBe(413)
+    expect(await oversizedCommand.json()).toEqual({ error: 'Invalid request body.' })
   })
 })

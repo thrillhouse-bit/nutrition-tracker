@@ -100,6 +100,22 @@ export const signupIpLimiter = new FixedWindowLimiter({
   windowMs: positiveInt(process.env.AUTH_SIGNUP_WINDOW_MS, 60 * 60 * 1000),
 })
 
+// Story commands are authenticated, durable database work. They need a
+// materially higher cadence than credential attempts while still bounding a
+// compromised account or a shared-source flood. MOVE and other frame-rate
+// events are intentionally not part of the public command protocol.
+const RPG_COMMAND_WINDOW_MS = positiveInt(process.env.RPG_COMMAND_WINDOW_MS, 60 * 1000)
+
+export const rpgCommandAccountLimiter = new FixedWindowLimiter({
+  max: positiveInt(process.env.RPG_COMMAND_ACCOUNT_MAX, 30),
+  windowMs: RPG_COMMAND_WINDOW_MS,
+})
+
+export const rpgCommandIpLimiter = new FixedWindowLimiter({
+  max: positiveInt(process.env.RPG_COMMAND_IP_MAX, 120),
+  windowMs: RPG_COMMAND_WINDOW_MS,
+})
+
 export function clientRateLimitKey(req) {
   return req.ip || req.socket?.remoteAddress || 'unknown-client'
 }

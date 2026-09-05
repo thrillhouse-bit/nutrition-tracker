@@ -65,6 +65,8 @@ import {
   clientRateLimitKey,
   loginCredentialLimiter,
   loginIpLimiter,
+  rpgCommandAccountLimiter,
+  rpgCommandIpLimiter,
   sendRateLimit,
   signupIpLimiter,
 } from './authRateLimit.js'
@@ -86,6 +88,11 @@ app.use('/api', (req, res, next) => {
   res.vary('Cookie')
   next()
 })
+// Durable RPG commands have a deliberately small envelope. Register their
+// exact POST parser before the application-wide JSON parser: body-parser
+// recognizes the already-consumed request and will not parse it a second
+// time, while every other endpoint retains the 15 MB photo allowance below.
+app.post('/api/rpg/save/v2/commands', express.json({ limit: '4kb', type: 'application/json' }))
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
 // A malformed JSON body (or one over the 15mb limit above) throws INSIDE
@@ -517,6 +524,21 @@ requireAuthRouter.post('/rpg/save/v2/commands', asyncH(async (req, res) => {
   if (receipt.outcome === 'command_id_conflict') {
     return res.status(409).json({ error: 'RPG authority command ID conflict.', code: 'RPG_AUTHORITY_COMMAND_ID_CONFLICT' })
   }
+  // There is no await between status checks and consumes. In this process-local
+  // limiter, that makes the paired check-and-consume block synchronous with
+  // respect to other Express handlers; distributed deployments still require
+  // an edge/shared limiter before horizontal scale. Strict parsing and receipt
+  // replay happen first, so malformed bodies and lost-response retries never
+  // spend the budget reserved for novel persistence attempts.
+  const commandIpKey = `rpg-command-ip:${clientRateLimitKey(req)}`
+  const commandAccountKey = `rpg-command-account:${req.userId}`
+  const commandLimitStates = [
+    rpgCommandIpLimiter.status(commandIpKey),
+    rpgCommandAccountLimiter.status(commandAccountKey),
+  ]
+  if (commandLimitStates.some((state) => !state.allowed)) return sendRateLimit(res, commandLimitStates)
+  rpgCommandIpLimiter.consume(commandIpKey)
+  rpgCommandAccountLimiter.consume(commandAccountKey)
   const current = await store.getRpgAuthority(req.userId)
   if (!current) return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
   const next = replayRpgAuthorityCommand(current, envelope)

@@ -630,6 +630,23 @@ describe('account data lifecycle', () => {
 })
 
 describe('authentication abuse controls', () => {
+  it('keeps the 15 MB parser limit outside the exact v2 command route', async () => {
+    try {
+      const response = await fetch(`${base}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'large-login@example.test', password: 'x'.repeat(8_192) }),
+      })
+      expect(response.status).not.toBe(413)
+      expect(response.status).toBeGreaterThanOrEqual(400)
+      expect(response.status).toBeLessThan(500)
+    } finally {
+      const { loginCredentialLimiter, loginIpLimiter } = await import('../server/authRateLimit.js')
+      loginCredentialLimiter.reset()
+      loginIpLimiter.reset()
+    }
+  })
+
   it('throttles repeated credential failures with a generic 429 and Retry-After', async () => {
     let last
     try {

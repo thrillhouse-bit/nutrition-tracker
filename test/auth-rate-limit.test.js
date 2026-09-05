@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FixedWindowLimiter } from '../server/authRateLimit.js'
+import { FixedWindowLimiter, rpgCommandAccountLimiter, rpgCommandIpLimiter } from '../server/authRateLimit.js'
 
 describe('FixedWindowLimiter', () => {
   it('blocks after the configured attempt count and reports an integer retry window', () => {
@@ -34,5 +34,21 @@ describe('FixedWindowLimiter', () => {
     limiter.consume('same-client')
     expect(limiter.consume('same-client')).toMatchObject({ allowed: true, remaining: 0 })
     expect(limiter.consume('same-client').allowed).toBe(false)
+  })
+
+  it('keeps account and IP command budgets independently namespaced and hashed', () => {
+    rpgCommandAccountLimiter.reset()
+    rpgCommandIpLimiter.reset()
+    try {
+      const accountKey = 'rpg-command-account:42'
+      const ipKey = 'rpg-command-ip:203.0.113.7'
+      expect(rpgCommandAccountLimiter.consume(accountKey).allowed).toBe(true)
+      expect(rpgCommandIpLimiter.status(ipKey).allowed).toBe(true)
+      expect([...rpgCommandAccountLimiter.entries.keys()].join(' ')).not.toContain('42')
+      expect([...rpgCommandIpLimiter.entries.keys()].join(' ')).not.toContain('203.0.113.7')
+    } finally {
+      rpgCommandAccountLimiter.reset()
+      rpgCommandIpLimiter.reset()
+    }
   })
 })

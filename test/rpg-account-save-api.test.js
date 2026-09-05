@@ -15,7 +15,7 @@ import {
   validateRpgAuthorityBootstrapBody,
   validateRpgAuthorityCommandBody,
 } from '../server/rpgAuthority.js'
-import { signupIpLimiter } from '../server/authRateLimit.js'
+import { rpgCommandAccountLimiter, rpgCommandIpLimiter, signupIpLimiter } from '../server/authRateLimit.js'
 
 const fake = vi.hoisted(() => {
   const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), authorityReceipts: new Map(), nextUserId: 0 }
@@ -224,7 +224,11 @@ afterAll(() => server?.close())
 
 // The API's in-memory credential limiter is shared by this integration file.
 // Reset its test fixture between cases rather than raising production limits.
-beforeEach(() => signupIpLimiter.reset())
+beforeEach(() => {
+  signupIpLimiter.reset()
+  rpgCommandAccountLimiter.reset()
+  rpgCommandIpLimiter.reset()
+})
 
 describe('RPG save request validation', () => {
   it('accepts the exact versioned envelope and rejects extra ownership, invalid revisions, and non-object payloads', () => {
@@ -505,6 +509,84 @@ describe('Postgres-only RPG authority v2 API', () => {
     expect((await second.json()).receipt.commandId).toBe('shared-command')
     expect(fake.state.authorityReceipts.get(one.user.id)).toHaveLength(1)
     expect(fake.state.authorityReceipts.get(two.user.id)).toHaveLength(1)
+  })
+
+  it('limits command persistence per authenticated account without writing a blocked command', async () => {
+    const originalMax = rpgCommandAccountLimiter.max
+    rpgCommandAccountLimiter.max = 1
+    try {
+      const account = await signup('rpg-v2-command-account-limit@example.test')
+      const anonymous = await request('/api/rpg/save/v2/commands', {
+        method: 'POST',
+        body: {
+          protocolVersion: 1, commandId: 'anonymous-command', idempotencyKey: 'anonymous-key', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+          command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+        },
+      })
+      expect(anonymous.status).toBe(401)
+      expect(rpgCommandAccountLimiter.entries.size).toBe(0)
+      expect(rpgCommandIpLimiter.entries.size).toBe(0)
+
+      const oversized = await fetch(`${base}/api/rpg/save/v2/commands`, {
+        method: 'POST', headers: { Cookie: account.cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ padding: 'x'.repeat(5_000) }),
+      })
+      expect(oversized.status).toBe(413)
+      expect(rpgCommandAccountLimiter.entries.size).toBe(0)
+      expect(rpgCommandIpLimiter.entries.size).toBe(0)
+
+      await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+      const row = fake.state.authorities.get(account.user.id)
+      row.story.world = { regionId: 'pelagos-isles', mapId: 'chartwright-hall', spawnId: 'from-pelagos', position: { x: 290, y: 286 }, facing: 0 }
+      const body = {
+        protocolVersion: 1, commandId: 'account-limit-1', idempotencyKey: 'account-limit-key-1', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+        command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+      }
+      const written = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body })
+      expect(written.status).toBe(201)
+      const first = await written.json()
+      const retry = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body })
+      expect(retry.status).toBe(200)
+      expect(await retry.json()).toEqual(first)
+      const blocked = await request('/api/rpg/save/v2/commands', {
+        cookie: account.cookie, method: 'POST', body: { ...body, commandId: 'account-limit-2', idempotencyKey: 'account-limit-key-2' },
+      })
+      expect(blocked.status).toBe(429)
+      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(await blocked.json()).toEqual({ error: 'Too many attempts. Try again later.' })
+      expect(fake.state.authorityHistory.get(account.user.id)).toHaveLength(2)
+      expect(fake.state.authorityReceipts.get(account.user.id)).toHaveLength(1)
+    } finally {
+      rpgCommandAccountLimiter.max = originalMax
+      rpgCommandAccountLimiter.reset()
+    }
+  })
+
+  it('limits command persistence per IP across distinct authenticated accounts', async () => {
+    const originalMax = rpgCommandIpLimiter.max
+    rpgCommandIpLimiter.max = 1
+    try {
+      const one = await signup('rpg-v2-command-ip-limit-one@example.test')
+      const two = await signup('rpg-v2-command-ip-limit-two@example.test')
+      for (const account of [one, two]) {
+        await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+        const row = fake.state.authorities.get(account.user.id)
+        row.story.world = { regionId: 'pelagos-isles', mapId: 'chartwright-hall', spawnId: 'from-pelagos', position: { x: 290, y: 286 }, facing: 0 }
+      }
+      const body = {
+        protocolVersion: 1, commandId: 'ip-limit-command', idempotencyKey: 'ip-limit-key', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+        command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+      }
+      expect((await request('/api/rpg/save/v2/commands', { cookie: one.cookie, method: 'POST', body })).status).toBe(201)
+      const blocked = await request('/api/rpg/save/v2/commands', { cookie: two.cookie, method: 'POST', body })
+      expect(blocked.status).toBe(429)
+      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(fake.state.authorityHistory.get(two.user.id)).toHaveLength(1)
+      expect(fake.state.authorityReceipts.get(two.user.id)).toBeUndefined()
+    } finally {
+      rpgCommandIpLimiter.max = originalMax
+      rpgCommandIpLimiter.reset()
+    }
   })
 
   it('presents ledger-owned Wayfinding across trusted v2 reads and rejects malformed or split ownership rows', () => {
