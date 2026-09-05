@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { rpgMapById } from '../src/rpg/registry.js'
+import { findWorldPath } from '../src/rpg/pathfinding.js'
+import { routeStateForMap } from '../src/rpg/routeState.js'
 import { WAYFINDING_SURVEY_CONTRACTS } from '../src/rpg/wayfinding.js'
 import { xpForLevel } from '../src/rpg/progression.js'
 import {
+  ACT5_LIGHT_FLAG,
   applyEvent,
   createInitialState,
   planQuestCompletionForDefinition,
 } from '../src/rpg/state.js'
+import { moveAlongWorldPath } from './helpers/legalMovement.js'
 
 function syntheticState(rewards, inventory = createInitialState().inventory) {
   const id = 'test-completion'
@@ -21,6 +25,41 @@ function syntheticState(rewards, inventory = createInitialState().inventory) {
     definition: { id, kind: 'side', act: 1, objectives: [objective], rewards },
     objective,
   }
+}
+
+function falseDawnState() {
+  const initial = createInitialState()
+  const map = rpgMapById('false-sky')
+  return {
+    ...initial,
+    mainQuestId: 'mq-act5-last-name',
+    quests: {
+      ...initial.quests,
+      'mq-act5-last-name': { state: 'active', objectiveIndex: 3, objectiveCounts: {} },
+    },
+    flags: {
+      ...initial.flags,
+      [ACT5_LIGHT_FLAG]: 'moon',
+      'act5-moon-witnesses-aligned': true,
+    },
+    world: {
+      ...initial.world,
+      regionId: map.region,
+      mapId: map.id,
+      spawnId: 'from-night-stair',
+      position: { x: 76, y: 382 },
+    },
+  }
+}
+
+function moveToEntity(state, entityId) {
+  const map = rpgMapById(state.world.mapId)
+  const entity = map.entities.find((candidate) => candidate.id === entityId)
+  const path = findWorldPath(map, state.world.position, entity, {
+    routeStateId: routeStateForMap(state, map),
+  })
+  expect(path.length, `reachable setup ${map.id}:${entityId}`).toBeGreaterThan(0)
+  return moveAlongWorldPath(state, path.at(-1))
 }
 
 describe('transactional quest completion planner', () => {
@@ -103,5 +142,24 @@ describe('transactional quest completion planner', () => {
       wayfinding: { discoveries: Object.fromEntries(WAYFINDING_SURVEY_CONTRACTS.slice(0, -1).map((contract) => [contract.id, { discoveredAtTick: 1 }])), practices: {}, shortcuts: {} },
     }
     expect(applyEvent(survey, { type: 'SURVEY_WAYFINDING', entityId: marker.id })).toBe(survey)
+  })
+
+  it('does not change False Dawn polarity or progress for rejected ordered mirrors, but accepts canonical 1→2→3', () => {
+    const unchanged = falseDawnState()
+    for (const mirrorId of ['sun-mirror-2', 'sun-mirror-3']) {
+      const positioned = moveToEntity(unchanged, mirrorId)
+      const rejected = applyEvent(positioned, { type: 'INTERACT', entityId: mirrorId })
+      expect(rejected).toBe(positioned)
+      expect(rejected.flags[ACT5_LIGHT_FLAG]).toBe('moon')
+      expect(rejected.quests['mq-act5-last-name'].objectiveCounts['turn-the-false-dawn']).toBeUndefined()
+    }
+
+    let canonical = falseDawnState()
+    for (const [index, mirrorId] of ['sun-mirror-1', 'sun-mirror-2', 'sun-mirror-3'].entries()) {
+      canonical = moveToEntity(canonical, mirrorId)
+      canonical = applyEvent(canonical, { type: 'INTERACT', entityId: mirrorId })
+      expect(canonical.flags[ACT5_LIGHT_FLAG]).toBe('sun')
+      expect(canonical.quests['mq-act5-last-name'].objectiveCounts['turn-the-false-dawn']).toBe(index + 1)
+    }
   })
 })

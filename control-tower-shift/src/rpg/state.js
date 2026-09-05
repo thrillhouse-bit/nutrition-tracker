@@ -1647,11 +1647,25 @@ function interact(state, event) {
     state = setFlag(state, 'act4:pressure-state', next)
   }
 
-  if (ent?.lightStateId && ACT5_LIGHT_POLARITY_RULES.stateIds.includes(ent.lightStateId)) {
+  if (ent?.lightStateId && ACT5_LIGHT_POLARITY_RULES.stateIds.includes(ent.lightStateId) && !matchingActiveQuest(state, (objective) =>
+    ['interact', 'multi-interact', 'free-witnesses', 'match'].includes(objective.kind) && matchEntityObjective(objective, event.entityId))) {
     state = setFlag(state, ACT5_LIGHT_FLAG, ent.lightStateId)
   }
 
   if (ent?.requiredFlagId && !normalizedProgressFlags(state)[ent.requiredFlagId]) return state
+
+  // Objective-owned polarity controllers are transactional with their exact
+  // interaction marker. A rejected ordered mirror must not still open the
+  // sun route merely because it is physically reachable.
+  const controllerQuestId = ent?.lightStateId && matchingActiveQuest(state, (objective) =>
+    ['interact', 'multi-interact', 'free-witnesses', 'match'].includes(objective.kind) &&
+    matchEntityObjective(objective, event.entityId))
+  if (controllerQuestId) {
+    const objective = objectiveForQuest(state, controllerQuestId)
+    const progressed = recordObjectiveEntity(state, controllerQuestId, objective, event.entityId)
+    if (progressed === state) return state
+    return setFlag(progressed, ACT5_LIGHT_FLAG, ent.lightStateId)
+  }
 
   // The signal buoy remains a crafting station, but after the authored elite
   // falls it also settles the active public-relighting objective. This is an
