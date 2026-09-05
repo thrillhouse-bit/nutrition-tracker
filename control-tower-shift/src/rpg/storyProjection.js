@@ -1,9 +1,19 @@
 // Strict, pure story/ledger boundary. It is intentionally independent from
 // save normalization: callers must reject hostile or stale server payloads.
+import {
+  AUTHORITATIVE_LEDGER_KEYS,
+  RPG_STATE_PARTITION_KEYS,
+  STORY_PARTITION_KEYS,
+  emptyWayfindingState,
+  isCanonicalEmptyWayfinding,
+  isStrictWayfindingState,
+  partitionRpgState,
+} from './statePartition.js'
+
 export const STORY_PROJECTION_VERSION = 1
-const STORY_KEYS = Object.freeze(['schemaVersion', 'status', 'protagonist', 'world', 'quests', 'mainQuestId', 'flags', 'wayfinding'])
-const OWNED_STATE_KEYS = Object.freeze(['inventory', 'resources', 'progression', 'wilderness', 'crafting', 'economy', 'combatSnapshot', 'playtimeTicks', 'savedAt'])
-const STATE_KEYS = Object.freeze([...STORY_KEYS, ...OWNED_STATE_KEYS])
+const STORY_KEYS = STORY_PARTITION_KEYS
+const OWNED_STATE_KEYS = AUTHORITATIVE_LEDGER_KEYS
+const STATE_KEYS = RPG_STATE_PARTITION_KEYS
 const EPHEMERAL_FLAGS = new Set(['rpg:active-bank-entity', 'rpg:active-shop-entity', 'rpg:active-crafting-entity', 'rpg:active-conversation', 'rpg:active-conversation-npc', 'rpg:active-shrine-entity', 'rpg:shrine-open'])
 const ECONOMIC_KEYS = new Set(['inventory', 'currency', 'wallet', 'money', 'coins', 'drachma', 'items', 'item', 'stock', 'reserved', 'reserve', 'balance', 'balances', 'ledger', 'bank', 'economy', 'resources', 'equipment', 'skills', 'xp', 'totalxp', 'transactions', 'price', 'prices'])
 const LIMITS = Object.freeze({ depth: 32, nodes: 2048, keys: 256, array: 256, string: 16_384 })
@@ -109,19 +119,12 @@ function narrativeProtagonist(value) {
     && text(value.presentation) && (value.activePatronId === null || text(value.activePatronId))
     && Array.isArray(value.unlockedPatronIds) && value.unlockedPatronIds.every(text)
 }
-function narrativeWayfinding(value) {
-  if (!exact(value, ['discoveries', 'practices', 'shortcuts'])) return false
-  // Discovery and shortcut authority belongs to the future server ledger,
-  // never a client-provided story projection. Canonicalization strips these
-  // plain containers below while preserving the local save independently.
-  return plain(value.discoveries) && plain(value.practices) && plain(value.shortcuts)
-}
 function canonicalStory(value) {
   if (!exact(value, STORY_KEYS) || !Number.isSafeInteger(value.schemaVersion) || value.schemaVersion < 1 || !['playing', 'ending'].includes(value.status) || !text(value.mainQuestId)) return null
   const flags = Object.create(null)
   for (const key of Object.keys(value.flags).sort()) if (!EPHEMERAL_FLAGS.has(key)) flags[key] = value.flags[key]
-  if (!narrativeProtagonist(value.protagonist) || !narrativeWorld(value.world) || !narrativeQuests(value.quests) || !narrativeFlags(flags) || !narrativeWayfinding(value.wayfinding)) return null
-  return { schemaVersion: value.schemaVersion, status: value.status, protagonist: value.protagonist, world: value.world, quests: value.quests, mainQuestId: value.mainQuestId, flags, wayfinding: { discoveries: {}, practices: {}, shortcuts: {} } }
+  if (!narrativeProtagonist(value.protagonist) || !narrativeWorld(value.world) || !narrativeQuests(value.quests) || !narrativeFlags(flags)) return null
+  return { schemaVersion: value.schemaVersion, status: value.status, protagonist: value.protagonist, world: value.world, quests: value.quests, mainQuestId: value.mainQuestId, flags }
 }
 
 export function extractStoryProjection(state) {
@@ -129,9 +132,10 @@ export function extractStoryProjection(state) {
     if (!exact(state, STATE_KEYS)) return null
     const clone = safeClone(state)
     if (!clone) return null
-    const storyInput = Object.create(null)
-    for (const key of STORY_KEYS) storyInput[key] = clone[key]
-    const story = canonicalStory(storyInput)
+    const partition = partitionRpgState(clone)
+    // Client inputs may contain Wayfinding state locally, but that field is
+    // ledger-owned and is never accepted through a story projection.
+    const story = partition && canonicalStory(partition.story)
     return story ? freezeCopy(Object.assign(Object.create(null), { projectionVersion: STORY_PROJECTION_VERSION, story })) : null
   } catch { return null }
 }
@@ -143,11 +147,24 @@ export function composeAuthoritativeState(projectionEnvelope, ledgerEnvelope) {
   try {
     if (!exact(projectionEnvelope, ['projectionVersion', 'story', 'storyRevision']) || projectionEnvelope.projectionVersion !== STORY_PROJECTION_VERSION || !revision(projectionEnvelope.storyRevision)) return null
     if (!exact(ledgerEnvelope, ['inventoryRevision', 'authoritative']) || !revision(ledgerEnvelope.inventoryRevision)) return null
-    const projected = extractStoryProjection({ ...projectionEnvelope.story, ...Object.fromEntries(OWNED_STATE_KEYS.map((key) => [key, null])) })
-    if (!projected || !exact(ledgerEnvelope.authoritative, OWNED_STATE_KEYS)) return null
+    const legacyStory = plain(projectionEnvelope.story) && Object.hasOwn(projectionEnvelope.story, 'wayfinding')
+    const storyInput = legacyStory
+      ? Object.fromEntries(STORY_KEYS.map((key) => [key, projectionEnvelope.story[key]]))
+      : projectionEnvelope.story
+    const story = canonicalStory(storyInput)
+    const expectedLedgerKeys = legacyStory ? OWNED_STATE_KEYS.filter((key) => key !== 'wayfinding') : OWNED_STATE_KEYS
+    if (!story || !exact(ledgerEnvelope.authoritative, expectedLedgerKeys)) return null
     const authoritative = safeClone(ledgerEnvelope.authoritative)
     if (!authoritative) return null
-    const state = safeClone(projected.story)
+    // Compatibility is intentionally one narrow old-server shape only: the
+    // former bootstrap stored an empty Wayfinding object in story and omitted
+    // it from the ledger. Any nonempty/malformed legacy projection is a
+    // rejected ownership-smuggling attempt, not a migration input.
+    if (legacyStory) {
+      if (!isCanonicalEmptyWayfinding(projectionEnvelope.story.wayfinding)) return null
+      authoritative.wayfinding = emptyWayfindingState()
+    } else if (!isStrictWayfindingState(authoritative.wayfinding)) return null
+    const state = safeClone(story)
     if (!state) return null
     Object.assign(state, authoritative)
     return freezeCopy(Object.assign(Object.create(null), { state, storyRevision: projectionEnvelope.storyRevision, inventoryRevision: ledgerEnvelope.inventoryRevision }))

@@ -7,7 +7,7 @@ import {
   validateRpgSavePutBody,
   validateRpgSaveRestoreBody,
 } from '../server/rpgSave.js'
-import { createRpgAuthorityBootstrap, validateRpgAuthorityBootstrapBody } from '../server/rpgAuthority.js'
+import { createRpgAuthorityBootstrap, presentRpgAuthority, validateRpgAuthorityBootstrapBody } from '../server/rpgAuthority.js'
 import { signupIpLimiter } from '../server/authRateLimit.js'
 
 const fake = vi.hoisted(() => {
@@ -334,6 +334,7 @@ describe('Postgres-only RPG authority v2 API', () => {
     expect(first).toMatchObject({ idempotent: false, save: { storyRevision: 1, inventoryRevision: 1 } })
     expect(first.save.story).toEqual(createRpgAuthorityBootstrap().story)
     expect(first.save.state.inventory).toEqual(createRpgAuthorityBootstrap().authoritative.inventory)
+    expect(first.save.state.wayfinding).toEqual(createRpgAuthorityBootstrap().authoritative.wayfinding)
     expect(await (await request('/api/rpg/save/v2', { cookie: two.cookie })).json()).toEqual({ save: null })
 
     const retry = await request('/api/rpg/save/v2', { cookie: one.cookie, method: 'POST', body: {} })
@@ -347,6 +348,28 @@ describe('Postgres-only RPG authority v2 API', () => {
     const legacy = await request('/api/rpg/save/v2', { cookie: two.cookie, method: 'POST', body: {} })
     expect(legacy.status).toBe(409)
     expect(await legacy.json()).toMatchObject({ code: 'RPG_AUTHORITY_LEGACY_PROMOTION_DENIED' })
+  })
+
+  it('presents ledger-owned Wayfinding across trusted v2 reads and rejects malformed or split ownership rows', () => {
+    const bootstrap = createRpgAuthorityBootstrap()
+    const authoritative = structuredClone(bootstrap.authoritative)
+    authoritative.wayfinding = {
+      discoveries: { 'pelagos-harbor-soundings': { discoveredAtTick: 5 } },
+      practices: { 'pelagos-harbor-soundings': { lastAwardedTick: 5, count: 0 } },
+      shortcuts: { 'shortcut:pelagos-chartwright-hall': true },
+    }
+    const trusted = presentRpgAuthority({ ...bootstrap, authoritative })
+    expect(trusted.state.wayfinding).toEqual(authoritative.wayfinding)
+    expect(trusted.story.wayfinding).toBeUndefined()
+
+    const malformed = structuredClone(authoritative)
+    malformed.wayfinding.shortcuts['shortcut:archive-return-course'] = true
+    expect(() => presentRpgAuthority({ ...bootstrap, authoritative: malformed })).toThrow(/invalid/i)
+
+    const oldStory = { ...bootstrap.story, wayfinding: { discoveries: {}, practices: {}, shortcuts: {} } }
+    const oldLedger = Object.fromEntries(Object.entries(bootstrap.authoritative).filter(([key]) => key !== 'wayfinding'))
+    expect(presentRpgAuthority({ ...bootstrap, story: oldStory, authoritative: oldLedger }).state.wayfinding).toEqual({ discoveries: {}, practices: {}, shortcuts: {} })
+    expect(() => presentRpgAuthority({ ...bootstrap, story: { ...oldStory, wayfinding: authoritative.wayfinding }, authoritative: oldLedger })).toThrow(/invalid/i)
   })
 
   it('rejects all client-composed story snapshots, including forged patron and Act V state, without mutating the immutable bootstrap ledger', async () => {

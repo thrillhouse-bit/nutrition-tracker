@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState } from '../src/rpg/state.js'
+import { AUTHORITATIVE_LEDGER_KEYS } from '../src/rpg/statePartition.js'
 import { composeAuthoritativeState, extractStoryProjection, STORY_PROJECTION_VERSION } from '../src/rpg/storyProjection.js'
 
-const owned = (state) => Object.fromEntries(['inventory', 'resources', 'progression', 'wilderness', 'crafting', 'economy', 'combatSnapshot', 'playtimeTicks', 'savedAt'].map((key) => [key, state[key]]))
+const owned = (state) => Object.fromEntries(AUTHORITATIVE_LEDGER_KEYS.map((key) => [key, state[key]]))
 const story = () => createInitialState()
 const deep = (count) => { let value = true; for (let i = 0; i < count; i += 1) value = { value }; return value }
 
@@ -66,13 +67,31 @@ describe('story projection boundary', () => {
     expect(extractStoryProjection({ ...story(), flags: { 'objective:inventory:progress:entity': true } })).toBeNull()
   })
 
-  it('strips all client-projected Wayfinding discovery and shortcut authority', () => {
+  it('keeps Wayfinding out of story projections and restores only strict ledger-owned discoveries', () => {
     const forged = story()
     forged.wayfinding = {
       discoveries: { 'pelagos-harbor-soundings': { discoveredAtTick: 4 } },
       practices: {},
       shortcuts: { 'shortcut:pelagos-chartwright-hall': true },
     }
-    expect(extractStoryProjection(forged)?.story.wayfinding).toEqual({ discoveries: {}, practices: {}, shortcuts: {} })
+    const projection = extractStoryProjection(forged)
+    expect(projection?.story.wayfinding).toBeUndefined()
+    const ledger = owned(story())
+    ledger.wayfinding = forged.wayfinding
+    const composed = composeAuthoritativeState({ ...projection, storyRevision: 1 }, { inventoryRevision: 1, authoritative: ledger })
+    expect(composed?.state.wayfinding).toEqual(forged.wayfinding)
+  })
+
+  it('rejects Wayfinding ownership smuggling and accepts only the exact old empty bootstrap pair', () => {
+    const projection = extractStoryProjection(story())
+    const ledger = owned(story())
+    const nonemptyLegacyStory = { ...projection.story, wayfinding: { discoveries: { 'pelagos-harbor-soundings': { discoveredAtTick: 1 } }, practices: {}, shortcuts: {} } }
+    const emptyLegacyStory = { ...projection.story, wayfinding: { discoveries: {}, practices: {}, shortcuts: {} } }
+    const oldLedger = Object.fromEntries(Object.entries(ledger).filter(([key]) => key !== 'wayfinding'))
+
+    expect(composeAuthoritativeState({ projectionVersion: STORY_PROJECTION_VERSION, story: nonemptyLegacyStory, storyRevision: 1 }, { inventoryRevision: 1, authoritative: oldLedger })).toBeNull()
+    expect(composeAuthoritativeState({ projectionVersion: STORY_PROJECTION_VERSION, story: emptyLegacyStory, storyRevision: 1 }, { inventoryRevision: 1, authoritative: oldLedger })?.state.wayfinding).toEqual({ discoveries: {}, practices: {}, shortcuts: {} })
+    expect(composeAuthoritativeState({ ...projection, storyRevision: 1 }, { inventoryRevision: 1, authoritative: { ...ledger, wayfinding: { discoveries: {}, practices: {}, shortcuts: { 'shortcut:pelagos-chartwright-hall': true } } } })).toBeNull()
+    expect(composeAuthoritativeState({ projectionVersion: STORY_PROJECTION_VERSION, story: emptyLegacyStory, storyRevision: 1 }, { inventoryRevision: 1, authoritative: ledger })).toBeNull()
   })
 })

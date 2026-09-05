@@ -1,11 +1,10 @@
 import { createInitialState } from '../control-tower-shift/src/rpg/state.js'
+import { AUTHORITATIVE_LEDGER_KEYS, partitionRpgState } from '../control-tower-shift/src/rpg/statePartition.js'
 import {
   STORY_PROJECTION_VERSION,
   composeAuthoritativeState,
   extractStoryProjection,
 } from '../control-tower-shift/src/rpg/storyProjection.js'
-
-const OWNED_KEYS = Object.freeze(['inventory', 'resources', 'progression', 'wilderness', 'crafting', 'economy', 'combatSnapshot', 'playtimeTicks', 'savedAt'])
 
 function plain(value) {
   try {
@@ -23,7 +22,11 @@ function bad(message, status = 400) {
 }
 
 function owned(state) {
-  return Object.fromEntries(OWNED_KEYS.map((key) => [key, state[key]]))
+  const partition = partitionRpgState(state)
+  if (!partition || !AUTHORITATIVE_LEDGER_KEYS.every((key) => Object.hasOwn(partition.authoritative, key))) {
+    throw new Error('Unable to partition canonical RPG authority bootstrap.')
+  }
+  return partition.authoritative
 }
 
 // The bootstrap is generated in server code only. A new account never gets to
