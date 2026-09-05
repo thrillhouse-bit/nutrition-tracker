@@ -5,7 +5,7 @@
 // (b) one "next action" recommendation. Every adjustment names its reason and
 // its source signal, so the UI can always answer "why?". Guidance is framed as
 // nutritional planning, never as medical, diagnostic, or injury advice.
-export const RULES_VERSION = 1
+export const RULES_VERSION = 2
 
 const num = (v) => {
   const n = Number(v)
@@ -96,6 +96,9 @@ export function computeAdjustedTargets(baseline = {}, signals = {}, opts = {}) {
 export function computeRecommendation({ baseline = {}, adjusted = {}, intake = {}, signals = {}, nowHour = 12, influence } = {}) {
   const inf = influence || { readiness: true, sleep: true, workouts: true }
   const rem = (k) => num(adjusted[k]) - num(intake[k])
+  // Recommendations describe a remaining action, never a negative debt.
+  // Preserve the signed difference only for detecting a target overage.
+  const left = (k) => Math.max(0, rem(k))
   const why = []
   const w = signals.workout
 
@@ -103,15 +106,23 @@ export function computeRecommendation({ baseline = {}, adjusted = {}, intake = {
   if (usable(w, inf.workouts) && isEndurance(w.value.kind) && w.value.startHour != null) {
     const hoursUntil = num(w.value.startHour) - num(nowHour)
     if (hoursUntil > 0 && hoursUntil <= 4) {
-      const preCarb = Math.max(30, round((adjusted.carbs_g || 0) * 0.25, 5))
-      const preProtein = Math.max(15, round((adjusted.protein_g || 0) * 0.2, 5))
+      const desiredCarb = Math.max(30, round((adjusted.carbs_g || 0) * 0.25, 5))
+      const desiredProtein = Math.max(15, round((adjusted.protein_g || 0) * 0.2, 5))
+      const preCarb = Math.min(desiredCarb, left('carbs_g'))
+      const preProtein = Math.min(desiredProtein, left('protein_g'))
       why.push(`${w.value.label || 'A workout'} is coming up${w.value.time ? ` around ${w.value.time}` : ''} (${w.provider}${w.demo ? ', demo' : ''}).`)
       why.push(`You've logged ${round(intake.calories)} of ${round(adjusted.calories)} kcal so far — carbohydrates fuel endurance work.`)
       if (usable(signals.readiness, inf.readiness)) why.push(`Readiness ${round(signals.readiness.value)} from ${signals.readiness.provider}.`)
+      const portions = [
+        preProtein > 0 ? `${round(preProtein)} g protein` : null,
+        preCarb > 0 ? `${round(preCarb)} g carbs` : null,
+      ].filter(Boolean)
       return {
         kind: 'pre_workout',
-        title: `Fuel your ${w.value.shortLabel || 'workout'}`,
-        detail: `Aim for ${preProtein} g protein + ${preCarb} g carbs before ${w.value.time || 'you start'}.`,
+        title: portions.length ? `Fuel your ${w.value.shortLabel || 'workout'}` : 'Your workout fuel is covered',
+        detail: portions.length
+          ? `Aim for ${portions.join(' + ')} before ${w.value.time || 'you start'}; amounts are capped at what remains in today's plan.`
+          : `You've already covered today's planned carbohydrate and protein. No extra macro target is needed before ${w.value.time || 'you start'}.`,
         why,
         tone: 'action',
         rulesVersion: RULES_VERSION,
@@ -119,18 +130,41 @@ export function computeRecommendation({ baseline = {}, adjusted = {}, intake = {
     }
   }
 
-  // 2. Protein pacing — behind where the day's proportion suggests.
+  // 2. A covered energy target takes precedence over ordinary protein pacing.
+  // Without this gate a low-protein day at or above its energy target could
+  // tell someone to add food before acknowledging that energy is covered.
+  const energyDifference = rem('calories')
+  if (num(adjusted.calories) > 0 && energyDifference <= 0) {
+    const exceededEnergy = energyDifference < 0
+    why.push(exceededEnergy
+      ? `You're ${round(-energyDifference)} kcal over today's target of ${round(adjusted.calories)}.`
+      : `You've met today's energy target of ${round(adjusted.calories)} kcal.`)
+    return {
+      kind: exceededEnergy ? 'over' : 'on_track',
+      title: "You've covered today's energy target",
+      detail: left('protein_g') > 0
+        ? `${round(left('protein_g'))} g protein remains in the plan. Since energy is already covered, don't force food just to close that gap; favor protein if you eat again.`
+        : 'Energy and protein targets are covered. No catch-up amount is needed.',
+      why,
+      tone: 'info',
+      rulesVersion: RULES_VERSION,
+    }
+  }
+
+  // 3. Protein pacing — behind where the day's proportion suggests.
   const dayFraction = Math.min(1, Math.max(0, (num(nowHour) - 7) / 14)) // ~7am–9pm
   const proteinTarget = num(adjusted.protein_g)
   if (proteinTarget > 0) {
     const expectedByNow = proteinTarget * dayFraction
     if (num(intake.protein_g) < expectedByNow - 15) {
-      why.push(`Protein is at ${round(intake.protein_g)} g of ${round(proteinTarget)} g with ${round(rem('protein_g'))} g to go.`)
+      const proteinLeft = left('protein_g')
+      const nextProtein = Math.min(proteinLeft, Math.max(20, round(proteinLeft / 2, 5)))
+      why.push(`Protein is at ${round(intake.protein_g)} g of ${round(proteinTarget)} g with ${round(proteinLeft)} g to go.`)
       if (usable(w, inf.workouts)) why.push(`${w.value.label || 'A workout'} today raises the value of steady protein.`)
       return {
         kind: 'protein_pacing',
         title: 'Add protein at your next meal',
-        detail: `You're trailing your protein target for this time of day — aim for ~${Math.max(20, round(rem('protein_g') / 2, 5))} g next.`,
+        detail: `You're trailing your protein target for this time of day — aim for about ${round(nextProtein)} g next, within what remains today.`,
         why,
         tone: 'nudge',
         rulesVersion: RULES_VERSION,
@@ -138,28 +172,27 @@ export function computeRecommendation({ baseline = {}, adjusted = {}, intake = {
     }
   }
 
-  // 3. Over the calorie target already.
-  if (num(adjusted.calories) > 0 && num(intake.calories) > num(adjusted.calories)) {
-    why.push(`You're ${round(num(intake.calories) - num(adjusted.calories))} kcal over today's target of ${round(adjusted.calories)}.`)
-    return {
-      kind: 'over',
-      title: "You've hit today's energy target",
-      detail: 'If you have a session left, keep additions light and protein-forward.',
-      why,
-      tone: 'info',
-      rulesVersion: RULES_VERSION,
-    }
-  }
-
   // 4. On track.
   why.push(`Intake ${round(intake.calories)} / ${round(adjusted.calories)} kcal, ${round(intake.protein_g)} / ${round(adjusted.protein_g)} g protein.`)
   if (usable(signals.readiness, inf.readiness)) why.push(`Readiness ${round(signals.readiness.value)} (${signals.readiness.provider}${signals.readiness.demo ? ', demo' : ''}).`)
+  const energyLeft = left('calories')
+  const proteinLeft = left('protein_g')
+  let title = 'Today’s plan is covered'
+  let detail = 'You’ve met or passed the energy and protein targets. No catch-up amount is needed.'
+  if (energyLeft > 0 && proteinLeft > 0) {
+    title = 'On track — steady as you go'
+    detail = `About ${round(energyLeft)} kcal and ${round(proteinLeft)} g protein remain in today's plan.`
+  } else if (energyLeft > 0) {
+    title = 'Protein target covered'
+    detail = `About ${round(energyLeft)} kcal remains in today's energy plan; protein is already covered.`
+  } else if (proteinLeft > 0) {
+    title = 'Energy target covered'
+    detail = `${round(proteinLeft)} g protein remains in today's plan. If you eat again, favor protein without treating the remainder as a requirement.`
+  }
   return {
     kind: 'on_track',
-    title: rem('calories') > 0 ? 'On track — steady as you go' : 'Nicely balanced today',
-    detail: rem('calories') > 0
-      ? `About ${round(rem('calories'))} kcal and ${round(rem('protein_g'))} g protein left to hit today's plan.`
-      : 'Your intake lines up with the plan.',
+    title,
+    detail,
     why,
     tone: 'info',
     rulesVersion: RULES_VERSION,

@@ -74,4 +74,64 @@ describe('computeRecommendation', () => {
     })
     expect(rec.kind).toBe('on_track')
   })
+
+  it('never reports negative protein after the protein target is exceeded', () => {
+    const rec = computeRecommendation({
+      baseline, adjusted, intake: { calories: 1400, protein_g: 180, carbs_g: 170 }, signals: {}, nowHour: 20,
+    })
+    expect(rec.kind).toBe('on_track')
+    expect(rec.title).toBe('Protein target covered')
+    expect(rec.detail).toMatch(/protein is already covered/i)
+    expect(rec.detail).not.toMatch(/-\d/)
+  })
+
+  it('acknowledges an energy overage before suggesting ordinary protein pacing', () => {
+    const rec = computeRecommendation({
+      baseline, adjusted, intake: { calories: 2400, protein_g: 30, carbs_g: 260 }, signals: {}, nowHour: 20,
+    })
+    expect(rec.kind).toBe('over')
+    expect(rec.title).toMatch(/covered today's energy target/i)
+    expect(rec.detail).toContain('120 g protein remains')
+    expect(rec.detail).not.toMatch(/-\d/)
+  })
+
+  it('does not prescribe more food when the energy target is exactly met', () => {
+    const rec = computeRecommendation({
+      baseline, adjusted, intake: { calories: 2200, protein_g: 30, carbs_g: 260 }, signals: {}, nowHour: 20,
+    })
+    expect(rec.kind).toBe('on_track')
+    expect(rec.title).toMatch(/covered today's energy target/i)
+    expect(rec.detail).toMatch(/don't force food/i)
+    expect(rec.detail).not.toMatch(/aim for/i)
+  })
+
+  it('caps pre-workout macros at the amount remaining in the daily plan', () => {
+    const rec = computeRecommendation({
+      baseline, adjusted, intake: { calories: 1900, protein_g: 145, carbs_g: 240 }, signals, nowHour: 15.5,
+    })
+    expect(rec.kind).toBe('pre_workout')
+    expect(rec.detail).toContain('5 g protein')
+    expect(rec.detail).toContain('10 g carbs')
+    expect(rec.detail).not.toContain('30 g protein')
+  })
+
+  it('does not prescribe extra pre-workout macros once both are covered', () => {
+    const rec = computeRecommendation({
+      baseline, adjusted, intake: { calories: 2100, protein_g: 160, carbs_g: 270 }, signals, nowHour: 15.5,
+    })
+    expect(rec.kind).toBe('pre_workout')
+    expect(rec.title).toBe('Your workout fuel is covered')
+    expect(rec.detail).toMatch(/No extra macro target/i)
+    expect(rec.detail).not.toMatch(/-\d/)
+  })
+
+  it('caps a protein pacing suggestion at protein remaining', () => {
+    const rec = computeRecommendation({
+      baseline, adjusted, intake: { calories: 2000, protein_g: 134, carbs_g: 220 }, signals: {}, nowHour: 21,
+    })
+    // At 9 PM this is only 16 g behind, so the old minimum-20 suggestion
+    // would have exceeded the daily target.
+    expect(rec.kind).toBe('protein_pacing')
+    expect(rec.detail).toContain('16 g next')
+  })
 })

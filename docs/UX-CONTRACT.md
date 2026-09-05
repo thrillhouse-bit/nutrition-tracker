@@ -166,6 +166,16 @@ confirmation, account-owned recents, offline queue and saved-entry editing remai
 owned by App. The meal-grouped log keeps its existing rows; `MealMacroSummary`
 adds serving-adjusted protein/carbohydrate/fat sums with missing data disclosed.
 
+### Today recommendation
+
+The recommendation is a next action, not raw target arithmetic. Remaining energy
+and macros are always clamped at zero in user-facing copy. A covered or exceeded
+energy target takes precedence over ordinary protein pacing, and suggested meal or
+pre-workout amounts never exceed what remains in the daily plan. When a target is
+already covered, copy says so directly instead of prescribing a negative or
+unnecessary catch-up amount. The expandable rationale remains the place where
+the app names the signals that drove the recommendation.
+
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Select/Listbox | Native select | Shared `inputCls` styling plus browser semantics | Domain option sets only | Component tests and browser walkthrough |
