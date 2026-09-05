@@ -57,7 +57,7 @@ struct GlanceView: View {
                 EmptyState()
             }
         }
-        .navigationTitle("Fuel")
+        .navigationTitle("Body Current")
     }
 
     /// "Before Evening Run" when we know the label, else a plain window title.
@@ -273,7 +273,7 @@ private struct EmptyState: View {
                 .foregroundStyle(.secondary)
             Text("Waiting for your plan")
                 .font(.headline)
-            Text("Open the Fuel app on your iPhone to sync today's plan.")
+            Text("Open Body Current on your iPhone to sync today's plan.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

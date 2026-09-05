@@ -13,7 +13,7 @@ const scrypt = promisify(crypto.scrypt)
 // without an operator-owned secret: silently rotating it on every deploy logs
 // every account out and makes session behavior operationally unreliable.
 if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
-  throw new Error('SESSION_SECRET is required in production. Generate a persistent secret before starting OmniFuel.')
+  throw new Error('SESSION_SECRET is required in production. Generate a persistent secret before starting Body Current.')
 }
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')
 if (!process.env.SESSION_SECRET) {

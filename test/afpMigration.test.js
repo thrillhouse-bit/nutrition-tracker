@@ -8,9 +8,9 @@ const legacy = {
 
 describe('canonical AFP profile migration', () => {
   it('maps legacy goals without double-counting endurance training', () => {
-    expect(legacyGoalToAfp('lose_fat')).toBe('gradual_loss')
-    expect(legacyGoalToAfp('build_muscle')).toBe('gradual_gain')
-    expect(legacyGoalToAfp('endurance')).toBe('maintain')
+    expect(legacyGoalToAfp('lose_fat')).toBe('fat_loss')
+    expect(legacyGoalToAfp('build_muscle')).toBe('muscle_gain')
+    expect(legacyGoalToAfp('endurance')).toBe('endurance_performance')
   })
 
   it('fills only missing canonical fields and preserves explicit edits', () => {
@@ -27,7 +27,7 @@ describe('canonical AFP profile migration', () => {
     }
     const result = await ensureCanonicalAfpProfile(store, 7)
     expect(result).toMatchObject({ ready: true, migrated: true })
-    expect(result.profile.goal).toBe('gradual_loss')
+    expect(result.profile.goal).toBe('fat_loss')
     expect(store.setAfpProfile).toHaveBeenCalledTimes(1)
   })
 

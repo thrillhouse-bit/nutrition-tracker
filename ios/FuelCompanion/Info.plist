@@ -16,15 +16,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDisplayName</key>
+    <string>Body Current</string>
+
     <!-- Plain-language reason shown in Apple's Health permission sheet. Frames
          the data as fueling context, never medical. -->
     <key>NSHealthShareUsageDescription</key>
-    <string>FuelCompanion reads your workouts, active energy, exercise minutes, sleep, and (optionally) heart-rate variability and resting heart rate to explain and time your fueling. This data is read only, sent to your own fueling dashboard, and never used for medical purposes.</string>
+    <string>Body Current reads your workouts, active energy, exercise minutes, sleep, and (optionally) heart-rate variability and resting heart rate to explain and time your fueling. This data is read only, sent to your own Body Current dashboard, and never used for medical purposes.</string>
 
     <!-- Shown only if the user turns on "Sync nutrition to Health" in Settings
          — a separate opt-in, never requested at first launch. -->
     <key>NSHealthUpdateUsageDescription</key>
-    <string>FuelCompanion can optionally add the calories and macros you log to Apple Health's Nutrition data, so your food log shows up alongside your other Health data. Off by default — turn it on in the Apple Health tab.</string>
+    <string>Body Current can optionally add the calories and macros you log to Apple Health's Nutrition data, so your food log shows up alongside your other Health data. Off by default — turn it on in the Apple Health tab.</string>
 
     <!-- Background execution: `fetch` for BGAppRefreshTask, `processing` for the
          longer BGProcessingTask. HealthKit background delivery itself is granted

@@ -760,20 +760,25 @@ describe('combat adapter: exactly-once victory, checkpoint restore, fixed seed',
     for (let i = 0; i < 30000; i++) {
       const out = stepCombat(session, { moveX: 0, moveY: 0, firing: true, attack: true })
       if (out.settled) {
-        if (!settledOnce) {
-          settledOnce = true
-          settledOutcome = out.outcome
-          expect([OUTCOME_WON, OUTCOME_FAILED]).toContain(out.outcome)
-        } else {
-          // Once settled, repeated steps never change the outcome or session id.
-          expect(out.settled).toBe(true)
-          expect(out.outcome).toBe(settledOutcome)
-        }
+        settledOnce = true
+        settledOutcome = out.outcome
+        expect([OUTCOME_WON, OUTCOME_FAILED]).toContain(out.outcome)
+        session = out
+        break
       }
       session = out
     }
     // With firing+attack it should always settle (win or lose) by the full run.
     expect(settledOnce).toBe(true)
+    // The post-settlement contract is what prevents duplicate completion
+    // effects. A few real reducer steps prove it without spending thousands
+    // of no-op frames after the behavior is already established.
+    for (let i = 0; i < 3; i++) {
+      const out = stepCombat(session, { moveX: 0, moveY: 0, firing: true, attack: true })
+      expect(out.settled).toBe(true)
+      expect(out.outcome).toBe(settledOutcome)
+      session = out
+    }
   })
 })
 

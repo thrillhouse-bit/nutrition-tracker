@@ -192,7 +192,7 @@ describe('GET /.well-known/agent-card.json', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
     const card = await res.json()
-    expect(card.name).toBe('OmniFuel Tech')
+    expect(card.name).toBe('Body Current')
     expect(card.version).toBe(PKG.version) // package.json is the single source of the version
     expect(card.protocolVersion).toBe('0.3.0')
     expect(card.capabilities).toEqual({ streaming: false, pushNotifications: false, stateTransitionHistory: false })

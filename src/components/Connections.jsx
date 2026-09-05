@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { Button, ErrorNote, Field, inputCls, Meter, Sheet, Spinner, StatusMark, TextButton, Toggle } from './ui.jsx'
+import { ACCENT_PALETTES } from '../lib/accentTheme.js'
 
 // Human "time since" for a last-sync timestamp.
 function since(ts) {
@@ -104,7 +105,7 @@ export function AccountControls({ user, onLogout, onAccountDeleted }) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `omnifuel-export-${new Date().toISOString().slice(0, 10)}.json`
+      link.download = `body-current-export-${new Date().toISOString().slice(0, 10)}.json`
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -187,7 +188,7 @@ export function AccountControls({ user, onLogout, onAccountDeleted }) {
 
       <Sheet open={deleteOpen} onClose={closeDelete} title="Permanently delete account" grabber={false} closeOnBackdrop={false}>
         <p className="text-sm leading-relaxed text-muted">
-          This permanently deletes <strong className="text-ink">{user.email}</strong> and all account-owned data from OmniFuel. It cannot be recovered. The shared product nutrition cache is not tied to your account and remains.
+          This permanently deletes <strong className="text-ink">{user.email}</strong> and all account-owned data from Body Current. It cannot be recovered. The shared product nutrition cache is not tied to your account and remains.
         </p>
         <form onSubmit={deleteAccount} className="mt-5 space-y-4" noValidate>
           <div role="alert"><ErrorNote>{deleteError}</ErrorNote></div>
@@ -617,7 +618,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   )
 }
 
-export default function Connections({ refreshKey, onChanged, user, onLogout, onAccountDeleted }) {
+export default function Connections({ refreshKey, onChanged, user, onLogout, onAccountDeleted, accent = 'cobalt', onAccentChange, sessionKey }) {
   const [conn, setConn] = useState(null)
   const [ouraAccts, setOuraAccts] = useState([])
   const [garminAccts, setGarminAccts] = useState([])
@@ -629,6 +630,16 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
   // pattern — the only other destructive one-tap action in this app.
   const [confirmingHistory, setConfirmingHistory] = useState(false)
   const [deletingHistory, setDeletingHistory] = useState(false)
+  const [accentBusy, setAccentBusy] = useState(false)
+  const [accentError, setAccentError] = useState('')
+  const activeSession = useRef(sessionKey)
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    activeSession.current = sessionKey
+  }, [sessionKey])
+
+  useEffect(() => () => { mounted.current = false }, [])
 
   const load = useCallback(async () => {
     const [c, o, g] = await Promise.all([
@@ -687,6 +698,25 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
 
   const providers = conn?.providers || []
   const influence = conn?.influence || { readiness: true, sleep: true, workouts: true }
+  const changeAccent = async (next) => {
+    if (next === accent || accentBusy) return
+    const before = accent
+    const requestSession = sessionKey
+    onAccentChange?.(next)
+    setAccentBusy(true)
+    setAccentError('')
+    try {
+      const saved = await api.setAppearance(next)
+      if (mounted.current && activeSession.current === requestSession) onAccentChange?.(saved.accent)
+    } catch (err) {
+      if (mounted.current && activeSession.current === requestSession) {
+        onAccentChange?.(before)
+        setAccentError(err.message || 'Could not save color.')
+      }
+    } finally {
+      if (mounted.current && activeSession.current === requestSession) setAccentBusy(false)
+    }
+  }
 
   return (
     <div>
@@ -698,6 +728,22 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
           time.
         </p>
       </header>
+      <section className="border-t border-line pt-4">
+        <fieldset disabled={accentBusy} className="m-0 mt-3 border-0 p-0">
+          <legend className="eyebrow">Accent color</legend>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {Object.entries(ACCENT_PALETTES).map(([id, p]) => (
+              <label key={id} className={`cursor-pointer border p-2 ${accent === id ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong'}`}>
+                <input className="sr-only" type="radio" name="accent" checked={accent === id} onChange={() => changeAccent(id)} />
+                <span aria-hidden className="mb-2 block h-2 w-full" style={{ backgroundColor: p.color }} />
+                <span className="text-xs font-semibold">{p.label}</span>
+                <span className="block text-[9px] uppercase text-muted">{accent === id ? 'Selected' : 'Choose'}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <p role="status" className="mt-2 min-h-5 text-xs text-alert">{accentBusy ? 'Saving color…' : accentError}</p>
+      </section>
 
       {/* Provider rows — hairline-separated */}
       <section className="border-t border-line">

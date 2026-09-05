@@ -3,6 +3,20 @@ import { api } from '../api/client.js'
 import { Button, ErrorNote, Field, inputCls } from './ui.jsx'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const INVITE_CODE_RE = /^[A-Za-z0-9_-]{24,128}$/
+
+function sanitizeInviteCode(value) {
+  const code = String(value || '').trim()
+  return INVITE_CODE_RE.test(code) ? code : ''
+}
+
+function inviteFromLocation(url) {
+  const hash = new URLSearchParams(url.hash.slice(1))
+  const fragmentInvite = sanitizeInviteCode(hash.get('invite'))
+  if (!fragmentInvite) return null
+  hash.delete('invite')
+  return { code: fragmentInvite, removeHash: true, hash: hash.toString() }
+}
 
 // Signed-out gate: the whole app is one person's fueling data, so there is no
 // tour or guest mode — just sign in or create the one account this device
@@ -29,12 +43,25 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
     return () => { alive = false }
   }, [])
 
+  // Invite links are a delivery mechanism, not storage. Consume the code once
+  // into the controlled field, immediately remove it from the address/history,
+  // and still require an explicit accepted-terms signup submission.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const invite = inviteFromLocation(url)
+    if (!invite) return
+    setInviteCode(invite.code)
+    setMode('signup')
+    if (invite.removeHash) url.hash = invite.hash ? `#${invite.hash}` : ''
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [])
+
   const submit = async (e) => {
     e.preventDefault()
     setError('')
     if (mode === 'signup' && !legal?.signupEnabled) return setError(legal?.ready ? 'New accounts are temporarily unavailable.' : 'New accounts are temporarily unavailable while the legal documents are finalized.')
     if (mode === 'signup' && !acceptedLegal) return setError('Agree to the Terms of Service and acknowledge the Privacy Policy to create an account.')
-    if (mode === 'signup' && legal?.inviteRequired && !inviteCode.trim()) return setError('Enter your invitation code to create an account.')
+    if (mode === 'signup' && legal?.inviteRequired && !sanitizeInviteCode(inviteCode)) return setError('Enter a valid invitation code to create an account.')
     const cleanEmail = email.trim().toLowerCase()
     if (!EMAIL_RE.test(cleanEmail)) return setError('Enter a valid email address.')
     if (mode === 'signup' && password.length < 8) return setError('Password must be at least 8 characters.')
@@ -54,7 +81,7 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16">
       <header className="mb-8">
-        <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Oathbearer' : 'OmniFuel Tech'}</div>
+        <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Oathbearer' : 'Body Current'}</div>
         <h1 className="serif text-4xl leading-none text-ink">
           {mode === 'signup' ? 'Create your account' : 'Sign in'}
         </h1>
@@ -95,7 +122,7 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
                 spellCheck="false"
                 required
                 value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
+                onChange={(e) => setInviteCode(e.target.value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 128))}
                 className={`${inputCls} pr-16`}
               />
               <button
@@ -167,7 +194,7 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
       )}
 
       <p className="mt-5 text-center text-xs leading-relaxed text-faint">
-        Review {oathbearer ? "Oathbearer's" : "OmniFuel's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
+        Review {oathbearer ? "Oathbearer's" : "Body Current's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
         {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms">Terms of Service</a>.
       </p>
     </div>
@@ -178,7 +205,7 @@ export function LegalReconsent({ user, onAccepted, onLogout, surface = 'omnifuel
   const [acknowledged, setAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const product = surface === 'oathbearer' ? 'Oathbearer' : 'OmniFuel'
+  const product = surface === 'oathbearer' ? 'Oathbearer' : 'Body Current'
 
   const submit = async (event) => {
     event.preventDefault()

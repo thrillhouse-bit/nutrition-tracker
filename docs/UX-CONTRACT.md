@@ -1,4 +1,4 @@
-# OmniFuel product contract
+# Body Current product contract
 
 This is the cross-screen behavior contract for changes that affect more than
 one route. Component-level visual rationale remains in `docs/DESIGN.md`.
@@ -74,7 +74,7 @@ Source of business truth: `legal/privacy-policy.html` sections 6, 8, and 9;
 - Connections owns account export, logout, and permanent deletion. Provider
   disconnection and synced-history deletion remain separate narrower actions.
 - Export downloads JSON for the authenticated account: account/legal record,
-  nutrition log, target history, profiles, planning data, provider metadata,
+  nutrition and manual hydration logs, target history, profiles, planning data, provider metadata,
   and wearable history with explicit Oura, Garmin, and device-originated Apple
   Health attribution. Password/session credentials, provider OAuth tokens,
   Apple ingest tokens, and the shared food lookup cache are excluded.
@@ -87,11 +87,26 @@ Source of business truth: `legal/privacy-policy.html` sections 6, 8, and 9;
   local storage, private in-memory state, and returns to authentication. There
   is no Undo because the database deletion is a cascade hard-delete.
 
+## Hydration log
+
+Today owns the account-scoped manual water log. It reads the browser's
+`from`/`to` local-day bounds, so its total and rows use the same calendar day
+as food intake. Amounts persist in millilitres; the native unit select may
+display or enter millilitres or fluid ounces, while an explicitly labelled
+native date-time picker records when the person drank it. Quick add, add,
+edit, and delete retain their values on failure and expose an inline error.
+
+Hydration is context only: it does not alter AFP energy, carbohydrate, sodium,
+or fluid targets. Today must say that no personalized target is supplied. No
+sweat-replacement or sodium advice appears without measured loss data.
+
 ## Legal launch gate
 
-Privacy and terms content is configuration-backed. Production operators must
-provide the entity, effective date, governing jurisdiction, hosting location,
-monitored contact, year, and an explicit `LEGAL_REVIEWED=true` acknowledgement.
+Privacy and terms content is publication-ready without operator metadata.
+Production requires a meaningful explicit `LEGAL_VERSION` and a
+`LEGAL_REVIEWED=true` acknowledgement before the public documents and signup
+become available. The version is the re-consent boundary; it is not inferred
+from unrelated operator metadata.
 Signup requires an affirmative Terms agreement and Privacy Policy
 acknowledgement, and stores the published legal version plus acceptance time on
 the account.
@@ -130,5 +145,5 @@ only through an explicit API/schema deprecation with native-client checks.
 
 Native select and time controls are intentional for this mobile-first PWA: the
 supported browser/OS owns the popup geometry, locale, keyboard, and assistive
-technology integration. OmniFuel owns labels, option vocabulary, validation,
+technology integration. Body Current owns labels, option vocabulary, validation,
 and ISO storage—not a second custom picker implementation.

@@ -27,22 +27,21 @@ function render(el) {
   return container
 }
 
-describe('SegmentBar gradient fill', () => {
-  it('shades filled segments from light to dark cobalt by position in the full bar', () => {
+describe('SegmentBar runtime accent gradient', () => {
+  it('uses the palette progress-token gradient for every filled segment', () => {
     const el = render(<SegmentBar total={5} filled={3} />)
     const segments = el.querySelectorAll(':scope > div > div')
     expect(segments.length).toBe(5)
 
-    // First filled segment (index 0) should be the lightest cobalt.
-    expect(segments[0].style.backgroundColor).toBe('rgb(233, 236, 249)') // #e9ecf9
-    // Each subsequent filled segment should be strictly darker (lower total
-    // luminance) than the one before it — a real gradient, not a repeated color.
-    const luminance = (rgb) => {
-      const [r, g, b] = rgb.match(/\d+/g).map(Number)
-      return r + g + b
+    for (const segment of [...segments].slice(0, 3)) {
+      expect(segment.style.backgroundImage).toContain('var(--color-progress-start)')
+      expect(segment.style.backgroundImage).toContain('var(--color-progress-mid)')
+      expect(segment.style.backgroundImage).toContain('var(--color-progress-end)')
+      expect(segment.style.backgroundSize).toBe('500% 100%')
+      expect(segment.style.backgroundColor).toBe('')
     }
-    expect(luminance(segments[1].style.backgroundColor)).toBeLessThan(luminance(segments[0].style.backgroundColor))
-    expect(luminance(segments[2].style.backgroundColor)).toBeLessThan(luminance(segments[1].style.backgroundColor))
+    expect(segments[0].style.backgroundPosition).toBe('0% 0px')
+    expect(segments[2].style.backgroundPosition).toBe('50% 0px')
   })
 
   it('leaves unfilled segments as the plain track color, not part of the gradient', () => {
@@ -51,19 +50,22 @@ describe('SegmentBar gradient fill', () => {
     expect(segments[2].className).toContain('bg-track')
     expect(segments[3].className).toContain('bg-track')
     expect(segments[4].className).toContain('bg-track')
-    // Track segments carry no inline gradient color.
+    // Track segments carry no inline gradient or fallback color.
     expect(segments[2].style.backgroundColor).toBe('')
+    expect(segments[2].style.backgroundImage).toBe('')
   })
 
-  it('a fully-filled bar ends at the darkest shade (cobalt-ink)', () => {
+  it('keeps the last filled segment anchored to the palette end token', () => {
     const el = render(<SegmentBar total={4} filled={4} />)
     const segments = el.querySelectorAll(':scope > div > div')
-    expect(segments[3].style.backgroundColor).toBe('rgb(22, 40, 155)') // #16289b
+    expect(segments[3].style.backgroundImage).toContain('var(--color-progress-end)')
+    expect(segments[3].style.backgroundPosition).toBe('100% 0px')
   })
 
-  it('a single-segment bar does not divide by zero and still fills with the light end', () => {
+  it('a single-segment bar does not divide by zero and retains the token gradient', () => {
     const el = render(<SegmentBar total={1} filled={1} />)
     const segments = el.querySelectorAll(':scope > div > div')
-    expect(segments[0].style.backgroundColor).toBe('rgb(233, 236, 249)')
+    expect(segments[0].style.backgroundImage).toContain('var(--color-progress-start)')
+    expect(segments[0].style.backgroundPosition).toBe('0% 0px')
   })
 })

@@ -73,9 +73,9 @@ export function registerAgentRoutes(app, deps) {
     const base = publicBaseUrl()
     return {
       protocolVersion: '0.3.0',
-      name: 'OmniFuel Tech',
+      name: 'Body Current',
       description:
-        'Read-only fueling status agent for a personal OmniFuel instance: reports service health and, with a bearer token, today\'s logged intake and plan-adjusted targets. Makes no medical, diagnostic, or injury claims and accepts no writes.',
+        'Read-only fueling status agent for a personal Body Current instance: reports service health and, with a bearer token, today\'s logged intake and plan-adjusted targets. Makes no medical, diagnostic, or injury claims and accepts no writes.',
       url: `${base}/a2a`,
       preferredTransport: 'JSONRPC',
       version: PKG.version,
@@ -98,7 +98,7 @@ export function registerAgentRoutes(app, deps) {
           description:
             'Public service status: storage backend, which integrations are configured, server time. Config-level facts only — no personal data.',
           tags: ['status', 'public', 'read-only'],
-          examples: ['Is OmniFuel up, and which integrations are configured?'],
+          examples: ['Is Body Current up, and which integrations are configured?'],
           // `x-endpoint` is a namespaced extension, not an A2A field (A2A
           // readers ignore unknown properties). It exists so the test suite
           // can hold this card to the routes it advertises — a card whose

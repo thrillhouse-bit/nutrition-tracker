@@ -43,6 +43,17 @@ export const EntryPatchSchema = z.object({
   logged_at: z.string().datetime().optional(),
 })
 
+// Hydration is a manual, account-owned intake log. Amounts are normalized to
+// millilitres at the API boundary; the UI may offer practical display units.
+export const WaterEntryCreateSchema = z.object({
+  amount_ml: z.number().finite().positive().max(10000),
+  logged_at: z.string().datetime().nullable().optional(),
+})
+export const WaterEntryPatchSchema = z.object({
+  amount_ml: z.number().finite().positive().max(10000).optional(),
+  logged_at: z.string().datetime().optional(),
+}).refine((value) => Object.keys(value).length > 0, { message: 'Provide an amount or timestamp.' })
+
 // sugar_g stays nullable (matches DEFAULT_TARGETS) — the others don't carry
 // a documented "unset" meaning, so they're just non-negative numbers.
 export const TargetsSchema = z.object({
@@ -68,15 +79,27 @@ export const AfpProfilePatchSchema = z.object({
   weight_kg: z.number().finite().positive().max(400).nullable().optional(),
   sex: z.enum(['male', 'female']).nullable().optional(),
   body_fat_pct: z.number().finite().min(1).max(70).nullable().optional(),
+  equation_stratum: z.enum(['men', 'women', 'unsure']).nullable().optional(),
   activity_level: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']).nullable().optional(),
-  goal: z.enum(['maintain', 'gradual_loss', 'gradual_gain', 'custom']).optional(),
+  // Accept historic values at the boundary, then normalize them to one of the
+  // four canonical AFP strategies in the route handler.
+  goal: z.enum(['maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance', 'maintain', 'gradual_loss', 'loss', 'lose_fat', 'gradual_gain', 'gain', 'build_muscle', 'endurance', 'performance', 'fuel_performance', 'custom']).optional(),
+  plan_mode: z.enum(['automatic', 'manual', 'clinician']).optional(),
+  eligibility_attested: z.boolean().optional(),
+  manual_targets: z.object({
+    calories: nonNegNum(), protein_g: nonNegNum(), carbs_g: nonNegNum(), fat_g: nonNegNum(),
+  }).nullable().optional(),
   // Conservative bounds enforced here too (not just in the engine) so a bad
   // value never reaches the store at all — see server/afp/engine.js's
   // WEEKLY_CHANGE_LIMITS for why these numbers specifically.
   weekly_change_kg: z.number().finite().min(0).max(1.5).nullable().optional(),
   calorie_adjustment: z.number().finite().min(-1500).max(1500).nullable().optional(),
   is_pregnant_or_postpartum: z.boolean().optional(),
+  is_lactating: z.boolean().optional(),
+  has_ckd_or_renal_condition: z.boolean().optional(),
   has_ed_risk_flag: z.boolean().optional(),
+  has_clinician_prescribed_diet: z.boolean().optional(),
+  has_major_illness_or_glucose_lowering_meds: z.boolean().optional(),
 })
 
 const AFP_SPORTS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']

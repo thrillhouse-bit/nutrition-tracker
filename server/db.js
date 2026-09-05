@@ -39,6 +39,10 @@ export const DEFAULT_TARGETS = {
   sodium_mg: 2300,
 }
 
+// Neon can return numeric columns as strings while JSON storage preserves
+// numbers. Keep the public hydration/export contract backend-independent.
+const normalizeWaterEntry = (entry) => entry && ({ ...entry, amount_ml: Number(entry.amount_ml) })
+
 // Per-user biometric profile — this is the "nothing saved yet" shape, never a
 // 404: the calculator UI needs somewhere to start from even before the user
 // has typed anything.
@@ -50,6 +54,7 @@ export const DEFAULT_PROFILE = {
   units_pref: 'imperial',
   activity_level: null,
   goal: null,
+  accent: 'cobalt',
   updated_at: null,
 }
 
@@ -63,12 +68,22 @@ export const DEFAULT_AFP_PROFILE = {
   weight_kg: null,
   sex: null,
   body_fat_pct: null,
+  equation_stratum: null,
   activity_level: null,
   goal: 'maintain',
+  plan_mode: 'automatic',
+  eligibility_attested: false,
+  // Entered only for manual/clinician modes. These values are never derived
+  // from the automatic AFP equation.
+  manual_targets: null,
   weekly_change_kg: null,
   calorie_adjustment: null,
   is_pregnant_or_postpartum: false,
+  is_lactating: false,
+  has_ckd_or_renal_condition: false,
   has_ed_risk_flag: false,
+  has_clinician_prescribed_diet: false,
+  has_major_illness_or_glucose_lowering_meds: false,
   updated_at: null,
 }
 
@@ -359,6 +374,34 @@ export class PgStore {
     return rows.length > 0
   }
 
+  // --- hydration log (user-owned) -------------------------------------------
+  async listWaterEntries(userId, { from, to }) {
+    const sql = await this.ready()
+    const rows = await sql`select id, amount_ml, logged_at, created_at from water_entries
+      where user_id = ${userId} and logged_at >= ${from} and logged_at < ${to}
+      order by logged_at asc, id asc`
+    return rows.map(normalizeWaterEntry)
+  }
+  async addWaterEntry(userId, { amount_ml, logged_at = null }) {
+    const sql = await this.ready()
+    const rows = await sql`insert into water_entries (user_id, amount_ml, logged_at)
+      values (${userId}, ${amount_ml}, coalesce(${logged_at}::timestamptz, now())) returning *`
+    return normalizeWaterEntry(rows[0])
+  }
+  async updateWaterEntry(userId, id, patch) {
+    const sql = await this.ready()
+    const rows = await sql`update water_entries set
+      amount_ml = coalesce(${patch.amount_ml ?? null}, amount_ml),
+      logged_at = coalesce(${patch.logged_at ?? null}::timestamptz, logged_at)
+      where id = ${id} and user_id = ${userId} returning *`
+    return rows[0] ? normalizeWaterEntry(rows[0]) : null
+  }
+  async deleteWaterEntry(userId, id) {
+    const sql = await this.ready()
+    const rows = await sql`delete from water_entries where id = ${id} and user_id = ${userId} returning id`
+    return rows.length > 0
+  }
+
   // Distinct foods you've logged before, most-recently-logged first, with how
   // many times each was logged — powers one-tap re-logging.
   async recentFoods(userId, limit = 20) {
@@ -406,7 +449,7 @@ export class PgStore {
   async getProfile(userId) {
     const sql = await this.ready()
     const rows = await sql`
-      select height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, updated_at
+      select height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, accent, updated_at
       from profile where user_id = ${userId} limit 1`
     return rows[0] || { ...DEFAULT_PROFILE }
   }
@@ -416,15 +459,26 @@ export class PgStore {
   // never taken from the caller.
   async setProfile(userId, patch) {
     const sql = await this.ready()
-    const m = { ...(await this.getProfile(userId)), ...patch }
+    // Do not read-merge-write here: two devices saving different profile
+    // fields can otherwise both snapshot stale data and the later full row
+    // overwrites (for example) a just-saved accent. The conflict branch only
+    // changes columns explicitly present in this patch.
+    const m = { ...DEFAULT_PROFILE, ...patch }
+    const has = (key) => Object.prototype.hasOwnProperty.call(patch, key)
     const rows = await sql`
-      insert into profile (user_id, height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, updated_at)
-      values (${userId}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.age_years}, ${m.units_pref}, ${m.activity_level}, ${m.goal}, now())
+      insert into profile (user_id, height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, accent, updated_at)
+      values (${userId}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.age_years}, ${m.units_pref}, ${m.activity_level}, ${m.goal}, ${m.accent || 'cobalt'}, now())
       on conflict (user_id) do update set
-        height_cm = excluded.height_cm, weight_kg = excluded.weight_kg, sex = excluded.sex,
-        age_years = excluded.age_years, units_pref = excluded.units_pref,
-        activity_level = excluded.activity_level, goal = excluded.goal, updated_at = excluded.updated_at
-      returning height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, updated_at`
+        height_cm = case when ${has('height_cm')} then excluded.height_cm else profile.height_cm end,
+        weight_kg = case when ${has('weight_kg')} then excluded.weight_kg else profile.weight_kg end,
+        sex = case when ${has('sex')} then excluded.sex else profile.sex end,
+        age_years = case when ${has('age_years')} then excluded.age_years else profile.age_years end,
+        units_pref = case when ${has('units_pref')} then excluded.units_pref else profile.units_pref end,
+        activity_level = case when ${has('activity_level')} then excluded.activity_level else profile.activity_level end,
+        goal = case when ${has('goal')} then excluded.goal else profile.goal end,
+        accent = case when ${has('accent')} then excluded.accent else profile.accent end,
+        updated_at = excluded.updated_at
+      returning height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, accent, updated_at`
     return rows[0]
   }
 
@@ -777,33 +831,52 @@ export class PgStore {
   async getAfpProfile(userId) {
     const sql = await this.ready()
     const rows = await sql`select * from afp_profile where user_id = ${userId} limit 1`
-    return rows[0] || { ...DEFAULT_AFP_PROFILE }
+    return { ...DEFAULT_AFP_PROFILE, ...(rows[0] || {}) }
   }
 
-  // Merge-save, same contract as setProfile: a partial patch never clobbers
-  // fields the caller didn't send, and updated_at is always server-set.
+  // One INSERT ... ON CONFLICT statement handles both first save and partial
+  // concurrent updates. Do not use an insert-then-update CTE here: PostgreSQL
+  // data-modifying CTEs share one snapshot, so the update cannot see its own
+  // just-inserted row on a first save.
   async setAfpProfile(userId, patch) {
     const sql = await this.ready()
-    const m = { ...(await this.getAfpProfile(userId)), ...patch }
+    const incoming = patch || {}
+    const m = { ...DEFAULT_AFP_PROFILE, ...incoming }
+    const has = (key) => Object.prototype.hasOwnProperty.call(incoming, key)
     const rows = await sql`
-      insert into afp_profile (
-        user_id, units_pref, age_years, height_cm, weight_kg, sex, body_fat_pct,
-        activity_level, goal, weekly_change_kg, calorie_adjustment,
-        is_pregnant_or_postpartum, has_ed_risk_flag, updated_at
-      )
-      values (
-        ${userId}, ${m.units_pref}, ${m.age_years}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.body_fat_pct},
-        ${m.activity_level}, ${m.goal}, ${m.weekly_change_kg}, ${m.calorie_adjustment},
-        ${!!m.is_pregnant_or_postpartum}, ${!!m.has_ed_risk_flag}, now()
-      )
-      on conflict (user_id) do update set
-        units_pref = excluded.units_pref, age_years = excluded.age_years, height_cm = excluded.height_cm,
-        weight_kg = excluded.weight_kg, sex = excluded.sex, body_fat_pct = excluded.body_fat_pct,
-        activity_level = excluded.activity_level, goal = excluded.goal,
-        weekly_change_kg = excluded.weekly_change_kg, calorie_adjustment = excluded.calorie_adjustment,
-        is_pregnant_or_postpartum = excluded.is_pregnant_or_postpartum, has_ed_risk_flag = excluded.has_ed_risk_flag,
-        updated_at = excluded.updated_at
-      returning *`
+      insert into afp_profile as p (
+        user_id, units_pref, age_years, height_cm, weight_kg, sex, body_fat_pct, equation_stratum,
+        activity_level, goal, plan_mode, eligibility_attested, manual_targets, weekly_change_kg,
+        calorie_adjustment, is_pregnant_or_postpartum, is_lactating, has_ckd_or_renal_condition,
+        has_ed_risk_flag, has_clinician_prescribed_diet, has_major_illness_or_glucose_lowering_meds, updated_at
+      ) values (
+        ${userId}, ${m.units_pref}, ${m.age_years}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.body_fat_pct}, ${m.equation_stratum},
+        ${m.activity_level}, ${m.goal}, ${m.plan_mode}, ${m.eligibility_attested}, ${m.manual_targets ? JSON.stringify(m.manual_targets) : null}, ${m.weekly_change_kg},
+        ${m.calorie_adjustment}, ${m.is_pregnant_or_postpartum}, ${m.is_lactating}, ${m.has_ckd_or_renal_condition},
+        ${m.has_ed_risk_flag}, ${m.has_clinician_prescribed_diet}, ${m.has_major_illness_or_glucose_lowering_meds}, now()
+      ) on conflict (user_id) do update set
+        units_pref = case when ${has('units_pref')} then excluded.units_pref else p.units_pref end,
+        age_years = case when ${has('age_years')} then excluded.age_years else p.age_years end,
+        height_cm = case when ${has('height_cm')} then excluded.height_cm else p.height_cm end,
+        weight_kg = case when ${has('weight_kg')} then excluded.weight_kg else p.weight_kg end,
+        sex = case when ${has('sex')} then excluded.sex else p.sex end,
+        body_fat_pct = case when ${has('body_fat_pct')} then excluded.body_fat_pct else p.body_fat_pct end,
+        equation_stratum = case when ${has('equation_stratum')} then excluded.equation_stratum else p.equation_stratum end,
+        activity_level = case when ${has('activity_level')} then excluded.activity_level else p.activity_level end,
+        goal = case when ${has('goal')} then excluded.goal else p.goal end,
+        plan_mode = case when ${has('plan_mode')} then excluded.plan_mode else p.plan_mode end,
+        eligibility_attested = case when ${has('eligibility_attested')} then excluded.eligibility_attested else p.eligibility_attested end,
+        manual_targets = case when ${has('manual_targets')} then excluded.manual_targets else p.manual_targets end,
+        weekly_change_kg = case when ${has('weekly_change_kg')} then excluded.weekly_change_kg else p.weekly_change_kg end,
+        calorie_adjustment = case when ${has('calorie_adjustment')} then excluded.calorie_adjustment else p.calorie_adjustment end,
+        is_pregnant_or_postpartum = case when ${has('is_pregnant_or_postpartum')} then excluded.is_pregnant_or_postpartum else p.is_pregnant_or_postpartum end,
+        is_lactating = case when ${has('is_lactating')} then excluded.is_lactating else p.is_lactating end,
+        has_ckd_or_renal_condition = case when ${has('has_ckd_or_renal_condition')} then excluded.has_ckd_or_renal_condition else p.has_ckd_or_renal_condition end,
+        has_ed_risk_flag = case when ${has('has_ed_risk_flag')} then excluded.has_ed_risk_flag else p.has_ed_risk_flag end,
+        has_clinician_prescribed_diet = case when ${has('has_clinician_prescribed_diet')} then excluded.has_clinician_prescribed_diet else p.has_clinician_prescribed_diet end,
+        has_major_illness_or_glucose_lowering_meds = case when ${has('has_major_illness_or_glucose_lowering_meds')} then excluded.has_major_illness_or_glucose_lowering_meds else p.has_major_illness_or_glucose_lowering_meds end,
+        updated_at = now()
+      returning p.*`
     return rows[0]
   }
 
@@ -860,14 +933,21 @@ export class PgStore {
     return rows[0] || null
   }
 
-  async saveAfpDailyPlan(userId, date, { engineVersion, inputSnapshot, plan, overrides = null }) {
+  async saveAfpDailyPlan(userId, date, { engineVersion, scienceVersion = 'unversioned', inputSnapshot, inputSnapshotHash = '', plan, overrides = null }) {
     const sql = await this.ready()
     const rows = await sql`
-      insert into afp_daily_plans (user_id, date, engine_version, input_snapshot, plan, overrides)
-      values (${userId}, ${date}, ${engineVersion}, ${JSON.stringify(inputSnapshot)}, ${JSON.stringify(plan)}, ${overrides ? JSON.stringify(overrides) : null})
+      insert into afp_daily_plans (user_id, date, engine_version, science_version, revision, calculated_at, input_snapshot, input_snapshot_hash, plan, overrides)
+      values (${userId}, ${date}, ${engineVersion}, ${scienceVersion}, 1, now(), ${JSON.stringify(inputSnapshot)}, ${inputSnapshotHash}, ${JSON.stringify(plan)}, ${overrides ? JSON.stringify(overrides) : null})
       on conflict (user_id, date) do update set
-        engine_version = excluded.engine_version, input_snapshot = excluded.input_snapshot,
-        plan = excluded.plan, overrides = excluded.overrides, generated_at = now()
+        engine_version = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then excluded.engine_version else afp_daily_plans.engine_version end,
+        science_version = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then excluded.science_version else afp_daily_plans.science_version end,
+        revision = afp_daily_plans.revision + case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then 1 else 0 end,
+        calculated_at = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then now() else afp_daily_plans.calculated_at end,
+        input_snapshot = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then excluded.input_snapshot else afp_daily_plans.input_snapshot end,
+        input_snapshot_hash = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then excluded.input_snapshot_hash else afp_daily_plans.input_snapshot_hash end,
+        plan = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then excluded.plan else afp_daily_plans.plan end,
+        overrides = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then excluded.overrides else afp_daily_plans.overrides end,
+        generated_at = case when afp_daily_plans.input_snapshot_hash is distinct from excluded.input_snapshot_hash then now() else afp_daily_plans.generated_at end
       returning *`
     return rows[0]
   }
@@ -1001,6 +1081,7 @@ export class PgStore {
     const [
       accountRows,
       nutritionLogs,
+      hydrationLogs,
       targetHistory,
       profileRows,
       ouraConnections,
@@ -1023,6 +1104,7 @@ export class PgStore {
                  f.fat_g, f.fiber_g, f.sugar_g, f.sodium_mg, f.source as food_source
           from log_entries e join foods f on f.id = e.food_id
           where e.user_id = ${userId} order by e.logged_at asc, e.id asc`,
+      sql`select id, amount_ml, logged_at, created_at from water_entries where user_id = ${userId} order by logged_at asc, id asc`,
       sql`select * from daily_targets where user_id = ${userId} order by effective_from asc, id asc`,
       sql`select * from profile where user_id = ${userId}`,
       sql`select id, label, expires_at, created_at from oura_accounts where user_id = ${userId} order by id asc`,
@@ -1047,6 +1129,7 @@ export class PgStore {
       source_attribution: { garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' },
       account: accountRows[0] || null,
       nutrition_logs: nutritionLogs,
+      hydration_logs: hydrationLogs.map(normalizeWaterEntry),
       target_history: targetHistory,
       profile: profileRows[0] || null,
       provider_connections: { oura: ouraConnections, garmin: garminConnections, settings: integrations },
@@ -1068,23 +1151,20 @@ export class PgStore {
     return rows.length > 0
   }
 
-  // One-time boot migration: if pre-multi-user data exists (rows with no
-  // user_id — the columns didn't exist before tonight) it would already have
-  // failed the NOT NULL constraint on insert, so a fresh `create table` never
-  // has this problem. This exists for the ALTER-TABLE path on a database that
-  // already had the old single-tenant schema applied — this function IS that
-  // migration (an UPDATE-based backfill in application code); there is no
-  // separate migrate.sql file in this repo.
-  async migrateLegacyDataToUser(userId) {
+  // Ownerless pre-account rows must never be assigned to a signup. Operators
+  // may run this explicit cleanup before enabling invites; it is deliberately
+  // a deletion, not a guessed attribution.
+  async countUnownedLegacyRows() {
     const sql = await this.ready()
-    await sql`update log_entries set user_id = ${userId} where user_id is null`
-    await sql`update daily_targets set user_id = ${userId} where user_id is null`
-    await sql`update oura_accounts set user_id = ${userId} where user_id is null`
-    await sql`update garmin_accounts set user_id = ${userId} where user_id is null`
-    await sql`update wearable_signals set user_id = ${userId} where user_id is null`
-    await sql`update daily_plans set user_id = ${userId} where user_id is null`
-    // integrations/profile have user_id as part of their primary key, so a
-    // pre-migration row can't exist with it null — nothing to backfill there.
+    const rows = await sql`select (select count(*) from log_entries where user_id is null) + (select count(*) from daily_targets where user_id is null) + (select count(*) from oura_accounts where user_id is null) + (select count(*) from garmin_accounts where user_id is null) + (select count(*) from wearable_signals where user_id is null) + (select count(*) from daily_plans where user_id is null) as count`
+    return Number(rows[0]?.count || 0)
+  }
+  async cleanupUnownedLegacyRows() {
+    const sql = await this.ready()
+    await sql`delete from log_entries where user_id is null`; await sql`delete from daily_targets where user_id is null`
+    await sql`delete from oura_accounts where user_id is null`; await sql`delete from garmin_accounts where user_id is null`
+    await sql`delete from wearable_signals where user_id is null`; await sql`delete from daily_plans where user_id is null`
+    return this.countUnownedLegacyRows()
   }
 }
 
@@ -1118,7 +1198,7 @@ export class JsonStore {
         console.error(`[nutrition-tracker] Failed to read/parse ${this.file} — refusing to silently start from an empty store. Fix or remove the file to continue.`, err)
         throw err
       }
-      this.data = { foods: [], entries: [], targets: [], users: [], alpha_invite_redemptions: [], seq: { food: 0, entry: 0, target: 0, user: 0 } }
+      this.data = { foods: [], entries: [], water_entries: [], targets: [], users: [], alpha_invite_redemptions: [], seq: { food: 0, entry: 0, water: 0, target: 0, user: 0 } }
     }
     // Older on-disk stores predate `users`/per-row user_id — nothing to
     // migrate automatically here (unlike a real ALTER TABLE, a missing key
@@ -1130,8 +1210,10 @@ export class JsonStore {
     this.data.alpha_invite_redemptions = this.data.alpha_invite_redemptions || []
     this.data.rpg_saves = this.data.rpg_saves || {}
     this.data.rpg_save_history = this.data.rpg_save_history || {}
+    this.data.water_entries = this.data.water_entries || []
     this.data.seq = this.data.seq || {}
     this.data.seq.user = this.data.seq.user || 0
+    this.data.seq.water = this.data.seq.water || 0
     return this.data
   }
 
@@ -1336,6 +1418,30 @@ export class JsonStore {
     d.entries.splice(i, 1)
     await this.persist()
     return true
+  }
+
+  async listWaterEntries(userId, { from, to }) {
+    const d = await this.load(); const uid = Number(userId)
+    const start = this.#utcIso(from); const end = this.#utcIso(to)
+    return d.water_entries.filter((entry) => entry.user_id === uid && entry.logged_at >= start && entry.logged_at < end)
+      .sort((a, b) => String(a.logged_at).localeCompare(String(b.logged_at)) || a.id - b.id)
+  }
+  async addWaterEntry(userId, { amount_ml, logged_at = null }) {
+    const d = await this.load()
+    const row = { id: ++d.seq.water, user_id: Number(userId), amount_ml: Number(amount_ml), logged_at: logged_at ? this.#utcIso(logged_at) : new Date().toISOString(), created_at: new Date().toISOString() }
+    d.water_entries.push(row); await this.persist(); return { ...row }
+  }
+  async updateWaterEntry(userId, id, patch) {
+    const d = await this.load(); const row = d.water_entries.find((entry) => entry.id === Number(id) && entry.user_id === Number(userId))
+    if (!row) return null
+    if (patch.amount_ml !== undefined) row.amount_ml = Number(patch.amount_ml)
+    if (patch.logged_at !== undefined) row.logged_at = this.#utcIso(patch.logged_at)
+    await this.persist(); return { ...row }
+  }
+  async deleteWaterEntry(userId, id) {
+    const d = await this.load(); const index = d.water_entries.findIndex((entry) => entry.id === Number(id) && entry.user_id === Number(userId))
+    if (index < 0) return false
+    d.water_entries.splice(index, 1); await this.persist(); return true
   }
 
   async recentFoods(userId, limit = 20) {
@@ -1762,7 +1868,7 @@ export class JsonStore {
     const d = await this.load()
     d.afp_profiles = d.afp_profiles || {}
     const p = d.afp_profiles[userId]
-    return p ? { ...p } : { ...DEFAULT_AFP_PROFILE }
+    return { ...DEFAULT_AFP_PROFILE, ...(p || {}) }
   }
 
   async setAfpProfile(userId, patch) {
@@ -1834,12 +1940,16 @@ export class JsonStore {
     return (d.afp_daily_plans || {})[`${userId}:${date}`] || null
   }
 
-  async saveAfpDailyPlan(userId, date, { engineVersion, inputSnapshot, plan, overrides = null }) {
+  async saveAfpDailyPlan(userId, date, { engineVersion, scienceVersion = 'unversioned', inputSnapshot, inputSnapshotHash = '', plan, overrides = null }) {
     const d = await this.load()
     d.afp_daily_plans = d.afp_daily_plans || {}
+    const existing = d.afp_daily_plans[`${userId}:${date}`]
+    const now = new Date().toISOString()
     const row = {
       user_id: Number(userId), date, engine_version: engineVersion, input_snapshot: inputSnapshot,
-      plan, overrides, generated_at: new Date().toISOString(),
+      input_snapshot_hash: inputSnapshotHash, science_version: scienceVersion,
+      revision: (Number(existing?.revision) || 0) + 1, calculated_at: now,
+      plan, overrides, generated_at: now,
     }
     d.afp_daily_plans[`${userId}:${date}`] = row
     await this.persist()
@@ -1975,6 +2085,8 @@ export class JsonStore {
       .filter((entry) => entry.user_id === uid)
       .map((entry) => ({ ...entry, food: exportFood(d.foods.find((food) => food.id === entry.food_id)) }))
       .sort((a, b) => String(a.logged_at).localeCompare(String(b.logged_at)))
+    const hydrationLogs = (d.water_entries || []).filter((entry) => entry.user_id === uid)
+      .sort((a, b) => String(a.logged_at).localeCompare(String(b.logged_at)))
     const ouraAccountIds = new Set((d.oura_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
     const garminAccountIds = new Set((d.garmin_accounts || []).filter((a) => a.user_id === uid).map((a) => a.id))
     const ouraConnections = (d.oura_accounts || [])
@@ -1995,6 +2107,7 @@ export class JsonStore {
       source_attribution: { garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' },
       account: safeAccount,
       nutrition_logs: nutritionLogs,
+      hydration_logs: hydrationLogs,
       target_history: d.targets.filter(byUser),
       profile: d.profiles?.[uid] || null,
       provider_connections: { oura: ouraConnections, garmin: garminConnections, settings: integrations },
@@ -2028,6 +2141,7 @@ export class JsonStore {
       if (redemption.user_id === uid) redemption.user_id = null
     }
     d.entries = d.entries.filter((row) => row.user_id !== uid)
+    d.water_entries = (d.water_entries || []).filter((row) => row.user_id !== uid)
     d.targets = d.targets.filter((row) => row.user_id !== uid)
     d.oura_accounts = (d.oura_accounts || []).filter((row) => row.user_id !== uid)
     d.oura_workouts = (d.oura_workouts || []).filter((row) => !ouraAccountIds.has(row.account_id))
@@ -2049,33 +2163,15 @@ export class JsonStore {
     return true
   }
 
-  // Symmetry with PgStore — a fresh JsonStore file never has legacy
-  // (ownerless) rows in the first place, so this is a no-op there, but keeps
-  // the interface identical for anything that calls it unconditionally.
-  async migrateLegacyDataToUser(userId) {
+  async countUnownedLegacyRows() {
     const d = await this.load()
-    const uid = Number(userId)
-    for (const e of d.entries) if (e.user_id == null) e.user_id = uid
-    for (const t of d.targets) if (t.user_id == null) t.user_id = uid
-    for (const a of d.oura_accounts || []) if (a.user_id == null) a.user_id = uid
-    for (const a of d.garmin_accounts || []) if (a.user_id == null) a.user_id = uid
-    for (const s of d.wearable_signals || []) if (s.user_id == null) s.user_id = uid
-    if (d.profile && !d.profiles) {
-      // Pre-multi-user single `profile` object -> this user's entry.
-      d.profiles = { [uid]: d.profile }
-      delete d.profile
-    }
-    if (d.daily_plans && !Array.isArray(d.daily_plans)) {
-      // Pre-multi-user daily_plans was keyed by date alone; re-key by
-      // `${userId}:${date}` so getPlan/savePlan's lookup keeps working.
-      const rekeyed = {}
-      for (const [date, plan] of Object.entries(d.daily_plans)) {
-        if (date.includes(':')) { rekeyed[date] = plan; continue } // already migrated
-        rekeyed[`${uid}:${date}`] = { ...plan, user_id: uid }
-      }
-      d.daily_plans = rekeyed
-    }
-    await this.persist()
+    return [...(d.entries || []), ...(d.targets || []), ...(d.oura_accounts || []), ...(d.garmin_accounts || []), ...(d.wearable_signals || []), ...Object.values(d.daily_plans || {})].filter((row) => row?.user_id == null).length
+  }
+  async cleanupUnownedLegacyRows() {
+    const d = await this.load()
+    for (const key of ['entries', 'targets', 'oura_accounts', 'garmin_accounts', 'wearable_signals']) d[key] = (d[key] || []).filter((row) => row.user_id != null)
+    for (const [key, row] of Object.entries(d.daily_plans || {})) if (row?.user_id == null) delete d.daily_plans[key]
+    await this.persist(); return 0
   }
 }
 

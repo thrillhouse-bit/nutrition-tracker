@@ -1,140 +1,76 @@
-# Daily Fuel Plan — canonical architecture
+# Daily Fuel Plan v1
 
-Originally added on 25 Aug 2026 as a parallel "Adaptive Fuel Plan". Made the
-canonical planning system on 31 Aug 2026 after the parallel calculator,
-editable static targets, wearable-adjustment rules, and AFP engine created
-contradictory answers and duplicate setup.
+Daily Fuel Plan is Body Current's canonical nutrition-planning system. It is an evidence-based **starting estimate**, not a diagnosis, prescription, or real-time metabolic-adaptation system. It is not calibrated to an individual's observed response.
 
-AFP now owns the user profile, planned sessions, computed targets, progress,
-safety rules, and historical snapshots. The visible Plan tab is a thin shell
-over this system. Today reads the same AFP baseline and adjusted target object,
-and planned AFP sessions feed Today's workout context and recommendation. The
-Garmin summary compatibility endpoint also reads AFP targets.
+## Contract and reproducibility
 
-## Compatibility and migration
+`server/afp/science.js` is the canonical, reviewable science registry. Every rule has a stable citation ID, DOI or official URL, population, confidence, limits, review date, and the exact constants used by the engine. The response returns both `scienceVersion` (the evidence registry) and `engineVersion` (the implementation), plus `revision`, `calculatedAt`, and an `inputSnapshotHash`. For the same normalized inputs and science version the pure engine is deterministic. A revision changes only when the server computes a materially different current-day input/output snapshot.
 
-Existing accounts are migrated lazily by `server/afp/migration.js`. The bridge
-copies only missing height, weight, age, sex, unit, activity, and goal fields
-from the old calculator profile. It never overwrites an AFP profile the person
-already edited. Legacy endurance maps to maintenance because training energy is
-periodized separately; mapping it to an additional surplus would double-count
-the same intent.
+Today is intentionally live: it reads the latest successfully synced activity sessions as planning context. It is retained as a snapshot for historical dates unless a person deliberately requests recomputation. A browser refreshes a visible current-day plan at a bounded interval, so another signed-in device's newer revision appears without a page reload. No browser determines the calculation.
 
-The old `profile`, `daily_targets`, `daily_plans`, `server/planCalc.js`, and
-`server/plan.js` surfaces remain temporarily for API/data compatibility. They
-are not a second visible product and must not become the source of truth for a
-new screen. `/api/plan/today` is a compatibility adapter over AFP. New product
-work uses `/api/afp/*` and the contract in `docs/UX-CONTRACT.md`.
+## Maintenance estimate
 
-## The engine (`server/afp/engine.js`)
+For adults aged 19 or older, the engine uses the NASEM 2023 Estimated Energy Requirement (EER) equations directly. Height is cm, weight is kg, and age is years. These are population predictions of weight-stable total energy expenditure; they are not an RMR multiplier and training calories are never added 1:1 to them.
 
-Pure functions only — no I/O, no `Date.now()`/`Math.random()` — so a
-historical day's plan is exactly reproducible from its `input_snapshot`.
+| Equation stratum | Inactive | Low active | Active | Very active |
+| --- | --- | --- | --- | --- |
+| Men | `753.07 − 10.83a + 6.50h + 14.10w` | `581.47 − 10.83a + 8.30h + 14.94w` | `1004.82 − 10.83a + 6.52h + 15.91w` | `−517.88 − 10.83a + 15.61h + 19.11w` |
+| Women | `584.90 − 7.01a + 5.72h + 11.71w` | `575.77 − 7.01a + 6.60h + 12.14w` | `710.25 − 7.01a + 6.54h + 12.34w` | `511.83 − 7.01a + 9.07h + 12.56w` |
 
-1. **RMR** — Mifflin-St Jeor (sex-specific, or a neutral estimate — the
-   midpoint of the male/female constants — when sex is withheld) by default;
-   Cunningham (`500 + 22 × lean mass`) when a body-fat percentage in a
-   plausible 3–60% range is on file. `estimateRMR` returns the equation name
-   and the assumptions behind it, always shown next to the figure.
-2. **Baseline energy** — RMR × a NEAT-only activity multiplier
-   (`ACTIVITY_MULTIPLIERS`, 1.15–1.5). Deliberately lower than the legacy
-   `planCalc.js` TDEE table (1.2–1.9): that table already bakes in "hard
-   exercise 6–7 days/week", and this engine adds exercise energy separately,
-   so reusing the same numbers would double-count training.
-3. **Exercise energy** — `reconcileSessions(planned, synced)` merges a day's
-   planned sessions with real completed workouts by sport: a synced session
-   always supersedes a planned one of the SAME sport for ENERGY (a device
-   measurement beats an estimate), while the planned session's key-session/
-   race/carb-loading flags still carry over (completed-workout data has no
-   such flags). Energy itself comes from the provider's own reported calories
-   when present, else a MET-based estimate (`MET_TABLE`, standard
-   Compendium-of-Physical-Activities-style values, `kcal/min = MET × 3.5 ×
-   kg / 200`).
-4. **Goal adjustment** — `maintain` (0), `gradual_loss`/`gradual_gain`
-   (weekly kg → kcal/day via the standard 7700 kcal/kg approximation), or
-   `custom` (a direct kcal/day delta). Three guardrails apply, all
-   independently triggerable and all surfaced as a `warnings[]` entry: the
-   requested weekly rate is clamped to a conservative range
-   (`WEEKLY_CHANGE_LIMITS`: 0–1.0 kg/week loss, 0–0.5 kg/week gain), the
-   resulting deficit/surplus is capped at 25%/20% of total energy
-   respectively, and the final calorie figure is never allowed below
-   `max(1200 kcal, RMR)` (`applyMinEnergyGuardrail`) — clamped with an
-   explicit message, never silently forced through.
-5. **Macros** — protein by g/kg (goal-dependent, 1.6–2.0, itself clamped to
-   1.2–2.4 g/kg regardless of input); carbohydrate from the day's
-   periodization band (below); fat from whichever is larger of 0.3 g/kg or
-   20% of calories. The final `calories` figure is **always exactly** the sum
-   of the three macros in kcal (never a separately-rounded number that can
-   drift from what the grams add up to) — if the fat floor pushes that sum
-   above the energy-budget figure, the total is raised to match and a warning
-   names it, rather than silently reporting two disagreeing numbers.
-6. **Carbohydrate periodization** — `classifyTrainingLoad` buckets the day's
-   total planned+synced minutes into four tiers (rest/light ≤20min,
-   moderate ≤75min, endurance/high ≤180min, very-high/extreme beyond) with a
-   one-tier bump for any ≥20-minute hard session (a short-but-hard interval
-   session outranks pure duration). Each tier maps to the requested g/kg band
-   (3–5 / 5–7 / 6–10 / 8–12); the specific point within the band scales with
-   how far into the tier the day's load sits (`loadFraction`). Pre-workout
-   (≥60min sessions), during-workout (≥90min, or ≥60min hard), and recovery
-   (a demanding session coming up tomorrow) guidance is added only when it's
-   actionable, plus a percentage allocation across meal slots that always
-   sums to exactly 100.
-7. **Carbohydrate loading** is never automatic: `evaluateCarbLoading` only
-   surfaces a suggestion for the day before a session BOTH flagged as a race
-   AND explicitly opted in, and only when it's long/intense enough
-   (≥90 min or ≥half-marathon distance) that loading is an established
-   practice — otherwise it explains why it doesn't apply.
-8. **Safety** — `evaluateSafety` suppresses goal-driven DEFICIT advice only
-   (never a surplus or maintenance target) for a self-reported minor,
-   pregnancy/postpartum, or eating-disorder-risk context, substituting a
-   maintenance-level target and a clinician/dietitian referral message.
+The user explicitly selects both an activity category and an equation stratum. Body Current does not infer either from a name, gender identity, steps, Oura, Apple Health, Garmin, workout minutes, or wearable calories. The NASEM report does not validate such a mapping. The source data use two sex strata labelled men and women; this is an evidence limitation, not a claim about gender identity. If a person cannot select a supported stratum, automatic targets are not produced and manual/clinician-configured targets remain available.
 
-## Data model and the freeze rule
+The UI shows the selected stratum/category and source uncertainty. NASEM reports approximately RMSE 339 kcal/day and MAE 266 kcal/day for men, and RMSE 246 kcal/day and MAE 191 kcal/day for women (with reported MAPE 9.4% and 8.7%, respectively). Those population errors are why results are rounded and never presented as a measured metabolic fact.
 
-`afp_daily_plans` (`user_id`, `date` primary key) stores the full engine
-output plus `input_snapshot` (the exact profile/session data used) and
-`engine_version` — an explanation of a past day's plan is always
-reproducible without recomputing anything.
+The pre-v1 Mifflin/RMR-times-activity calculator is retained only for old data compatibility. It is not an active Daily Fuel Plan target generator.
 
-**Reconciliation rule** (`server/afp/plan.js`'s `getOrComputeAfpPlan`):
-TODAY always recomputes on every read (a synced workout landing mid-morning,
-a body-weight log, a profile edit all take effect immediately). A PAST day,
-once it has a saved snapshot, is FROZEN — a later profile change or newly
-synced wearable data can never silently rewrite what its plan said at the
-time. The one explicit escape hatch is `POST /api/afp/plan/:date/recompute`,
-used only when a user deliberately corrects a data-entry mistake — never
-called automatically. Day-specific overrides (`PATCH .../overrides`) are
-layered the same way: they persist across a same-day recompute, and clearing
-them (an empty PATCH body) reverts to the engine's own numbers without
-touching `afp_profile`'s defaults.
+## Goal strategies and guardrails
 
-## Runtime ownership
+The supported strategy is explicit: `maintenance`, `fat_loss`, `muscle_gain`, or `endurance_performance`. Historic aliases are migrated compatibly; they do not preserve the old static 7,700 kcal/kg forecast behavior.
 
-- `server/afp/engine.js` is the pure calculation engine.
-- `server/afp/plan.js` reconciles planned and completed sessions and persists
-  versioned snapshots.
-- `server/afp/migration.js` is the one-way compatibility bridge.
-- `src/components/AdaptiveFuelPlan.jsx` owns profile, workout, target,
-  explanation, progress, override, and safety interactions.
-- `src/components/CanonicalPlan.jsx` is the visible Plan route.
-- `server/index.js`'s Today composite uses AFP `computedTargets` as baseline
-  and AFP `targets` as adjusted. A real completed wearable workout wins over a
-  planned session; otherwise the AFP planned session is surfaced consistently.
+- Maintenance has no automatic deficit or surplus.
+- Fat loss is a conservative, self-selected adult policy. It never increases a deficit on hard or long training days, and it is disabled if the eligibility guardrail applies. It makes no predicted-weight-loss promise.
+- Muscle gain begins at maintenance through a modest, evidence-bounded surplus of up to 5%; it is not a claim of a guaranteed rate of tissue gain.
+- Endurance performance never receives an automatic deficit. A high-load day cannot be combined with an aggressive-loss target.
 
-## Known limitations / future integration points
+The server, rather than the browser, enforces automatic-plan eligibility. Pregnancy/lactation, age under 19, kidney/renal disease, an eating-disorder or restrictive-eating concern, clinician-prescribed diet, major illness, and glucose-lowering medication route the account to manual/clinician-configured mode. These are self-reported flags, not diagnoses. The service stores one eligibility attestation and only the reason flags needed to honor it; it does not store a medical narrative.
 
-- Garmin contributes no completed-workout data to `gatherSyncedSessions`
-  (matching `docs/garmin-capability-matrix.md` — no real Garmin workout
-  ingestion exists yet). The engine works fully from planned sessions and
-  Oura/Apple synced data; this is a documented gap, not a silent one.
-- Apple-synced workouts carry no per-session calories (HealthKit ingestion
-  records duration/kind only — see `ios/Shared/HealthModel.swift`), so their
-  energy is always MET-estimated even though the session itself is real.
-- The carbohydrate-band/MET tables are plain exported constants
-  (`CARB_BANDS` via `TRAINING_LOAD_TIERS`, `MET_TABLE`) rather than a runtime
-  admin-editable config — deliberately, to keep the engine pure and
-  reviewable; wiring them to a product-level settings surface is a natural
-  next step the code was structured to make easy (no call site reaches into
-  them beyond the engine itself).
-- Removal of legacy profile/targets tables and endpoints is a separate schema
-  deprecation after native clients and old deployments have moved to AFP.
+## Training and carbohydrates
+
+Wearables provide modality, duration, timing, and intensity as planning inputs. Their calorie fields remain low-confidence provenance and are never a direct calorie target override. Missing or stale wearable data is labelled unknown, not rest or zero. The reconciler deduplicates overlapping multi-provider sessions; Garmin is included when activity data is available.
+
+When selected protein and carbohydrate targets would otherwise leave zero fat,
+AFP raises the displayed energy target to retain a 0.5 g/kg fat floor. This is
+transparent product safety arithmetic for a physically reconcilable plan, not
+an evidence-derived clinical minimum or a medical nutrition prescription.
+
+Daily carbohydrate bands are part of the single daily carbohydrate target, not extra carbohydrate added on top of it:
+
+| Day/session context | Daily CHO band |
+| --- | --- |
+| Light | 3–5 g/kg/day |
+| Moderate, about 1 hour | 5–7 g/kg/day |
+| High, 1–3 hours | 6–10 g/kg/day |
+| Very high, over 4–5 hours | 8–12 g/kg/day |
+
+Pre-session guidance is 1–4 g/kg 1–4 hours before. An easy session shorter than 45 minutes has no during-session requirement. For 1–2.5 hours the guide may be 30–60 g/hour. Up to 90 g/hour is only disclosed for a hard, tolerated session over roughly 2.5–3 hours, with a multi-transportable-carbohydrate and gut-training disclosure. Optional carbohydrate loading is 10–12 g/kg/day for 36–48 hours only when the person opts in for an event longer than 90 minutes.
+
+Protein is shown as an evidence-bound range, not a false exact personal need: general athletes 1.2–2.0 g/kg/day, resistance default 1.6 g/kg/day, weight-loss 1.2–1.6 g/kg/day, and endurance 1.4–1.8 g/kg/day. The plan makes the selected range and basis visible.
+
+## API and user experience
+
+`/api/afp/profile` owns the profile and minimal eligibility contract; `/api/afp/plan` returns the canonical plan. The UI distinguishes measured, estimated, and manual-override values; shows input freshness and unknown data; and links each applied rule to the registry source. A manual day override is kept distinct from the computed estimate.
+
+## Bibliography
+
+1. `NASEM-ENERGY-2023` — National Academies of Sciences, Engineering, and Medicine. *Dietary Reference Intakes for Energy* (2023). DOI: [10.17226/26818](https://doi.org/10.17226/26818).
+2. `ACSM-NUTRITION-2025` — ACSM/Academy of Nutrition and Dietetics/Dietitians of Canada position stand. DOI: [10.1249/MSS.0000000000000852](https://doi.org/10.1249/MSS.0000000000000852).
+3. `BURKE-CARB-2011` — DOI: [10.1080/02640414.2011.585473](https://doi.org/10.1080/02640414.2011.585473).
+4. `BURKE-CARB-2019` — DOI: [10.1123/ijsnem.2019-0004](https://doi.org/10.1123/ijsnem.2019-0004).
+5. `CRAVEN-GLYCOGEN-2020` — *The Effect of Consuming Carbohydrate With and Without Protein on the Rate of Muscle Glycogen Re-synthesis During Short-Term Post-exercise Recovery* (systematic review/meta-analysis; recovery evidence, not a protein-target rule). DOI: [10.1186/s40798-020-00297-0](https://doi.org/10.1186/s40798-020-00297-0).
+6. `MORTON-PROTEIN-2018` — DOI: [10.1136/bjsports-2017-097608](https://doi.org/10.1136/bjsports-2017-097608).
+7. `LEIDY-PROTEIN-2015` — DOI: [10.3945/ajcn.114.084038](https://doi.org/10.3945/ajcn.114.084038).
+8. `HELMS-ENERGY-SURPLUS-2023` — *Effect of Small and Large Energy Surpluses on Strength, Muscle, and Skinfold Thickness in Resistance-Trained Individuals: A Parallel Groups Design* (parallel-groups trial; surplus evidence, not weight-loss evidence). DOI: [10.1186/s40798-023-00651-y](https://doi.org/10.1186/s40798-023-00651-y).
+9. `IOC-REDS-2023` — DOI: [10.1136/bjsports-2023-106994](https://doi.org/10.1136/bjsports-2023-106994).
+10. `WEARABLE-VALIDATION-2024` — DOI: [10.1007/s40279-024-02077-2](https://doi.org/10.1007/s40279-024-02077-2).
+
+Mifflin–St Jeor (DOI [10.1093/ajcn/51.2.241](https://doi.org/10.1093/ajcn/51.2.241)) is noted solely for legacy compatibility. Body Current does not implement the Hall body-weight model or claim metabolic calibration until reference validation and licensing questions are resolved.

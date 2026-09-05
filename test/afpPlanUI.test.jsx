@@ -96,7 +96,7 @@ describe('AdaptiveFuelPlan: empty/loading states', () => {
     expect(btn).toBeTruthy()
     await act(async () => { btn.click() })
     expect(el.textContent).toMatch(/Daily fuel plan profile/)
-    expect(el.textContent).toMatch(/Baseline activity/)
+    expect(el.textContent).toMatch(/NASEM activity category/)
   })
 })
 
@@ -135,10 +135,14 @@ describe('AdaptiveFuelPlan: profile editing end-to-end', () => {
 
     // OptionCard renders a description span alongside the title, so match on
     // the title span specifically rather than the button's full textContent.
-    const sedentaryBtn = Array.from(el.querySelectorAll('button')).find((b) => b.querySelector('span')?.textContent === 'Sedentary')
-    await act(async () => { sedentaryBtn.click() })
-    const maintainBtn = Array.from(el.querySelectorAll('button')).find((b) => /Maintain performance/.test(b.textContent))
+    const inactiveBtn = Array.from(el.querySelectorAll('button')).find((b) => b.querySelector('span')?.textContent === 'Inactive')
+    await act(async () => { inactiveBtn.click() })
+    const maintainBtn = Array.from(el.querySelectorAll('button')).find((b) => /^Maintenance/.test(b.textContent))
     await act(async () => { maintainBtn.click() })
+    const menBtn = Array.from(el.querySelectorAll('button')).find((b) => b.querySelector('span')?.textContent === 'Men')
+    await act(async () => { menBtn.click() })
+    const attestation = Array.from(el.querySelectorAll('input[type="checkbox"]')).find((input) => /ordinary healthy-adult/.test(input.parentElement.textContent))
+    await act(async () => { attestation.click() })
 
     const saveBtn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'Save profile')
     expect(saveBtn.disabled).toBe(false)
@@ -150,12 +154,13 @@ describe('AdaptiveFuelPlan: profile editing end-to-end', () => {
     expect(payload.height_cm).toBeCloseTo(177.8, 1) // 5'10"
     expect(payload.weight_kg).toBeCloseTo(69.9, 1) // 154 lb, rounded to 1 decimal by the form
     expect(payload.age_years).toBe(30)
-    expect(payload.activity_level).toBe('sedentary')
-    expect(payload.goal).toBe('maintain')
-    expect(payload.sex).toBeNull() // never selected — the neutral-estimate path
+    expect(payload.activity_level).toBe('inactive')
+    expect(payload.goal).toBe('maintenance')
+    expect(payload.equation_stratum).toBe('men')
+    expect(payload.eligibility_attested).toBe(true)
   })
 
-  it('shows the weekly-change field only for gradual_loss/gradual_gain, and the custom-adjustment field only for custom', async () => {
+  it('offers only the evidence-bounded v1 strategies, not weekly-rate or custom-calorie controls', async () => {
     api.afpPlan.mockResolvedValue(NO_PLAN_YET)
     const el = await renderAfp()
     const setupBtn = Array.from(el.querySelectorAll('button')).find((b) => /Set up my profile/.test(b.textContent))
@@ -164,18 +169,41 @@ describe('AdaptiveFuelPlan: profile editing end-to-end', () => {
     expect(el.textContent).not.toMatch(/Target weekly/)
     expect(el.textContent).not.toMatch(/Daily calorie adjustment/)
 
-    const gradualLossBtn = Array.from(el.querySelectorAll('button')).find((b) => /Gradual loss/.test(b.textContent))
-    await act(async () => { gradualLossBtn.click() })
-    expect(el.textContent).toMatch(/Target weekly loss/)
-
-    const customBtn = Array.from(el.querySelectorAll('button')).find((b) => /Custom adjustment/.test(b.textContent))
-    await act(async () => { customBtn.click() })
-    expect(el.textContent).toMatch(/Daily calorie adjustment/)
+    expect(el.textContent).toMatch(/Fat loss/)
+    expect(el.textContent).toMatch(/Muscle gain/)
+    expect(el.textContent).toMatch(/Endurance performance/)
     expect(el.textContent).not.toMatch(/Target weekly/)
+    expect(el.textContent).not.toMatch(/Daily calorie adjustment/)
   })
 })
 
 describe('AdaptiveFuelPlan: a rest day', () => {
+  it('renders a manual target safely without automatic-plan fields and includes fat', async () => {
+    api.afpPlan.mockResolvedValue({
+      plan: { ok: true, source: 'manual', targets: { calories: 2200, protein_g: 130, carbs_g: 260, fat_g: 70 } },
+      progress: { fat_g: { actual: 20, remaining: 50 } }, frozen: false, overrides: null,
+    })
+    const el = await renderAfp()
+    expect(el.textContent).toMatch(/Manual or clinician-configured targets/)
+    expect(el.textContent).toMatch(/70.*Fat/)
+    expect(el.textContent).not.toMatch(/NASEM 2023 maintenance estimate/)
+  })
+
+  it('shows the v1 calculation basis, uncertainty, and starting-estimate limitation', async () => {
+    api.afpPlan.mockResolvedValue(fullPlan({
+      eer: { value: 2281, sexStratum: 'female', activityCategory: 'active' },
+      energy: { baseline: 2281, exercise: 0, goalAdjustment: 0, total: 2281, goalStrategy: 'maintenance', goalAdjustmentCapped: false },
+      scienceVersion: 'afp-science-2026.1',
+    }))
+    const el = await renderAfp()
+    expect(el.textContent).toMatch(/NASEM 2023 adult Estimated Energy Requirement/)
+    const basis = Array.from(el.querySelectorAll('button')).find((button) => /NASEM 2023 adult/.test(button.textContent))
+    await act(async () => { basis.click() })
+    expect(el.textContent).toMatch(/RMSE 246 kcal\/day/)
+    expect(el.textContent).toMatch(/10\.17226\/26818/)
+    expect(el.textContent).toMatch(/not yet calibrated to your observed response/)
+  })
+
   it('renders the rest_light carbohydrate band, no pre/during-workout guidance', async () => {
     api.afpPlan.mockResolvedValue(fullPlan())
     const el = await renderAfp()
@@ -214,7 +242,7 @@ describe('AdaptiveFuelPlan: a high-carbohydrate training day', () => {
       targets: { calories: 3000, protein_g: 150, carbs_g: 500, fat_g: 80 },
     }))
     const el = await renderAfp()
-    expect(el.textContent).toMatch(/endurance\/high/)
+    expect(el.textContent).toMatch(/endurance high/)
     expect(el.textContent).toMatch(/6–10 g\/kg/)
     expect(el.textContent).toMatch(/Pre-session: ~60 g/)
     expect(el.textContent).toMatch(/During the session: ~60 g\/hour/)

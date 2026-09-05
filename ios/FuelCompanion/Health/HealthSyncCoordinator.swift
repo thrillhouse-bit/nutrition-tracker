@@ -75,7 +75,7 @@ final class HealthSyncCoordinator: ObservableObject {
             return
         }
         guard nutritionWriter.isAuthorized else {
-            writeBackError = "Health denied write access. Turn it on in Settings → Health → FuelCompanion."
+            writeBackError = "Health denied write access. Turn it on in Settings → Health → Body Current."
             return
         }
         writeBackError = nil

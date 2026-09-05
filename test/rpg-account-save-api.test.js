@@ -138,12 +138,7 @@ beforeAll(async () => {
   process.env.PORT = '0'
   Object.assign(process.env, {
     ALPHA_INVITE_ONLY: 'false',
-    LEGAL_ENTITY_NAME: 'Oathbearer Save Test Operator',
-    LEGAL_EFFECTIVE_DATE: 'September 1, 2026',
-    LEGAL_GOVERNING_JURISDICTION: 'Test jurisdiction',
-    LEGAL_DATA_HOSTING_LOCATION: 'Test region',
-    LEGAL_CONTACT_EMAIL: 'privacy@example.test',
-    LEGAL_YEAR: '2026',
+    LEGAL_VERSION: '2026-09-04',
     LEGAL_REVIEWED: 'true',
   })
   const { default: app } = await import('../server/index.js')

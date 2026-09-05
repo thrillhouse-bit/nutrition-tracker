@@ -153,7 +153,11 @@ export function freshnessOf(recordedAt, now = Date.now()) {
 }
 
 function sig(value, extra) {
-  return { value, freshness: freshnessOf(extra.recorded_at), ...extra }
+  // Measurement time answers "which day is this data about?"; sync time
+  // answers "did the provider successfully refresh it?". Only a live read
+  // for the currently requested day may use freshness_at. Historical rows
+  // remain dated by their measurement time, even if fetched now.
+  return { value, freshness: freshnessOf(extra.freshness_at || extra.recorded_at), ...extra }
 }
 
 // --- demo scenario: an evening run ----------------------------------------
@@ -202,7 +206,7 @@ export async function providerStatus(store, userId, id, nowDate = new Date()) {
   const demoAllowed = settings?.demo !== false
 
   if (id === 'oura') {
-    const configured = ouraConfigured() || ouraOAuthConfigured()
+    const configured = ouraConfigured(userId) || ouraOAuthConfigured()
     // Sync-observability fields (see recordOuraAttempt) — surfaced on every
     // branch below, not just `connected`/`stale`, so a caller always sees the
     // full attempt history even if, say, an operator turns OAuth off after a
@@ -213,7 +217,8 @@ export async function providerStatus(store, userId, id, nowDate = new Date()) {
       sync_error: settings?.error || null,
     }
     if (!configured) return { ...meta, ...obs, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
-    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : (ouraConfigured() ? [{ id: 'legacy' }] : [])
+    const oauthAccounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : []
+    const accounts = oauthAccounts.length ? oauthAccounts : (ouraConfigured(userId) ? [{ id: 'legacy' }] : [])
     if (!accounts.length) return { ...meta, ...obs, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
     if (isSyncing(userId, id)) return { ...meta, ...obs, status: 'syncing', demo: false, last_synced_at: settings?.last_synced_at || null }
     const lastSynced = settings?.last_synced_at || null
@@ -253,14 +258,13 @@ export async function allProviderStatuses(store, userId, nowDate = new Date()) {
 }
 
 // --- real per-provider signals (best-effort) ------------------------------
-async function realSignals(store, userId, id, queryDate, nowDate) {
+async function realSignals(store, userId, id, queryDate, nowDate, isRequestedCurrentDay) {
   const day = ymd(queryDate)
   try {
     if (id === 'oura') {
       let token = null
       let account = null // stays null on the legacy single-token path — no account row to key workouts on
-      if (ouraConfigured()) token = ouraToken()
-      else if (ouraOAuthConfigured()) {
+      if (ouraOAuthConfigured()) {
         account = (await store.listOuraAccounts(userId))[0]
         if (account) {
           try {
@@ -286,9 +290,16 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
           }
         }
       }
+      // A failed OAuth refresh must not silently switch identity to a legacy
+      // token. The bound fallback is only for users without an OAuth account.
+      if (!account && ouraConfigured(userId)) token = ouraToken(userId)
       if (!token) return {}
       const rec = `${day}T07:00:00`
       const fetchedAt = nowDate.toISOString()
+      // Freshness is about a successful fetch for the caller's current local
+      // day, not the UTC/server calendar day. Historical measurements retain
+      // their recorded date as provenance.
+      const freshnessAt = isRequestedCurrentDay ? fetchedAt : null
       const out = {}
       // Four calls in parallel: daily_activity (expenditure/steps —
       // previously fetched and then DISCARDED here, even though Garmin/
@@ -317,7 +328,7 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
         // OF that one reading, not an independent thing a plan-influence
         // toggle could switch off on its own.
         out.readiness = sig(readiness.score, {
-          unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false,
+          unit: 'score', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, freshness_at: freshnessAt, demo: false,
           contributors: readiness.contributors,
           temperature_deviation: readiness.temperature_deviation,
           temperature_trend_deviation: readiness.temperature_trend_deviation,
@@ -325,7 +336,7 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
       }
       if (sleepHours != null) {
         out.sleep = sig(sleepHours, {
-          unit: 'h', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, demo: false,
+          unit: 'h', provider: 'oura', recorded_at: rec, fetched_at: fetchedAt, freshness_at: freshnessAt, demo: false,
           score: sleepScore?.score ?? null,
         })
       }
@@ -337,10 +348,10 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
         // a 5-day-old day's expenditure as "fresh" and let plan.js treat it
         // as a live signal. fetched_at stays the real fetch moment — that
         // metadata genuinely is about when we made this API call.
-        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, demo: false })
+        out.expenditure = sig(activity.total_calories, { unit: 'kcal', active: activity.active_calories, provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, freshness_at: freshnessAt, demo: false })
       }
       if (activity?.steps != null) {
-        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, demo: false })
+        out.steps = sig(activity.steps, { unit: 'steps', provider: 'oura', recorded_at: `${day}T12:00:00`, fetched_at: fetchedAt, freshness_at: freshnessAt, demo: false })
       }
       // Real workout detection — stored, not live-fetched (oura_workouts is
       // kept current by the same daily backfill/resync that already covers
@@ -433,9 +444,9 @@ async function realSignals(store, userId, id, queryDate, nowDate) {
 // asks the same question the same way, so demo and status can't drift again.
 async function neverConnected(store, userId, id, settings) {
   if (id === 'oura') {
-    if (!(ouraConfigured() || ouraOAuthConfigured())) return true
-    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : [{ id: 'legacy' }]
-    return accounts.length === 0
+    if (!(ouraConfigured(userId) || ouraOAuthConfigured())) return true
+    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : []
+    return accounts.length === 0 && !ouraConfigured(userId)
   }
   if (id === 'garmin') {
     if (!garminReleaseReady()) return true
@@ -456,7 +467,7 @@ async function neverConnected(store, userId, id, settings) {
 // preview that was never meant to vary by day, and fetched_at genuinely is
 // "when we made this API call" metadata, distinct from which day the DATA
 // itself is about.
-export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate) {
+export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate, { isRequestedCurrentDay } = {}) {
   const settings = {}
   for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(userId, id)
   const demo = demoSignals(nowDate)
@@ -465,7 +476,7 @@ export async function composeSignals(store, nowDate = new Date(), userId, queryD
   const perProvider = {}
   for (const id of Object.keys(PROVIDERS)) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
-    const real = await realSignals(store, userId, id, queryDate, nowDate)
+    const real = await realSignals(store, userId, id, queryDate, nowDate, isRequestedCurrentDay ?? ymd(queryDate) === ymd(nowDate))
     if (Object.keys(real).length) perProvider[id] = real
     else if (settings[id]?.demo !== false && (await neverConnected(store, userId, id, settings[id]))) perProvider[id] = demo[id] || {}
     else perProvider[id] = {}

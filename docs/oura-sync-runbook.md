@@ -187,3 +187,10 @@ account that connected and broke before this shipped will show every field
 reconnect) populates them for the first time. That is the expected, honest
 state of "no history yet," not a sign the observability itself is broken —
 confirm you're looking at genuinely fresh data (check `settings.last_attempted_sync`'s own timestamp) before concluding otherwise.
+# Legacy token ownership
+
+`OURA_TOKEN` is disabled unless `OURA_LEGACY_USER_ID` is the exact positive
+account ID that owns it. Never bind a token to a different person. A user's
+connected OAuth account takes precedence; a failed OAuth refresh does not
+fall back to the legacy token. Multi-user deployments should use per-account
+OAuth and leave both legacy variables unset. No schema migration is required.

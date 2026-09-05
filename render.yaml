@@ -40,20 +40,16 @@ services:
       # tokens, plans, and legal acceptance records across deploys.
       - key: DATABASE_URL
         sync: false
-      # --- Legal launch gate (all required before new signup is enabled) ---
-      - key: LEGAL_ENTITY_NAME
-        sync: false
-      - key: LEGAL_EFFECTIVE_DATE
-        sync: false
-      - key: LEGAL_GOVERNING_JURISDICTION
-        sync: false
-      - key: LEGAL_DATA_HOSTING_LOCATION
-        sync: false
-      - key: LEGAL_CONTACT_EMAIL
-        sync: false
-      - key: LEGAL_YEAR
-        sync: false
+      # --- Legal launch gate (review acknowledgement required for signup) ---
       - key: LEGAL_REVIEWED
+        sync: false
+      - key: LEGAL_VERSION
+        sync: false
+      # Private alpha codes: exactly ten distinct high-entropy codes. Supply
+      # through the host's secret store; distribute #invite= links only.
+      - key: ALPHA_INVITE_ONLY
+        value: "true"
+      - key: ALPHA_INVITE_CODES
         sync: false
       # --- Optional extras ---
       - key: ANTHROPIC_API_KEY     # label OCR (Claude vision)

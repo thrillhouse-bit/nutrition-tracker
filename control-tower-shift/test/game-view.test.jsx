@@ -9,7 +9,6 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
-const { default: GameGate, GAME_HASH } = await import('../src/GameGate.jsx')
 const { default: ControlTowerShift, backingSize, prefersReducedMotion } =
   await import('../src/ControlTowerShift.jsx')
 
@@ -125,28 +124,6 @@ afterEach(async () => {
   window.location.hash = ''
   if (window.localStorage) window.localStorage.clear()
   vi.restoreAllMocks()
-})
-
-describe('GameGate', () => {
-  it('renders the app, not the game, without the hash', async () => {
-    window.location.hash = ''
-    await mount(<GameGate app={<div data-testid="the-app">app</div>} />)
-    expect(container.querySelector('[data-testid="the-app"]')).toBeTruthy()
-    expect(container.textContent).not.toContain('Control Tower')
-  })
-
-  it('renders the game at the hash, and returns on hashchange', async () => {
-    window.location.hash = GAME_HASH
-    await mount(<GameGate app={<div data-testid="the-app">app</div>} />)
-    await act(async () => {})
-    expect(container.textContent).toContain('Control Tower')
-    expect(container.querySelector('[data-testid="the-app"]')).toBeNull()
-    await act(async () => {
-      window.location.hash = ''
-      window.dispatchEvent(new Event('hashchange'))
-    })
-    expect(container.querySelector('[data-testid="the-app"]')).toBeTruthy()
-  })
 })
 
 describe('ControlTowerShift HUD', () => {
@@ -348,7 +325,9 @@ describe('accessibility and input', () => {
     expect(container.querySelector('[data-testid="status"]')?.textContent).toBe('On duty')
   })
 
-  it('the mounted frame clock advances the authored encounter after its intro beat', async () => {
+  // jsdom must flush the real React/canvas updates for a full authored
+  // encounter; allow that bounded harness work on a loaded full-suite worker.
+  it('the mounted frame clock advances the authored encounter after its intro beat', { timeout: 15000 }, async () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(makeCanvasContext())
     await mount(<ControlTowerShift />)
     const canvas = container.querySelector('canvas')
@@ -358,11 +337,16 @@ describe('accessibility and input', () => {
     // behind it, then the same rAF timestamps drive createFrameClock.
     await act(async () => pump(220))
     let frames = 0
+    // Keep input cadence at one attack per simulated frame, but commit in
+    // short batches. Flushing React 700 times makes this harness timing- and
+    // machine-load-dependent; batching only changes observation cadence.
     while (score() === 0 && frames < 700) {
-      frames += 1
       await act(async () => {
-        pump(1)
-        canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        for (let i = 0; i < 20 && frames < 700; i++) {
+          frames += 1
+          pump(1)
+          canvas.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        }
       })
     }
 

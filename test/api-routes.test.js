@@ -19,6 +19,7 @@ const fake = vi.hoisted(() => {
     users: [], // { id, email, password_hash, legal_version, legal_accepted_at, created_at }
     inviteRedemptions: new Set(), // deterministic digests only; retained after account deletion
     entries: [], // { id, food_id, logged_at, servings_consumed, meal, food }
+    waterEntries: [],
     integrations: {}, // keyed by provider only — one user drives this whole file
     appleSignals: {},
     ouraAccounts: [],
@@ -30,7 +31,7 @@ const fake = vi.hoisted(() => {
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
     targetsEverSet: false, // real stores start false; getLatestTargets's default look identical either way
-    profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null },
+    profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, accent: 'cobalt', updated_at: null },
     setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
     afpProfile: {
       units_pref: 'imperial', age_years: null, height_cm: null, weight_kg: null, sex: null, body_fat_pct: null,
@@ -131,6 +132,18 @@ const fake = vi.hoisted(() => {
       return m
     },
     listEntries: async (userId, { from, to }) => state.entries.filter((e) => e.logged_at >= from && e.logged_at < to),
+    listWaterEntries: async (userId, { from, to }) => state.waterEntries.filter((e) => e.user_id === Number(userId) && e.logged_at >= from && e.logged_at < to),
+    addWaterEntry: async (userId, payload) => {
+      const entry = { id: state.waterEntries.length + 1, user_id: Number(userId), amount_ml: payload.amount_ml, logged_at: payload.logged_at || new Date().toISOString() }
+      state.waterEntries.push(entry); return entry
+    },
+    updateWaterEntry: async (userId, id, patch) => {
+      const entry = state.waterEntries.find((row) => row.id === Number(id) && row.user_id === Number(userId)); if (!entry) return null
+      Object.assign(entry, patch); return entry
+    },
+    deleteWaterEntry: async (userId, id) => {
+      const before = state.waterEntries.length; state.waterEntries = state.waterEntries.filter((row) => !(row.id === Number(id) && row.user_id === Number(userId))); return state.waterEntries.length !== before
+    },
     getLatestTargets: async (userId) => state.targets,
     savePlan: async (userId, date, plan) => ({ date, ...plan }),
     replaceAppleSignals: async (userId, day, rows) => { state.appleSignals[day] = rows; return rows.length },
@@ -270,8 +283,9 @@ const fake = vi.hoisted(() => {
       return state.plannedWorkouts.length < before
     },
     getAfpDailyPlan: async (userId, date) => state.afpDailyPlans[`${userId}:${date}`] || null,
-    saveAfpDailyPlan: async (userId, date, { engineVersion, inputSnapshot, plan, overrides = null }) => {
-      const row = { user_id: userId, date, engine_version: engineVersion, input_snapshot: inputSnapshot, plan, overrides, generated_at: '2026-08-25T00:00:00.000Z' }
+    saveAfpDailyPlan: async (userId, date, { engineVersion, scienceVersion = 'unversioned', inputSnapshot, inputSnapshotHash = '', plan, overrides = null }) => {
+      const existing = state.afpDailyPlans[`${userId}:${date}`]
+      const row = { user_id: userId, date, engine_version: engineVersion, science_version: scienceVersion, input_snapshot: inputSnapshot, input_snapshot_hash: inputSnapshotHash, revision: (existing?.revision || 0) + 1, calculated_at: '2026-08-25T00:00:00.000Z', plan, overrides, generated_at: '2026-08-25T00:00:00.000Z' }
       state.afpDailyPlans[`${userId}:${date}`] = row
       return row
     },
@@ -340,12 +354,7 @@ let authUserId = null
 beforeAll(async () => {
   process.env.PORT = '0' // never collide with a dev server
   Object.assign(process.env, {
-    LEGAL_ENTITY_NAME: 'OmniFuel Route Test Operator',
-    LEGAL_EFFECTIVE_DATE: 'August 31, 2026',
-    LEGAL_GOVERNING_JURISDICTION: 'Test jurisdiction',
-    LEGAL_DATA_HOSTING_LOCATION: 'Test region',
-    LEGAL_CONTACT_EMAIL: 'privacy@example.test',
-    LEGAL_YEAR: '2026',
+    LEGAL_VERSION: '2026-09-04',
     LEGAL_REVIEWED: 'true',
     GARMIN_CLIENT_ID: 'route-test-client',
     GARMIN_CLIENT_SECRET: 'route-test-secret',
@@ -385,20 +394,22 @@ afterEach(() => {
   oura.legacy = false
   oura.dailySummary = async () => null
   fake.state.entries = []
+  fake.state.waterEntries = []
   fake.state.garminAccounts = []
   fake.state.garminDailies = {}
   fake.state.appleSignals = {}
   fake.state.integrations = {}
   fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
   fake.state.targetsEverSet = false
-  fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, updated_at: null }
+  fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, accent: 'cobalt', updated_at: null }
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
   fake.state.weightEntries = []
   fake.state.afpProfile = {
     units_pref: 'imperial', age_years: null, height_cm: null, weight_kg: null, sex: null, body_fat_pct: null,
-    activity_level: null, goal: 'maintain', weekly_change_kg: null, calorie_adjustment: null,
-    is_pregnant_or_postpartum: false, has_ed_risk_flag: false, updated_at: null,
+    equation_stratum: null, activity_level: null, goal: 'maintain', plan_mode: 'automatic', eligibility_attested: false, weekly_change_kg: null, calorie_adjustment: null,
+    is_pregnant_or_postpartum: false, is_lactating: false, has_ckd_or_renal_condition: false, has_ed_risk_flag: false,
+    has_clinician_prescribed_diet: false, has_major_illness_or_glucose_lowering_meds: false, updated_at: null,
   }
   fake.state.plannedWorkouts = []
   fake.state.afpDailyPlans = {}
@@ -432,14 +443,38 @@ const patch = (path, body, headers = {}) =>
     body: JSON.stringify(body),
   })
 
+describe('manual hydration log', () => {
+  it('creates, returns by the caller-local range, edits and deletes only the signed-in account record', async () => {
+    const created = await post('/api/water', { amount_ml: 500, logged_at: '2026-09-04T00:30:00.000Z' })
+    expect(created.status).toBe(201)
+    const entry = (await created.json()).entry
+    expect(entry).toMatchObject({ amount_ml: 500 })
+
+    const inside = await get('/api/water?from=2026-09-04T00:00:00.000Z&to=2026-09-05T00:00:00.000Z')
+    expect((await inside.json()).entries).toHaveLength(1)
+    const outside = await get('/api/water?from=2026-09-03T00:00:00.000Z&to=2026-09-04T00:00:00.000Z')
+    expect((await outside.json()).entries).toHaveLength(0)
+
+    const changed = await patch(`/api/water/${entry.id}`, { amount_ml: 750 })
+    expect(changed.status).toBe(200)
+    expect((await changed.json()).entry.amount_ml).toBe(750)
+    const removed = await fetch(`${base}/api/water/${entry.id}`, { method: 'DELETE', headers: { Cookie: authCookie } })
+    expect(removed.status).toBe(204)
+    expect((await get('/api/water?from=2026-09-04T00:00:00.000Z&to=2026-09-05T00:00:00.000Z')).status).toBe(200)
+    expect(await post('/api/water', { amount_ml: -1 })).toHaveProperty('status', 400)
+    expect((await get('/api/water?from=not-a-date&to=2026-09-05T00:00:00.000Z')).status).toBe(400)
+    expect((await get('/api/water?from=2026-09-05T00:00:00.000Z&to=2026-09-04T00:00:00.000Z')).status).toBe(400)
+  })
+})
+
 describe('legal publication and signup gate', () => {
   it('serves real legal documents instead of the SPA shell', async () => {
     const privacy = await fetch(`${base}/privacy`)
     const terms = await fetch(`${base}/terms`)
     expect(privacy.status).toBe(200)
     expect(terms.status).toBe(200)
-    expect(await privacy.text()).toContain('OmniFuel Route Test Operator')
-    expect(await terms.text()).toContain('Test jurisdiction')
+    expect(await privacy.text()).toContain('Body Current')
+    expect(await terms.text()).toContain('Body Current')
   })
 
   it('reports legal readiness publicly', async () => {
@@ -536,7 +571,7 @@ describe('legal publication and signup gate', () => {
     const accepted = await post('/api/auth/legal-acceptance', { acceptLegal: true })
     expect(accepted.status).toBe(200)
     expect(await accepted.json()).toEqual({ user: { id: authUserId, email: 'route-tests@example.com', legalAcceptanceRequired: false } })
-    expect(user.legal_version).toBe('August 31, 2026')
+    expect(user.legal_version).toBe('2026-09-04')
     expect(Date.parse(user.legal_accepted_at)).not.toBeNaN()
     expect((await get('/api/targets')).status).toBe(200)
   })
@@ -550,7 +585,7 @@ describe('legal publication and signup gate', () => {
     expect(rejected.status).toBe(400)
     expect((await rejected.json()).error).toMatch(/must agree/i)
 
-    expect(fake.state.users[0].legal_version).toBe('August 31, 2026')
+    expect(fake.state.users[0].legal_version).toBe('2026-09-04')
     expect(Date.parse(fake.state.users[0].legal_accepted_at)).not.toBeNaN()
   })
 
@@ -579,7 +614,7 @@ describe('account data lifecycle', () => {
   it('exports only the signed-in account without credential material', async () => {
     const res = await get('/api/account/export')
     expect(res.status).toBe(200)
-    expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="omnifuel-export-\d{4}-\d{2}-\d{2}\.json"$/)
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="body-current-export-\d{4}-\d{2}-\d{2}\.json"$/)
     const body = await res.json()
     expect(body.account).toMatchObject({ id: authUserId, email: 'route-tests@example.com' })
     expect(body.source_attribution).toEqual({ garmin: 'Garmin', oura: 'Oura', apple: 'Apple Health (device-originated)' })
@@ -1885,7 +1920,7 @@ describe('GET /api/insights targets + onTargetDetail', () => {
   it('exposes the canonical AFP calorie/protein targets once the profile is ready', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
     await put('/api/afp/profile', FULL_AFP_PROFILE)
-    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 2200, protein_g: 160 } }
+    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 2200, protein_g: 160, carbs_g: 200, fat_g: 48.8888888889 } }
     const res = await get('/api/insights?window=7&tzOffsetMinutes=0')
     const body = await res.json()
     expect(body.targets).toEqual({ calories: 2200, protein_g: 160, hasTargets: true, basis: 'current_afp_plan' })
@@ -1900,7 +1935,7 @@ describe('GET /api/insights targets + onTargetDetail', () => {
   it('computes onTargetDetail for every calendar day in the window, agreeing exactly with the onTargetDays count', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) }) // "today" = 2026-08-31 at tzOffsetMinutes=0
     await put('/api/afp/profile', FULL_AFP_PROFILE)
-    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 2000, protein_g: 150 } }
+    fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 66.6666666667 } }
     fake.state.entries = [
       calEntry('2026-08-27', 2000), // on target (diff 0, tolerance ±200)
       calEntry('2026-08-28', 2600), // off target (diff 600)
@@ -1928,7 +1963,7 @@ describe('GET /api/insights targets + onTargetDetail', () => {
     expect(body.nutrition.onTargetDays).toBe(2)
   })
 
-  it('CONTROL: marks every day null (never false) when there is no positive calorie target, so a missing target never renders as a missed one', async () => {
+  it('reconciles an impossible zero-calorie manual override before judging intake', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 31, 12, 0, 0) })
     await put('/api/afp/profile', FULL_AFP_PROFILE)
     fake.state.afpDailyPlans[`${authUserId}:2026-08-31`] = { overrides: { calories: 0, protein_g: 150 } }
@@ -1937,8 +1972,8 @@ describe('GET /api/insights targets + onTargetDetail', () => {
     const body = await res.json()
 
     const trackedDay = body.onTargetDetail.find((d) => d.date === '2026-08-30')
-    expect(trackedDay).toEqual({ date: '2026-08-30', tracked: true, onTarget: null }) // NOT false
-    expect(body.onTargetDetail.every((d) => d.onTarget === null)).toBe(true)
+    expect(trackedDay).toEqual({ date: '2026-08-30', tracked: true, onTarget: false })
+    expect(body.targets.calories).toBeGreaterThan(0)
     expect(body.nutrition.onTargetDays).toBe(0)
   })
 })
@@ -2010,6 +2045,26 @@ describe('GET /api/profile', () => {
   })
 })
 
+describe('account appearance', () => {
+  it('persists an allowed accent and preserves it through ordinary profile updates', async () => {
+    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'cobalt' })
+    const saved = await put('/api/appearance', { accent: 'emerald' })
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toEqual({ accent: 'emerald' })
+    await put('/api/profile', { height_cm: 180 })
+    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'emerald' })
+  })
+
+  it('rejects null and invalid accent writes without resetting the saved choice', async () => {
+    await put('/api/appearance', { accent: 'ruby' })
+    for (const accent of [null, 'violet']) {
+      const res = await put('/api/appearance', { accent })
+      expect(res.status).toBe(400)
+    }
+    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'ruby' })
+  })
+})
+
 describe('PUT /api/profile validation', () => {
   it.each([
     ['sex', 'nonbinary-typo'],
@@ -2029,6 +2084,13 @@ describe('PUT /api/profile validation', () => {
   it('rejects units_pref: null (it is not nullable — unlike the other enum fields)', async () => {
     const res = await put('/api/profile', { units_pref: null })
     expect(res.status).toBe(400)
+  })
+
+  it('rejects accent: null instead of silently resetting an account preference', async () => {
+    await put('/api/appearance', { accent: 'emerald' })
+    const res = await put('/api/profile', { accent: null })
+    expect(res.status).toBe(400)
+    expect(fake.state.profile.accent).toBe('emerald')
   })
 
   it.each([
@@ -2264,7 +2326,7 @@ describe('GET /api/insights correlations', () => {
 // Plan and Today. Legacy profile/target state is reset separately because it
 // remains only as a compatibility/migration source.
 const FULL_AFP_PROFILE = {
-  weight_kg: 70, height_cm: 175, age_years: 30, sex: 'male', activity_level: 'sedentary', goal: 'maintain',
+  weight_kg: 70, height_cm: 175, age_years: 30, sex: 'male', equation_stratum: 'men', eligibility_attested: true, activity_level: 'sedentary', goal: 'maintain',
 }
 
 describe('GET/PUT /api/afp/profile', () => {
@@ -2298,6 +2360,42 @@ describe('GET/PUT /api/afp/profile', () => {
     const res = await put('/api/afp/profile', { sex: null })
     const body = await res.json()
     expect(body.profile.sex).toBeNull()
+  })
+
+  it('normalizes legacy goal aliases while retaining one canonical stored goal', async () => {
+    const body = await (await put('/api/afp/profile', { goal: 'loss' })).json()
+    expect(body.profile.goal).toBe('fat_loss')
+  })
+
+  it.each(['maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance'])('persists supported canonical goal %s unchanged', async (goal) => {
+    const body = await (await put('/api/afp/profile', { goal })).json()
+    expect(body.profile.goal).toBe(goal)
+  })
+
+  it('does not infer the NASEM equation stratum from a legacy sex field', async () => {
+    const body = await (await put('/api/afp/profile', { sex: 'male' })).json()
+    expect(body.profile.equation_stratum).toBeFalsy()
+  })
+
+  it('blocks an automatic plan for an adult with a renal flag, while retaining the specific reason', async () => {
+    await put('/api/afp/profile', { ...FULL_AFP_PROFILE, has_ckd_or_renal_condition: true })
+    const body = await (await get('/api/afp/plan?date=2026-08-25')).json()
+    expect(body.plan).toMatchObject({ ok: false, ineligible: true, reasons: ['ckd_or_renal_condition'] })
+    expect(body.eligibility).toEqual({ eligible: false, reasons: ['ckd_or_renal_condition'] })
+  })
+
+  it('includes a snapshot hash, revision, calculation time, and science version in a computed cross-device plan', async () => {
+    await put('/api/afp/profile', FULL_AFP_PROFILE)
+    const first = await (await get('/api/afp/plan?date=2026-08-25')).json()
+    const second = (await (await post('/api/afp/plan/2026-08-25/recompute', {})).json()).plan
+    expect(first.input_snapshot_hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(second.input_snapshot_hash).toBe(first.input_snapshot_hash)
+    expect(second.plan.targets).toEqual(first.plan.targets)
+    // Recomputing unchanged inputs is idempotent across devices; it must not
+    // manufacture a newer revision for the same canonical snapshot.
+    expect(second.revision).toBe(first.revision)
+    expect(second.calculated_at).toBeTruthy()
+    expect(second.science_version).toBeTruthy()
   })
 })
 
@@ -2405,13 +2503,13 @@ describe('GET /api/afp/plan', () => {
     expect(body.progress.protein_g.actual).toBeGreaterThan(0)
   })
 
-  it('adds exercise energy for a planned session that day', async () => {
+  it('uses planned sessions for carbohydrate/load guidance without adding exercise calories to EER', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 25, 1, 0, 0) })
     await put('/api/afp/profile', FULL_AFP_PROFILE)
     const rest = await (await get('/api/afp/plan?date=2026-08-25')).json()
     await put('/api/afp/workouts', { date: '2026-08-25', sport: 'run', duration_min: 60, intensity: 'moderate' })
     const withRun = await (await get('/api/afp/plan?date=2026-08-25')).json()
-    expect(withRun.plan.targets.calories).toBeGreaterThan(rest.plan.targets.calories)
+    expect(withRun.plan.targets.calories).toBe(rest.plan.targets.calories)
     expect(withRun.plan.trainingLoad.tier).not.toBe('rest_light')
   })
 
@@ -2455,7 +2553,7 @@ describe('PATCH /api/afp/plan/:date/overrides', () => {
     await get('/api/afp/plan?date=2026-08-25') // ensure a plan exists
     const res = await patch('/api/afp/plan/2026-08-25/overrides', { calories: 2500 })
     const body = await res.json()
-    expect(body.plan.plan.targets.calories).toBe(2500)
+    expect(body.plan.plan.targets.calories).toBeGreaterThan(2500)
   })
 
   it('an empty body clears a previously-set override, reverting to the engine\'s own numbers', async () => {

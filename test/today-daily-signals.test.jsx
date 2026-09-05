@@ -15,6 +15,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import Today from '../src/components/Today.jsx'
+import { api } from '../src/api/client.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -456,5 +457,19 @@ describe('A genuine /api/today fetch failure gets an honest message and a retry 
     // alongside a successful setTodayData, so this is a defense-in-depth
     // control against the two ever disagreeing, not a reachable app state.
     expect(el.textContent).not.toMatch(/Couldn't load/i)
+  })
+})
+
+describe('Hydration is manual context, never an invented target', () => {
+  it('shows the total and explicit no-target language, and quick-add writes a timestamped manual entry', async () => {
+    const add = vi.spyOn(api, 'addWaterEntry').mockResolvedValue({ entry: { id: 2 } })
+    const onChanged = vi.fn()
+    const el = await renderToday({ ...BASE, signals: {}, hydration: { total_ml: 750, entries: [{ id: 1, amount_ml: 750, logged_at: new Date().toISOString() }] } }, { onChanged })
+    expect(el.textContent).toMatch(/750 mL/)
+    expect(el.textContent).toMatch(/no personalized target/i)
+    const quick = [...el.querySelectorAll('button')].find((button) => button.textContent === '+250 mL')
+    await act(async () => { quick.click() })
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ amount_ml: 250, logged_at: expect.any(String) }))
+    expect(onChanged).toHaveBeenCalledTimes(1)
   })
 })

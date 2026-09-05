@@ -13,23 +13,20 @@ const KM_PER_MI = 1.60934
 // source of truth and this is just its picker.
 const AFP_SPORTS = ['run', 'ride', 'swim', 'row', 'walk', 'hike', 'strength', 'hiit', 'cardio', 'mobility', 'workout']
 
-// Deliberately describes NON-TRAINING daily movement only — planned/synced
-// workouts are counted separately by the engine (server/afp/engine.js's
-// ACTIVITY_MULTIPLIERS comment), so wording this like "hard exercise 6-7
-// days/week" (the quick calculator's activity levels) would double-count it.
+// NASEM's activity category is an explicit user selection. It is deliberately
+// never inferred from wearable calories, steps, or workouts.
 const ACTIVITY_LEVELS = [
-  { key: 'sedentary', label: 'Sedentary', desc: 'Desk job, mostly sitting' },
-  { key: 'light', label: 'Lightly active', desc: 'On your feet sometimes, casual walking' },
-  { key: 'moderate', label: 'Moderately active', desc: 'An active job, or a lot of daily walking' },
-  { key: 'active', label: 'Active', desc: 'A physically demanding job' },
-  { key: 'very_active', label: 'Very active', desc: 'On your feet all day, physically demanding work' },
+  { key: 'inactive', label: 'Inactive', desc: 'Daily living with minimal additional activity' },
+  { key: 'low', label: 'Low active', desc: 'Additional walking plus some work or recreation activity' },
+  { key: 'active', label: 'Active', desc: 'More walking and occupational or recreational activity' },
+  { key: 'very_active', label: 'Very active', desc: 'Daily living plus vigorous work or recreation activity' },
 ]
 
 const GOALS = [
-  { key: 'maintain', label: 'Maintain performance', desc: 'No calorie deficit or surplus' },
-  { key: 'gradual_loss', label: 'Gradual loss', desc: 'A conservative deficit, paced by a weekly rate you choose' },
-  { key: 'gradual_gain', label: 'Gradual gain', desc: 'A conservative surplus, paced by a weekly rate you choose' },
-  { key: 'custom', label: 'Custom adjustment', desc: 'Set your own daily calorie adjustment directly' },
+  { key: 'maintenance', label: 'Maintenance', desc: 'No automatic calorie deficit or surplus' },
+  { key: 'fat_loss', label: 'Fat loss', desc: 'Conservative adult starting estimate; never increased on hard or long days' },
+  { key: 'muscle_gain', label: 'Muscle gain', desc: 'Maintenance through a modest, evidence-bounded surplus' },
+  { key: 'endurance_performance', label: 'Endurance performance', desc: 'Fuel training without an automatic deficit' },
 ]
 
 function OptionCard({ selected, onClick, title, desc, className = '' }) {
@@ -85,14 +82,20 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
   const [weightLb, setWeightLb] = useState('')
   const [weightKg, setWeightKg] = useState(profile?.weight_kg ?? '')
   const [age, setAge] = useState(profile?.age_years ?? '')
-  const [sex, setSex] = useState(profile?.sex ?? '')
-  const [bodyFatPct, setBodyFatPct] = useState(profile?.body_fat_pct ?? '')
+  const [sex, setSex] = useState(profile?.equation_stratum === 'men' ? 'male' : profile?.equation_stratum === 'women' ? 'female' : '')
   const [activityLevel, setActivityLevel] = useState(profile?.activity_level ?? '')
-  const [goal, setGoal] = useState(profile?.goal ?? 'maintain')
-  const [weeklyChangeKg, setWeeklyChangeKg] = useState(profile?.weekly_change_kg ?? '')
-  const [calorieAdjustment, setCalorieAdjustment] = useState(profile?.calorie_adjustment ?? '')
+  const [goal, setGoal] = useState(profile?.goal ?? 'maintenance')
   const [isPregnantOrPostpartum, setIsPregnantOrPostpartum] = useState(!!profile?.is_pregnant_or_postpartum)
+  const [isLactating, setIsLactating] = useState(!!profile?.is_lactating)
+  const [hasCkdOrRenalCondition, setHasCkdOrRenalCondition] = useState(!!profile?.has_ckd_or_renal_condition)
   const [hasEdRiskFlag, setHasEdRiskFlag] = useState(!!profile?.has_ed_risk_flag)
+  const [hasClinicianPrescribedDiet, setHasClinicianPrescribedDiet] = useState(!!profile?.has_clinician_prescribed_diet)
+  const [hasMajorIllnessOrGlucoseLoweringMeds, setHasMajorIllnessOrGlucoseLoweringMeds] = useState(!!profile?.has_major_illness_or_glucose_lowering_meds)
+  const [eligibilityAttested, setEligibilityAttested] = useState(!!profile?.eligibility_attested)
+  const [manualTargets, setManualTargets] = useState(() => ({
+    calories: profile?.manual_targets?.calories ?? '', protein_g: profile?.manual_targets?.protein_g ?? '',
+    carbs_g: profile?.manual_targets?.carbs_g ?? '', fat_g: profile?.manual_targets?.fat_g ?? '',
+  }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -119,9 +122,10 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
   const heightOk = units === 'imperial' ? heightFt !== '' && num(heightFt) > 0 : heightCm !== '' && num(heightCm) > 0
   const weightOk = units === 'imperial' ? weightLb !== '' && num(weightLb) > 0 : weightKg !== '' && num(weightKg) > 0
   const ageOk = age !== '' && num(age) > 0
-  const canSubmit = heightOk && weightOk && ageOk && !!activityLevel && !!goal
-
-  const weeklyLimits = goal === 'gradual_loss' ? { max: 1.0, label: 'up to 1.0 kg (2.2 lb) / week' } : { max: 0.5, label: 'up to 0.5 kg (1.1 lb) / week' }
+  const eligibilityReasons = isPregnantOrPostpartum || isLactating || hasCkdOrRenalCondition || hasEdRiskFlag || hasClinicianPrescribedDiet || hasMajorIllnessOrGlucoseLoweringMeds || num(age) < 19
+  const manualMode = eligibilityReasons || !eligibilityAttested
+  const manualTargetsOk = ['calories', 'protein_g', 'carbs_g', 'fat_g'].every((key) => manualTargets[key] !== '' && num(manualTargets[key]) >= 0)
+  const canSubmit = manualMode ? manualTargetsOk : heightOk && weightOk && ageOk && !!activityLevel && !!goal
 
   const submit = async () => {
     if (!canSubmit || saving) return
@@ -129,17 +133,26 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
     try {
       const payload = {
         units_pref: units,
-        height_cm: units === 'imperial' ? round1(ftInToCm(heightFt, heightIn)) : num(heightCm),
-        weight_kg: units === 'imperial' ? round1(lbToKg(weightLb)) : num(weightKg),
-        age_years: num(age),
-        sex: sex || null,
-        body_fat_pct: bodyFatPct === '' ? null : num(bodyFatPct),
-        activity_level: activityLevel,
-        goal,
-        weekly_change_kg: (goal === 'gradual_loss' || goal === 'gradual_gain') ? (weeklyChangeKg === '' ? null : num(weeklyChangeKg)) : null,
-        calorie_adjustment: goal === 'custom' ? (calorieAdjustment === '' ? null : num(calorieAdjustment)) : null,
+        plan_mode: manualMode ? 'manual' : 'automatic',
+        ...(manualMode ? { manual_targets: Object.fromEntries(Object.entries(manualTargets).map(([key, value]) => [key, num(value)])) } : { manual_targets: null }),
+        eligibility_attested: eligibilityAttested,
         is_pregnant_or_postpartum: isPregnantOrPostpartum,
+        is_lactating: isLactating,
+        has_ckd_or_renal_condition: hasCkdOrRenalCondition,
         has_ed_risk_flag: hasEdRiskFlag,
+        has_clinician_prescribed_diet: hasClinicianPrescribedDiet,
+        has_major_illness_or_glucose_lowering_meds: hasMajorIllnessOrGlucoseLoweringMeds,
+        // Manual/clinician-configured targets must be usable before someone
+        // supplies the inputs that automatic NASEM estimates require.
+        ...(!manualMode ? {
+          height_cm: units === 'imperial' ? round1(ftInToCm(heightFt, heightIn)) : num(heightCm),
+          weight_kg: units === 'imperial' ? round1(lbToKg(weightLb)) : num(weightKg),
+          age_years: num(age),
+          // This is an explicit NASEM equation selection, not gender identity.
+          equation_stratum: sex === 'male' ? 'men' : sex === 'female' ? 'women' : 'unsure',
+          activity_level: activityLevel,
+          goal,
+        } : {}),
       }
       await api.setAfpProfile(payload)
       onSaved?.()
@@ -201,25 +214,21 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
       </Field>
 
       <div>
-        <span className="eyebrow mb-1.5 block">Sex</span>
-        <div className="grid grid-cols-3 gap-2">
-          {[['male', 'Male'], ['female', 'Female'], ['', 'Prefer not to say']].map(([key, label]) => (
+        <span className="eyebrow mb-1.5 block">NASEM equation stratum</span>
+        <div className="grid grid-cols-2 gap-2">
+          {[['male', 'Men'], ['female', 'Women']].map(([key, label]) => (
             <OptionCard key={key || 'neutral'} selected={sex === key} onClick={() => setSex(key)} title={label} />
           ))}
         </div>
         <p className="mt-1.5 text-xs text-faint">
-          Only used to choose between two well-established resting-energy formulas that differ by sex. Choosing
-          "prefer not to say" uses a neutral estimate (the midpoint of both) instead of a guess.
+          NASEM's adult maintenance evidence has two observed strata. This is a calculation selection, not a
+          gender-identity field, and it is never inferred. If neither is appropriate, save in manual mode instead.
         </p>
       </div>
 
-      <Field label="Body fat % (optional)" hint="If you know it, this lets the plan use a lean-mass-based formula (Cunningham) instead of Mifflin-St Jeor.">
-        <input type="number" inputMode="decimal" min="1" max="70" value={bodyFatPct} onChange={(e) => setBodyFatPct(e.target.value)} className={inputCls} placeholder="Leave blank if unknown" />
-      </Field>
-
       <div>
-        <span className="eyebrow mb-1.5 block">Baseline activity (non-training)</span>
-        <p className="mb-2 text-xs text-faint">Everyday movement only — your planned and synced workouts are already counted separately, so this shouldn't include them.</p>
+        <span className="eyebrow mb-1.5 block">NASEM activity category</span>
+        <p className="mb-2 text-xs text-faint">Choose your usual category. Connected devices inform training context but do not select this category or add their calories to your estimate.</p>
         <div className="space-y-2">
           {ACTIVITY_LEVELS.map((a) => (
             <OptionCard key={a.key} selected={activityLevel === a.key} onClick={() => setActivityLevel(a.key)} title={a.label} desc={a.desc} className="w-full" />
@@ -236,31 +245,37 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
         </div>
       </div>
 
-      {(goal === 'gradual_loss' || goal === 'gradual_gain') && (
-        <Field label={`Target weekly ${goal === 'gradual_loss' ? 'loss' : 'gain'} (kg)`} hint={`Conservative guardrail: ${weeklyLimits.label}. A higher request is capped, with a note explaining why.`}>
-          <input type="number" inputMode="decimal" min="0" max={weeklyLimits.max} step="0.1" value={weeklyChangeKg} onChange={(e) => setWeeklyChangeKg(e.target.value)} className={inputCls} placeholder="e.g. 0.4" />
-        </Field>
-      )}
-      {goal === 'custom' && (
-        <Field label="Daily calorie adjustment (kcal)" hint="Positive for a surplus, negative for a deficit. Still capped by the same conservative safety guardrails.">
-          <input type="number" inputMode="decimal" value={calorieAdjustment} onChange={(e) => setCalorieAdjustment(e.target.value)} className={inputCls} placeholder="e.g. -300" />
-        </Field>
-      )}
-
       <div className="space-y-1 border-t border-line pt-3.5">
+        <Checkbox checked={eligibilityAttested} onChange={setEligibilityAttested} label="I confirm this is an ordinary healthy-adult starting estimate for me" hint="Uncheck this to keep the plan in manual/clinician-configured mode." />
         <Checkbox
           checked={isPregnantOrPostpartum}
           onChange={setIsPregnantOrPostpartum}
           label="I'm currently pregnant or postpartum"
-          hint="A calorie deficit is never suggested in this case — the plan uses a maintenance-level target and points to your OB/GYN or a registered dietitian instead."
+          hint="Automatic targets are disabled; use a clinician-configured or manual target."
         />
+        <Checkbox checked={isLactating} onChange={setIsLactating} label="I'm lactating" hint="Automatic targets are disabled; this does not diagnose a condition." />
+        <Checkbox checked={hasCkdOrRenalCondition} onChange={setHasCkdOrRenalCondition} label="I have kidney or renal disease" hint="Automatic targets are disabled; this does not diagnose a condition." />
         <Checkbox
           checked={hasEdRiskFlag}
           onChange={setHasEdRiskFlag}
           label="I have a current or past eating disorder, or restricting calories isn't safe for me right now"
-          hint="Same as above — no calorie deficit is suggested, and the plan points to an appropriate clinician instead. This is entirely optional and private to you."
+          hint="Automatic targets are disabled. This is entirely optional and private to you."
         />
+        <Checkbox checked={hasClinicianPrescribedDiet} onChange={setHasClinicianPrescribedDiet} label="I'm following a clinician-prescribed diet" hint="Automatic targets are disabled." />
+        <Checkbox checked={hasMajorIllnessOrGlucoseLoweringMeds} onChange={setHasMajorIllnessOrGlucoseLoweringMeds} label="I have a major illness or use glucose-lowering medication" hint="Automatic targets are disabled; this does not diagnose a condition." />
       </div>
+
+      {(eligibilityReasons || !eligibilityAttested) && <Notice>This profile will be saved in manual/clinician-configured mode. Body Current will not generate automatic targets.</Notice>}
+
+      {manualMode && (
+        <div className="border-t border-line pt-3.5">
+          <h4 className="eyebrow">Manual or clinician-configured daily targets</h4>
+          <p className="mt-1 text-xs text-muted">Enter the targets you already use. Body Current will record them without generating or adjusting them.</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[['calories', 'Energy (kcal)'], ['protein_g', 'Protein (g)'], ['carbs_g', 'Carbs (g)'], ['fat_g', 'Fat (g)']].map(([key, label]) => <Field key={key} label={label}><input type="number" min="0" inputMode="decimal" value={manualTargets[key]} onChange={(e) => setManualTargets((current) => ({ ...current, [key]: e.target.value }))} className={inputCls} /></Field>)}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
         {onCancel ? <Button variant="subtle" onClick={onCancel}>Cancel</Button> : <span />}
@@ -482,18 +497,7 @@ function OverrideControl({ date, targets, currentOverrides, onChanged }) {
 /* Main panel                                                              */
 /* ---------------------------------------------------------------------- */
 
-const EQUATION_LABEL = {
-  mifflin_st_jeor_male: 'Mifflin-St Jeor, male',
-  mifflin_st_jeor_female: 'Mifflin-St Jeor, female',
-  mifflin_st_jeor_neutral: 'Mifflin-St Jeor, neutral estimate',
-  cunningham: 'Cunningham, from body fat %',
-}
-
-const SAFETY_LABEL = {
-  minor: 'users under 18',
-  pregnancy_postpartum: 'pregnancy/postpartum',
-  ed_risk: 'the context you shared',
-}
+const EER_LABEL = 'NASEM 2023 adult Estimated Energy Requirement'
 
 export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const [profile, setProfile] = useState(null)
@@ -521,6 +525,15 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
 
   useEffect(load, [day, refreshKey])
 
+  // A bounded, visibility-aware poll keeps a current-day server revision in
+  // sync when another device refreshes inputs. Hidden tabs do no polling.
+  useEffect(() => {
+    const poll = () => { if (document.visibilityState === 'visible') load() }
+    const timer = window.setInterval(poll, 60_000)
+    document.addEventListener('visibilitychange', poll)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', poll) }
+  }, [day, refreshKey])
+
   const refresh = () => { load(); onChanged?.() }
 
   const recompute = async () => {
@@ -545,12 +558,42 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       <div className="mt-5">
         <EmptyState title="Set up your daily fuel plan">
           Enter your body metrics, baseline activity and a goal, and this plan will calculate a real-time daily
-          energy and macro target — including carbohydrate periodization on training days. Nothing here replaces
-          medical advice.
+          evidence-based energy and macro starting estimate — including carbohydrate periodization on training
+          days. Nothing here replaces medical advice.
           <div className="mt-4 flex justify-center">
             <Button onClick={() => setEditingProfile(true)}>Set up my profile</Button>
           </div>
         </EmptyState>
+      </div>
+    )
+  }
+
+  // A manual plan deliberately has no EER, training load, carb periodization,
+  // or BMI fields. Keep this branch independent so a clinician-configured
+  // target cannot accidentally dereference automatic-only reasoning.
+  if (p.source === 'manual') {
+    return (
+      <div className="mt-5 space-y-5">
+        <header className="flex items-baseline justify-between gap-3">
+          <h3 className="serif text-[22px] leading-none text-ink">Daily Fuel Plan</h3>
+          <TextButton onClick={() => setEditingProfile(true)} chevron>Edit targets</TextButton>
+        </header>
+        <Notice>
+          <strong>Manual or clinician-configured targets.</strong> Body Current will not calculate or adjust targets automatically for this profile.
+        </Notice>
+        <section className="border-t border-line pt-3.5">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+            {[['calories', 'Energy', 'kcal'], ['protein_g', 'Protein', 'g'], ['carbs_g', 'Carbs', 'g'], ['fat_g', 'Fat', 'g']].map(([k, label, unit]) => {
+              const progress = plan.progress?.[k]
+              return <div key={k}>
+                <div className="numeral text-2xl leading-none text-ink">{fmt(p.targets[k])}<span className="ml-1 text-xs font-medium text-muted">{unit}</span></div>
+                <div className="eyebrow mt-1.5">{label}</div>
+                {progress && <div className="mt-1 text-[10.5px] text-muted">{fmt(progress.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, progress.remaining), unit === 'kcal' ? 0 : 1)} left</div>}
+              </div>
+            })}
+          </div>
+        </section>
+        <OverrideControl date={day} targets={p.targets} currentOverrides={plan.overrides} onChanged={refresh} />
       </div>
     )
   }
@@ -570,9 +613,9 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         </Notice>
       )}
 
-      {p.safety?.suppressed && (
+      {(p.ineligible || p.safety?.suppressed) && (
         <Notice tone="alert">
-          <strong>A calorie deficit isn't offered here.</strong> {p.safety.message}
+          <strong>{p.safety?.suppressed ? "A calorie deficit isn't offered here." : "Automatic targets aren't available for this profile."}</strong> {p.safety?.message || 'Use a manual or clinician-configured target instead.'}
         </Notice>
       )}
 
@@ -604,6 +647,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         {p.overridesApplied && (
           <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-cobalt">Manual override applied</p>
         )}
+        <p className="mt-3 text-xs text-faint">Estimated starting target · not yet calibrated to your observed response.</p>
       </section>
 
       <OverrideControl date={day} targets={p.targets} currentOverrides={plan.overrides} onChanged={refresh} />
@@ -612,21 +656,25 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       <Why
         label="Why this changed"
         items={[
-          `Baseline (resting rate × your non-training activity level): ${fmt(p.energy.baselineNonTraining)} kcal.`,
-          p.energy.exercise > 0 ? `Training today: +${fmt(p.energy.exercise)} kcal.` : 'No training energy added today.',
+          `NASEM 2023 maintenance estimate: ${fmt(p.energy.baseline)} kcal.`,
+          'Training modality, duration, timing, and intensity inform carbohydrate planning; wearable calories are not added to this estimate.',
           p.energy.goalAdjustment !== 0 ? `Goal adjustment: ${p.energy.goalAdjustment > 0 ? '+' : ''}${fmt(p.energy.goalAdjustment)} kcal.` : 'No goal-driven adjustment (maintaining).',
-          p.energy.guardrailApplied ? `Safety guardrail applied — raised to a floor of ${fmt(p.energy.guardrailFloor)} kcal.` : null,
+          p.energy.goalAdjustmentCapped ? 'A conservative strategy guardrail limited the automatic adjustment.' : null,
           p.overridesApplied ? 'Your manual override is applied on top of all of the above.' : null,
         ].filter(Boolean)}
       />
 
-      {/* RMR */}
-      <Why label={`Resting energy estimate: ${fmt(p.rmr.value)} kcal (${EQUATION_LABEL[p.rmr.equation] || p.rmr.equation})`} items={p.rmr.assumptions} />
+      {/* Population maintenance basis and uncertainty */}
+      {p.eer && <Why label={`${EER_LABEL}: ${fmt(p.eer.value)} kcal`} items={[
+        `Selected equation stratum: ${p.eer.sexStratum}; activity category: ${p.eer.activityCategory}.`,
+        p.eer.sexStratum === 'male' ? 'Population uncertainty: RMSE 339 kcal/day; MAE 266 kcal/day.' : 'Population uncertainty: RMSE 246 kcal/day; MAE 191 kcal/day.',
+        'Source: NASEM Dietary Reference Intakes for Energy (2023), DOI 10.17226/26818.',
+      ]} />}
 
       {/* BMI — optional context only */}
       {p.bmi && (
         <p className="text-xs text-faint">
-          BMI {p.bmi.value} ({p.bmi.category}) — shown as optional context only. It is not used to set your fueling
+          BMI {p.bmi.value} — shown as optional context only. It is not used to set your fueling
           targets and is not a health diagnosis.
         </p>
       )}
@@ -634,22 +682,17 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       {/* Carb periodization */}
       <section className="border-t border-line pt-3.5">
         <h4 className="eyebrow mb-2">Carbohydrate plan — {p.trainingLoad.tier.replace(/_/g, ' ')}</h4>
-        <p className="text-sm text-ink">{p.carbPlan.reason}</p>
-        <p className="mt-1 text-xs text-muted">{p.carbPlan.gPerKgChosen} g/kg · band {p.carbPlan.band[0]}–{p.carbPlan.band[1]} g/kg</p>
-        {p.carbPlan.preworkout && <p className="mt-2 text-sm text-ink">Pre-session: ~{p.carbPlan.preworkout.grams} g, {p.carbPlan.preworkout.timing}. {p.carbPlan.preworkout.note}</p>}
-        {p.carbPlan.duringWorkout && <p className="mt-2 text-sm text-ink">During the session: ~{p.carbPlan.duringWorkout.gramsPerHour} g/hour. {p.carbPlan.duringWorkout.note}</p>}
-        {p.carbPlan.recovery && <p className="mt-2 text-sm text-ink">{p.carbPlan.recovery.note}</p>}
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10.5px] uppercase tracking-[0.06em] text-muted">
-          {Object.entries(p.carbPlan.allocationPct).map(([slot, pct]) => (
-            <span key={slot}>{slot.replace(/([A-Z])/g, ' $1')}: {pct}%</span>
-          ))}
-        </div>
+        <p className="text-sm text-ink">This daily carbohydrate range reflects the logged and planned training context for today.</p>
+        <p className="mt-1 text-xs text-muted">{p.carbPlan.perKg ?? p.carbPlan.gPerKgChosen} g/kg · band {p.carbPlan.band[0]}–{p.carbPlan.band[1]} g/kg · included in today's carbohydrate target, not added on top.</p>
+        {(p.carbPlan.guidance?.preworkout || p.carbPlan.preworkout) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.preworkout ? <>Pre-session: {p.carbPlan.guidance.preworkout.gPerKg[0]}–{p.carbPlan.guidance.preworkout.gPerKg[1]} g/kg, {p.carbPlan.guidance.preworkout.timingHours[0]}–{p.carbPlan.guidance.preworkout.timingHours[1]} hours before.</> : <>Pre-session: ~{p.carbPlan.preworkout.grams} g, {p.carbPlan.preworkout.timing}.</>}</p>}
+        {(p.carbPlan.guidance?.duringWorkout || p.carbPlan.duringWorkout) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.duringWorkout ? <>During the session: {p.carbPlan.guidance.duringWorkout.gramsPerHour[0]}–{p.carbPlan.guidance.duringWorkout.gramsPerHour[1]} g/hour. Amounts near 90 g/hour require a hard, tolerated long session, multi-transportable carbohydrate, and gut training.</> : <>During the session: ~{p.carbPlan.duringWorkout.gramsPerHour} g/hour.</>}</p>}
+        {(p.carbPlan.guidance?.recovery || p.carbPlan.recovery) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.recovery?.message || p.carbPlan.recovery?.note}</p>}
       </section>
 
       {p.carbLoading && (
         <Notice>
           {p.carbLoading.eligible
-            ? <>Carbohydrate loading is available for your upcoming event: {p.carbLoading.gramsPerKgRange[0]}–{p.carbLoading.gramsPerKgRange[1]} g/kg in the 24–36h before. {p.carbLoading.note}</>
+            ? <>Carbohydrate loading is available for your upcoming event: {(p.carbLoading.gPerKgPerDay || p.carbLoading.gramsPerKgRange)[0]}–{(p.carbLoading.gPerKgPerDay || p.carbLoading.gramsPerKgRange)[1]} g/kg/day for {(p.carbLoading.durationHours || [36, 48])[0]}–{(p.carbLoading.durationHours || [36, 48])[1]} hours. {p.carbLoading.note || 'Practice it in training first.'}</>
             : <>You opted in to carbohydrate loading for an upcoming session, but it doesn't qualify: {p.carbLoading.reason}</>}
         </Notice>
       )}
@@ -691,9 +734,9 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       </Sheet>
 
       <p className="border-t border-line pt-3.5 text-xs text-faint">
-        Educational nutritional-planning guidance based on the estimates you provided — not medical advice, a
-        diagnosis, or a guaranteed outcome. Talk with a doctor or registered dietitian before making significant
-        changes, especially if any of the above safety notices apply to you.
+        Educational nutritional-planning guidance based on population estimates — not medical advice, a diagnosis,
+        real-time metabolic adaptation, or a guaranteed outcome. Talk with a doctor or registered dietitian before
+        making significant changes, especially if automatic planning is unavailable for your profile.
       </p>
     </div>
   )

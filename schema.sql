@@ -1,4 +1,4 @@
--- Nutrition Tracker — Postgres schema (Neon).
+-- Body Current — Postgres schema (Neon).
 -- Apply with:  npm run db:init      (reads DATABASE_URL, runs this file)
 -- or paste into the Neon SQL editor.
 
@@ -106,6 +106,19 @@ create index if not exists log_entries_food_id_idx on log_entries (food_id);
 -- be split across — every other log_entries lookup filters by primary key
 -- (id + user_id), so it doesn't need a user_id-only index of its own.
 create index if not exists log_entries_user_id_logged_at_idx on log_entries (user_id, logged_at);
+
+-- Manual hydration records are deliberately separate from food entries: water
+-- is personal intake data, but it is not nutrition data and does not imply a
+-- calorie, sodium, or individualized hydration prescription.  All reads are
+-- scoped by the authenticated account and caller-provided local-day bounds.
+create table if not exists water_entries (
+  id                bigint generated always as identity primary key,
+  user_id           bigint not null references users (id) on delete cascade,
+  amount_ml         numeric not null check (amount_ml > 0 and amount_ml <= 10000),
+  logged_at         timestamptz not null default now(),
+  created_at        timestamptz not null default now()
+);
+create index if not exists water_entries_user_id_logged_at_idx on water_entries (user_id, logged_at);
 
 -- Versioned targets: per user, the row with the latest effective_from wins.
 -- Adjust your targets over time without losing the history of what they used
@@ -249,8 +262,11 @@ create table if not exists profile (
   units_pref    text not null default 'imperial' check (units_pref in ('imperial', 'metric')),
   activity_level text check (activity_level in ('sedentary', 'light', 'moderate', 'active', 'very_active')),
   goal          text check (goal in ('maintain', 'lose_fat', 'build_muscle', 'endurance')),
+  accent        text not null default 'cobalt' check (accent in ('cobalt', 'emerald', 'ruby')),
   updated_at    timestamptz not null default now()
 );
+alter table profile add column if not exists accent text not null default 'cobalt';
+do $$ begin alter table profile add constraint profile_accent_check check (accent in ('cobalt', 'emerald', 'ruby')); exception when duplicate_object then null; end $$;
 
 -- Snapshot of a day's plan, per user: baseline vs. adjusted targets, the
 -- rationale for each adjustment, and the signals it was based on (so "why?"
@@ -290,14 +306,38 @@ create table if not exists afp_profile (
   weight_kg                   numeric,
   sex                         text check (sex in ('male', 'female')),
   body_fat_pct                numeric,
-  activity_level              text check (activity_level in ('sedentary', 'light', 'moderate', 'active', 'very_active')),
-  goal                        text not null default 'maintain' check (goal in ('maintain', 'gradual_loss', 'gradual_gain', 'custom')),
+  -- NASEM equations are stratified by the observed data-set categories. This
+  -- is an explicit calculation choice, never inferred from sex/gender.
+  equation_stratum            text check (equation_stratum in ('men', 'women', 'unsure')),
+  activity_level              text check (activity_level in ('inactive', 'low', 'active', 'very_active', 'sedentary', 'light', 'moderate')),
+  goal                        text not null default 'maintenance' check (goal in ('maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance', 'maintain', 'gradual_loss', 'gradual_gain', 'custom')),
+  plan_mode                   text not null default 'automatic' check (plan_mode in ('automatic', 'manual', 'clinician')),
+  eligibility_attested        boolean not null default false,
+  manual_targets              jsonb,
   weekly_change_kg            numeric,             -- magnitude (kg/week), for gradual_loss/gradual_gain
   calorie_adjustment          numeric,             -- signed kcal/day, for goal = 'custom'
   is_pregnant_or_postpartum   boolean not null default false,
+  is_lactating                boolean not null default false,
+  has_ckd_or_renal_condition  boolean not null default false,
   has_ed_risk_flag            boolean not null default false,
+  has_clinician_prescribed_diet boolean not null default false,
+  has_major_illness_or_glucose_lowering_meds boolean not null default false,
   updated_at                  timestamptz not null default now()
 );
+
+-- Existing installations predate the safety/traceability additions above.
+alter table afp_profile add column if not exists equation_stratum text;
+alter table afp_profile add column if not exists plan_mode text not null default 'automatic';
+alter table afp_profile add column if not exists eligibility_attested boolean not null default false;
+alter table afp_profile add column if not exists manual_targets jsonb;
+alter table afp_profile add column if not exists is_lactating boolean not null default false;
+alter table afp_profile add column if not exists has_ckd_or_renal_condition boolean not null default false;
+alter table afp_profile add column if not exists has_clinician_prescribed_diet boolean not null default false;
+alter table afp_profile add column if not exists has_major_illness_or_glucose_lowering_meds boolean not null default false;
+alter table afp_profile drop constraint if exists afp_profile_goal_check;
+alter table afp_profile add constraint afp_profile_goal_check check (goal in ('maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance', 'maintain', 'gradual_loss', 'gradual_gain', 'custom'));
+alter table afp_profile drop constraint if exists afp_profile_activity_level_check;
+alter table afp_profile add constraint afp_profile_activity_level_check check (activity_level in ('inactive', 'low', 'active', 'very_active', 'sedentary', 'light', 'moderate'));
 
 -- A user's planned training sessions, one row per session (a day can carry
 -- more than one — a double-session day). `sport` reuses server/index.js's
@@ -338,9 +378,17 @@ create table if not exists afp_daily_plans (
   user_id         bigint not null references users (id) on delete cascade,
   date            text not null,               -- 'YYYY-MM-DD'
   engine_version  integer not null,
+  science_version text not null default 'unversioned',
+  revision        integer not null default 1,
+  calculated_at   timestamptz not null default now(),
   input_snapshot  jsonb not null,
+  input_snapshot_hash text not null default '',
   plan            jsonb not null,              -- the full computeAdaptivePlan() result
   overrides       jsonb,                       -- null when no day-specific override is set
   generated_at    timestamptz not null default now(),
   primary key (user_id, date)
 );
+alter table afp_daily_plans add column if not exists science_version text not null default 'unversioned';
+alter table afp_daily_plans add column if not exists revision integer not null default 1;
+alter table afp_daily_plans add column if not exists calculated_at timestamptz not null default now();
+alter table afp_daily_plans add column if not exists input_snapshot_hash text not null default '';

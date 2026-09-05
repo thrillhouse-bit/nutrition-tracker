@@ -28,7 +28,7 @@ export default function Onboarding({ onDone }) {
       <header className="mb-6">
         <h1 className="serif text-[32px] leading-none text-ink">Build your daily fuel plan</h1>
         <p className="mt-3.5 max-w-[440px] text-sm leading-relaxed text-muted">
-          Set your body metrics, everyday activity, and goal once. OmniFuel uses this profile with your planned
+          Set your body metrics, everyday activity, and goal once. Body Current uses this profile with your planned
           and synced training to produce the same daily targets everywhere in the app.
         </p>
       </header>

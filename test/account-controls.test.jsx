@@ -106,6 +106,7 @@ describe('AccountControls', () => {
     expect(api.exportAccountData).toHaveBeenCalledTimes(1)
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(click).toHaveBeenCalledTimes(1)
+    expect(click.mock.instances[0].download).toMatch(/^body-current-export-\d{4}-\d{2}-\d{2}\.json$/)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:export')
     expect(container.textContent).toContain('Your export was downloaded.')
     click.mockRestore()

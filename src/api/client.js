@@ -84,6 +84,13 @@ export const api = {
     req(`/entries/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteEntry: (id) => req(`/entries/${id}`, { method: 'DELETE' }),
 
+  // Manual hydration. API amounts are canonical millilitres; presentation can
+  // safely offer ounces without persisting a locale-specific unit.
+  listWaterEntries: ({ from, to }) => req(`/water?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  addWaterEntry: (entry) => req('/water', { method: 'POST', body: JSON.stringify(entry) }),
+  updateWaterEntry: (id, patch) => req(`/water/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteWaterEntry: (id) => req(`/water/${id}`, { method: 'DELETE' }),
+
   // Daily targets (versioned; latest wins)
   getTargets: () => req('/targets'),
   setTargets: (targets) =>
@@ -96,6 +103,8 @@ export const api = {
   getProfile: () => req('/profile'),
   setProfile: (profile) =>
     req('/profile', { method: 'PUT', body: JSON.stringify(profile) }),
+  appearance: () => req('/appearance'),
+  setAppearance: (accent) => req('/appearance', { method: 'PUT', body: JSON.stringify({ accent }) }),
 
   // Optional: a wearable-derived activity-level guess. May not exist on every
   // server build — callers must treat a failure the same as "no suggestion".
@@ -139,7 +148,7 @@ export const api = {
         bounds ? `&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}` : ''
       }`,
     ),
-  signals: () => req('/signals'),
+  signals: (ymd, bounds) => req(`/signals?date=${encodeURIComponent(ymd)}${bounds ? `&from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}` : ''}`),
 
   // Manual workout input — states today's planned session directly, for
   // anyone without a connected wearable (or whose device hasn't detected

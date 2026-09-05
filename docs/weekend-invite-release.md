@@ -1,0 +1,27 @@
+# Weekend private-invite release
+
+## Verified preparation
+
+The candidate base `ed7972bd6cd80368c51da38ef7d75fd08709778c` descends from live `f9f837410642a1c40bcba3ffa3e28a2aea249962`. History was shallow; deepening it proved ancestry. The local `origin/main` ref is stale, so use `git ls-remote origin refs/heads/main` and explicit fetched SHAs to compare. Do not overwrite the intervening Oathbearer changes.
+
+Production runs `/root/nutrition-tracker` on `hermes-vps-root`, with `docker-compose.app-only.yml` and existing Traefik. Do not launch the full compose stack or restart unrelated proxy/agent services. Its app container is `nutrition-tracker-app-1`. Preserve domain, callbacks, database, session secret and provider credentials.
+
+The targeted `qs@6.16.0` override clears both current qs advisories while retaining Express 4. `npm audit --omit=dev` returned zero. The full candidate schema and cleanup's eight SELECT queries/six-delete transaction were exercised against an isolated PostgreSQL 17 database. Empty-schema execution is not proof of production migration or populated backup restoration.
+
+Production read-only inspection found 17 users; all three Apple integration rows already have per-user ingest credentials. Preserve them; no forced re-pair is indicated. The legacy Apple environment token exists but is disabled by the existing multi-user guard. No global Oura fallback token is configured. All six ownerless parent/table counts were zero, so no cleanup deletion is currently necessary. Recheck at release. Neon reports PostgreSQL 18.6; VPS has 73 GB free, but its installed pg_dump is 16 and the postgres:18 image is not yet cached. Use a PostgreSQL 18 client for the full backup.
+
+## Release sequence
+
+1. Freeze edits, inspect all tracked/untracked changes, preserve user/Oathbearer work. Create a named release branch from the candidate, commit the complete reviewed result, and record its SHA. Run required full tests/build and independent review on that exact content. Fetch actual remote main and verify ancestry again before pushing the branch. Do not force-push main.
+2. On VPS, confirm clean repo/live version and record current container image ID. Tag/save the current image for rollback. Create a root-only release directory (`0700`); copy `.env` there (`0600`). Never print environment values. Determine database server major version through a query and use a compatible `pg_dump` (installed VPS binary is 16; use a matching PostgreSQL image/client if server is newer).
+3. Before touching schema, take a full custom-format PostgreSQL dump into that private directory. Verify its archive listing and restore into a disposable isolated database. Compare critical account/provider/log counts there. Keep the dump, checksum, old image, old SHA and env backup together. Do not transmit secrets or private rows into review output.
+4. Quiesce app writes during migration/ownerless cleanup. Apply `schema.sql` with `psql -v ON_ERROR_STOP=1` via the reviewed database connection. Preview ownerless counts; if nonzero, use the backup-gated cleanup script and retain its private receipt. Never assign unowned rows to a tester. See `ownerless-legacy-cleanup-runbook.md`; no ownerless writer may run between collection and deletion.
+5. Retain all existing secrets and configure `LEGAL_REVIEWED=true`, meaningful `LEGAL_VERSION=2026-09-04`, `ALPHA_INVITE_ONLY=true`, and exactly ten distinct randomly generated invite codes (32 random bytes each, base64url is suitable). Generate and store plaintext only in the host secret configuration/private operator delivery file. Never put codes in git, terminal output or URLs with query strings. Verify settings by presence/count only. Render declarations are an alternative-host blueprint; live VPS configuration remains `.env`.
+6. Build candidate image with its actual `GIT_SHA`; start only the app service through the app-only compose file, preserving the existing compose project and Traefik labels. Confirm `/api/version` equals the release SHA before marking deployed.
+7. Smoke-test unauthenticated legal/auth status, rejected invalid/reused invites, valid fragment invite signup, two-account data isolation, manual/automatic AFP eligibility, hydration CRUD/export/delete, Oura local-day freshness, and PWA install/camera flows. Test with dedicated disposable accounts; do not alter the user's account. Check service logs without exposing tokens. Distribute fragment-only `https://omnifuelapp.tech/#invite=<code>` links only after gates pass.
+
+## Rollback and capability limits
+
+Rollback app to saved image/SHA and saved env using the same app-only compose project. Additive schema may remain if old code tolerates it; database restore requires stopping writes and an explicit recovery plan for post-release data. Never blindly restore over new user data. Report exactly what was removed and the backup available if ownerless cleanup deleted rows.
+
+Garmin stays unavailable until its real partner credentials/payload contract are verified. Native Apple signing requires the actual team, bundle identifiers and physical-device evidence. Web/PWA testers can be invited independently, with unavailable capabilities represented honestly. Existing `verify_deploy.sh` assumes unauthenticated provider reads and may report authorization failures as configuration failures; interpret individual probes and use authenticated dedicated test sessions for account endpoints.

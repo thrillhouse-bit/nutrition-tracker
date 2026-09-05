@@ -15,7 +15,7 @@ struct RootView: View {
     var body: some View {
         TabView(selection: $selection) {
             WebAppScreen(onOpenSettings: { selection = .health })
-                .tabItem { Label("Fuel", systemImage: "fork.knife") }
+                .tabItem { Label("Body Current", systemImage: "fork.knife") }
                 .tag(Tab.fuel)
 
             ConnectionStatusView()

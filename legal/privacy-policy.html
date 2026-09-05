@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy Policy — omnifuelapp.tech OmniFuel Tech</title>
+<title>Privacy Policy — Body Current</title>
 <style>
   :root {
     --bg: #f7f7f5;
@@ -124,11 +124,10 @@
 <div class="wrap">
   <header class="doc">
     <h1>Privacy Policy</h1>
-    <p class="brand">OmniFuel Tech — a personal project operated at <a href="https://omnifuelapp.tech">omnifuelapp.tech</a></p>
-    <p class="updated">Last updated: <span class="ph">[EFFECTIVE DATE — fill in]</span></p>
+    <p class="brand">Body Current — a personal project operated at <a href="https://omnifuelapp.tech">omnifuelapp.tech</a></p>
   </header>
 
-  <p class="lead">This Privacy Policy explains what the OmniFuel Tech app (the &ldquo;app,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;) collects, how it is used, and the third-party services it relies on. The app is a small, personal-use project &mdash; not a company product &mdash; and this policy is written to be honest about exactly that.</p>
+  <p class="lead">This Privacy Policy explains what the Body Current app (the &ldquo;app,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;) collects, how it is used, and the third-party services it relies on. The app is a small, personal-use project &mdash; not a company product &mdash; and this policy is written to be honest about exactly that.</p>
 
   <div class="toc">
     <strong>Contents</strong>
@@ -143,23 +142,21 @@
       <li><a href="#retention">Retention &amp; deletion</a></li>
       <li><a href="#rights">Your rights</a></li>
       <li><a href="#children">Children&rsquo;s privacy</a></li>
-      <li><a href="#international">International users</a></li>
       <li><a href="#changes">Changes to this policy</a></li>
-      <li><a href="#contact">Contact</a></li>
     </ol>
   </div>
 
   <h2 id="scope">1. Introduction &amp; scope</h2>
-  <p>OmniFuel Tech is a personal-use web app for logging food and planning daily nutrition around the body, goal, and training information you choose to provide. You log food by scanning barcodes, photographing nutrition labels, searching, or entering it by hand, and the app shows your running macro and micronutrient totals against its Daily Fuel Plan. You can explicitly override a day&rsquo;s calculated target.</p>
-  <p>This policy covers the app and its supporting server (the &ldquo;service&rdquo;) operated under <a href="https://omnifuelapp.tech">omnifuelapp.tech</a>. The operator is <span class="ph">[LEGAL ENTITY / OWNER NAME]</span>. It does not cover the independent third-party services the app connects to, each of which has its own privacy policy (see <a href="#third-parties">Third parties &amp; sub-processors</a>).</p>
+  <p>Body Current is a personal-use web app for logging food and planning daily nutrition around the body, goal, and training information you choose to provide. You log food by scanning barcodes, photographing nutrition labels, searching, or entering it by hand, and the app shows your running macro and micronutrient totals against its Daily Fuel Plan. You can explicitly override a day&rsquo;s calculated target.</p>
+  <p>This policy covers the app and its supporting server (the &ldquo;service&rdquo;) operated under <a href="https://omnifuelapp.tech">omnifuelapp.tech</a>. It does not cover the independent third-party services the app connects to, each of which has its own privacy policy (see <a href="#third-parties">Third parties &amp; sub-processors</a>).</p>
 
   <h2 id="collected">2. Information we collect</h2>
   <p>The app is built around a single core of data you create by using it:</p>
   <ul>
     <li><strong>Account credentials, invitation, and legal acknowledgement</strong> &mdash; the email address and password you sign up with, plus the published legal-document version you accepted and the time you accepted it. During an invite-only alpha, the app also keeps a one-way cryptographic digest of the invitation code and its redemption time; the plaintext invitation is not retained. Your password is never stored in plain text: only a salted, one-way cryptographic hash of it is kept, and the app cannot recover or display your original password. Signing in issues a signed session token, held in an httpOnly browser cookie, that expires automatically after 30 days.</li>
-    <li><strong>Food log entries</strong> &mdash; the foods you log, how many servings, the time logged, and an optional meal label (breakfast/lunch/dinner/snack).</li>
+    <li><strong>Food and hydration log entries</strong> &mdash; the foods you log, how many servings, the time logged, and an optional meal label (breakfast/lunch/dinner/snack), plus the amount and time of any manual water intake you record.</li>
     <li><strong>Foods</strong> &mdash; the product and nutrition records the app saves and caches: name, brand, barcode (when present), serving size, calories, and macro/micronutrient values (protein, carbs, fat, fiber, sugar, sodium), plus the raw lookup response the app keeps for re-parsing and debugging. This lookup cache is shared across every account &mdash; it holds product data, not your personal food log.</li>
-    <li><strong>Daily Fuel Plan profile and safety context</strong> &mdash; the height, weight, age, everyday activity level, and goal required to calculate a plan; optional sex and body-fat percentage; the rate or custom energy adjustment you choose for a goal; and two optional self-reported safety flags: whether you are pregnant/postpartum and whether you have a current or past eating disorder or calorie restriction is not safe for you. These safety flags are used only to suppress calorie-deficit recommendations and show a caution; they are not used to diagnose a condition.</li>
+    <li><strong>Daily Fuel Plan profile and eligibility context</strong> &mdash; the height, weight, age, explicitly selected NASEM equation stratum and activity category, and goal strategy used to calculate a starting estimate. We also store one eligibility attestation and only the optional self-reported reason flags needed to disable automatic targets: pregnancy/lactation, kidney/renal disease, eating-disorder or restrictive-eating concern, clinician-prescribed diet, major illness, or glucose-lowering medication. These flags are used only to route the plan to manual or clinician-configured mode; they are not diagnoses, and we do not ask for a medical narrative.</li>
     <li><strong>Training plans and plan history</strong> &mdash; workouts you schedule, including date, sport, time, duration, intensity, optional distance, key/double-session/race/carb-loading choices, and notes; plus calculated daily targets, explanations, inputs, warnings, explicit overrides, and progress snapshots kept so a day remains explainable.</li>
     <li><strong>Body-weight records</strong> &mdash; weights you enter manually or choose to sync from Apple Health, including date and source, used for your displayed trend and Daily Fuel Plan.</li>
     <li><strong>Legacy target/profile records</strong> &mdash; an existing account may retain older versioned targets and profile values from releases before the Daily Fuel Plan became the single planning system. The app may copy missing compatible values into the current profile, but does not overwrite values you explicitly set there.</li>
@@ -181,7 +178,7 @@
     <li>To look up nutrition data for a barcode, a photographed label, or a search term.</li>
     <li>To record your food log and calculate daily totals against your current Daily Fuel Plan.</li>
     <li>To calculate and explain daily energy and macro targets from the profile, goal, planned/completed training, and explicit overrides you provide.</li>
-    <li>To apply the self-reported safety guardrails described above, including suppressing a calorie deficit in pregnancy/postpartum or eating-disorder/restriction-risk contexts.</li>
+    <li>To apply the self-reported eligibility guardrails described above, including disabling automatic targets when the ordinary healthy-adult estimate is not appropriate.</li>
     <li>To display energy balance, recovery/training context, and weight trends when you enter or connect the relevant data.</li>
     <li>To cache products you have already looked up so repeat scans are fast and work offline.</li>
     <li>To keep the service running, diagnose problems, and protect it from abuse.</li>
@@ -218,35 +215,29 @@
   <p><strong>An honest limitation:</strong> this is a personal project maintained by an individual, <em>not</em> a certified, audited, or enterprise-grade secure service. It carries no security certification (such as SOC 2 or ISO 27001) and makes no guarantee of absolute security. Depending on the deployment, stored tokens may not be encrypted at rest. You should weigh that before connecting sensitive accounts, and you should not treat the app as a system of record for health data. No method of transmission or storage is ever completely secure.</p>
 
   <h2 id="retention">8. Data retention &amp; deletion</h2>
-  <p>Your account&rsquo;s food log, targets, biometric profile, wearable connections, and legal-acceptance record are kept until you or we delete them. You are in control:</p>
+  <p>Your account&rsquo;s food and hydration logs, targets, biometric profile, wearable connections, and legal-acceptance record are kept until you or we delete them. You are in control:</p>
   <ul>
-    <li><strong>Delete individual log entries</strong> from within the app, at any time.</li>
+    <li><strong>Delete individual food or water log entries</strong> from within the app, at any time.</li>
     <li><strong>Disconnect Oura or Garmin</strong> in the app to delete its stored tokens and stop further access. You can invalidate an Apple Health companion token by regenerating it.</li>
     <li><strong>Delete synced wearable history</strong> from the Connections tab without deleting your manually entered food, workout, or weight records.</li>
-    <li><strong>Delete your whole account</strong> from the Connections tab. OmniFuel requires your current password and the exact account email before permanently deleting the account and everything tied to it &mdash; your log entries, targets, biometric profiles, plans, wearable connections and tokens, and synced wearable data. The action cannot be undone. A deleted account&rsquo;s signed sessions are rejected on every device. During an invite-only alpha, the one-way invitation digest and redemption time are retained without the deleted account ID solely to prevent that single-use code from being redeemed again.</li>
+    <li><strong>Delete your whole account</strong> from the Connections tab. Body Current requires your current password and the exact account email before permanently deleting the account and everything tied to it &mdash; your food and water log entries, targets, biometric profiles, plans, wearable connections and tokens, and synced wearable data. The action cannot be undone. A deleted account&rsquo;s signed sessions are rejected on every device. During an invite-only alpha, the one-way invitation digest and redemption time are retained without the deleted account ID solely to prevent that single-use code from being redeemed again.</li>
   </ul>
   <p>The shared product/nutrition lookup cache (barcode &amp; label data other users have already looked up) is not personal data tied to your account and is not deleted as part of an account-deletion request. The alpha invitation redemption digest described above is also retained without the deleted account ID solely to enforce one-time use.</p>
   <p>Some third parties (for example Anthropic, Oura, or Garmin) may retain logs of requests you make to them under their own retention policies; those are governed by their policies, not this one.</p>
 
   <h2 id="rights">9. Your rights</h2>
-  <p>Depending on where you live, you may have rights to access, correct, export, or delete your personal data, and to withdraw consent. You can view and edit your own log entries and biometric profile, delete individual log entries, connect or disconnect wearables, download a structured JSON copy of your account-owned data, and permanently delete your account from the Connections tab. The export includes your account record, nutrition log, targets, profiles, plans, connection metadata, and wearable history; it excludes passwords, session credentials, wearable access/refresh tokens, the Apple companion token, and the shared product lookup cache. For anything you cannot do yourself, contact us at the address below. You may withdraw wearable authorization at any time without affecting the rest of the app.</p>
+  <p>Depending on where you live, you may have rights to access, correct, export, or delete your personal data, and to withdraw consent. You can view and edit your own log entries and biometric profile, delete individual log entries, connect or disconnect wearables, download a structured JSON copy of your account-owned data, and permanently delete your account from the Connections tab. The export includes your account record, nutrition log, targets, profiles, plans, connection metadata, and wearable history; it excludes passwords, session credentials, wearable access/refresh tokens, the Apple companion token, and the shared product lookup cache. You may withdraw wearable authorization at any time without affecting the rest of the app.</p>
 
   <h2 id="children">10. Children&rsquo;s privacy</h2>
   <p>The app is a personal tool that is not directed to children. It is not intended for use by anyone under 13 (or under 16 where a higher age of digital consent applies), and we do not knowingly collect personal information from children. If you believe a child has provided data through an operator-run instance, contact us and we will delete it.</p>
 
-  <h2 id="international">11. International users</h2>
-  <p>The app may be hosted and its data processed in <span class="ph">[DATA HOSTING LOCATION / COUNTRY — fill in or generalize]</span>, and the third-party services it uses (including Anthropic, Oura, and Garmin) may process data in the United States or other countries. If you use the app from outside that location, you understand your data may be transferred to and processed in countries whose data-protection laws differ from your own. Use the app only if you are comfortable with that.</p>
-
-  <h2 id="changes">12. Changes to this policy</h2>
-  <p>This policy may be updated from time to time. Material changes will be reflected by updating the &ldquo;Last updated&rdquo; date at the top of this page. The current version always lives at <a href="https://omnifuelapp.tech/privacy">https://omnifuelapp.tech/privacy</a>. Continued use of the app after a change means you accept the updated policy.</p>
-
-  <h2 id="contact">13. Contact</h2>
-  <p>Questions, requests, or deletion inquiries: <a href="mailto:privacy@omnifuelapp.tech">privacy@omnifuelapp.tech</a>. The operator of record is <span class="ph">[LEGAL ENTITY / OWNER NAME]</span>.</p>
+  <h2 id="changes">11. Changes to this policy</h2>
+  <p>This policy may be updated from time to time. The current version always lives at <a href="https://omnifuelapp.tech/privacy">https://omnifuelapp.tech/privacy</a>. Continued use of the app after a change means you accept the updated policy.</p>
 
   <footer class="doc">
     <a href="https://omnifuelapp.tech/terms">Terms of Service</a>
     <a href="https://omnifuelapp.tech">omnifuelapp.tech</a>
-    <p style="margin-top:12px;">&copy; <span class="ph">[YEAR]</span> <span class="ph">[LEGAL ENTITY / OWNER NAME]</span>. A personal project.</p>
+    <p style="margin-top:12px;">Body Current is a personal project.</p>
   </footer>
 </div>
 </body>

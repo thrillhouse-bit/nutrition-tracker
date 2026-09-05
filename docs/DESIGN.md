@@ -109,7 +109,26 @@ codebase, not a new one invented for this card. `strokeLinecap="butt"` (not
 `round`) keeps the arc's ends sharp even on this one circular shape. It's
 `aria-hidden` — the numeral drawn on top of it is what a screen reader gets,
 same division of labor as `Meter`/`SegmentBar`'s bars vs. the numerals next
-to them elsewhere in this file.
+to them elsewhere in this file. The arc uses `var(--color-cobalt)`, the
+runtime brand token, so it follows the selected account accent without
+changing semantic status colors.
+
+### Body Current identity and account accents
+
+Body Current uses the refined flowing-current mark as its production identity:
+the raster master at `public/body-current-master.png` is the sole source for
+the PWA, iOS, and Connect IQ icon sizes. The mark carries the product's quiet
+through-line—body signals becoming a readable current—without introducing a
+second decorative system.
+
+An authenticated account may choose Cobalt (default), Emerald, or Ruby. The
+canonical palette map is `src/lib/accentTheme.js`; it applies only the brand
+family (`--color-cobalt`, ink, soft wash, on-accent) plus the three progress
+gradient stops. Shared components consume those runtime variables, including
+the SegmentBar, Dial, and Insights SVG highlights. Mist, Sand, Berry, Good,
+Warn, and Alert remain fixed semantic/context tokens: changing an account
+accent must never reclassify recovery, training, warning, or destructive
+meaning.
 
 The dial's own color never encodes good/bad — it's the same cobalt at any
 score. All of the "is this good" meaning rides on the band WORD next to it

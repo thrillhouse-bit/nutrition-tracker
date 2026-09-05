@@ -17,6 +17,7 @@ import Insights from './components/Insights.jsx'
 import Connections from './components/Connections.jsx'
 import Auth, { LegalReconsent } from './components/Auth.jsx'
 import Onboarding from './components/Onboarding.jsx'
+import { applyAccentTheme } from './lib/accentTheme.js'
 
 const ADD_OPTIONS = [
   { key: 'scan', label: 'Scan barcode', hint: 'Packaged groceries' },
@@ -83,6 +84,7 @@ export default function App() {
   // rely on the cookie, not on `user`, so they don't need to be re-wired.
   const [authState, setAuthState] = useState('loading')
   const [user, setUser] = useState(null)
+  const [accent, setAccent] = useState('cobalt')
   // null = not yet checked, true = canonical profile ready, false = first-run
   // gate. AFP is the only profile that can unlock daily targets.
   const [planReady, setPlanReady] = useState(null)
@@ -114,12 +116,15 @@ export default function App() {
     return () => { alive = false }
   }, [authState, planCheckKey])
 
+  useEffect(() => { if (authState !== 'in') return; let alive = true; api.appearance().then(({ accent: saved }) => { if (alive) setAccent(applyAccentTheme(saved)) }).catch(() => { if (alive) setAccent(applyAccentTheme('cobalt')) }); return () => { alive = false } }, [authState, user?.id])
+
   const clearSignedInState = async ({ deleteLocal = false } = {}) => {
     if (deleteLocal && user?.id) purgeAccountStorage(user.id)
     await purgeLegacyPrivateCaches()
     setUser(null)
     setAuthState('out')
     setPlanReady(null)
+    setAccent(applyAccentTheme('cobalt'))
     setEntries([])
     setTodayData(null)
     setPending([])
@@ -440,7 +445,7 @@ export default function App() {
   if (planReady === 'error') {
     return (
       <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-4 py-10">
-        <ErrorNote>OmniFuel could not verify your daily plan setup. Your account is still signed in, but targets are hidden until this check succeeds.</ErrorNote>
+        <ErrorNote>Body Current could not verify your daily plan setup. Your account is still signed in, but targets are hidden until this check succeeds.</ErrorNote>
         <Button variant="outline" className="mt-4" onClick={() => { setPlanReady(null); setPlanCheckKey((key) => key + 1) }}>Try again</Button>
       </div>
     )
@@ -540,7 +545,7 @@ export default function App() {
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}
         {tab === 'plan' && <Plan {...shared} onChanged={bump} />}
         {tab === 'insights' && <Insights refreshKey={refreshKey} />}
-        {tab === 'connections' && <Connections refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} onAccountDeleted={accountDeleted} />}
+        {tab === 'connections' && <Connections key={`connections-${user?.id || 'none'}`} refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} onAccountDeleted={accountDeleted} accent={accent} sessionKey={user?.id} onAccentChange={(next) => setAccent(applyAccentTheme(next))} />}
       </main>
 
       {/* Add-food sheet. The confirm step owns its own header (the design shows

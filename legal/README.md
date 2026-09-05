@@ -1,6 +1,6 @@
 # Legal pages (TEMPLATES — review before use)
 
-Two self-contained, hostable HTML pages for the OmniFuel Tech app, branded
+Two self-contained, hostable HTML pages for the Body Current app, branded
 for **omnifuelapp.tech**:
 
 - `privacy-policy.html`
@@ -11,12 +11,11 @@ Facts + USDA lookups; Claude vision label OCR; Oura and, later, Garmin wearable
 integration via OAuth). Each is a single `<!doctype html>` file with all CSS
 inline — no external resources, no build step — and is mobile-friendly.
 
-> **These are TEMPLATES, not legal advice.** They were drafted to be a
+> **These documents are not legal advice.** They were drafted to be a
 > reasonable, honest starting point intended to support Oura/Garmin review for
 > a public Privacy Policy and Terms of Service URL.
-> They have **not** been reviewed by a lawyer. Read them, configure the
-> operator-specific values below, and get professional review before relying on them —
-> especially the health-data, liability, and governing-law sections.
+> Read them and get professional review before relying on them — especially
+> the health-data and liability sections.
 
 ## Where to host
 
@@ -32,34 +31,14 @@ The Express server owns `/privacy` and `/terms`. It renders these source
 templates only when the legal launch gate is complete; otherwise both routes
 return 503 and new-account signup remains disabled.
 
-## Contact inbox
-
-Set `LEGAL_CONTACT_EMAIL` to an inbox that actually exists and is monitored (a
-real mailbox or forwarding alias). The server substitutes it into both link
-destinations and visible contact text.
-
 ## Required launch configuration
 
-Set these environment variables; do not edit guesses directly into the HTML:
-
-- `LEGAL_EFFECTIVE_DATE` — the "Last updated" date near the top of **both**
-  pages (e.g. `August 24, 2026`).
-- `LEGAL_ENTITY_NAME` — the person or entity operating the app
-  (appears in both pages: intro/scope, IP, liability, indemnification, contact,
-  and footer copyright). Do not leave this generic — reviewers expect a named
-  operator of record.
-- `LEGAL_GOVERNING_JURISDICTION` — the state/country whose law governs the Terms
-  and where disputes are heard (Terms §12). Pick where the operator is based.
-- `LEGAL_DATA_HOSTING_LOCATION` — where the app
-  and its database are hosted, for the Privacy Policy's international-users
-  section (§11). Fill in the real region, or generalize the sentence if hosting
-  moves around.
-- `LEGAL_YEAR` — the copyright year in each page's footer.
-- `LEGAL_CONTACT_EMAIL` — the monitored privacy/deletion inbox.
-- `LEGAL_REVIEWED=true` — an explicit operator acknowledgement after review.
-
-The gate rejects empty, placeholder-like, malformed email/year/date values.
-The renderer also refuses to publish if any bracketed template marker remains.
+Set both a meaningful `LEGAL_VERSION` (for example, `2026-09-04`) and
+`LEGAL_REVIEWED=true` only after reviewing these documents. The explicit
+version is stored with each acceptance and establishes the re-consent boundary
+when either document changes; the acknowledgement enables signup and the
+public `/privacy` and `/terms` routes. The renderer refuses to publish if any
+bracketed template marker remains.
 
 ## Notes on accuracy (why the pages say what they say)
 

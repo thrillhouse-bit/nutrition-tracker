@@ -71,6 +71,79 @@ describe('composeSignals with no credentials → demo, per-metric provenance', (
   })
 })
 
+describe('Oura current-day sync freshness', () => {
+  const store = {
+    getIntegration: async () => ({ enabled: true, demo: false, settings: {} }),
+    listOuraAccounts: async () => [],
+    listGarminAccounts: async () => [],
+    getGarminDaily: async () => null,
+    listAppleSignals: async () => [],
+    updateOuraTokens: async () => {},
+  }
+
+  beforeEach(() => {
+    process.env.OURA_TOKEN = 'test-token'
+    process.env.OURA_LEGACY_USER_ID = '1'
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      const parsed = new URL(String(url))
+      const path = parsed.pathname
+      const day = parsed.searchParams.get('start_date') || '2026-09-04'
+      const data = path.includes('/daily_readiness') ? { data: [{ day, score: 81 }] }
+        : path.includes('/sleep') && !path.includes('daily_sleep') ? { data: [] }
+          : path.includes('/daily_sleep') ? { data: [] }
+            : { data: [{ day, total_calories: 2300, active_calories: 500, steps: 7000 }] }
+      return { ok: true, status: 200, json: async () => data }
+    }))
+  })
+
+  afterEach(() => {
+    delete process.env.OURA_TOKEN
+    delete process.env.OURA_LEGACY_USER_ID
+    vi.unstubAllGlobals()
+  })
+
+  it('never fetches or exposes a legacy owner token for another account or an unbound token', async () => {
+    const other = await composeSignals(store, new Date(), 2)
+    expect(other.readiness).toBeFalsy()
+    expect(fetch).not.toHaveBeenCalled()
+    delete process.env.OURA_LEGACY_USER_ID
+    const unbound = await composeSignals(store, new Date(), 1)
+    expect(unbound.readiness).toBeFalsy()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('prefers the requesting users OAuth token over their bound legacy token', async () => {
+    vi.stubEnv('OURA_CLIENT_ID', 'test-client')
+    vi.stubEnv('OURA_CLIENT_SECRET', 'test-secret')
+    vi.stubEnv('OURA_REDIRECT_URI', 'https://example.test/callback')
+    try {
+      const oauthStore = { ...store, listOuraAccounts: async () => [{ id: 9, access_token: 'owned-oauth', expires_at: '2099-01-01T00:00:00Z' }], listOuraWorkouts: async () => [] }
+      await composeSignals(oauthStore, new Date(), 1)
+      expect(fetch).toHaveBeenCalled()
+      for (const [, options] of fetch.mock.calls) expect(options.headers.Authorization).toBe('Bearer owned-oauth')
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('uses successful fetch time for a late-day current Oura read while retaining measurement provenance', async () => {
+    const now = new Date('2026-09-04T23:30:00-07:00')
+    // The host may run in UTC while this person is still on Sep 4. The
+    // caller-local requested day, rather than server-local `now`, controls
+    // both the Oura day query and whether this is eligible for freshness.
+    const signals = await composeSignals(store, now, 1, new Date('2026-09-04T12:00:00-07:00'), { isRequestedCurrentDay: true })
+    expect(signals.readiness).toMatchObject({ provider: 'oura', freshness: 'fresh', recorded_at: '2026-09-04T07:00:00', fetched_at: now.toISOString(), freshness_at: now.toISOString() })
+    expect(signals.expenditure.freshness).toBe('fresh')
+  })
+
+  it('does not make a historical Oura measurement current merely because it was fetched now', async () => {
+    const now = new Date('2026-09-04T23:30:00-07:00')
+    const signals = await composeSignals(store, now, 1, new Date('2026-09-01T12:00:00-07:00'))
+    expect(signals.readiness.recorded_at).toBe('2026-09-01T07:00:00')
+    expect(signals.readiness.fetched_at).toBe(now.toISOString())
+    expect(signals.readiness.freshness_at).toBeNull()
+    expect(signals.readiness.freshness).toBe('unavailable')
+  })
+})
+
 describe('composeSignals: manual workout input overrides any wearable source', () => {
   const baseStore = {
     getIntegration: async () => ({ enabled: true, demo: true, settings: {} }),

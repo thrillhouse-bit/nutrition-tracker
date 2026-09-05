@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fmt, num, kgToLb, lbToKg } from '../lib/nutrition.js'
+import { fmt, num, kgToLb, lbToKg, ymd, dayBounds } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
 import { Button, Card, EmptyState, ErrorNote, Spinner, Stat, StatusMark, TextButton, inputCls } from './ui.jsx'
 
@@ -74,13 +74,13 @@ function EnergyChart({ days, avg, showAvg, target }) {
   return (
     <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
       {targetY != null && (
-        <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="#1F35C4" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
+        <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="var(--color-cobalt)" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
       )}
       {showAvg && (
         <line x1="0" y1={avgY} x2="320" y2={avgY} stroke="#121210" strokeOpacity="0.28" strokeWidth="1" strokeDasharray="3 4" />
       )}
       <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
     </svg>
   )
 }
@@ -110,9 +110,9 @@ function ProteinChart({ days, target }) {
   const targetY = y(target).toFixed(1)
   return (
     <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
-      <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="#1F35C4" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
+      <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="var(--color-cobalt)" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
       <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
     </svg>
   )
 }
@@ -132,7 +132,7 @@ function ReadinessChart({ points }) {
   return (
     <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
       <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
     </svg>
   )
 }
@@ -164,7 +164,7 @@ function WeightChart({ points, toDisplay }) {
         <circle key={i} cx={x(i)} cy={y(v)} r="2" fill="#121210" fillOpacity="0.25" />
       ))}
       <polyline points={trendPts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="#1F35C4" />
+      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
     </svg>
   )
 }
@@ -198,7 +198,7 @@ function TrainingLoadChart({ points }) {
             y={(BOT - h).toFixed(1)}
             width={barW.toFixed(1)}
             height={h.toFixed(1)}
-            fill={i === n - 1 ? '#1F35C4' : '#EACD91'}
+            fill={i === n - 1 ? 'var(--color-cobalt)' : '#EACD91'}
           />
         )
       })}
@@ -238,10 +238,18 @@ export default function Insights({ refreshKey }) {
   // change, same as Plan.jsx's refreshKey dependency).
   useEffect(() => {
     let alive = true
-    api.signals()
-      .then((r) => alive && setSignals(r?.signals || null))
-      .catch(() => alive && setSignals(null))
-    return () => { alive = false }
+    const load = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      const now = new Date()
+      api.signals(ymd(now), dayBounds(now))
+        .then((r) => alive && setSignals(r?.signals || null))
+        .catch(() => alive && setSignals(null))
+    }
+    load()
+    const timer = setInterval(load, 60000)
+    const onVisibility = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
   }, [refreshKey])
 
   // units_pref decides display only — the API and stored data are always kg.

@@ -180,7 +180,7 @@ struct FuelComplication: Widget {
         StaticConfiguration(kind: kind, provider: FuelProvider()) { entry in
             FuelComplicationView(entry: entry)
         }
-        .configurationDisplayName("Fuel")
+        .configurationDisplayName("Body Current")
         .description("Your next fueling action and today's remaining calories/protein.")
         .supportedFamilies([.accessoryRectangular, .accessoryCircular, .accessoryInline])
     }

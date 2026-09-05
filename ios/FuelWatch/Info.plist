@@ -21,7 +21,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fuel</string>
+	<string>Body Current</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -44,6 +44,6 @@
 	<!-- Links this watch app to its iPhone companion so WatchConnectivity has a
 	     counterpart. TODO: set to the iOS (phone) app's bundle identifier. -->
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.example.fuel</string>
+	<string>com.example.fuel.companion</string>
 </dict>
 </plist>

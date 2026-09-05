@@ -45,6 +45,9 @@
   --color-cobalt-ink: #16289b;   /* hover / pressed */
   --color-oncobalt: #ffffff;
   --color-cobalt-soft: #e9ecf9;  /* rare pale cobalt wash */
+  --color-progress-start: #e9ecf9;
+  --color-progress-mid: #7185f6;
+  --color-progress-end: #16289b;
 
   /* Context swatches (pale, semantic only) — design v2 names in comments.
      Recovery = Mist (sleep/readiness), Training = Sand (workout/timing). The

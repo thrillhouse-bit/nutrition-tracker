@@ -234,25 +234,14 @@ export function Meter({ value, target, over, height = 3, className = '' }) {
 
 // Segmented progress — N cells, `filled` of them inked, a fixed-width language
 // for the day's calorie budget.
-// Interpolates between two "#rrggbb" colors at t in [0, 1].
-function mixHex(a, b, t) {
-  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16))
-  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16))
-  const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * t))
-  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`
-}
-
 // Design note (owner, 26 Aug 2026): this ONE bar is a deliberate, scoped
-// exception to "cobalt as the single accent" above — each filled segment
-// shades from pale cobalt to full cobalt-ink by its position in the FULL
+// exception to the single accent above — each filled segment shades from the
+// selected accent's pale wash to its ink by its position in the FULL
 // bar (not the filled count), so a given segment's color is stable through
 // the day: early on, only a few pale segments show; by end of day the same
 // positions read progressively darker. A ratio, not a literal color name,
 // still drives every other reading of progress (Meter, etc.) — this is the
 // one place the value itself is also encoded as a gradient.
-const SEGMENT_LIGHT = '#e9ecf9' // --color-cobalt-soft
-const SEGMENT_DARK = '#16289b' // --color-cobalt-ink
-
 export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' }) {
   const n = Math.max(0, Math.min(total, Math.round(filled)))
   return (
@@ -261,7 +250,12 @@ export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' 
         <div
           key={i}
           className={i < n ? '' : 'bg-track'}
-          style={i < n ? { flex: 1, backgroundColor: mixHex(SEGMENT_LIGHT, SEGMENT_DARK, total > 1 ? i / (total - 1) : 0) } : { flex: 1 }}
+          style={i < n ? {
+            flex: 1,
+            backgroundImage: 'linear-gradient(90deg, var(--color-progress-start), var(--color-progress-mid), var(--color-progress-end))',
+            backgroundSize: `${total * 100}% 100%`,
+            backgroundPosition: `${total > 1 ? (i / (total - 1)) * 100 : 0}% 0`,
+          } : { flex: 1 }}
         />
       ))}
     </div>
@@ -279,8 +273,7 @@ export function SegmentBar({ total = 15, filled = 0, height = 7, className = '' 
 // Purely decorative (aria-hidden) — the numeral rendered on top by the
 // caller is what a screen reader gets, same division of labor as Meter/
 // SegmentBar's bars vs. the numerals beside them elsewhere in this file.
-// Raw hex (not var(--color-...)) matches Insights.jsx's own inline SVG charts
-// (#1F35C4/#121210) rather than inventing a new pattern for this one shape.
+// The arc reads from the runtime accent token, matching the inline SVG charts.
 // strokeLinecap 'butt' (not 'round') keeps the arc's ends sharp, matching the
 // design's sharp-rectangle ethos even on this one circular exception.
 export function Dial({ value, max = 100, size = 64, thickness = 6, className = '' }) {
@@ -296,7 +289,7 @@ export function Dial({ value, max = 100, size = 64, thickness = 6, className = '
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="#1F35C4"
+          stroke="var(--color-cobalt)"
           strokeWidth={thickness}
           strokeLinecap="butt"
           strokeDasharray={`${c} ${c}`}

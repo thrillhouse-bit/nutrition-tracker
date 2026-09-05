@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, usdaConfigured } from './lookup.js'
 import { searchFoods } from './foodSearch/index.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
-import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
+import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, WaterEntryCreateSchema, WaterEntryPatchSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
 import {
   ouraConfigured,
   getToken as ouraToken,
@@ -55,7 +55,7 @@ import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
 import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd, withCanonicalPlannedWorkout } from './afp/plan.js'
-import { ensureCanonicalAfpProfile, isAfpProfileReady } from './afp/migration.js'
+import { automaticPlanEligibility, ensureCanonicalAfpProfile, isAfpProfileReady, normalizeAfpGoal } from './afp/migration.js'
 import { mapHealthAutoExportPayload } from './appleHealthAutoExport.js'
 import { registerAgentRoutes } from './agent.js'
 import { legalStatus, renderLegalDocument, renderLegalUnavailablePage } from './legal.js'
@@ -69,6 +69,15 @@ import {
 } from './authRateLimit.js'
 import { securityHeaders } from './securityHeaders.js'
 import { validateRpgSavePutBody, validateRpgSaveRestoreBody } from './rpgSave.js'
+
+// Database rows remain snake_case; expose stable camelCase trace aliases to
+// API consumers without losing the raw migration-compatible fields.
+const afpTrace = (row) => ({
+  ...row,
+  calculatedAt: row?.calculated_at ?? null,
+  inputSnapshotHash: row?.input_snapshot_hash ?? null,
+  scienceVersion: row?.science_version ?? row?.plan?.scienceVersion ?? null,
+})
 
 const app = express()
 app.disable('x-powered-by')
@@ -171,8 +180,8 @@ app.get('/api/version', (req, res) => {
   res.json({ sha: process.env.GIT_SHA || 'unknown' })
 })
 
-// Public legal capability and documents. Missing operator/jurisdiction/review
-// configuration fails closed: never publish templates with placeholders and
+// Public legal capability and documents. A withdrawn review acknowledgement
+// fails closed: never publish templates with placeholders and
 // never silently route these URLs into the authenticated SPA shell.
 app.get('/api/legal/status', (req, res) => {
   const status = legalStatus()
@@ -236,6 +245,11 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' })
   const inviteCodeDigest = alpha.inviteRequired ? configuredInviteDigest(req.body?.inviteCode) : null
   if (alpha.inviteRequired && !inviteCodeDigest) throw inviteUnavailableError()
+  // Never make a new alpha tester the plausible owner of pre-account data.
+  // Deploy operators must run the explicit cleanup and verify zero first.
+  if (alpha.inviteRequired && typeof store.countUnownedLegacyRows === 'function' && await store.countUnownedLegacyRows() > 0) {
+    return res.status(503).json({ error: 'Signup is temporarily unavailable while legacy data is secured.' })
+  }
   // Preserve the established 409 in ordinary open-signup mode. In invite
   // mode the atomic create below maps BOTH a used code and a duplicate email
   // to the invitation response so possession of a code cannot become an
@@ -250,15 +264,6 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
   } catch (err) {
     if (alpha.inviteRequired && (err.status === 409 || err.code === 'INVITE_UNAVAILABLE')) throw inviteUnavailableError()
     throw err
-  }
-  // This box may already hold data logged before multi-user accounts existed
-  // (entries, targets, connected integrations with no owner). The first
-  // person to sign up on it is that data's only plausible owner — there's no
-  // password to invent for an auto-created account, so migration waits for a
-  // real signup rather than happening at boot. Only the very first account
-  // qualifies: a second signup must never inherit the first user's history.
-  if ((await store.countUsers()) === 1) {
-    await store.migrateLegacyDataToUser(user.id)
   }
   setSessionCookie(res, user.id)
   res.status(201).json({ user: { id: user.id, email: user.email, legalAcceptanceRequired: false } })
@@ -376,7 +381,7 @@ app.use('/api', requireAuthRouter)
 requireAuthRouter.get('/account/export', asyncH(async (req, res) => {
   const data = await store.exportUserData(req.userId)
   const day = new Date().toISOString().slice(0, 10)
-  res.set('Content-Disposition', `attachment; filename="omnifuel-export-${day}.json"`)
+  res.set('Content-Disposition', `attachment; filename="body-current-export-${day}.json"`)
   res.json(data)
 }))
 
@@ -597,6 +602,30 @@ requireAuthRouter.delete('/entries/:id', asyncH(async (req, res) => {
   res.status(204).end()
 }))
 
+// --- hydration log ---------------------------------------------------------
+// Water is manually authored account data. It is intentionally not passed to
+// AFP's target engine: no wearable-derived or generic target is presented as
+// a personalized hydration/sodium prescription.
+requireAuthRouter.get('/water', asyncH(async (req, res) => {
+  const { from, to } = req.query
+  if (!from || !to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || Date.parse(from) >= Date.parse(to)) return res.status(400).json({ error: 'Provide valid ascending from and to timestamps.' })
+  res.json({ entries: await store.listWaterEntries(req.userId, { from, to }) })
+}))
+requireAuthRouter.post('/water', validateBody(WaterEntryCreateSchema), asyncH(async (req, res) => {
+  const entry = await store.addWaterEntry(req.userId, req.body)
+  res.status(201).json({ entry })
+}))
+requireAuthRouter.patch('/water/:id', validateBody(WaterEntryPatchSchema), asyncH(async (req, res) => {
+  const entry = await store.updateWaterEntry(req.userId, req.params.id, req.body)
+  if (!entry) return res.status(404).json({ error: 'Water entry not found.' })
+  res.json({ entry })
+}))
+requireAuthRouter.delete('/water/:id', asyncH(async (req, res) => {
+  const ok = await store.deleteWaterEntry(req.userId, req.params.id)
+  if (!ok) return res.status(404).json({ error: 'Water entry not found.' })
+  res.status(204).end()
+}))
+
 // --- daily targets --------------------------------------------------------
 // hasTargets tells the client whether these are real, chosen numbers or the
 // silent DEFAULT_TARGETS fallback — the signal the onboarding gate uses to
@@ -614,9 +643,12 @@ requireAuthRouter.put('/targets', validateBody(TargetsSchema), asyncH(async (req
 // --- biometric profile + calculated baseline -------------------------------
 const PROFILE_ENUMS = {
   sex: ['male', 'female'],
-  activity_level: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
-  goal: ['maintain', 'lose_fat', 'build_muscle', 'endurance'],
+  // Legacy /profile remains a compatibility surface only; AFP uses the
+  // separately validated /afp/profile contract.
+  activity_level: ['inactive', 'low', 'active', 'very_active', 'sedentary', 'light', 'moderate'],
+  goal: ['maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance', 'maintain', 'lose_fat', 'build_muscle', 'endurance'],
   units_pref: ['imperial', 'metric'],
+  accent: ['cobalt', 'emerald', 'ruby'],
 }
 // height_cm/weight_kg/age_years — canonical storage is always metric; the
 // client converts imperial input before it reaches this endpoint.
@@ -631,7 +663,7 @@ function validateProfilePatch(body = {}) {
   for (const [key, allowed] of Object.entries(PROFILE_ENUMS)) {
     if (!(key in body)) continue
     const v = body[key]
-    if (v === null && key !== 'units_pref') { patch[key] = null; continue } // units_pref always has a value
+    if (v === null && key !== 'units_pref' && key !== 'accent') { patch[key] = null; continue }
     if (!allowed.includes(v)) return { error: `${key} must be one of: ${allowed.join(', ')}${key === 'units_pref' ? '' : ', or null'}.` }
     patch[key] = v
   }
@@ -665,6 +697,8 @@ requireAuthRouter.put('/profile', asyncH(async (req, res) => {
   if (computedBaseline) await store.setTargets(req.userId, computedBaseline)
   res.json({ profile, computedBaseline })
 }))
+requireAuthRouter.get('/appearance', asyncH(async (req, res) => { const { accent } = await store.getProfile(req.userId); res.json({ accent: PROFILE_ENUMS.accent.includes(accent) ? accent : 'cobalt' }) }))
+requireAuthRouter.put('/appearance', asyncH(async (req, res) => { const accent = req.body?.accent; if (!PROFILE_ENUMS.accent.includes(accent)) return res.status(400).json({ error: 'accent must be one of: cobalt, emerald, ruby.' }); const profile = await store.setProfile(req.userId, { accent }); res.json({ accent: profile.accent }) }))
 
 // Suggests an activity_level from recent step history — a SUGGESTION only,
 // never written to the profile itself; the client decides whether to apply
@@ -694,16 +728,11 @@ requireAuthRouter.get('/profile/activity-suggestion', asyncH(async (req, res) =>
 
 // --- wearables: Oura ------------------------------------------------------
 
-// Resolve a usable access token for THIS user: a legacy OURA_TOKEN wins (it's
-// a single static env-var PAT, so it's necessarily shared across every user
-// on this box — the same tradeoff a personal-use single-account token always
-// had), else that user's own connected OAuth account (refreshing if near
-// expiry).
+// Resolve only this user's OAuth account, or an explicitly owner-bound
+// legacy token when no OAuth account exists. Never share a global token.
 async function resolveOuraToken(userId) {
-  if (ouraConfigured()) return ouraToken()
-  if (!ouraOAuthConfigured()) return null
-  const accounts = await store.listOuraAccounts(userId)
-  if (!accounts.length) return null
+  const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : []
+  if (!accounts.length) return ouraConfigured(userId) ? ouraToken(userId) : null
   const primary = accounts[0]
   return ouraValidAccessToken(primary, (t) => store.updateOuraTokens(userId, primary.id, t))
 }
@@ -716,7 +745,6 @@ async function resolveOuraToken(userId) {
 // storage," not an error — readiness/sleep/activity have always worked
 // without an account row, and continue to.
 async function resolveOuraAccountId(userId) {
-  if (ouraConfigured()) return null
   if (!ouraOAuthConfigured()) return null
   const accounts = await store.listOuraAccounts(userId)
   return accounts[0]?.id ?? null
@@ -958,7 +986,7 @@ requireAuthRouter.get('/oura/accounts', asyncH(async (req, res) => {
   const accounts = (await store.listOuraAccounts(req.userId)).map((a) => ({
     id: a.id, label: a.label, expires_at: a.expires_at, created_at: a.created_at,
   }))
-  res.json({ oauth: ouraOAuthConfigured(), legacy: ouraConfigured(), accounts })
+  res.json({ oauth: ouraOAuthConfigured(), legacy: ouraConfigured(req.userId), accounts })
 }))
 
 requireAuthRouter.delete('/oura/accounts/:id', asyncH(async (req, res) => {
@@ -1221,10 +1249,14 @@ async function planInfluence(userId) {
 
 function adaptiveRationale(plan) {
   if (!plan?.ok) return []
+  if (plan.source === 'manual') return [{
+    factor: 'manual', effect: 'Manual or clinician-configured targets',
+    detail: 'These targets were entered for this account and were not generated or adjusted by Body Current.', source: 'profile', demo: false,
+  }]
   const items = [{
     factor: 'baseline',
-    effect: `${Math.round(plan.energy.baselineNonTraining)} kcal baseline`,
-    detail: `Resting energy plus your non-training activity establishes the day before training and goal adjustments.`,
+    effect: `${Math.round(plan.energy.baseline)} kcal maintenance estimate`,
+    detail: `NASEM's selected adult EER stratum and activity category establish this population maintenance estimate; wearable calories are not added.`,
     source: 'profile',
     demo: false,
   }]
@@ -1256,7 +1288,7 @@ async function buildPlan(userId, date, nowDate, bounds = null) {
   const plannedRows = await store.getPlannedWorkoutsForDay(userId, date)
   // Real Oura/Garmin/Apple data reflects the viewed day. The canonical planned
   // session is then layered in only when no real completed workout exists.
-  let signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`))
+  let signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay: requestedDayIsCurrent(date, bounds, nowDate) })
   signals = withCanonicalPlannedWorkout(signals, plannedRows, nowDate)
   const influence = await planInfluence(userId)
   return {
@@ -1277,7 +1309,10 @@ async function buildPlan(userId, date, nowDate, bounds = null) {
 async function todayComposite(userId, date, nowDate, bounds = null) {
   const plan = await buildPlan(userId, date, nowDate, bounds)
   const { from, to } = bounds || dayRange(date)
-  const entries = await store.listEntries(userId, { from, to })
+  const [entries, waterEntries] = await Promise.all([
+    store.listEntries(userId, { from, to }),
+    store.listWaterEntries(userId, { from, to }),
+  ])
   const intake = sumIntake(entries)
   const nowHour = localHourForRequest(nowDate, bounds)
   const recommendation = plan.adaptive?.ok ? computeRecommendation({
@@ -1289,7 +1324,9 @@ async function todayComposite(userId, date, nowDate, bounds = null) {
   }
   return {
     date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale,
-    signals: plan.signals, recommendation, entries, generatedAt: nowDate.toISOString(),
+    signals: plan.signals, recommendation, entries,
+    hydration: { entries: waterEntries, total_ml: waterEntries.reduce((sum, entry) => sum + (Number(entry.amount_ml) || 0), 0) },
+    generatedAt: nowDate.toISOString(),
     plan: plan.adaptive, profileReady: plan.profileReady, frozen: plan.frozen,
   }
 }
@@ -1428,12 +1465,14 @@ requireAuthRouter.delete('/plan/workout', asyncH(async (req, res) => {
 // Older target/plan routes remain temporarily as compatibility adapters, but
 // Today and the visible Plan tab both consume this engine.
 requireAuthRouter.get('/afp/profile', asyncH(async (req, res) => {
-  res.json(await ensureCanonicalAfpProfile(store, req.userId))
+  const result = await ensureCanonicalAfpProfile(store, req.userId)
+  res.json({ ...result, automaticEligibility: automaticPlanEligibility(result.profile) })
 }))
 
 requireAuthRouter.put('/afp/profile', validateBody(AfpProfilePatchSchema), asyncH(async (req, res) => {
-  const profile = await store.setAfpProfile(req.userId, req.body)
-  res.json({ profile, ready: isAfpProfileReady(profile), migrated: false })
+  const goal = req.body.goal === undefined ? undefined : normalizeAfpGoal(req.body.goal)
+  const profile = await store.setAfpProfile(req.userId, { ...req.body, ...(goal ? { goal } : {}) })
+  res.json({ profile, ready: isAfpProfileReady(profile), migrated: false, automaticEligibility: automaticPlanEligibility(profile) })
 }))
 
 // Planned training sessions. `from`/`to` default to a two-week-ahead window
@@ -1470,13 +1509,21 @@ requireAuthRouter.get('/afp/plan', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : serverToday
   const bounds = requestBounds(req.query)
   const today = requestedDayIsCurrent(date, bounds, new Date()) ? date : serverToday
-  await ensureCanonicalAfpProfile(store, req.userId)
+  const canonical = await ensureCanonicalAfpProfile(store, req.userId)
+  const eligibility = automaticPlanEligibility(canonical.profile)
+  if (canonical.ready && canonical.profile.plan_mode === 'automatic' && !eligibility.eligible) {
+    return res.json({
+      date, today, recomputed: false, frozen: false, progress: null,
+      eligibility,
+      plan: { ok: false, ineligible: true, mode: 'automatic', reasons: eligibility.reasons },
+    })
+  }
   const { row, recomputed } = await getOrComputeAfpPlan(store, req.userId, date, { today })
   const { from, to } = bounds || dayRange(date)
   const entries = await store.listEntries(req.userId, { from, to })
   const intake = sumIntake(entries)
   const progress = row.plan?.ok ? computeProgress(row.plan.targets, intake) : null
-  res.json({ ...row, today, recomputed, frozen: !recomputed && date !== today, progress })
+  res.json({ ...afpTrace(row), today, recomputed, frozen: !recomputed && date !== today, progress, eligibility })
 }))
 
 // The one explicit reconciliation escape hatch: force a past day's frozen
@@ -1485,8 +1532,13 @@ requireAuthRouter.get('/afp/plan', asyncH(async (req, res) => {
 requireAuthRouter.post('/afp/plan/:date/recompute', asyncH(async (req, res) => {
   const date = req.params.date
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' })
+  const canonical = await ensureCanonicalAfpProfile(store, req.userId)
+  const eligibility = automaticPlanEligibility(canonical.profile)
+  if (canonical.ready && canonical.profile.plan_mode === 'automatic' && !eligibility.eligible) {
+    return res.status(422).json({ error: 'Automatic AFP is not available for this profile.', eligibility })
+  }
   const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd(), forceRecompute: true })
-  res.json({ plan: row })
+  res.json({ plan: afpTrace(row) })
 }))
 
 // A day-specific correction, layered on top of the computed plan — never
@@ -1498,11 +1550,16 @@ requireAuthRouter.post('/afp/plan/:date/recompute', asyncH(async (req, res) => {
 requireAuthRouter.patch('/afp/plan/:date/overrides', validateBody(AfpOverridesSchema), asyncH(async (req, res) => {
   const date = req.params.date
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' })
+  const canonical = await ensureCanonicalAfpProfile(store, req.userId)
+  const eligibility = automaticPlanEligibility(canonical.profile)
+  if (canonical.ready && canonical.profile.plan_mode === 'automatic' && !eligibility.eligible) {
+    return res.status(422).json({ error: 'Automatic AFP is not available for this profile.', eligibility })
+  }
   const hasKeys = Object.keys(req.body || {}).length > 0
   await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd() })
   await store.setAfpDailyPlanOverrides(req.userId, date, hasKeys ? req.body : null)
   const { row } = await getOrComputeAfpPlan(store, req.userId, date, { today: localYmd(), forceRecompute: true })
-  res.json({ plan: row })
+  res.json({ plan: afpTrace(row) })
 }))
 
 // Body weight log — one entry per day. `day` defaults to today (same
@@ -1526,7 +1583,10 @@ requireAuthRouter.delete('/weight/:day', asyncH(async (req, res) => {
 // Composed wearable signals (one per metric) with provenance + freshness.
 requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   const now = new Date()
-  res.json({ date: localYmd(now), signals: await composeSignals(store, now, req.userId) })
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd(now)
+  const bounds = requestBounds(req.query)
+  const isRequestedCurrentDay = requestedDayIsCurrent(date, bounds, now)
+  res.json({ date, signals: await composeSignals(store, now, req.userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay }) })
 }))
 
 // Connections: provider statuses (incl. demo) + the plan-influence toggles.

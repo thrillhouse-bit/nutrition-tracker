@@ -167,7 +167,7 @@ struct ConnectionStatusView: View {
                         .font(.footnote)
                         .foregroundStyle(.orange)
                 } else if !coordinator.isNutritionWriteBackAuthorized && coordinator.isNutritionWriteBackDetermined {
-                    Text("Health denied write access. Turn it on in Settings → Health → FuelCompanion.")
+                    Text("Health denied write access. Turn it on in Settings → Health → Body Current.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else if let at = coordinator.lastWriteBackAt {

@@ -693,3 +693,23 @@ describe('JsonStore upsertFoodByBarcode', () => {
     expect(data.foods.filter((f) => f.barcode === '222')).toHaveLength(1)
   })
 })
+
+describe('JsonStore hydration log', () => {
+  it('normalizes timestamps, isolates accounts, exports, and cascades on account deletion', async () => {
+    const s = new JsonStore(path.join(dir, 'store.json'))
+    const one = await s.createUser({ email: 'water-one@example.test', password_hash: 'hash' })
+    const two = await s.createUser({ email: 'water-two@example.test', password_hash: 'hash' })
+    const row = await s.addWaterEntry(one.id, { amount_ml: 500, logged_at: '2026-09-05T02:00:00+05:00' })
+    await s.addWaterEntry(two.id, { amount_ml: 250, logged_at: '2026-09-04T22:00:00.000Z' })
+    expect(row.logged_at).toBe('2026-09-04T21:00:00.000Z')
+    // Equivalent offset bounds must match UTC storage by instant, not by
+    // string comparison (the entry is 02:00 on the +05:00 local day).
+    expect(await s.listWaterEntries(one.id, { from: '2026-09-05T00:00:00+05:00', to: '2026-09-06T00:00:00+05:00' })).toHaveLength(1)
+    expect(await s.listWaterEntries(one.id, { from: '2026-09-04T00:00:00.000Z', to: '2026-09-05T00:00:00.000Z' })).toHaveLength(1)
+    expect(await s.listWaterEntries(two.id, { from: '2026-09-04T00:00:00.000Z', to: '2026-09-05T00:00:00.000Z' })).toHaveLength(1)
+    expect((await s.exportUserData(one.id)).hydration_logs).toEqual([expect.objectContaining({ amount_ml: 500 })])
+    await s.deleteUser(one.id)
+    expect((await s.exportUserData(two.id)).hydration_logs).toHaveLength(1)
+    expect((await s.load()).water_entries.some((entry) => entry.user_id === one.id)).toBe(false)
+  })
+})

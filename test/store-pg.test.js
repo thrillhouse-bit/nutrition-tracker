@@ -179,17 +179,44 @@ describe('PgStore.replaceAppleSignals — replace, not append (replay idempotenc
 })
 
 describe('PgStore Adaptive Fuel Plan profile', () => {
-  it('merge-saves by reading the current row before the upsert (getAfpProfile + setAfpProfile in one call)', async () => {
+  it('merge-saves atomically in one statement, preserving concurrent fields', async () => {
     const store = new PgStore('postgres://unused')
-    let n = 0
     store.sql = () => {
-      n++
-      if (n === 1) return [{ weight_kg: 70, height_cm: 175 }] // getAfpProfile's own select, inside setAfpProfile
-      return [{ weight_kg: 70, height_cm: 175, age_years: 30 }] // the upsert's `returning *`
+      return [{ weight_kg: 70, height_cm: 175, age_years: 30 }]
     }
     const p = await store.setAfpProfile(1, { age_years: 30 })
     expect(p.age_years).toBe(30)
     expect(p.weight_kg).toBe(70) // carried over from the existing row, not clobbered
+  })
+
+  it('uses a first-save-safe INSERT ON CONFLICT partial update, never a snapshot-blind CTE', async () => {
+    const store = new PgStore('postgres://unused')
+    let statement = ''
+    store.sql = (strings) => {
+      statement = strings.join('?')
+      return [{ user_id: 1, age_years: 30, plan_mode: 'automatic' }]
+    }
+    await expect(store.setAfpProfile(1, { age_years: 30 })).resolves.toMatchObject({ user_id: 1, age_years: 30 })
+    expect(statement).toMatch(/insert into afp_profile as p/i)
+    expect(statement).toMatch(/on conflict \(user_id\) do update/i)
+    expect(statement).not.toMatch(/with ensured/i)
+    expect(statement).toMatch(/case when \? then excluded\.age_years else p\.age_years end/i)
+  })
+})
+
+describe('PgStore hydration log', () => {
+  it('normalizes numeric output and scopes every read/mutation to the account', async () => {
+    const store = new PgStore('postgres://unused')
+    const statements = []
+    store.sql = (strings) => {
+      statements.push(strings.join('?'))
+      return [{ id: 4, amount_ml: '500', logged_at: '2026-09-04T00:00:00.000Z' }]
+    }
+    await expect(store.listWaterEntries(7, { from: '2026-09-04T00:00:00.000Z', to: '2026-09-05T00:00:00.000Z' }))
+      .resolves.toEqual([expect.objectContaining({ amount_ml: 500 })])
+    await store.updateWaterEntry(7, 4, { amount_ml: 600 })
+    await store.deleteWaterEntry(7, 4)
+    expect(statements.every((text) => /user_id\s*=\s*\?/i.test(text))).toBe(true)
   })
 })
 
@@ -229,6 +256,21 @@ describe('PgStore.deleteUser', () => {
 })
 
 describe('PgStore Adaptive Fuel Plan daily plan snapshots', () => {
+  it('uses a hash-guarded upsert so identical concurrent inputs return the existing revision', async () => {
+    const store = new PgStore('postgres://unused')
+    let query = ''
+    store.sql = (strings) => {
+      query = Array.from(strings).join('?')
+      return [{ user_id: 1, date: '2026-08-25', revision: 4, input_snapshot_hash: 'same-hash' }]
+    }
+    const row = await store.saveAfpDailyPlan(1, '2026-08-25', {
+      engineVersion: 2, scienceVersion: 'afp-science-2026.1', inputSnapshot: {}, inputSnapshotHash: 'same-hash', plan: { ok: true },
+    })
+    expect(row.revision).toBe(4)
+    expect(query).toMatch(/revision = afp_daily_plans\.revision \+ case when afp_daily_plans\.input_snapshot_hash is distinct from excluded\.input_snapshot_hash then 1 else 0 end/i)
+    expect(query).toMatch(/returning \*/i)
+  })
+
   it('setAfpDailyPlanOverrides returns null when no plan row exists for that day (control)', async () => {
     const store = new PgStore('postgres://unused')
     store.sql = () => []

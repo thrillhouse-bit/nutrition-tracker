@@ -40,15 +40,15 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/privacy\/?$/, /^\/terms\/?$/],
         cleanupOutdatedCaches: true,
       },
-      includeAssets: ['icon.svg', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
+      includeAssets: ['body-current-master.png', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
       // Installed identity matches the in-app v2 system: the app titles itself
-      // "OmniFuel Tech" (index.html) and paints ivory (#f7f4ec theme-color meta)
+      // "Body Current" (index.html) and paints ivory (#f7f4ec theme-color meta)
       // — the old emerald/navy manifest gave the home-screen install a
       // different product's icon, splash, and name. short_name stays shorter
       // than the full name so it doesn't truncate on a home-screen grid.
       manifest: {
-        name: 'OmniFuel Tech',
-        short_name: 'OmniFuel',
+        name: 'Body Current',
+        short_name: 'Body Current',
         description: 'Scan barcodes and labels to track daily macros and micronutrients.',
         theme_color: '#f7f4ec',
         background_color: '#f7f4ec',
@@ -56,13 +56,12 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
-        // PNGs (for stores / iOS) plus the scalable SVG. Regenerate the PNGs
-        // from icon.svg with `npm i -D sharp && npm run gen:icons`.
+        // PNGs for stores / iOS. Regenerate them from the approved raster
+        // master with `npm run gen:icons`.
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
       },
       devOptions: { enabled: false },

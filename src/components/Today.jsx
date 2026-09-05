@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
 import { Card, Dial, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
@@ -38,6 +38,88 @@ function timeHm(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function waterAmount(ml) {
+  const amount = Number(ml) || 0
+  return amount >= 1000 ? `${(amount / 1000).toFixed(amount % 1000 ? 2 : 1)} L` : `${Math.round(amount)} mL`
+}
+
+function localDateTimeValue(date) {
+  const d = new Date(date)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function dateTimeForViewedDay(date) {
+  const now = new Date()
+  const viewed = new Date(date)
+  viewed.setHours(isToday(date) ? now.getHours() : 12, isToday(date) ? now.getMinutes() : 0, 0, 0)
+  return localDateTimeValue(viewed)
+}
+
+// Water is logged as a real manual intake, not treated as an inferred need or
+// a plan target. Native select/date-time controls are intentional here: their
+// platform keyboards and localized pickers are useful for a compact personal
+// log, and labels/error copy remain app-owned (UX-CONTRACT hydration section).
+function HydrationPanel({ date, hydration, onChanged }) {
+  const [amount, setAmount] = useState('250')
+  const [unit, setUnit] = useState('ml')
+  const [loggedAt, setLoggedAt] = useState(() => dateTimeForViewedDay(date))
+  const [editing, setEditing] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const entries = hydration?.entries || []
+  const total = hydration?.total_ml ?? entries.reduce((sum, entry) => sum + (Number(entry.amount_ml) || 0), 0)
+
+  useEffect(() => { setLoggedAt(dateTimeForViewedDay(date)); setEditing(null); setError('') }, [date])
+  const toMl = (value, selectedUnit) => Number(value) * (selectedUnit === 'oz' ? 29.5735 : 1)
+  const save = async (event) => {
+    event?.preventDefault()
+    const amountMl = toMl(amount, unit)
+    if (!Number.isFinite(amountMl) || amountMl <= 0 || amountMl > 10000) { setError('Enter an amount between 1 mL and 10 L.'); return }
+    const timestamp = new Date(loggedAt)
+    if (Number.isNaN(timestamp.getTime())) { setError('Choose when you drank it.'); return }
+    setBusy(true); setError('')
+    try {
+      if (editing) await api.updateWaterEntry(editing.id, { amount_ml: amountMl, logged_at: timestamp.toISOString() })
+      else await api.addWaterEntry({ amount_ml: amountMl, logged_at: timestamp.toISOString() })
+      setEditing(null); onChanged?.()
+    } catch (err) { setError(err.message || 'Could not save water. Try again.') } finally { setBusy(false) }
+  }
+  const quickAdd = async (amountMl) => {
+    setBusy(true); setError('')
+    try { await api.addWaterEntry({ amount_ml: amountMl, logged_at: new Date(dateTimeForViewedDay(date)).toISOString() }); onChanged?.() }
+    catch (err) { setError(err.message || 'Could not add water. Try again.') } finally { setBusy(false) }
+  }
+  const beginEdit = (entry) => {
+    setEditing(entry); setAmount(String(Math.round(Number(entry.amount_ml)))); setUnit('ml'); setLoggedAt(localDateTimeValue(entry.logged_at)); setError('')
+  }
+  const remove = async (entry) => {
+    setBusy(true); setError('')
+    try { await api.deleteWaterEntry(entry.id); if (editing?.id === entry.id) setEditing(null); onChanged?.() }
+    catch (err) { setError(err.message || 'Could not delete water. Try again.') } finally { setBusy(false) }
+  }
+  return (
+    <section aria-labelledby="hydration-heading" className="border-y border-line py-4">
+      <div className="flex items-end justify-between gap-3">
+        <div><h3 id="hydration-heading" className="eyebrow">Hydration</h3><p className="mt-1 text-sm text-muted">Manual water intake · no personalized target</p></div>
+        <div className="text-right"><div className="numeral text-2xl text-ink">{waterAmount(total)}</div><div className="eyebrow">Logged</div></div>
+      </div>
+      <div className="mt-3 flex gap-2" aria-label="Quick add water">
+        {[250, 500, 750].map((ml) => <Button key={ml} variant="outline" className="min-h-11 flex-1 px-2 text-xs" disabled={busy} onClick={() => quickAdd(ml)}>+{waterAmount(ml)}</Button>)}
+      </div>
+      <form noValidate onSubmit={save} className="mt-3 grid gap-2 border-t border-line pt-3 sm:grid-cols-[1fr_90px_1.35fr_auto]">
+        <label className="min-w-0"><span className="eyebrow mb-1 block">Amount</span><input aria-label="Water amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full border border-line-strong bg-paper px-2 py-2 text-sm text-ink" /></label>
+        <label><span className="eyebrow mb-1 block">Unit</span><select aria-label="Water unit" value={unit} onChange={(e) => setUnit(e.target.value)} className="min-h-11 w-full border border-line-strong bg-paper px-2 text-sm text-ink"><option value="ml">mL</option><option value="oz">fl oz</option></select></label>
+        <label><span className="eyebrow mb-1 block">When</span><input aria-label="Water time" type="datetime-local" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} className="min-h-11 w-full border border-line-strong bg-paper px-2 text-sm text-ink" /></label>
+        <Button type="submit" disabled={busy} className="self-end">{busy ? 'Saving…' : editing ? 'Save' : 'Add water'}</Button>
+      </form>
+      {editing && <TextButton className="mt-2" onClick={() => { setEditing(null); setError('') }}>Cancel edit</TextButton>}
+      {error && <ErrorNote className="mt-2">{error}</ErrorNote>}
+      {entries.length > 0 && <div className="mt-3 border-t border-line">{entries.map((entry) => <div key={entry.id} className="flex min-h-11 items-center gap-2 border-b border-line"><span className="w-12 tnum text-[10.5px] text-muted">{timeHm(entry.logged_at)}</span><span className="flex-1 text-sm text-ink">{waterAmount(entry.amount_ml)}</span><TextButton onClick={() => beginEdit(entry)}>Edit</TextButton><button type="button" onClick={() => remove(entry)} disabled={busy} className="h-11 w-11 text-faint hover:text-alert disabled:cursor-not-allowed" aria-label={`Delete ${waterAmount(entry.amount_ml)} water entry`}>✕</button></div>)}</div>}
+    </section>
+  )
 }
 
 // Decimal sleep hours -> {h, m}, so 7.7 renders "7h 42m".
@@ -880,6 +962,9 @@ export default function Today({ date, data, dataError, entries, loading, online,
           {expMissing ? <StatusTag status="unavailable" /> : <SourceLabel signal={exp} />}
         </div>
       </section>
+
+      {/* Today's log — chronological, on the paper ground */}
+      <HydrationPanel date={date} hydration={data?.hydration} onChanged={onChanged} />
 
       {/* Today's log — chronological, on the paper ground */}
       <section>

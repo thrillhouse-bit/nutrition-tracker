@@ -1,4 +1,4 @@
-# Fuel — native iOS + watchOS companion
+# Body Current — native iOS + watchOS companion
 
 A native companion that **keeps the React/Vite PWA as the main experience** and
 adds what a browser cannot do: read Apple Health / Apple Watch data. Apple Health
@@ -63,7 +63,7 @@ There is **no Xcode project committed** — generate it from `project.yml`:
 
 ```bash
 brew install xcodegen
-cd ios && xcodegen generate && open Fuel.xcodeproj
+cd ios && xcodegen generate && open BodyCurrent.xcodeproj
 ```
 
 Then, before it will build & run, fill in every `// TODO:` / `# TODO:`:

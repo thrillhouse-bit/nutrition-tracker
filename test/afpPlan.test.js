@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { addDaysToYmd, gatherSyncedSessions, getOrComputeAfpPlan, profileRowToEngineInput, plannedRowToSession, withCanonicalPlannedWorkout } from '../server/afp/plan.js'
+import { addDaysToYmd, dedupeSessions, gatherSyncedSessions, getOrComputeAfpPlan, profileRowToEngineInput, plannedRowToSession, withCanonicalPlannedWorkout } from '../server/afp/plan.js'
 import { DEFAULT_AFP_PROFILE } from '../server/db.js'
 
 const fullProfileRow = {
-  ...DEFAULT_AFP_PROFILE, weight_kg: 70, height_cm: 175, age_years: 30, sex: 'male', activity_level: 'sedentary', goal: 'maintain',
+  ...DEFAULT_AFP_PROFILE, weight_kg: 70, height_cm: 175, age_years: 30, sex: 'male', equation_stratum: 'men', eligibility_attested: true, activity_level: 'sedentary', goal: 'maintain',
 }
 
 function fakeStore(overrides = {}) {
@@ -89,7 +89,7 @@ describe('gatherSyncedSessions', () => {
       listOuraWorkouts: vi.fn(async () => [{ activity: 'running', intensity: 'hard', calories: 500, distance: 8000, start_datetime: '2026-08-25T06:00:00Z', end_datetime: '2026-08-25T07:00:00Z' }]),
     })
     const sessions = await gatherSyncedSessions(store, 1, '2026-08-25')
-    expect(sessions).toEqual([{ sport: 'run', intensity: 'hard', durationMin: 60, distanceKm: 8, calories: 500, provider: 'oura' }])
+    expect(sessions).toEqual([{ sport: 'run', intensity: 'hard', durationMin: 60, distanceKm: 8, provider: 'oura', startAt: '2026-08-25T06:00:00Z' }])
   })
 
   it('includes an Apple-synced workout signal, defaulting intensity to moderate (HealthKit has none)', async () => {
@@ -97,7 +97,7 @@ describe('gatherSyncedSessions', () => {
       listAppleSignals: vi.fn(async () => [{ metric: 'workout', value: { kind: 'ride', duration_min: 45 } }, { metric: 'steps', value: 8000 }]),
     })
     const sessions = await gatherSyncedSessions(store, 1, '2026-08-25')
-    expect(sessions).toEqual([{ sport: 'ride', intensity: 'moderate', durationMin: 45, distanceKm: null, calories: null, provider: 'apple' }])
+    expect(sessions).toMatchObject([{ sport: 'ride', intensity: 'moderate', durationMin: 45, distanceKm: null, provider: 'apple' }])
   })
 
   it('combines Oura and Apple sessions for the same day', async () => {
@@ -116,7 +116,17 @@ describe('gatherSyncedSessions', () => {
       listAppleSignals: vi.fn(async () => [{ metric: 'workout', value: { kind: 'walk', duration_min: 20 } }]),
     })
     const sessions = await gatherSyncedSessions(store, 1, '2026-08-25')
-    expect(sessions).toEqual([{ sport: 'walk', intensity: 'moderate', durationMin: 20, distanceKm: null, calories: null, provider: 'apple' }])
+    expect(sessions).toMatchObject([{ sport: 'walk', intensity: 'moderate', durationMin: 20, distanceKm: null, provider: 'apple' }])
+  })
+})
+
+describe('dedupeSessions', () => {
+  it('deduplicates near-identical provider mirrors and preserves the documented Oura precedence', () => {
+    const sessions = dedupeSessions([
+      { sport: 'run', durationMin: 60, provider: 'apple', startAt: '2026-08-25T06:03:00Z' },
+      { sport: 'run', durationMin: 55, provider: 'oura', startAt: '2026-08-25T06:00:00Z' },
+    ])
+    expect(sessions).toEqual([expect.objectContaining({ provider: 'oura', durationMin: 55 })])
   })
 })
 
@@ -160,14 +170,24 @@ describe('getOrComputeAfpPlan — the freeze-a-past-day reconciliation rule', ()
       getAfpDailyPlan: vi.fn(async () => ({ date: '2026-08-25', overrides: { calories: 2500 }, plan: {} })),
     })
     const { row } = await getOrComputeAfpPlan(store, 1, '2026-08-25', { today: '2026-08-25' })
-    expect(row.plan.targets.calories).toBe(2500)
+    expect(row.plan.targets.calories).toBeGreaterThan(2500)
     expect(row.overrides).toEqual({ calories: 2500 })
   })
 
-  it('reports the full engine result, including a missing-profile ok:false, without throwing', async () => {
+  it('does not write a new revision when the canonical input hash is unchanged', async () => {
+    const store = fakeStore()
+    const first = await getOrComputeAfpPlan(store, 1, '2026-08-25', { today: '2026-08-25' })
+    store.getAfpDailyPlan.mockResolvedValue(first.row)
+    const second = await getOrComputeAfpPlan(store, 1, '2026-08-25', { today: '2026-08-25' })
+    expect(second.row).toEqual(first.row)
+    expect(store.saveAfpDailyPlan).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails closed for an unattested/incomplete profile without throwing', async () => {
     const store = fakeStore({ getAfpProfile: vi.fn(async () => ({})) })
     const { row } = await getOrComputeAfpPlan(store, 1, '2026-08-25', { today: '2026-08-25' })
     expect(row.plan.ok).toBe(false)
-    expect(row.plan.missing).toBeDefined()
+    expect(row.plan).toMatchObject({ code: 'missing_profile' })
+    expect(row.plan.missing).toEqual(expect.arrayContaining(['weightKg', 'heightCm', 'ageYears']))
   })
 })

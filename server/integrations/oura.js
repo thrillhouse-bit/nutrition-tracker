@@ -3,10 +3,9 @@
 //
 // Auth is a bearer token. Oura deprecated Personal Access Tokens in Dec 2025, so
 // new tokens come from OAuth 2.0 (an existing PAT still works). This module is
-// deliberately *token-agnostic*: every function takes a token, and getToken()
-// is the single place that decides where it comes from. Today that's the
-// OURA_TOKEN env var (one account); swapping in per-account OAuth tokens later
-// means changing only getToken()/the caller, not the fetch + normalize code.
+// deliberately token-agnostic: every fetch function takes a token. Callers
+// prefer per-account OAuth; getToken(userId) permits an explicitly owner-bound
+// legacy token only. A server-wide token is never a multi-account identity.
 import crypto from 'node:crypto'
 
 const BASE = 'https://api.ouraring.com/v2/usercollection'
@@ -15,13 +14,14 @@ const TOKEN_URL = 'https://api.ouraring.com/oauth/token'
 const SCOPES = 'email personal daily'
 const TIMEOUT_MS = 8000
 
-export function ouraConfigured() {
-  return Boolean(process.env.OURA_TOKEN)
+export function ouraConfigured(userId) {
+  const owner = process.env.OURA_LEGACY_USER_ID || ''
+  return Boolean(process.env.OURA_TOKEN && /^[1-9]\d*$/.test(owner) && String(userId) === owner)
 }
 
-// The token source. The abstraction point for future multi-account OAuth.
-export function getToken() {
-  return process.env.OURA_TOKEN || null
+// Legacy access is denied unless the caller matches the configured owner.
+export function getToken(userId) {
+  return ouraConfigured(userId) ? process.env.OURA_TOKEN : null
 }
 
 async function ouraGet(path, token, params = {}) {

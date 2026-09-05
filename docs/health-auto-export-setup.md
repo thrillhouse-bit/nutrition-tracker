@@ -45,7 +45,7 @@ In the HAE app: **Automations → New Automation → REST API**.
 
 | Field | What to enter |
 |---|---|
-| **Name** | Anything recognizable — e.g. `Nutrition Tracker` |
+| **Name** | Anything recognizable — e.g. `Body Current` |
 | **URL** | `https://<your-domain>/api/apple/health-auto-export` |
 | **Headers → Add Header** | Key: `Authorization` — Value: `Bearer <your token from Step 1>` |
 | **Data to export** | Workouts, and under Health Metrics: Steps, Active Energy, Heart Rate Variability, Resting Heart Rate. Sleep Analysis if you want sleep. (Symptoms/ECG/cycle-tracking/state-of-mind aren't read by this app — leave them off.) |

@@ -1,4 +1,4 @@
-# OmniFuel Tech
+# Body Current
 
 A personal-use Progressive Web App for **fueling intelligence**: it pairs
 food logging with wearable recovery and training signals (Oura, Garmin, Apple
@@ -33,7 +33,7 @@ Five tabs:
 
 | Tab | What it holds |
 |---|---|
-| **Today** | Home. A context strip (recovery/training with source + freshness), a focal **next-action recommendation** with a **"Why this?"** disclosure, compact progress vs. targets, and the chronological log. |
+| **Today** | Home. A context strip (recovery/training with source + freshness), a focal **next-action recommendation** with a **"Why this?"** disclosure, compact progress vs. targets, a manual water log, and the chronological food log. |
 | **Log** | The four ways to add food — scan barcode, scan label, search, manual — plus one-tap re-log of recents, grouped by meal. |
 | **Plan** | The canonical Daily Fuel Plan: one profile, planned sessions, daily energy/macros, progress, safety guardrails, and a plain-language rationale for every adjustment. Today uses these exact targets. |
 | **Insights** | Nutrition trends over 7 / 14 / 30 days against the current canonical AFP target, with an explicit insufficient-data state. Recovery/training correlations are shown cautiously — never causal, never medical. |
@@ -107,6 +107,9 @@ adding an adapter, not touching the UI or the plan engine. Every composed signal
 carries **provenance** (which provider produced it) and **freshness** (fresh /
 stale / unavailable), both surfaced in the Today context strip and on the
 Connections tab, so a stale or missing signal is visible rather than silently
+treated as current. For a live Oura read of the current day, freshness reflects
+the successful fetch time while `recorded_at` remains the measurement-day
+provenance; historical-day signals continue to age by their recorded day.
 treated as current.
 
 Signals feed only the **fueling and nutrition-planning** suggestions — adjusted
@@ -314,6 +317,7 @@ Health API hold above.
   and acceptance timestamp; password hashes and acceptance records never leave
   the server.
 - **`log_entries`** — id, food_id, logged_at, servings_consumed, meal (optional).
+- **`water_entries`** — account-owned manual water amount (millilitres) and timestamp; it is exported/deleted with the account and never drives an automatic hydration or sodium target.
 - **`afp_profile`** — the canonical body/activity/goal profile used to build
   daily targets. Existing calculator profiles are copied into missing fields
   once and never overwrite explicit AFP edits.
@@ -351,6 +355,8 @@ Full DDL in [`schema.sql`](./schema.sql).
 | GET | `/entries?from=&to=` | log entries in a time range |
 | POST | `/entries` | log a food (`food_id` or inline `food`) |
 | PATCH/DELETE | `/entries/:id` | edit / remove an entry |
+| GET/POST | `/water?from=&to=` / `/water` | list / add manual water entries for the signed-in account |
+| PATCH/DELETE | `/water/:id` | edit / remove a manual water entry |
 | GET / PUT | `/afp/profile` | read / set the canonical planning profile; GET performs safe legacy migration |
 | GET / PUT / DELETE | `/afp/workouts` | list, save, and remove canonical planned sessions |
 | GET | `/afp/plan?date=` | canonical daily targets, progress, explanation, safety state, and freeze state |
@@ -380,7 +386,7 @@ Full DDL in [`schema.sql`](./schema.sql).
 
 ## Agent surface (A2A)
 
-A narrow, **read-only** surface so another agent can ask OmniFuel how fueling
+A narrow, **read-only** surface so another agent can ask Body Current how fueling
 is going — shaped after the [A2A protocol](https://a2a-protocol.org) (agent
 card + JSON-RPC), with the same **non-medical** framing as everything else
 here: it reports what was logged and what the plan said, never advice or
@@ -486,7 +492,10 @@ fails closed. Public status exposes only whether an invite is required;
 plaintext codes are never logged or persisted. Postgres atomically enforces
 single redemption and retains the digest ledger after account deletion. Apply
 `schema.sql` before enabling this additional gate; it never bypasses the legal
-launch gate.
+launch gate. To deliver an invite without exposing it to the server or browser
+history, use `https://<your-domain>/#invite=<code>`; the app accepts only the
+configured code character set and immediately removes the fragment after
+prefilling signup.
 
 After deployment and secret configuration, run the read-only alpha gate:
 
