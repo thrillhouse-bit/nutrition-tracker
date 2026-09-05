@@ -16,6 +16,8 @@ import {
   validateRpgAuthorityCommandBody,
 } from '../server/rpgAuthority.js'
 import { rpgCommandAccountLimiter, rpgCommandIpLimiter, signupIpLimiter } from '../server/authRateLimit.js'
+import { validateMovementEnvelope } from '../server/rpgMovement.js'
+import { rpgMapById } from '../control-tower-shift/src/rpg/registry.js'
 
 const fake = vi.hoisted(() => {
   const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), authorityReceipts: new Map(), nextUserId: 0 }
@@ -38,6 +40,9 @@ const fake = vi.hoisted(() => {
   const publicAuthority = (row) => row && ({
     story: clone(row.story), storyRevision: row.storyRevision,
     authoritative: clone(row.authoritative), inventoryRevision: row.inventoryRevision,
+    movementRevision: row.movementRevision,
+    activePlan: clone(row.activePlan),
+    lastMovementResponse: clone(row.lastMovementResponse),
   })
   const commandResponse = (authority, envelope, createdAt = new Date().toISOString()) => ({
     receipt: {
@@ -111,7 +116,7 @@ const fake = vi.hoisted(() => {
       if (state.saves.has(uid)) return { outcome: 'legacy', authority: null }
       const existing = state.authorities.get(uid)
       if (existing) return { outcome: 'exists', authority: publicAuthority(existing) }
-      const row = { ...clone(bootstrap) }
+      const row = { ...clone(bootstrap), movementRevision: 1, activePlan: null, lastMovementResponse: null }
       state.authorities.set(uid, row)
       state.authorityHistory.set(uid, [{ storyRevision: row.storyRevision, story: clone(row.story) }])
       return { outcome: 'bootstrapped', authority: publicAuthority(row) }
@@ -139,6 +144,7 @@ const fake = vi.hoisted(() => {
       const authority = {
         story: clone(next.story), storyRevision: next.storyRevision,
         authoritative: clone(current.authoritative), inventoryRevision: current.inventoryRevision,
+        movementRevision: current.movementRevision, activePlan: clone(current.activePlan), lastMovementResponse: clone(current.lastMovementResponse),
       }
       state.authorities.set(uid, authority)
       state.authorityHistory.set(uid, [{ storyRevision: authority.storyRevision, story: clone(authority.story) }, ...(state.authorityHistory.get(uid) || [])].slice(0, 20))
@@ -147,6 +153,28 @@ const fake = vi.hoisted(() => {
       receipts.push({ commandId: envelope.commandId, idempotencyKey: envelope.idempotencyKey, digest: envelope.digest, response: clone(response) })
       state.authorityReceipts.set(uid, receipts)
       return { outcome: 'written', response }
+    },
+    createRpgMovementPlan: async (userId, envelope, plan) => {
+      const row = state.authorities.get(Number(userId))
+      if (!row) return { outcome: 'not_found' }
+      const replay = row.lastMovementResponse
+      if (replay?.sequence === envelope.sequence) return replay.digest === envelope.digest
+        ? { outcome: 'replayed', response: clone(replay) }
+        : { outcome: 'sequence_conflict' }
+      if (row.activePlan) return { outcome: 'active_plan' }
+      if (row.storyRevision !== envelope.expectedStoryRevision || row.inventoryRevision !== envelope.expectedInventoryRevision
+        || row.movementRevision !== envelope.expectedMovementRevision || row.story.world.mapId !== plan.mapId
+        || JSON.stringify(row.story.world.position) !== JSON.stringify(plan.origin)) return { outcome: 'conflict' }
+      if (envelope.sequence !== (row.lastMovementResponse?.sequence || 0) + 1) return { outcome: 'sequence_conflict' }
+      const rebasedPlan = { ...clone(plan), startedAtMs: 1_700_000_000_000 }
+      row.movementRevision += 1
+      row.activePlan = rebasedPlan
+      row.lastMovementResponse = {
+        protocolVersion: 1, sequence: envelope.sequence, digest: envelope.digest,
+        storyRevision: row.storyRevision, inventoryRevision: row.inventoryRevision,
+        movementRevision: row.movementRevision, plan: rebasedPlan,
+      }
+      return { outcome: 'written', response: clone(row.lastMovementResponse) }
     },
     exportUserData: async (userId) => {
       const user = state.users.find((candidate) => candidate.id === Number(userId))
@@ -271,6 +299,17 @@ describe('RPG save request validation', () => {
     expect(() => validateRpgAuthorityCommandBody({ ...body, command: { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-introduction' } })).toThrow()
     expect(() => validateRpgAuthorityCommandBody({ ...body, command: { type: 'ACCEPT_QUEST', questId: body.command.questId, entityId: body.command.entityId } })).toThrow()
     expect(() => validateRpgAuthorityCommandBody({ ...body, command: { ...body.command, currency: 9 } })).toThrow()
+  })
+
+  it('accepts only the exact versioned target-only movement envelope', () => {
+    const body = {
+      protocolVersion: 1, sequence: 1, expectedStoryRevision: 1,
+      expectedInventoryRevision: 1, expectedMovementRevision: 1,
+      intent: { type: 'MOVE_INTENT', target: { x: 300, y: 300 } },
+    }
+    expect(validateMovementEnvelope(body)).toMatchObject({ ok: true, envelope: { sequence: 1, intent: { type: 'MOVE_INTENT' } } })
+    expect(validateMovementEnvelope({ ...body, commandId: 'forged' })).toEqual({ ok: false, code: 'MOVEMENT_ENVELOPE_INVALID' })
+    expect(validateMovementEnvelope({ ...body, intent: { ...body.intent, origin: { x: 0, y: 0 } } })).toEqual({ ok: false, code: 'MOVEMENT_ENVELOPE_INVALID' })
   })
 
   it('hashes the complete typed envelope in canonical key order', () => {
@@ -469,6 +508,43 @@ describe('Postgres-only RPG authority v2 API', () => {
     expect(staleNewCommand.status).toBe(409)
     expect(fake.state.authorityHistory.get(account.user.id)).toHaveLength(2)
     expect(fake.state.authorityReceipts.get(account.user.id)).toHaveLength(1)
+  })
+
+  it('stores one rebased movement plan, replays its sequence exactly, and never moves the story projection', async () => {
+    const account = await signup('rpg-v2-movement@example.test')
+    expect((await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })).status).toBe(201)
+    const row = fake.state.authorities.get(account.user.id)
+    const map = rpgMapById(row.story.world.mapId)
+    const target = map.entities.find((entity) => entity.id === 'beacon-bank')
+    const beforeStory = structuredClone(row.story)
+    const body = {
+      protocolVersion: 1, sequence: 1, expectedStoryRevision: 1,
+      expectedInventoryRevision: 1, expectedMovementRevision: 1,
+      intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } },
+    }
+    const written = await request('/api/rpg/save/v2/movement', { cookie: account.cookie, method: 'POST', body })
+    expect(written.status).toBe(201)
+    const first = await written.json()
+    expect(first).toMatchObject({ movement: { sequence: 1, storyRevision: 1, inventoryRevision: 1, movementRevision: 2, plan: { target: { x: target.x, y: target.y } } } })
+    expect(first.movement.plan.startedAtMs).toBe(1_700_000_000_000)
+    expect(row.story).toEqual(beforeStory)
+    expect(row.inventoryRevision).toBe(1)
+    const spent = [...rpgCommandAccountLimiter.entries.values()][0]?.count
+
+    const replay = await request('/api/rpg/save/v2/movement', { cookie: account.cookie, method: 'POST', body })
+    expect(replay.status).toBe(200)
+    expect(await replay.json()).toEqual(first)
+    expect([...rpgCommandAccountLimiter.entries.values()][0]?.count).toBe(spent)
+    const changed = await request('/api/rpg/save/v2/movement', {
+      cookie: account.cookie, method: 'POST', body: { ...body, intent: { type: 'MOVE_INTENT', target: { x: target.x - 20, y: target.y } } },
+    })
+    expect(changed.status).toBe(409)
+    const next = await request('/api/rpg/save/v2/movement', {
+      cookie: account.cookie, method: 'POST', body: { ...body, sequence: 2, expectedMovementRevision: 2 },
+    })
+    expect(next.status).toBe(409)
+    expect(await next.json()).toMatchObject({ code: 'MOVEMENT_ACTIVE_PLAN' })
+    expect([...rpgCommandAccountLimiter.entries.values()][0]?.count).toBe(spent)
   })
 
   it('serializes concurrent same-key deliveries into one write and one receipt replay', async () => {

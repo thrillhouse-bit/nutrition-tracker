@@ -26,6 +26,7 @@ import {
   normalizeRpgSave,
   normalizeRpgSaveHistoryRow,
 } from './rpgSave.js'
+import { movementIntentDigest, validateMovePlan, validateMovementEnvelope, validateMovementRecord } from './rpgMovement.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -41,6 +42,31 @@ function rpgAuthorityReceiptResponse(row) {
       createdAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
     },
     story: row.response_story,
+  }
+}
+
+function authorityMovement(row) {
+  const checked = validateMovementRecord({
+    movementRevision: Number(row.movement_revision),
+    activePlan: row.active_plan ?? null,
+    lastResponse: row.last_response ?? null,
+  })
+  if (!checked.ok) return null
+  return checked.record
+}
+
+function authorityRow(row) {
+  if (!row) return null
+  const movement = authorityMovement(row)
+  if (!movement) return null
+  return {
+    story: row.story,
+    storyRevision: Number(row.story_revision),
+    authoritative: row.authoritative,
+    inventoryRevision: Number(row.inventory_revision),
+    movementRevision: movement.movementRevision,
+    activePlan: movement.activePlan,
+    lastMovementResponse: movement.lastResponse,
   }
 }
 
@@ -1014,17 +1040,13 @@ export class PgStore {
     const sql = await this.ready()
     const rows = await sql`
       select projection.story, projection.story_revision,
-             ledger.authoritative, ledger.inventory_revision
+             ledger.authoritative, ledger.inventory_revision,
+             movement.movement_revision, movement.active_plan, movement.last_response
       from rpg_story_projections projection
       join rpg_authority_ledgers ledger on ledger.user_id = projection.user_id
+      join rpg_story_movement movement on movement.user_id = projection.user_id
       where projection.user_id = ${userId} limit 1`
-    const row = rows[0]
-    return row && {
-      story: row.story,
-      storyRevision: Number(row.story_revision),
-      authoritative: row.authoritative,
-      inventoryRevision: Number(row.inventory_revision),
-    }
+    return authorityRow(rows[0])
   }
 
   async bootstrapRpgAuthority(userId, bootstrap) {
@@ -1034,37 +1056,39 @@ export class PgStore {
         select ${userId}::bigint as user_id
         where not exists (select 1 from rpg_saves where user_id = ${userId})
           and not exists (select 1 from rpg_story_projections where user_id = ${userId})
+          and not exists (select 1 from rpg_authority_ledgers where user_id = ${userId})
+          and not exists (select 1 from rpg_story_movement where user_id = ${userId})
       ), ledger as (
         insert into rpg_authority_ledgers (user_id, authoritative, inventory_revision)
         select user_id, ${JSON.stringify(bootstrap.authoritative)}::jsonb, ${bootstrap.inventoryRevision} from eligible
         on conflict (user_id) do nothing
         returning user_id, authoritative, inventory_revision
-      ), available_ledger as (
-        select user_id, authoritative, inventory_revision from ledger
-        union all
-        select existing.user_id, existing.authoritative, existing.inventory_revision
-        from rpg_authority_ledgers existing
-        join eligible using (user_id)
-        where not exists (select 1 from ledger)
       ), story as (
         insert into rpg_story_projections (user_id, story, story_revision)
-        select user_id, ${JSON.stringify(bootstrap.story)}::jsonb, ${bootstrap.storyRevision} from available_ledger
+        select user_id, ${JSON.stringify(bootstrap.story)}::jsonb, ${bootstrap.storyRevision} from ledger
         on conflict (user_id) do nothing
         returning user_id, story, story_revision, created_at, updated_at
+      ), movement as (
+        insert into rpg_story_movement (user_id, movement_revision, active_plan, last_response)
+        select user_id, 1, null, null from story
+        on conflict (user_id) do nothing
+        returning user_id, movement_revision, active_plan, last_response
       ), history as (
         insert into rpg_story_projection_history (user_id, story_revision, story, created_at, saved_at)
         select user_id, story_revision, story, created_at, updated_at from story
       )
-      select story.story, story.story_revision, ledger.authoritative, ledger.inventory_revision
-      from story join available_ledger ledger using (user_id)`
-    if (rows[0]) return { outcome: 'bootstrapped', authority: {
-      story: rows[0].story, storyRevision: Number(rows[0].story_revision),
-      authoritative: rows[0].authoritative, inventoryRevision: Number(rows[0].inventory_revision),
-    } }
+      select story.story, story.story_revision, ledger.authoritative, ledger.inventory_revision,
+             movement.movement_revision, movement.active_plan, movement.last_response
+      from story join ledger using (user_id) join movement using (user_id)`
+    if (rows[0]) return { outcome: 'bootstrapped', authority: authorityRow(rows[0]) }
     const authority = await this.getRpgAuthority(userId)
     if (authority) return { outcome: 'exists', authority }
-    const legacy = await sql`select 1 from rpg_saves where user_id = ${userId} limit 1`
-    return { outcome: legacy[0] ? 'legacy' : 'conflict', authority: null }
+    const shapes = await sql`
+      select exists(select 1 from rpg_saves where user_id = ${userId}) as legacy,
+             exists(select 1 from rpg_story_projections where user_id = ${userId}) as projection,
+             exists(select 1 from rpg_authority_ledgers where user_id = ${userId}) as ledger,
+             exists(select 1 from rpg_story_movement where user_id = ${userId}) as movement`
+    return { outcome: shapes[0]?.legacy ? 'legacy' : 'conflict', authority: null }
   }
 
   async getRpgAuthorityCommandReceipt(userId, envelope) {
@@ -1167,6 +1191,95 @@ export class PgStore {
       return { outcome: 'conflict', authority: null }
     }
     return { outcome: 'written', response: rpgAuthorityReceiptResponse({ command_id: row.written_command_id, idempotency_key: row.written_idempotency_key, command_digest: row.written_digest, response_story: row.written_response_story, story_revision: row.written_story_revision, inventory_revision: row.written_inventory_revision, created_at: row.written_created_at }) }
+  }
+
+  // M2 creates one server-timed plan only. It intentionally does not advance
+  // story state: M3 will materialize this plan before physical commands.
+  async createRpgMovementPlan(userId, envelope, plan) {
+    const { digest, ...rawEnvelope } = envelope || {}
+    const checkedEnvelope = validateMovementEnvelope(rawEnvelope)
+    const checkedPlan = validateMovePlan(plan)
+    if (!checkedEnvelope.ok || !checkedPlan.ok || digest !== movementIntentDigest(checkedEnvelope.envelope)) return { outcome: 'corrupt' }
+    const input = { ...checkedEnvelope.envelope, digest }
+    const sql = await this.ready()
+    const rows = await sql`
+      with locked as (
+        select p.user_id, p.story, p.story_revision, l.inventory_revision,
+               m.movement_revision, m.active_plan, m.last_response
+        from rpg_story_projections p
+        join rpg_authority_ledgers l using (user_id)
+        join rpg_story_movement m using (user_id)
+        where p.user_id = ${userId}
+        for update of p, l, m
+      ), timed_locked as (
+        -- This depends on the locked CTE, so clock acquisition happens after any
+        -- row-lock wait rather than before it.
+        select locked.*, floor(extract(epoch from clock_timestamp()) * 1000)::bigint as started_at_ms
+        from locked
+      ), rebased as (
+        select jsonb_set(${JSON.stringify(checkedPlan.plan)}::jsonb, '{startedAtMs}', to_jsonb(timed_locked.started_at_ms), true) as plan,
+               timed_locked.started_at_ms
+        from timed_locked
+      ), written as (
+        update rpg_story_movement movement
+        set active_plan = rebased.plan,
+            movement_revision = movement.movement_revision + 1,
+            last_response = jsonb_build_object(
+              'protocolVersion', 1,
+              'sequence', ${input.sequence},
+              'digest', ${input.digest},
+              'storyRevision', timed_locked.story_revision,
+              'inventoryRevision', timed_locked.inventory_revision,
+              'movementRevision', movement.movement_revision + 1,
+              'plan', rebased.plan
+            ),
+            updated_at = now()
+        from timed_locked, rebased
+        where movement.user_id = timed_locked.user_id
+          and timed_locked.story_revision = ${input.expectedStoryRevision}
+          and timed_locked.inventory_revision = ${input.expectedInventoryRevision}
+          and timed_locked.movement_revision = ${input.expectedMovementRevision}
+          and timed_locked.active_plan is null
+          and coalesce((timed_locked.last_response->>'sequence')::bigint, 0) + 1 = ${input.sequence}
+          and timed_locked.story->'world'->>'mapId' = ${checkedPlan.plan.mapId}
+          and timed_locked.story #> '{world,position}' = ${JSON.stringify(checkedPlan.plan.origin)}::jsonb
+          and rebased.started_at_ms - ${checkedPlan.plan.startedAtMs} between 0 and 250
+        returning movement.movement_revision, movement.active_plan, movement.last_response
+      )
+      select timed_locked.story_revision, timed_locked.inventory_revision, timed_locked.movement_revision,
+             timed_locked.active_plan, timed_locked.last_response,
+             timed_locked.started_at_ms,
+             written.movement_revision as written_movement_revision,
+             written.active_plan as written_active_plan,
+             written.last_response as written_last_response
+      from timed_locked left join written on true`
+    const row = rows[0]
+    if (!row) return { outcome: 'not_found' }
+    if (row.written_last_response != null) {
+      const written = authorityMovement({
+        movement_revision: row.written_movement_revision,
+        active_plan: row.written_active_plan,
+        last_response: row.written_last_response,
+      })
+      if (!written) return { outcome: 'corrupt' }
+      return { outcome: 'written', response: written.lastResponse }
+    }
+    const current = authorityMovement({
+      movement_revision: row.movement_revision,
+      active_plan: row.active_plan,
+      last_response: row.last_response,
+    })
+    if (!current) return { outcome: 'corrupt' }
+    const replay = current.lastResponse
+    if (replay && replay.sequence === input.sequence) {
+      return replay.digest === input.digest ? { outcome: 'replayed', response: replay } : { outcome: 'sequence_conflict' }
+    }
+    if (current.activePlan) return { outcome: 'active_plan' }
+    if (Number(row.story_revision) !== input.expectedStoryRevision
+      || Number(row.inventory_revision) !== input.expectedInventoryRevision
+      || current.movementRevision !== input.expectedMovementRevision) return { outcome: 'conflict' }
+    if (Number(row.started_at_ms) - checkedPlan.plan.startedAtMs < 0 || Number(row.started_at_ms) - checkedPlan.plan.startedAtMs > 250) return { outcome: 'basis_expired' }
+    return { outcome: 'sequence_conflict' }
   }
 
   // Complete account-owned data export. Credentials, OAuth tokens, Apple

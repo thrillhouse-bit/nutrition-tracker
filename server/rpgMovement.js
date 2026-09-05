@@ -2,6 +2,7 @@
 // map, origin, active route state, path, speed, and clock all remain trusted
 // server inputs. This module deliberately has no persistence or HTTP layer.
 import { DEFAULT_LOCOMOTION_CONFIG } from '../control-tower-shift/src/rpg/locomotion.js'
+import crypto from 'node:crypto'
 import { findWorldPath, isWorldPathStepReachable, isWorldPointWalkable } from '../control-tower-shift/src/rpg/pathfinding.js'
 import { rpgMapById } from '../control-tower-shift/src/rpg/registry.js'
 import { routeStateForMap } from '../control-tower-shift/src/rpg/routeState.js'
@@ -13,8 +14,11 @@ export const MOVE_INTENT_NOOP_RADIUS = 4
 export const SERVER_MOVE_SPEED_UNITS_PER_SECOND = DEFAULT_LOCOMOTION_CONFIG.walkSpeed
 
 const PLAN_VERSION = 1
+export const MOVEMENT_PROTOCOL_VERSION = 1
 const DUPLICATE_EPSILON = 1e-9
 const planKeys = Object.freeze(['mapId', 'origin', 'routeStateId', 'speedUnitsPerSecond', 'startedAtMs', 'target', 'version', 'waypoints'])
+const envelopeKeys = Object.freeze(['expectedInventoryRevision', 'expectedMovementRevision', 'expectedStoryRevision', 'intent', 'protocolVersion', 'sequence'])
+const responseKeys = Object.freeze(['digest', 'inventoryRevision', 'movementRevision', 'plan', 'protocolVersion', 'sequence', 'storyRevision'])
 
 function plain(value) {
   try {
@@ -53,6 +57,27 @@ function freeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
   for (const child of Object.values(value)) freeze(child)
   return Object.freeze(value)
+}
+
+function canonicalJson(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
+  if (typeof value === 'number') return Number.isFinite(value) ? JSON.stringify(value) : null
+  if (Array.isArray(value)) {
+    const values = value.map(canonicalJson)
+    return values.some((entry) => entry == null) ? null : `[${values.join(',')}]`
+  }
+  if (!plain(value)) return null
+  const entries = []
+  for (const key of Object.keys(value).sort()) {
+    const entry = canonicalJson(value[key])
+    if (entry == null) return null
+    entries.push(`${JSON.stringify(key)}:${entry}`)
+  }
+  return `{${entries.join(',')}}`
+}
+
+function revision(value) {
+  return Number.isSafeInteger(value) && value >= 1
 }
 
 function metrics(origin, waypoints) {
@@ -114,6 +139,74 @@ function canonicalWaypoints(origin, path, target) {
 export function parseMoveIntent(value) {
   if (!exact(value, ['target', 'type']) || value.type !== 'MOVE_INTENT' || !point(value.target)) return fail('MOVE_INTENT_INVALID')
   return freeze({ ok: true, intent: { type: 'MOVE_INTENT', target: { x: value.target.x, y: value.target.y } } })
+}
+
+// Movement has no client-supplied idempotency key. The monotonically
+// increasing sequence is its sole identity; revisions only guard the first
+// delivery and deliberately do not alter the intent digest.
+export function movementIntentDigest(envelope) {
+  const canonical = canonicalJson({
+    protocolVersion: envelope?.protocolVersion,
+    sequence: envelope?.sequence,
+    intent: envelope?.intent,
+  })
+  if (!canonical) throw new Error('Invalid movement digest input.')
+  return crypto.createHash('sha256').update(canonical).digest('hex')
+}
+
+export function validateMovementEnvelope(value) {
+  if (!exact(value, envelopeKeys) || value.protocolVersion !== MOVEMENT_PROTOCOL_VERSION
+    || !Number.isSafeInteger(value.sequence) || value.sequence < 1
+    || !revision(value.expectedStoryRevision) || !revision(value.expectedInventoryRevision)
+    || !revision(value.expectedMovementRevision)) return fail('MOVEMENT_ENVELOPE_INVALID')
+  const parsed = parseMoveIntent(value.intent)
+  if (!parsed.ok) return fail('MOVEMENT_ENVELOPE_INVALID')
+  const envelope = {
+    protocolVersion: MOVEMENT_PROTOCOL_VERSION,
+    sequence: value.sequence,
+    expectedStoryRevision: value.expectedStoryRevision,
+    expectedInventoryRevision: value.expectedInventoryRevision,
+    expectedMovementRevision: value.expectedMovementRevision,
+    intent: parsed.intent,
+  }
+  return freeze({ ok: true, envelope: { ...envelope, digest: movementIntentDigest(envelope) } })
+}
+
+export function rebaseMovePlanStart(plan, startedAtMs) {
+  const checked = validateMovePlan(plan)
+  if (!checked.ok || !Number.isSafeInteger(startedAtMs) || startedAtMs < 0) return fail('MOVE_PLAN_INVALID')
+  return validateMovePlan({ ...checked.plan, startedAtMs })
+}
+
+export function validateMovementResponse(value) {
+  if (!exact(value, responseKeys) || value.protocolVersion !== MOVEMENT_PROTOCOL_VERSION
+    || !Number.isSafeInteger(value.sequence) || value.sequence < 1
+    || !revision(value.storyRevision) || !revision(value.inventoryRevision) || !revision(value.movementRevision)
+    || typeof value.digest !== 'string' || !/^[0-9a-f]{64}$/.test(value.digest)) return fail('MOVEMENT_RESPONSE_INVALID')
+  const checked = validateMovePlan(value.plan)
+  if (!checked.ok) return fail('MOVEMENT_RESPONSE_INVALID')
+  return freeze({ ok: true, response: {
+    protocolVersion: MOVEMENT_PROTOCOL_VERSION,
+    sequence: value.sequence,
+    digest: value.digest,
+    storyRevision: value.storyRevision,
+    inventoryRevision: value.inventoryRevision,
+    movementRevision: value.movementRevision,
+    plan: checked.plan,
+  } })
+}
+
+export function validateMovementRecord(value) {
+  if (!exact(value, ['activePlan', 'lastResponse', 'movementRevision']) || !revision(value.movementRevision)) return fail('MOVEMENT_RECORD_INVALID')
+  if (value.activePlan === null && value.lastResponse === null) return freeze({ ok: true, record: { movementRevision: value.movementRevision, activePlan: null, lastResponse: null } })
+  const response = validateMovementResponse(value.lastResponse)
+  if (!response.ok) return fail('MOVEMENT_RECORD_INVALID')
+  if (response.response.movementRevision !== value.movementRevision) return fail('MOVEMENT_RECORD_INVALID')
+  if (value.activePlan !== null) {
+    const plan = validateMovePlan(value.activePlan)
+    if (!plan.ok || canonicalJson(plan.plan) !== canonicalJson(response.response.plan)) return fail('MOVEMENT_RECORD_INVALID')
+  }
+  return freeze({ ok: true, record: { movementRevision: value.movementRevision, activePlan: value.activePlan === null ? null : response.response.plan, lastResponse: response.response } })
 }
 
 // Strictly validates a stored/server-created plan shape and its bounded,

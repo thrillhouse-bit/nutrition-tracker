@@ -9,6 +9,7 @@ import express from 'express'
 import cors from 'cors'
 import { store, backend } from './db.js'
 import { createRpgAuthorityBootstrap, presentRpgAuthority, replayRpgAuthorityCommand, validateRpgAuthorityBootstrapBody, validateRpgAuthorityCommandBody } from './rpgAuthority.js'
+import { planMoveIntent, validateMovementEnvelope } from './rpgMovement.js'
 import {
   hashPassword,
   verifyPassword,
@@ -93,6 +94,7 @@ app.use('/api', (req, res, next) => {
 // recognizes the already-consumed request and will not parse it a second
 // time, while every other endpoint retains the 15 MB photo allowance below.
 app.post('/api/rpg/save/v2/commands', express.json({ limit: '4kb', type: 'application/json' }))
+app.post('/api/rpg/save/v2/movement', express.json({ limit: '4kb', type: 'application/json' }))
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
 // A malformed JSON body (or one over the 15mb limit above) throws INSIDE
@@ -548,6 +550,50 @@ requireAuthRouter.post('/rpg/save/v2/commands', asyncH(async (req, res) => {
   if (result.outcome === 'idempotency_mismatch') return res.status(409).json({ error: 'RPG authority idempotency key conflict.', code: 'RPG_AUTHORITY_IDEMPOTENCY_CONFLICT' })
   if (result.outcome === 'command_id_conflict') return res.status(409).json({ error: 'RPG authority command ID conflict.', code: 'RPG_AUTHORITY_COMMAND_ID_CONFLICT' })
   res.status(result.outcome === 'replayed' ? 200 : 201).json(result.response)
+}))
+
+function movementFailure(res, code) {
+  const status = code === 'MOVEMENT_SEQUENCE_CONFLICT' || code === 'MOVEMENT_ACTIVE_PLAN' || code === 'MOVEMENT_REVISION_CONFLICT' ? 409 : 422
+  return res.status(status).json({ error: 'RPG movement intent was rejected.', code })
+}
+
+// M2 persists only a server-derived path. It does not move `story.world`,
+// expose a GET overlay, or make any other command movement-aware; M3 owns
+// trusted-time materialization.
+requireAuthRouter.post('/rpg/save/v2/movement', asyncH(async (req, res) => {
+  if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
+  const parsed = validateMovementEnvelope(req.body)
+  if (!parsed.ok) return movementFailure(res, parsed.code)
+  if (typeof store.createRpgMovementPlan !== 'function') {
+    return res.status(501).json({ error: 'RPG movement persistence is unavailable.', code: 'RPG_MOVEMENT_NOT_IMPLEMENTED' })
+  }
+  const current = await store.getRpgAuthority(req.userId)
+  if (!current) return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
+  const replay = current.lastMovementResponse
+  if (replay?.sequence === parsed.envelope.sequence) {
+    return replay.digest === parsed.envelope.digest
+      ? res.status(200).json({ movement: replay })
+      : movementFailure(res, 'MOVEMENT_SEQUENCE_CONFLICT')
+  }
+  if (current.activePlan) return movementFailure(res, 'MOVEMENT_ACTIVE_PLAN')
+  const commandIpKey = `rpg-command-ip:${clientRateLimitKey(req)}`
+  const commandAccountKey = `rpg-command-account:${req.userId}`
+  const limitStates = [rpgCommandIpLimiter.status(commandIpKey), rpgCommandAccountLimiter.status(commandAccountKey)]
+  if (limitStates.some((state) => !state.allowed)) return sendRateLimit(res, limitStates)
+  rpgCommandIpLimiter.consume(commandIpKey)
+  rpgCommandAccountLimiter.consume(commandAccountKey)
+  const authority = presentRpgAuthority(current)
+  const planned = authority && planMoveIntent({ state: authority.state, intent: parsed.envelope.intent, trustedNowMs: Date.now() })
+  if (!planned?.ok) return movementFailure(res, planned?.code || 'MOVE_STATE_INVALID')
+  const result = await store.createRpgMovementPlan(req.userId, parsed.envelope, planned.plan)
+  if (result.outcome === 'written') return res.status(201).json({ movement: result.response })
+  if (result.outcome === 'replayed') return res.status(200).json({ movement: result.response })
+  if (result.outcome === 'not_found') return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
+  if (result.outcome === 'active_plan') return movementFailure(res, 'MOVEMENT_ACTIVE_PLAN')
+  if (result.outcome === 'sequence_conflict') return movementFailure(res, 'MOVEMENT_SEQUENCE_CONFLICT')
+  if (result.outcome === 'conflict') return movementFailure(res, 'MOVEMENT_REVISION_CONFLICT')
+  if (result.outcome === 'basis_expired') return movementFailure(res, 'MOVEMENT_BASIS_EXPIRED')
+  return res.status(409).json({ error: 'RPG movement state is invalid.', code: 'RPG_MOVEMENT_STATE_INVALID' })
 }))
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------

@@ -75,6 +75,26 @@ create table if not exists rpg_story_projections (
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
+-- Plan-only server movement state. The current checkpoint deliberately stores
+-- no materialized position: M3 will consume active_plan against trusted time.
+-- `last_response` is the exact canonical response for sequence replay.
+create table if not exists rpg_story_movement (
+  user_id             bigint primary key references users (id) on delete cascade,
+  movement_revision   bigint not null check (movement_revision > 0),
+  active_plan         jsonb,
+  last_response       jsonb,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+-- Existing v2 accounts become eligible only when their projection and ledger
+-- are both present. Never invent a third row for a partial/corrupt authority.
+insert into rpg_story_movement (user_id, movement_revision, active_plan, last_response)
+select projection.user_id, 1, null, null
+from rpg_story_projections projection
+join rpg_authority_ledgers ledger using (user_id)
+left join rpg_story_movement movement using (user_id)
+where movement.user_id is null
+on conflict (user_id) do nothing;
 create table if not exists rpg_story_projection_history (
   user_id             bigint not null references users (id) on delete cascade,
   story_revision      bigint not null check (story_revision > 0),

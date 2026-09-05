@@ -4,6 +4,9 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { JsonStore, PgStore } from '../server/db.js'
 import { createRpgAuthorityBootstrap } from '../server/rpgAuthority.js'
+import { planMoveIntent, validateMovementEnvelope } from '../server/rpgMovement.js'
+import { createInitialState } from '../control-tower-shift/src/rpg/state.js'
+import { rpgMapById } from '../control-tower-shift/src/rpg/registry.js'
 
 const dirs = []
 
@@ -120,6 +123,7 @@ describe('PgStore authority bootstrap SQL contract', () => {
         return [{
           story: { status: 'playing' }, story_revision: 1,
           authoritative: { inventory: {} }, inventory_revision: 1,
+          movement_revision: 1, active_plan: null, last_response: null,
         }]
       }
       throw new Error(`unexpected SQL: ${query}`)
@@ -129,11 +133,12 @@ describe('PgStore authority bootstrap SQL contract', () => {
     expect(result).toMatchObject({ outcome: 'bootstrapped', authority: { storyRevision: 1, inventoryRevision: 1 } })
     const bootstrap = calls[0]
     expect(bootstrap.query).toContain('not exists (select 1 from rpg_saves where user_id = ?)')
-    expect(bootstrap.query).toContain('available_ledger as')
-    expect(bootstrap.query).toContain('from rpg_authority_ledgers existing')
+    expect(bootstrap.query).toContain('not exists (select 1 from rpg_story_movement')
+    expect(bootstrap.query).toContain('insert into rpg_story_movement')
     expect(bootstrap.query).toContain('on conflict (user_id) do nothing')
     expect(bootstrap.query).toContain('insert into rpg_story_projection_history')
-    expect(bootstrap.query).toContain('from story join available_ledger ledger')
+    expect(bootstrap.query).toContain('from story join ledger using (user_id) join movement using (user_id)')
+    expect(bootstrap.query).not.toContain('available_ledger')
     expect(bootstrap.values.filter((value) => value === 77).length).toBeGreaterThanOrEqual(3)
   })
 
@@ -148,6 +153,7 @@ describe('PgStore authority bootstrap SQL contract', () => {
         return [{
           story: { status: 'playing' }, story_revision: 1,
           authoritative: { inventory: {} }, inventory_revision: 1,
+          movement_revision: 1, active_plan: null, last_response: null,
         }]
       }
       throw new Error(`unexpected SQL: ${query}`)
@@ -158,5 +164,94 @@ describe('PgStore authority bootstrap SQL contract', () => {
     })
     expect(calls[0].query).toContain('on conflict (user_id) do nothing')
     expect(calls[1].query).toContain('join rpg_authority_ledgers ledger')
+  })
+
+  it.each([
+    ['projection', { projection: true, ledger: false, movement: false }],
+    ['ledger', { projection: false, ledger: true, movement: false }],
+    ['movement', { projection: false, ledger: false, movement: true }],
+    ['projection+ledger', { projection: true, ledger: true, movement: false }],
+    ['projection+movement', { projection: true, ledger: false, movement: true }],
+    ['ledger+movement', { projection: false, ledger: true, movement: true }],
+  ])('fails closed without promoting a partial v2 triple: %s', async (_label, shape) => {
+    const store = new PgStore('postgres://unused')
+    const calls = []
+    store.sql = (strings, ...values) => {
+      const query = strings.join('?').replace(/\s+/g, ' ').trim()
+      calls.push({ query, values })
+      if (query.startsWith('with eligible as')) return []
+      if (query.startsWith('select projection.story')) return []
+      if (query.startsWith('select exists(select 1 from rpg_saves')) return [{ legacy: false, ...shape }]
+      throw new Error(`unexpected SQL: ${query}`)
+    }
+    await expect(store.bootstrapRpgAuthority(91, createRpgAuthorityBootstrap())).resolves.toMatchObject({ outcome: 'conflict', authority: null })
+    expect(calls).toHaveLength(3)
+    expect(calls[0].query).toContain('not exists (select 1 from rpg_story_projections')
+    expect(calls[0].query).toContain('not exists (select 1 from rpg_authority_ledgers')
+    expect(calls[0].query).toContain('not exists (select 1 from rpg_story_movement')
+  })
+})
+
+describe('PgStore plan-only movement SQL contract', () => {
+  it('locks the complete triple, CASes all revisions/origin, and lets SQL rebase the returned canonical plan', async () => {
+    const store = new PgStore('postgres://unused')
+    const calls = []
+    store.sql = (strings, ...values) => {
+      calls.push({ query: strings.join('?').replace(/\s+/g, ' ').trim(), values })
+      return []
+    }
+    const state = createInitialState()
+    const map = rpgMapById(state.world.mapId)
+    const target = map.entities.find((entity) => entity.id === 'beacon-bank')
+    const plan = planMoveIntent({ state, intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } }, trustedNowMs: 1 })
+    const envelope = validateMovementEnvelope({
+      protocolVersion: 1, sequence: 1, expectedStoryRevision: 1,
+      expectedInventoryRevision: 1, expectedMovementRevision: 1,
+      intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } },
+    })
+    expect(plan.ok && envelope.ok).toBe(true)
+    await expect(store.createRpgMovementPlan(41, envelope.envelope, plan.plan)).resolves.toEqual({ outcome: 'not_found' })
+    const query = calls[0].query
+    expect(query).toContain('join rpg_story_movement m using (user_id)')
+    expect(query).toContain('for update of p, l, m')
+    expect(query).toContain('timed_locked as')
+    expect(query).toContain('from locked')
+    expect(query.indexOf('for update of p, l, m')).toBeLessThan(query.indexOf('clock_timestamp()'))
+    expect(query).toContain('clock_timestamp()')
+    expect(query).toContain("jsonb_set(?::jsonb, '{startedAtMs}'")
+    expect(query).toContain('timed_locked.story_revision = ?')
+    expect(query).toContain('timed_locked.inventory_revision = ?')
+    expect(query).toContain('timed_locked.movement_revision = ?')
+    expect(query).toContain("timed_locked.story #> '{world,position}'")
+    expect(query).toContain('between 0 and 250')
+    expect(query).toContain('timed_locked.active_plan is null')
+    expect(query).toContain("'plan', rebased.plan")
+    expect(query).not.toContain('rpg_story_projection_history')
+    expect(query).not.toContain('rpg_story_command_')
+  })
+
+  it('returns an exact same-sequence response before reporting an existing active plan', async () => {
+    const state = createInitialState()
+    const map = rpgMapById(state.world.mapId)
+    const target = map.entities.find((entity) => entity.id === 'beacon-bank')
+    const planned = planMoveIntent({ state, intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } }, trustedNowMs: 100 })
+    const envelope = validateMovementEnvelope({
+      protocolVersion: 1, sequence: 1, expectedStoryRevision: 1,
+      expectedInventoryRevision: 1, expectedMovementRevision: 1,
+      intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } },
+    })
+    const response = {
+      protocolVersion: 1, sequence: 1, digest: envelope.envelope.digest,
+      storyRevision: 1, inventoryRevision: 1, movementRevision: 2,
+      plan: planned.plan,
+    }
+    const store = new PgStore('postgres://unused')
+    store.sql = () => [{
+      story_revision: 1, inventory_revision: 1, movement_revision: 2,
+      active_plan: planned.plan, last_response: response, started_at_ms: 100,
+      written_movement_revision: null, written_active_plan: null, written_last_response: null,
+    }]
+    await expect(store.createRpgMovementPlan(42, envelope.envelope, planned.plan))
+      .resolves.toEqual({ outcome: 'replayed', response })
   })
 })

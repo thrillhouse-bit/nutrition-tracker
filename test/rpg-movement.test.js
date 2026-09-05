@@ -7,8 +7,13 @@ import {
   MOVE_PLAN_MAX_BYTES,
   SERVER_MOVE_SPEED_UNITS_PER_SECOND,
   materializeMovePlan,
+  movementIntentDigest,
   parseMoveIntent,
   planMoveIntent,
+  rebaseMovePlanStart,
+  validateMovementEnvelope,
+  validateMovementRecord,
+  validateMovementResponse,
   validateMovePlan,
 } from '../server/rpgMovement.js'
 
@@ -70,6 +75,30 @@ describe('server-timed MOVE_INTENT kernel', () => {
 
     expect(parseMoveIntent({ type: 'MOVE_INTENT', target: { x: target.x, y: target.y }, origin: state.world.position })).toEqual({ ok: false, code: 'MOVE_INTENT_INVALID' })
     expect(parseMoveIntent({ type: 'MOVE_INTENT', target: { x: Infinity, y: target.y } })).toEqual({ ok: false, code: 'MOVE_INTENT_INVALID' })
+  })
+
+  it('uses sequence as the sole movement identity and validates canonical persisted responses', () => {
+    const { plan } = planForBeacon()
+    const body = {
+      protocolVersion: 1, sequence: 1, expectedStoryRevision: 1,
+      expectedInventoryRevision: 1, expectedMovementRevision: 1,
+      intent: intent({ x: plan.target.x, y: plan.target.y }),
+    }
+    const first = validateMovementEnvelope(body)
+    const stale = validateMovementEnvelope({ ...body, expectedStoryRevision: 9 })
+    expect(first.ok && stale.ok && first.envelope.digest).toBe(stale.ok && stale.envelope.digest)
+    expect(validateMovementEnvelope({ ...body, sequence: 0 })).toEqual({ ok: false, code: 'MOVEMENT_ENVELOPE_INVALID' })
+    expect(validateMovementEnvelope({ ...body, intent: { ...body.intent, mapId: 'forged' } })).toEqual({ ok: false, code: 'MOVEMENT_ENVELOPE_INVALID' })
+    const rebased = rebaseMovePlanStart(plan, 9_999)
+    expect(rebased).toMatchObject({ ok: true, plan: { startedAtMs: 9_999 } })
+    const response = {
+      protocolVersion: 1, sequence: 1, digest: first.envelope.digest,
+      storyRevision: 1, inventoryRevision: 1, movementRevision: 2, plan: rebased.plan,
+    }
+    expect(validateMovementResponse(response)).toMatchObject({ ok: true })
+    expect(validateMovementRecord({ movementRevision: 2, activePlan: rebased.plan, lastResponse: response })).toMatchObject({ ok: true })
+    expect(validateMovementRecord({ movementRevision: 2, activePlan: plan, lastResponse: response })).toEqual({ ok: false, code: 'MOVEMENT_RECORD_INVALID' })
+    expect(movementIntentDigest(first.envelope)).toBe(first.envelope.digest)
   })
 
   it('rejects no-ops, collision targets, and inactive dynamic-route targets without trusting client geometry', () => {
