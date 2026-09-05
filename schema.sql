@@ -86,6 +86,23 @@ create table if not exists rpg_story_movement (
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
+-- Terminal movement settlements are durable independently of M2's latest
+-- plan response, so a lost arrival response remains replayable after later
+-- movement plans exist.
+create table if not exists rpg_story_movement_completion_receipts (
+  user_id             bigint not null references users (id) on delete cascade,
+  sequence            bigint not null check (sequence > 0),
+  plan_digest         text not null check (plan_digest ~ '^[0-9a-f]{64}$'),
+  response            jsonb not null,
+  story_revision      bigint not null check (story_revision > 0),
+  inventory_revision  bigint not null check (inventory_revision > 0),
+  movement_revision   bigint not null check (movement_revision > 0),
+  created_at          timestamptz not null default now(),
+  primary key (user_id, sequence),
+  unique (user_id, plan_digest)
+);
+create index if not exists rpg_story_movement_completion_receipts_user_created_idx
+  on rpg_story_movement_completion_receipts (user_id, created_at desc);
 -- Existing v2 accounts become eligible only when their projection and ledger
 -- are both present. Never invent a third row for a partial/corrupt authority.
 insert into rpg_story_movement (user_id, movement_revision, active_plan, last_response)

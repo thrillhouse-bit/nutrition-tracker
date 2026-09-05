@@ -89,6 +89,13 @@ describe('RPG authority v2 JSON backend boundary', () => {
     expect(movement.status).toBe(501)
     expect(await movement.json()).toMatchObject({ code: 'RPG_AUTHORITY_POSTGRES_REQUIRED' })
 
+    const arrival = await fetch(`${base}/api/rpg/save/v2/movement/arrive`, {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ protocolVersion: 1, sequence: 1, planDigest: 'a'.repeat(64), expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 2 }),
+    })
+    expect(arrival.status).toBe(501)
+    expect(await arrival.json()).toMatchObject({ code: 'RPG_AUTHORITY_POSTGRES_REQUIRED' })
+
     const oversizedMovement = await fetch(`${base}/api/rpg/save/v2/movement`, {
       method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ padding: 'x'.repeat(5_000) }),

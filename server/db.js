@@ -26,7 +26,7 @@ import {
   normalizeRpgSave,
   normalizeRpgSaveHistoryRow,
 } from './rpgSave.js'
-import { movementIntentDigest, validateMovePlan, validateMovementEnvelope, validateMovementRecord } from './rpgMovement.js'
+import { movementIntentDigest, validateMovePlan, validateMovementCompletionResponse, validateMovementEnvelope, validateMovementRecord } from './rpgMovement.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -58,7 +58,7 @@ function authorityMovement(row) {
 function authorityRow(row) {
   if (!row) return null
   const movement = authorityMovement(row)
-  if (!movement) return null
+  if (!movement) return { corruptMovement: true }
   return {
     story: row.story,
     storyRevision: Number(row.story_revision),
@@ -1280,6 +1280,72 @@ export class PgStore {
       || current.movementRevision !== input.expectedMovementRevision) return { outcome: 'conflict' }
     if (Number(row.started_at_ms) - checkedPlan.plan.startedAtMs < 0 || Number(row.started_at_ms) - checkedPlan.plan.startedAtMs > 250) return { outcome: 'basis_expired' }
     return { outcome: 'sequence_conflict' }
+  }
+
+  async getRpgMovementCompletionReceipt(userId, envelope) {
+    const sql = await this.ready()
+    const rows = await sql`select sequence, plan_digest, response, story_revision, inventory_revision, movement_revision from rpg_story_movement_completion_receipts
+      where user_id = ${userId} and (sequence = ${envelope.sequence} or plan_digest = ${envelope.planDigest}) limit 1`
+    const row = rows[0]
+    if (!row) return { outcome: 'missing' }
+    if (Number(row.sequence) !== envelope.sequence || row.plan_digest !== envelope.planDigest) return { outcome: 'conflict' }
+    const checked = validateMovementCompletionResponse(row.response)
+    if (!checked.ok || checked.response.sequence !== Number(row.sequence) || checked.response.planDigest !== row.plan_digest
+      || checked.response.storyRevision !== Number(row.story_revision) || checked.response.inventoryRevision !== Number(row.inventory_revision)
+      || checked.response.movementRevision !== Number(row.movement_revision)) return { outcome: 'corrupt' }
+    return { outcome: 'replayed', response: checked.response }
+  }
+
+  async completeRpgMovementPlan(userId, envelope, completion) {
+    const checkedPlan = validateMovePlan(completion?.plan)
+    if (!checkedPlan.ok || !Number.isSafeInteger(completion?.basisMs)) return { outcome: 'corrupt' }
+    let previous = checkedPlan.plan.origin; let total = 0
+    for (const point of checkedPlan.plan.waypoints) { total += Math.hypot(point.x - previous.x, point.y - previous.y); previous = point }
+    const finalFrom = checkedPlan.plan.waypoints.at(-2) || checkedPlan.plan.origin
+    const expectedFacing = Math.atan2(checkedPlan.plan.target.y - finalFrom.y, checkedPlan.plan.target.x - finalFrom.x)
+    const durationMs = Math.ceil((total / checkedPlan.plan.speedUnitsPerSecond) * 1000)
+    if (completion.basisMs - checkedPlan.plan.startedAtMs < durationMs
+      || completion.position?.x !== checkedPlan.plan.target.x || completion.position?.y !== checkedPlan.plan.target.y
+      || completion.facing !== expectedFacing || completion.mapId !== checkedPlan.plan.mapId
+      || completion.origin?.x !== checkedPlan.plan.origin.x || completion.origin?.y !== checkedPlan.plan.origin.y) return { outcome: 'in_progress' }
+    const expectedResponse = {
+      protocolVersion: 1, sequence: envelope.sequence, planDigest: envelope.planDigest,
+      storyRevision: envelope.expectedStoryRevision + 1, inventoryRevision: envelope.expectedInventoryRevision,
+      movementRevision: envelope.expectedMovementRevision + 1, position: checkedPlan.plan.target,
+      facing: expectedFacing, complete: true,
+    }
+    const sql = await this.ready()
+    const rows = await sql`
+      with locked as (
+        select p.user_id, p.story, p.story_revision, l.inventory_revision, m.movement_revision, m.active_plan, m.last_response
+        from rpg_story_projections p join rpg_authority_ledgers l using (user_id) join rpg_story_movement m using (user_id)
+        where p.user_id = ${userId} for update of p, l, m
+      ), timed_locked as (
+        select locked.*, floor(extract(epoch from clock_timestamp()) * 1000)::bigint as observed_at_ms from locked
+      ), written_story as (
+        update rpg_story_projections p set story = jsonb_set(jsonb_set(p.story, '{world,position}', ${JSON.stringify(completion.position)}::jsonb, true), '{world,facing}', to_jsonb(${completion.facing}), true), story_revision = p.story_revision + 1, updated_at = now()
+        from timed_locked where p.user_id = timed_locked.user_id and timed_locked.story_revision = ${envelope.expectedStoryRevision}
+          and timed_locked.inventory_revision = ${envelope.expectedInventoryRevision} and timed_locked.movement_revision = ${envelope.expectedMovementRevision}
+          and timed_locked.active_plan is not null and timed_locked.last_response->>'sequence' = ${String(envelope.sequence)}
+          and timed_locked.last_response->>'digest' = ${envelope.planDigest}
+          and timed_locked.active_plan = ${JSON.stringify(checkedPlan.plan)}::jsonb
+          and timed_locked.last_response->'plan' = ${JSON.stringify(checkedPlan.plan)}::jsonb
+          and timed_locked.story->'world'->>'mapId' = ${completion.mapId}
+          and timed_locked.story #> '{world,position}' = ${JSON.stringify(completion.origin)}::jsonb
+          and timed_locked.observed_at_ms - ${completion.basisMs} between 0 and 250
+          and timed_locked.observed_at_ms >= ${checkedPlan.plan.startedAtMs + durationMs}
+        returning p.user_id, p.story_revision
+      ), moved as (
+        update rpg_story_movement m set active_plan = null, movement_revision = m.movement_revision + 1, updated_at = now()
+        from written_story where m.user_id = written_story.user_id returning m.user_id, m.movement_revision
+      ), receipt as (
+        insert into rpg_story_movement_completion_receipts (user_id, sequence, plan_digest, response, story_revision, inventory_revision, movement_revision)
+        select moved.user_id, ${envelope.sequence}, ${envelope.planDigest}, ${JSON.stringify(expectedResponse)}::jsonb, written_story.story_revision, ${envelope.expectedInventoryRevision}, moved.movement_revision
+        from moved join written_story using (user_id) returning response
+      ) select (select response from receipt) as response from timed_locked`
+    if (rows[0]?.response) return { outcome: 'written', response: rows[0].response }
+    const raced = await this.getRpgMovementCompletionReceipt(userId, envelope)
+    return raced.outcome === 'missing' ? { outcome: 'conflict' } : raced
   }
 
   // Complete account-owned data export. Credentials, OAuth tokens, Apple

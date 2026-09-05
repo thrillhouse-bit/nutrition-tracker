@@ -19,6 +19,7 @@ const DUPLICATE_EPSILON = 1e-9
 const planKeys = Object.freeze(['mapId', 'origin', 'routeStateId', 'speedUnitsPerSecond', 'startedAtMs', 'target', 'version', 'waypoints'])
 const envelopeKeys = Object.freeze(['expectedInventoryRevision', 'expectedMovementRevision', 'expectedStoryRevision', 'intent', 'protocolVersion', 'sequence'])
 const responseKeys = Object.freeze(['digest', 'inventoryRevision', 'movementRevision', 'plan', 'protocolVersion', 'sequence', 'storyRevision'])
+const arrivalKeys = Object.freeze(['expectedInventoryRevision', 'expectedMovementRevision', 'expectedStoryRevision', 'planDigest', 'protocolVersion', 'sequence'])
 
 function plain(value) {
   try {
@@ -170,6 +171,39 @@ export function validateMovementEnvelope(value) {
     intent: parsed.intent,
   }
   return freeze({ ok: true, envelope: { ...envelope, digest: movementIntentDigest(envelope) } })
+}
+
+export function validateMovementArrivalEnvelope(value) {
+  if (!exact(value, arrivalKeys) || value.protocolVersion !== MOVEMENT_PROTOCOL_VERSION
+    || !Number.isSafeInteger(value.sequence) || value.sequence < 1
+    || !revision(value.expectedStoryRevision) || !revision(value.expectedInventoryRevision) || !revision(value.expectedMovementRevision)
+    || typeof value.planDigest !== 'string' || !/^[0-9a-f]{64}$/.test(value.planDigest)) return fail('MOVEMENT_ARRIVAL_INVALID')
+  return freeze({ ok: true, envelope: {
+    protocolVersion: MOVEMENT_PROTOCOL_VERSION, sequence: value.sequence, planDigest: value.planDigest,
+    expectedStoryRevision: value.expectedStoryRevision, expectedInventoryRevision: value.expectedInventoryRevision,
+    expectedMovementRevision: value.expectedMovementRevision,
+  } })
+}
+
+export function validateMovementCompletionResponse(value) {
+  const keys = ['complete', 'facing', 'inventoryRevision', 'movementRevision', 'planDigest', 'position', 'protocolVersion', 'sequence', 'storyRevision']
+  if (!exact(value, keys) || value.protocolVersion !== MOVEMENT_PROTOCOL_VERSION || value.complete !== true
+    || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || typeof value.planDigest !== 'string' || !/^[0-9a-f]{64}$/.test(value.planDigest)
+    || !revision(value.storyRevision) || !revision(value.inventoryRevision) || !revision(value.movementRevision)
+    || !point(value.position) || !Number.isFinite(value.facing)) return fail('MOVEMENT_COMPLETION_INVALID')
+  return freeze({ ok: true, response: { protocolVersion: 1, sequence: value.sequence, planDigest: value.planDigest, storyRevision: value.storyRevision, inventoryRevision: value.inventoryRevision, movementRevision: value.movementRevision, position: { x: value.position.x, y: value.position.y }, facing: value.facing, complete: true } })
+}
+
+export function movementOverlay({ state, response, trustedNowMs } = {}) {
+  const checked = validateMovementResponse(response)
+  if (!checked.ok) return fail('MOVEMENT_INTEGRITY_INVALID')
+  const motion = materializeMovePlan({ state, plan: checked.response.plan, trustedNowMs })
+  if (!motion.ok) return fail('MOVEMENT_INTEGRITY_INVALID')
+  return freeze({ ok: true, overlay: {
+    protocolVersion: MOVEMENT_PROTOCOL_VERSION, sequence: checked.response.sequence, planDigest: checked.response.digest,
+    mapId: checked.response.plan.mapId, position: motion.motion.position, facing: motion.motion.facing,
+    complete: motion.motion.complete, observedAtMs: trustedNowMs,
+  } })
 }
 
 export function rebaseMovePlanStart(plan, startedAtMs) {

@@ -7,11 +7,14 @@ import {
   MOVE_PLAN_MAX_BYTES,
   SERVER_MOVE_SPEED_UNITS_PER_SECOND,
   materializeMovePlan,
+  movementOverlay,
   movementIntentDigest,
   parseMoveIntent,
   planMoveIntent,
   rebaseMovePlanStart,
   validateMovementEnvelope,
+  validateMovementArrivalEnvelope,
+  validateMovementCompletionResponse,
   validateMovementRecord,
   validateMovementResponse,
   validateMovePlan,
@@ -99,6 +102,24 @@ describe('server-timed MOVE_INTENT kernel', () => {
     expect(validateMovementRecord({ movementRevision: 2, activePlan: rebased.plan, lastResponse: response })).toMatchObject({ ok: true })
     expect(validateMovementRecord({ movementRevision: 2, activePlan: plan, lastResponse: response })).toEqual({ ok: false, code: 'MOVEMENT_RECORD_INVALID' })
     expect(movementIntentDigest(first.envelope)).toBe(first.envelope.digest)
+  })
+
+  it('accepts an exact terminal arrival envelope and derives a non-authoritative overlay', () => {
+    const { state, plan } = planForBeacon()
+    const envelope = validateMovementArrivalEnvelope({ protocolVersion: 1, sequence: 1, planDigest: 'a'.repeat(64), expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 2 })
+    expect(envelope.ok).toBe(true)
+    expect(validateMovementArrivalEnvelope({ ...envelope.envelope, position: { x: 1, y: 1 } })).toEqual({ ok: false, code: 'MOVEMENT_ARRIVAL_INVALID' })
+    const response = { protocolVersion: 1, sequence: 1, digest: 'a'.repeat(64), storyRevision: 1, inventoryRevision: 1, movementRevision: 2, plan }
+    const overlay = movementOverlay({ state, response, trustedNowMs: plan.startedAtMs })
+    expect(overlay).toMatchObject({ ok: true, overlay: { mapId: plan.mapId, position: plan.origin, complete: false, observedAtMs: plan.startedAtMs } })
+  })
+
+  it('fails closed on poisoned completion receipt payloads', () => {
+    const valid = { protocolVersion: 1, sequence: 1, planDigest: 'a'.repeat(64), storyRevision: 2, inventoryRevision: 1, movementRevision: 3, position: { x: 1, y: 2 }, facing: 0, complete: true }
+    expect(validateMovementCompletionResponse(valid)).toMatchObject({ ok: true })
+    expect(validateMovementCompletionResponse({ ...valid, extra: true })).toEqual({ ok: false, code: 'MOVEMENT_COMPLETION_INVALID' })
+    expect(validateMovementCompletionResponse({ ...valid, planDigest: 'bad' })).toEqual({ ok: false, code: 'MOVEMENT_COMPLETION_INVALID' })
+    expect(validateMovementCompletionResponse({ ...valid, facing: Infinity })).toEqual({ ok: false, code: 'MOVEMENT_COMPLETION_INVALID' })
   })
 
   it('rejects no-ops, collision targets, and inactive dynamic-route targets without trusting client geometry', () => {

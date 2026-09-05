@@ -20,7 +20,7 @@ import { validateMovementEnvelope } from '../server/rpgMovement.js'
 import { rpgMapById } from '../control-tower-shift/src/rpg/registry.js'
 
 const fake = vi.hoisted(() => {
-  const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), authorityReceipts: new Map(), nextUserId: 0 }
+  const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), authorityReceipts: new Map(), movementCompletions: new Map(), nextUserId: 0 }
   const clone = (value) => value == null ? value : structuredClone(value)
   const publicSave = (row) => row && ({
     payload: clone(row.payload),
@@ -175,6 +175,23 @@ const fake = vi.hoisted(() => {
         movementRevision: row.movementRevision, plan: rebasedPlan,
       }
       return { outcome: 'written', response: clone(row.lastMovementResponse) }
+    },
+    getRpgMovementCompletionReceipt: async (userId, envelope) => {
+      const receipt = state.movementCompletions.get(Number(userId))?.get(envelope.sequence)
+      if (!receipt) return { outcome: 'missing' }
+      return receipt.planDigest === envelope.planDigest ? { outcome: 'replayed', response: clone(receipt.response) } : { outcome: 'conflict' }
+    },
+    completeRpgMovementPlan: async (userId, envelope, completion) => {
+      const uid = Number(userId); const row = state.authorities.get(uid)
+      const existing = await store.getRpgMovementCompletionReceipt(uid, envelope)
+      if (existing.outcome !== 'missing') return existing
+      if (!row?.activePlan || row.lastMovementResponse.digest !== envelope.planDigest || row.lastMovementResponse.sequence !== envelope.sequence) return { outcome: 'conflict' }
+      if (completion.position.x !== row.activePlan.target.x || completion.position.y !== row.activePlan.target.y) return { outcome: 'in_progress' }
+      row.story = { ...row.story, world: { ...row.story.world, position: clone(completion.position), facing: completion.facing } }
+      row.storyRevision += 1; row.movementRevision += 1; row.activePlan = null
+      const response = { protocolVersion: 1, sequence: envelope.sequence, planDigest: envelope.planDigest, storyRevision: row.storyRevision, inventoryRevision: row.inventoryRevision, movementRevision: row.movementRevision, position: clone(completion.position), facing: completion.facing, complete: true }
+      const receipts = state.movementCompletions.get(uid) || new Map(); receipts.set(envelope.sequence, { planDigest: envelope.planDigest, response: clone(response) }); state.movementCompletions.set(uid, receipts)
+      return { outcome: 'written', response }
     },
     exportUserData: async (userId) => {
       const user = state.users.find((candidate) => candidate.id === Number(userId))
@@ -545,6 +562,53 @@ describe('Postgres-only RPG authority v2 API', () => {
     expect(next.status).toBe(409)
     expect(await next.json()).toMatchObject({ code: 'MOVEMENT_ACTIVE_PLAN' })
     expect([...rpgCommandAccountLimiter.entries.values()][0]?.count).toBe(spent)
+  })
+
+  it('overlays and terminally settles a movement once, preserving M2 replay and canonical ledger', async () => {
+    const account = await signup('rpg-v2-arrive@example.test')
+    await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+    const row = fake.state.authorities.get(account.user.id); const map = rpgMapById(row.story.world.mapId)
+    const target = map.entities.find((entity) => entity.id === 'beacon-bank')
+    const move = { protocolVersion: 1, sequence: 1, expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 1, intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } } }
+    const planned = await request('/api/rpg/save/v2/movement', { cookie: account.cookie, method: 'POST', body: move })
+    const planResponse = await planned.json(); const before = structuredClone(row.story)
+    const get = await request('/api/rpg/save/v2', { cookie: account.cookie })
+    expect(get.status).toBe(200); expect(get.headers.get('cache-control')).toContain('no-store')
+    expect((await get.json()).movementOverlay).toMatchObject({ sequence: 1, planDigest: planResponse.movement.digest, complete: true })
+    expect(row.story).toEqual(before)
+    const arrive = { protocolVersion: 1, sequence: 1, planDigest: planResponse.movement.digest, expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 2 }
+    const responses = await Promise.all([request('/api/rpg/save/v2/movement/arrive', { cookie: account.cookie, method: 'POST', body: arrive }), request('/api/rpg/save/v2/movement/arrive', { cookie: account.cookie, method: 'POST', body: arrive })])
+    expect(responses.map((item) => item.status).sort()).toEqual([200, 201])
+    const bodies = await Promise.all(responses.map((item) => item.json())); expect(bodies[0]).toEqual(bodies[1])
+    expect(row.story.world.position).toEqual({ x: target.x, y: target.y }); expect(row.inventoryRevision).toBe(1); expect(row.activePlan).toBeNull()
+    const m2Replay = await request('/api/rpg/save/v2/movement', { cookie: account.cookie, method: 'POST', body: move })
+    expect(m2Replay.status).toBe(200); expect(await m2Replay.json()).toEqual(planResponse)
+  })
+
+  it('keeps a no-plan v2 read canonical and rejects malformed or mismatched arrival identities', async () => {
+    const account = await signup('rpg-v2-arrive-negative@example.test')
+    await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+    const empty = await request('/api/rpg/save/v2', { cookie: account.cookie })
+    expect((await empty.json()).movementOverlay).toBeUndefined()
+    const malformed = await request('/api/rpg/save/v2/movement/arrive', { cookie: account.cookie, method: 'POST', body: { protocolVersion: 1, sequence: 1 } })
+    expect(malformed.status).toBe(422)
+    const noPlan = await request('/api/rpg/save/v2/movement/arrive', { cookie: account.cookie, method: 'POST', body: { protocolVersion: 1, sequence: 1, planDigest: 'a'.repeat(64), expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 1 } })
+    expect(noPlan.status).toBe(409)
+  })
+
+  it('fails corrupt bootstrap and movement state before presentation or limiter consumption', async () => {
+    const account = await signup('rpg-v2-corrupt-movement@example.test')
+    const originalBootstrap = fake.store.bootstrapRpgAuthority
+    const originalGet = fake.store.getRpgAuthority
+    try {
+      fake.store.bootstrapRpgAuthority = async () => ({ outcome: 'exists', authority: { corruptMovement: true } })
+      const bootstrap = await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+      expect(bootstrap.status).toBe(409); expect(await bootstrap.json()).toMatchObject({ code: 'MOVEMENT_INTEGRITY_INVALID' })
+      fake.store.getRpgAuthority = async () => ({ corruptMovement: true })
+      const move = await request('/api/rpg/save/v2/movement', { cookie: account.cookie, method: 'POST', body: { protocolVersion: 1, sequence: 1, expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 1, intent: { type: 'MOVE_INTENT', target: { x: 300, y: 300 } } } })
+      expect(move.status).toBe(422); expect(await move.json()).toMatchObject({ code: 'MOVEMENT_INTEGRITY_INVALID' })
+      expect(rpgCommandAccountLimiter.entries.size).toBe(0)
+    } finally { fake.store.bootstrapRpgAuthority = originalBootstrap; fake.store.getRpgAuthority = originalGet }
   })
 
   it('serializes concurrent same-key deliveries into one write and one receipt replay', async () => {

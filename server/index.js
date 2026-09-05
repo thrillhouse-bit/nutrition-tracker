@@ -9,7 +9,7 @@ import express from 'express'
 import cors from 'cors'
 import { store, backend } from './db.js'
 import { createRpgAuthorityBootstrap, presentRpgAuthority, replayRpgAuthorityCommand, validateRpgAuthorityBootstrapBody, validateRpgAuthorityCommandBody } from './rpgAuthority.js'
-import { planMoveIntent, validateMovementEnvelope } from './rpgMovement.js'
+import { materializeMovePlan, movementOverlay, planMoveIntent, validateMovementArrivalEnvelope, validateMovementEnvelope } from './rpgMovement.js'
 import {
   hashPassword,
   verifyPassword,
@@ -95,6 +95,7 @@ app.use('/api', (req, res, next) => {
 // time, while every other endpoint retains the 15 MB photo allowance below.
 app.post('/api/rpg/save/v2/commands', express.json({ limit: '4kb', type: 'application/json' }))
 app.post('/api/rpg/save/v2/movement', express.json({ limit: '4kb', type: 'application/json' }))
+app.post('/api/rpg/save/v2/movement/arrive', express.json({ limit: '4kb', type: 'application/json' }))
 // Label photos are base64 — allow a generous body size.
 app.use(express.json({ limit: '15mb' }))
 // A malformed JSON body (or one over the 15mb limit above) throws INSIDE
@@ -440,6 +441,7 @@ requireAuthRouter.put('/rpg/save', asyncH(async (req, res) => {
       currentRevision: result.save?.revision ?? 0,
     })
   }
+  if (result.authority?.corruptMovement) return res.status(409).json({ error: 'RPG movement plan integrity failure.', code: 'MOVEMENT_INTEGRITY_INVALID' })
   res.json({ save: result.save, idempotent: result.outcome === 'idempotent' })
 }))
 
@@ -476,7 +478,14 @@ function rpgAuthorityPostgresOnly(res) {
 
 requireAuthRouter.get('/rpg/save/v2', asyncH(async (req, res) => {
   if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
-  res.json({ save: presentRpgAuthority(await store.getRpgAuthority(req.userId)) })
+  const row = await store.getRpgAuthority(req.userId)
+  if (row?.corruptMovement) return res.status(409).json({ error: 'RPG movement plan integrity failure.', code: 'MOVEMENT_INTEGRITY_INVALID' })
+  const save = presentRpgAuthority(row)
+  if (!save) return res.json({ save: null })
+  if (!row.activePlan) return res.json({ save })
+  const overlay = movementOverlay({ state: save.state, response: row.lastMovementResponse, trustedNowMs: Date.now() })
+  if (!overlay.ok) return res.status(409).json({ error: 'RPG movement plan integrity failure.', code: 'MOVEMENT_INTEGRITY_INVALID' })
+  res.json({ save, movementOverlay: overlay.overlay })
 }))
 
 requireAuthRouter.post('/rpg/save/v2', asyncH(async (req, res) => {
@@ -492,6 +501,7 @@ requireAuthRouter.post('/rpg/save/v2', asyncH(async (req, res) => {
   if (result.outcome === 'conflict') {
     return res.status(409).json({ error: 'RPG authority bootstrap conflict.', code: 'RPG_AUTHORITY_BOOTSTRAP_CONFLICT' })
   }
+  if (result.authority?.corruptMovement) return res.status(409).json({ error: 'RPG movement plan integrity failure.', code: 'MOVEMENT_INTEGRITY_INVALID' })
   res.status(result.outcome === 'bootstrapped' ? 201 : 200).json({
     save: presentRpgAuthority(result.authority),
     idempotent: result.outcome === 'exists',
@@ -542,6 +552,7 @@ requireAuthRouter.post('/rpg/save/v2/commands', asyncH(async (req, res) => {
   rpgCommandIpLimiter.consume(commandIpKey)
   rpgCommandAccountLimiter.consume(commandAccountKey)
   const current = await store.getRpgAuthority(req.userId)
+  if (current?.corruptMovement) return movementFailure(res, 'MOVEMENT_INTEGRITY_INVALID')
   if (!current) return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
   const next = replayRpgAuthorityCommand(current, envelope)
   const result = await store.applyRpgAuthorityStoryCommand(req.userId, envelope, next)
@@ -568,6 +579,7 @@ requireAuthRouter.post('/rpg/save/v2/movement', asyncH(async (req, res) => {
     return res.status(501).json({ error: 'RPG movement persistence is unavailable.', code: 'RPG_MOVEMENT_NOT_IMPLEMENTED' })
   }
   const current = await store.getRpgAuthority(req.userId)
+  if (current?.corruptMovement) return movementFailure(res, 'MOVEMENT_INTEGRITY_INVALID')
   if (!current) return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
   const replay = current.lastMovementResponse
   if (replay?.sequence === parsed.envelope.sequence) {
@@ -594,6 +606,31 @@ requireAuthRouter.post('/rpg/save/v2/movement', asyncH(async (req, res) => {
   if (result.outcome === 'conflict') return movementFailure(res, 'MOVEMENT_REVISION_CONFLICT')
   if (result.outcome === 'basis_expired') return movementFailure(res, 'MOVEMENT_BASIS_EXPIRED')
   return res.status(409).json({ error: 'RPG movement state is invalid.', code: 'RPG_MOVEMENT_STATE_INVALID' })
+}))
+
+requireAuthRouter.post('/rpg/save/v2/movement/arrive', asyncH(async (req, res) => {
+  if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
+  const parsed = validateMovementArrivalEnvelope(req.body)
+  if (!parsed.ok) return movementFailure(res, parsed.code)
+  if (typeof store.getRpgMovementCompletionReceipt !== 'function' || typeof store.completeRpgMovementPlan !== 'function') return res.status(501).json({ error: 'RPG movement completion persistence is unavailable.', code: 'RPG_MOVEMENT_NOT_IMPLEMENTED' })
+  const receipt = await store.getRpgMovementCompletionReceipt(req.userId, parsed.envelope)
+  if (receipt.outcome === 'replayed') return res.status(200).json({ movement: receipt.response })
+  if (receipt.outcome === 'conflict') return movementFailure(res, 'MOVEMENT_SEQUENCE_CONFLICT')
+  if (receipt.outcome === 'corrupt') return movementFailure(res, 'MOVEMENT_INTEGRITY_INVALID')
+  const row = await store.getRpgAuthority(req.userId)
+  if (row?.corruptMovement) return movementFailure(res, 'MOVEMENT_INTEGRITY_INVALID')
+  const save = presentRpgAuthority(row)
+  if (!row || !save || !row.activePlan || !row.lastMovementResponse) return movementFailure(res, 'MOVEMENT_ACTIVE_PLAN')
+  const now = Date.now()
+  const motion = materializeMovePlan({ state: save.state, plan: row.activePlan, trustedNowMs: now })
+  if (!motion.ok) return movementFailure(res, 'MOVEMENT_INTEGRITY_INVALID')
+  if (!motion.motion.complete) return movementFailure(res, 'MOVEMENT_IN_PROGRESS')
+  const response = { protocolVersion: 1, sequence: parsed.envelope.sequence, planDigest: parsed.envelope.planDigest, storyRevision: save.storyRevision + 1, inventoryRevision: save.inventoryRevision, movementRevision: row.movementRevision + 1, position: motion.motion.position, facing: motion.motion.facing, complete: true }
+  const result = await store.completeRpgMovementPlan(req.userId, parsed.envelope, { plan: row.activePlan, mapId: row.activePlan.mapId, origin: row.activePlan.origin, position: motion.motion.position, facing: motion.motion.facing, basisMs: now, response })
+  if (result.outcome === 'written') return res.status(201).json({ movement: result.response })
+  if (result.outcome === 'replayed') return res.status(200).json({ movement: result.response })
+  if (result.outcome === 'in_progress') return movementFailure(res, 'MOVEMENT_IN_PROGRESS')
+  return movementFailure(res, 'MOVEMENT_REVISION_CONFLICT')
 }))
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------

@@ -254,4 +254,27 @@ describe('PgStore plan-only movement SQL contract', () => {
     await expect(store.createRpgMovementPlan(42, envelope.envelope, planned.plan))
       .resolves.toEqual({ outcome: 'replayed', response })
   })
+
+  it('requires the locked active and response plans, terminal DB time, and same-account receipt identity before settlement', async () => {
+    const state = createInitialState(); const map = rpgMapById(state.world.mapId)
+    const target = map.entities.find((entity) => entity.id === 'beacon-bank')
+    const planned = planMoveIntent({ state, intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } }, trustedNowMs: 100 })
+    const envelope = validateMovementEnvelope({ protocolVersion: 1, sequence: 1, expectedStoryRevision: 1, expectedInventoryRevision: 1, expectedMovementRevision: 2, intent: { type: 'MOVE_INTENT', target: { x: target.x, y: target.y } } })
+    const previous = planned.plan.waypoints.at(-2) || planned.plan.origin
+    const facing = Math.atan2(target.y - previous.y, target.x - previous.x)
+    let total = 0; let prior = planned.plan.origin
+    for (const point of planned.plan.waypoints) { total += Math.hypot(point.x - prior.x, point.y - prior.y); prior = point }
+    const completion = { plan: planned.plan, mapId: planned.plan.mapId, origin: planned.plan.origin, position: planned.plan.target, facing, basisMs: planned.plan.startedAtMs + Math.ceil((total / planned.plan.speedUnitsPerSecond) * 1000), response: { forged: true } }
+    const store = new PgStore('postgres://unused'); const calls = []
+    store.sql = (strings, ...values) => { calls.push({ query: strings.join('?').replace(/\s+/g, ' ').trim(), values }); return [] }
+    await expect(store.completeRpgMovementPlan(93, envelope.envelope, completion)).resolves.toEqual({ outcome: 'conflict' })
+    const query = calls[0].query
+    expect(query).toContain('for update of p, l, m')
+    expect(query).toContain('timed_locked.active_plan = ?::jsonb')
+    expect(query).toContain("timed_locked.last_response->'plan' = ?::jsonb")
+    expect(query).toContain('timed_locked.observed_at_ms >= ?')
+    expect(query).toContain('timed_locked.observed_at_ms - ? between 0 and 250')
+    expect(query).not.toContain('rpg_story_projection_history')
+    expect(query).not.toContain('rpg_story_command_audit')
+  })
 })
