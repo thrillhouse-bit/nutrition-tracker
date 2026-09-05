@@ -49,6 +49,11 @@ export const WaterEntryCreateSchema = z.object({
   amount_ml: z.number().finite().positive().max(10000),
   logged_at: z.string().datetime().nullable().optional(),
 })
+export const HydrationPreferencesSchema = z.object({
+  goal_ml: z.number().finite().positive().max(10000).nullable(),
+  unit: z.enum(['ml', 'oz']),
+  quick_add_ml: z.array(z.number().finite().positive().max(10000)).length(3),
+}).strict().partial().refine((value) => Object.keys(value).length > 0, { message: 'Choose at least one hydration preference.' })
 export const WaterEntryPatchSchema = z.object({
   amount_ml: z.number().finite().positive().max(10000).optional(),
   logged_at: z.string().datetime().optional(),

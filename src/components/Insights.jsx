@@ -180,7 +180,7 @@ function WeightChart({ points, toDisplay }) {
 // the same "current value" cue every other chart in this file uses.
 function TrainingLoadChart({ points }) {
   const n = points.length
-  if (n < 2) return null
+  if (!n) return null
   const vals = points.map((p) => num(p.minutes))
   const max = Math.max(...vals, 1)
   const TOP = 16
@@ -211,7 +211,7 @@ function TrainingLoadChart({ points }) {
 // brand in the section header regardless of who actually connected.
 const PROVIDER_NAMES = { oura: 'Oura', garmin: 'Garmin', apple: 'Apple Health' }
 
-export default function Insights({ refreshKey }) {
+export default function Insights({ refreshKey, onGoToConnections }) {
   const [window, setWindow] = useState(7)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -317,14 +317,16 @@ export default function Insights({ refreshKey }) {
   const workoutLoad = data?.workoutLoad || []
   const avgMinutes = workoutLoad.length ? Math.round(workoutLoad.reduce((a, r) => a + num(r.minutes), 0) / workoutLoad.length) : null
   // Labeled by where THIS CHART's history actually comes from, not by
-  // whichever provider today's live workout signal prefers (server/index.js's
-  // workoutLoad is aggregated exclusively from store.listAppleWorkoutHistory —
-  // it is never Garmin- or Oura-sourced). Deriving this from
-  // signals?.workout?.provider used to read "Garmin" whenever Garmin's demo
-  // or a real Garmin connection won that metric's PREFERENCE order in
-  // server/providers.js, mislabeling an Apple-only chart. Tied to the chart's
-  // own data instead of a same-day preference guess that can disagree with it.
-  const workoutProviderLabel = workoutLoad.length ? PROVIDER_NAMES.apple : null
+  // whichever provider today's live workout signal prefers. The Apple
+  // fallback supports older API responses that predate per-point provenance.
+  const workoutProviderLabel = [...new Set(workoutLoad.flatMap(p => p.providers || ['apple']))].map(p => PROVIDER_NAMES[p] || p).join(' + ')
+  const workoutSources = data?.workoutHistoryStatus?.sources || []
+  const workoutNeedsConsent = workoutSources.some(s => s.provider === 'oura' && s.status === 'needs_authorization')
+  const workoutFailed = workoutSources.some(s => ['sync_error', 'read_error'].includes(s.status))
+  const workoutHelp = workoutNeedsConsent
+    ? 'Oura workout access needs approval separately from daily summaries. Reconnect Oura in Connections and allow workout access.'
+    : workoutFailed ? 'Some workout history could not be loaded. Check your wearable connection and try syncing again.'
+      : 'No recorded workouts in this date range. Sync a workout from your wearable or choose a longer range. Daily steps and calories are not counted as training.'
 
   return (
     <div className="space-y-6">
@@ -579,45 +581,35 @@ export default function Insights({ refreshKey }) {
             )}
           </section>
 
-          {/* TRAINING LOAD — real per-day minutes trained once at least two
-              days of retained Apple Health workout history exist, the honest
-              dashed placeholder (no invented bars) otherwise — same pattern
-              as Readiness above. Labeled "Apple Health" whenever there's
-              chart data, because that's the ONLY source workoutLoad ever
-              has (see workoutProviderLabel above) — never derived from
-              today's live workout-signal provider preference, which can
-              legitimately be Garmin while this chart stays Apple-only. */}
+          {/* Actual retained workouts, with per-point provider provenance. */}
           <section>
             <SectionHead
               label={workoutProviderLabel ? `Training load · ${workoutProviderLabel}` : 'Training load'}
               right={
-                workoutLoad.length >= 2 ? (
+                workoutLoad.length > 0 ? (
                   <span className="tnum text-[13px] text-muted">avg {avgMinutes} min</span>
                 ) : (
-                  <StatusMark status="unavailable" label="Awaiting history" />
+                  <StatusMark status="unavailable" label={workoutNeedsConsent ? 'Permission needed' : workoutFailed ? 'Sync needs attention' : 'No workouts'} />
                 )
               }
             />
-            {workoutLoad.length >= 2 ? (
+            {workoutLoad.length > 0 ? (
               <>
                 <TrainingLoadChart points={workoutLoad} />
                 <ChartCaption
                   left={shortDate(workoutLoad[0].date)}
-                  mid={`AVG ${avgMinutes} MIN`}
+                  mid={`AVG ${avgMinutes} MIN / RECORDED DAY`}
                   right={shortDate(workoutLoad[workoutLoad.length - 1].date)}
                 />
               </>
             ) : (
               <>
-                <div className="relative mt-2.5 h-[62px] border-t border-b border-dashed border-line-strong">
-                  <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-sand/60" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
-                  </div>
-                </div>
-                <ChartCaption left="Sand band · training" right={workoutProviderLabel || 'No source connected'} />
+                <p className="mt-3 text-[13px] leading-relaxed text-muted">{workoutHelp}</p>
               </>
             )}
+            {workoutLoad.length > 0 && (workoutNeedsConsent || workoutFailed) && <p className="mt-3 text-[13px] leading-relaxed text-muted">{workoutHelp}</p>}
+            {onGoToConnections && (!workoutLoad.length || workoutNeedsConsent || workoutFailed) && <TextButton className="mt-2" onClick={onGoToConnections}>Manage wearable connections</TextButton>}
+            {workoutLoad.length > 0 && <p className="mt-2 text-[11px] text-faint">Recorded workout minutes, not an intensity or strain score. Missing days are not assumed rest days.</p>}
           </section>
 
           {/* WHAT WE NOTICE — an observation only when correlations are available;

@@ -120,6 +120,16 @@ create table if not exists water_entries (
 );
 create index if not exists water_entries_user_id_logged_at_idx on water_entries (user_id, logged_at);
 
+-- User-chosen preferences, never a prescribed fluid requirement. No row means
+-- no goal. Goals are current preferences, not historical target snapshots.
+create table if not exists hydration_preferences (
+  user_id bigint primary key references users(id) on delete cascade,
+  goal_ml numeric check (goal_ml > 0 and goal_ml <= 10000),
+  unit text not null check (unit in ('ml', 'oz')),
+  quick_add_ml jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
 -- Versioned targets: per user, the row with the latest effective_from wins.
 -- Adjust your targets over time without losing the history of what they used
 -- to be.

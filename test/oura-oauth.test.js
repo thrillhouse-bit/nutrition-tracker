@@ -55,7 +55,7 @@ describe('oura authorizeUrl', () => {
     expect(parsed.searchParams.get('response_type')).toBe('code')
     expect(parsed.searchParams.get('client_id')).toBe(CLIENT_ID)
     expect(parsed.searchParams.get('redirect_uri')).toBe(REDIRECT_URI)
-    expect(parsed.searchParams.get('scope')).toBe('email personal daily')
+    expect(parsed.searchParams.get('scope')).toBe('email personal daily workout')
     expect(parsed.searchParams.get('state')).toBe(state)
   })
 })

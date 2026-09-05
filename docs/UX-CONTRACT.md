@@ -97,8 +97,24 @@ native date-time picker records when the person drank it. Quick add, add,
 edit, and delete retain their values on failure and expose an inline error.
 
 Hydration is context only: it does not alter AFP energy, carbohydrate, sodium,
-or fluid targets. Today must say that no personalized target is supplied. No
-sweat-replacement or sodium advice appears without measured loss data.
+or fluid calculations. No sweat-replacement or sodium advice appears.
+
+The hydration Customize sheet owns optional user-set daily water goals, preferred
+mL/US fl oz display, and three editable quick-add cup/bottle amounts. Existing
+accounts start without a goal. Values persist in canonical mL; unit changes
+convert display only and do not round or reinterpret saved volumes. Numeric
+bounds (positive and at most 10,000 mL) are input limits, not recommendations.
+Goal and quick-add changes save only changed fields through an account-scoped
+atomic patch; unrelated concurrent settings writes must survive. Preferences
+are included in account export and deleted with the account.
+
+Only today compares intake with the current user-set goal. Historical dates
+show actual intake without applying today's preference retroactively. Total
+intake stays uncapped; the visual progress bar caps at 100%. Removing a goal
+returns to intake-only tracking. Settings require explicit Save, retain drafts
+on failure, focus the first invalid field, and offer Keep editing or Discard
+changes on Cancel when dirty. No goal is inferred from a wearable, body size,
+weight-loss strategy, or training session.
 
 ## Legal launch gate
 
@@ -136,6 +152,19 @@ not product authority. Do not add a new user-facing flow to them. Remove them
 only through an explicit API/schema deprecation with native-client checks.
 
 ## Canonical control ownership
+
+### Food entry
+
+Log and the global Add food sheet share `FoodEntryChoices`: Search foods and
+Scan a package are the only top-level methods. Search includes a direct
+"Enter nutrition manually" fallback even when no query has been entered or
+the network is unavailable. Scan opens barcode lookup, retaining typed barcode
+digits, and offers "Read nutrition label instead" for Nutrition Facts extraction.
+These are alternative capture methods, not two ways of scanning the same content.
+Both fallback screens offer a clear return to their parent method. Existing
+confirmation, account-owned recents, offline queue and saved-entry editing remain
+owned by App. The meal-grouped log keeps its existing rows; `MealMacroSummary`
+adds serving-adjusted protein/carbohydrate/fat sums with missing data disclosed.
 
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|

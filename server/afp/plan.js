@@ -116,7 +116,7 @@ export function withCanonicalPlannedWorkout(signals = {}, plannedRows = [], nowD
   }
 }
 
-function ouraWorkoutToSession(w) {
+export function ouraWorkoutToSession(w) {
   return {
     sport: OURA_ACTIVITY_TO_KIND[String(w.activity || '').toLowerCase()] || 'workout',
     intensity: w.intensity === 'hard' || w.intensity === 'easy' ? w.intensity : 'moderate',
@@ -129,7 +129,7 @@ function ouraWorkoutToSession(w) {
   }
 }
 
-function appleSignalToSession(row) {
+export function appleSignalToSession(row) {
   const v = row.value || {}
   return {
     sport: v.kind || 'workout',
@@ -141,7 +141,7 @@ function appleSignalToSession(row) {
   }
 }
 
-function garminWorkoutToSession(w) {
+export function garminWorkoutToSession(w) {
   return {
     sport: w.sport || w.activity_type || 'workout',
     intensity: w.intensity === 'hard' || w.intensity === 'easy' ? w.intensity : 'moderate',

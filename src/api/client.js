@@ -87,6 +87,8 @@ export const api = {
   // Manual hydration. API amounts are canonical millilitres; presentation can
   // safely offer ounces without persisting a locale-specific unit.
   listWaterEntries: ({ from, to }) => req(`/water?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  getHydrationPreferences: () => req('/hydration/preferences'),
+  setHydrationPreferences: (preferences) => req('/hydration/preferences', { method: 'PUT', body: JSON.stringify(preferences) }),
   addWaterEntry: (entry) => req('/water', { method: 'POST', body: JSON.stringify(entry) }),
   updateWaterEntry: (id, patch) => req(`/water/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteWaterEntry: (id) => req(`/water/${id}`, { method: 'DELETE' }),

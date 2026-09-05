@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { lookupByBarcode, usdaConfigured } from './lookup.js'
 import { searchFoods } from './foodSearch/index.js'
 import { parseLabel, ocrConfigured } from './ocr.js'
-import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, WaterEntryCreateSchema, WaterEntryPatchSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
+import { validateBody, FoodInputSchema, EntryCreateSchema, EntryPatchSchema, WaterEntryCreateSchema, WaterEntryPatchSchema, HydrationPreferencesSchema, TargetsSchema, AfpProfilePatchSchema, PlannedWorkoutSchema, AfpOverridesSchema } from './validation.js'
 import {
   ouraConfigured,
   getToken as ouraToken,
@@ -52,6 +52,7 @@ import { computeRecommendation } from './plan.js'
 import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
+import { trainingHistory } from './trainingHistory.js'
 import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
 import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd, withCanonicalPlannedWorkout } from './afp/plan.js'
@@ -603,6 +604,12 @@ requireAuthRouter.delete('/entries/:id', asyncH(async (req, res) => {
 }))
 
 // --- hydration log ---------------------------------------------------------
+requireAuthRouter.get('/hydration/preferences', asyncH(async (req, res) => {
+  res.json({ preferences: await store.getHydrationPreferences(req.userId) })
+}))
+requireAuthRouter.put('/hydration/preferences', validateBody(HydrationPreferencesSchema), asyncH(async (req, res) => {
+  res.json({ preferences: await store.setHydrationPreferences(req.userId, req.body) })
+}))
 // Water is manually authored account data. It is intentionally not passed to
 // AFP's target engine: no wearable-derived or generic target is presented as
 // a personalized hydration/sodium prescription.
@@ -823,19 +830,22 @@ async function backfillOuraHistory(userId, token, days = 30, accountId = null) {
   // the one part of them that genuinely needs it).
   let workoutsSaved = 0
   let workoutsFetched = 0
+  let workoutSync = null
   if (accountId != null) {
     try {
       const workouts = await ouraWorkoutsRange(token, fromYmd, toYmd)
       workoutsFetched = workouts.length
       workoutsSaved = await store.saveOuraWorkouts(accountId, workouts)
+      workoutSync = { status: 'ok', attempted_at: new Date().toISOString() }
     } catch (err) {
-      // A 403 here (missing scope, once Oura requires one workouts doesn't
-      // already grant under `daily`) or any other fetch failure must not
+      // A 401/403 here (workout consent is separate from daily) must not
       // fail the whole backfill — readiness/sleep/activity already saved
       // above are still good.
       console.warn(`[oura-backfill] account ${accountId} (user ${userId}): workout fetch failed: ${err.message}`)
+      workoutSync = { status: err.status === 401 || err.status === 403 ? 'needs_authorization' : 'sync_error', attempted_at: new Date().toISOString() }
     }
   }
+  if (workoutSync) await store.setIntegration(userId, 'oura', { settings: { workout_sync: workoutSync } })
 
   // daysFetched/workoutsFetched vs. daysSaved/workoutsSaved is what
   // trackedOuraBackfill (below) turns into the persisted fetched/accepted/
@@ -1309,9 +1319,10 @@ async function buildPlan(userId, date, nowDate, bounds = null) {
 async function todayComposite(userId, date, nowDate, bounds = null) {
   const plan = await buildPlan(userId, date, nowDate, bounds)
   const { from, to } = bounds || dayRange(date)
-  const [entries, waterEntries] = await Promise.all([
+  const [entries, waterEntries, hydrationPreferences] = await Promise.all([
     store.listEntries(userId, { from, to }),
     store.listWaterEntries(userId, { from, to }),
+    store.getHydrationPreferences(userId),
   ])
   const intake = sumIntake(entries)
   const nowHour = localHourForRequest(nowDate, bounds)
@@ -1325,7 +1336,7 @@ async function todayComposite(userId, date, nowDate, bounds = null) {
   return {
     date, intake, baseline: plan.baseline, adjusted: plan.adjusted, rationale: plan.rationale,
     signals: plan.signals, recommendation, entries,
-    hydration: { entries: waterEntries, total_ml: waterEntries.reduce((sum, entry) => sum + (Number(entry.amount_ml) || 0), 0) },
+    hydration: { entries: waterEntries, total_ml: waterEntries.reduce((sum, entry) => sum + (Number(entry.amount_ml) || 0), 0), preferences: hydrationPreferences },
     generatedAt: nowDate.toISOString(),
     plan: plan.adaptive, profileReady: plan.profileReady, frozen: plan.frozen,
   }
@@ -1868,13 +1879,9 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
   const allWeightEntries = (await store.listWeightEntries?.(req.userId, '0001-01-01', windowEndYmd)) || []
   const weight = computeTrend(allWeightEntries).filter((e) => e.day >= windowStartYmd)
 
-  // Training load: real per-day minutes trained, aggregated from Apple
-  // Health workout sessions (store.listAppleWorkoutHistory — see server/db.js
-  // for why a day sums rather than keeps only the latest workout). Windowed
-  // the same way as ouraReadiness above, not the weight trend's full-history
-  // computation — there's no smoothed trend here, just the raw per-day totals.
-  const workoutHistory = (await store.listAppleWorkoutHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
-  const workoutLoad = workoutHistory.map((r) => ({ date: r.day, minutes: r.minutes, sessions: r.sessions }))
+  // Actual workouts across retained provider sources, deduplicated through
+  // the same session rules as AFP. Daily steps/calories are never workouts.
+  const { workoutLoad, workoutHistoryStatus } = await trainingHistory(store, req.userId, windowStartYmd, windowEndYmd)
 
   // { date, score } is the shape both the response's ouraReadiness field and
   // the correlation join want — computed once and reused rather than mapped
@@ -1901,6 +1908,7 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     ouraReadiness: ouraReadinessOut,
     weight,
     workoutLoad,
+    workoutHistoryStatus,
     // See server/correlations.js for the join key (protein_g -> next-day
     // readiness), the sample-size/effect-size thresholds, and why both must
     // pass before this reports available:true.

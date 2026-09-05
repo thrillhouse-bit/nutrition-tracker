@@ -95,15 +95,31 @@ describe('Insights: Training Load label reflects the chart\'s real source, not t
     expect(section.textContent).not.toContain('Garmin')
   })
 
-  it('CONTROL: stays bare "Training load" / "No source connected" with no chart data, even though the live signal is Garmin', async () => {
+  it('explains no workouts without falsely claiming no wearable is connected', async () => {
     api.signals.mockResolvedValue(SIGNALS_LIVE_GARMIN_WORKOUT)
     api.insights.mockResolvedValue({ ...BASE_RESPONSE, workoutLoad: [] })
     const el = await renderInsights()
 
     const section = trainingLoadSection(el)
     expect(section).toBeTruthy()
-    expect(section.textContent).toContain('No source connected')
+    expect(section.textContent).toContain('No recorded workouts in this date range')
     expect(section.textContent).not.toContain('Apple Health')
     expect(section.textContent).not.toContain('Garmin')
+  })
+
+  it('shows a single real Oura day and its actual source immediately', async () => {
+    api.insights.mockResolvedValue({ ...BASE_RESPONSE, workoutLoad: [{ date: '2026-08-20', minutes: 35, sessions: 1, providers: ['oura'] }] })
+    const section = trainingLoadSection(await renderInsights())
+    expect(section.textContent).toContain('Training load · Oura')
+    expect(section.querySelector('svg rect')).toBeTruthy()
+    expect(section.textContent).not.toContain('Awaiting')
+  })
+
+  it('distinguishes workout permission from daily Oura connection', async () => {
+    api.insights.mockResolvedValue({ ...BASE_RESPONSE, workoutLoad: [], workoutHistoryStatus: { sources: [{ provider: 'oura', status: 'needs_authorization' }] } })
+    const section = trainingLoadSection(await renderInsights())
+    expect(section.textContent).toContain('Permission needed')
+    expect(section.textContent).toContain('separately from daily summaries')
+    expect(section.textContent).toContain('Reconnect Oura')
   })
 })

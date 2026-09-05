@@ -1,5 +1,28 @@
 # DESIGN.md — visual/UX design rationale
 
+## 4 Sep 2026 — two food-entry paths
+
+Log's four competing capture cards collapse to two shared choices: Search foods
+and Scan a package. Each is a single semantic button tile with its title, short
+hint and arrow; Search gets the account-accent wash and scanning a hairline border.
+The compact pair replaces the oversized scanner promotion and
+unverified "Camera ready" claim. Manual values live inside Search; Nutrition Facts
+capture lives inside Scan, with their purposes named plainly. The same owner is
+used in the global Add food sheet so hierarchy does not change by entry point.
+Existing Archivo/Bodoni, hairline borders and account accent tokens are retained.
+The meal-grouped rows stay intact, with wrapping macro totals under each heading.
+
+## 4 Sep 2026 — personal hydration preferences
+
+Hydration retains the Today hairline section and Bodoni amount. A quiet
+Customize text action opens the established Sheet; the existing native unit
+select, Field, Button and ErrorNote own its interactions. The sole new visual
+is a thin account-accent progress bar, shown only after an explicit user-set
+goal and only for today. Actual intake remains the primary number even above
+the goal. This adds no palette or type token and makes no fluid prescription.
+The three quick-add buttons represent the person's chosen cup/bottle sizes.
+`docs/UX-CONTRACT.md` records storage, history and save/failure behavior.
+
 There was no design-rationale doc in this repo before this file (checked
 `README.md` and everything under `docs/` first — `PWA-RESPONSIVE-REPORT.md`
 covers accessibility/responsive *testing*, not design *decisions*, and

@@ -10,6 +10,7 @@ import LabelScan from './components/LabelScan.jsx'
 import ManualEntry from './components/ManualEntry.jsx'
 import SearchFood from './components/SearchFood.jsx'
 import FoodConfirm from './components/FoodConfirm.jsx'
+import FoodEntryChoices from './components/FoodEntryChoices.jsx'
 import Today from './components/Today.jsx'
 import LogView from './components/LogView.jsx'
 import Plan from './components/CanonicalPlan.jsx'
@@ -18,13 +19,6 @@ import Connections from './components/Connections.jsx'
 import Auth, { LegalReconsent } from './components/Auth.jsx'
 import Onboarding from './components/Onboarding.jsx'
 import { applyAccentTheme } from './lib/accentTheme.js'
-
-const ADD_OPTIONS = [
-  { key: 'scan', label: 'Scan barcode', hint: 'Packaged groceries' },
-  { key: 'label', label: 'Scan label', hint: 'Bulk / deli — photo the panel' },
-  { key: 'search', label: 'Search foods', hint: 'Produce, no barcode' },
-  { key: 'manual', label: 'Manual entry', hint: 'Type it in' },
-]
 
 const TABS = [
   { key: 'today', label: 'Today' },
@@ -544,7 +538,7 @@ export default function App() {
         )}
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}
         {tab === 'plan' && <Plan {...shared} onChanged={bump} />}
-        {tab === 'insights' && <Insights refreshKey={refreshKey} />}
+        {tab === 'insights' && <Insights refreshKey={refreshKey} onGoToConnections={() => setTab('connections')} />}
         {tab === 'connections' && <Connections key={`connections-${user?.id || 'none'}`} refreshKey={refreshKey} onChanged={bump} toast={toast} user={user} onLogout={logout} onAccountDeleted={accountDeleted} accent={accent} sessionKey={user?.id} onAccentChange={(next) => setAccent(applyAccentTheme(next))} />}
       </main>
 
@@ -569,26 +563,21 @@ export default function App() {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              {ADD_OPTIONS.map((o) => (
-                <button key={o.key} onClick={() => { setFlowError(''); setFlow(o.key) }} className="flex flex-col items-start gap-1 border-[1.5px] border-ink p-4 text-left transition hover:bg-fill">
-                  <span className="font-semibold text-ink">{o.label}</span>
-                  <span className="text-xs text-muted">{o.hint}</span>
-                </button>
-              ))}
-            </div>
+            <FoodEntryChoices onChoose={(key) => { setFlowError(''); setFlow(key) }} />
           </div>
         )}
         {flow === 'scan' && (
           <div className="space-y-3">
             <ErrorNote>{flowError}</ErrorNote>
+            <p className="text-sm text-muted">A barcode looks up the product. If it is missing or not found, use the Nutrition Facts panel.</p>
+            <Button variant="outline" onClick={() => { setFlowError(''); setFlow('label') }}>Read nutrition label instead</Button>
             <Suspense fallback={<Spinner label="Loading scanner…" />}><Scanner onDetected={onBarcode} /></Suspense>
           </div>
         )}
         {flow === 'lookup' && <Spinner label="Looking up product…" />}
-        {flow === 'label' && <LabelScan onParsed={(f) => toConfirm(f, 'label_ocr')} />}
-        {flow === 'search' && <SearchFood onPick={toConfirm} />}
-        {flow === 'manual' && <ManualEntry onSubmit={(f) => toConfirm(f, 'manual')} />}
+        {flow === 'label' && <div className="space-y-3"><Button variant="subtle" onClick={() => setFlow('scan')}>Back to barcode</Button><LabelScan onParsed={(f) => toConfirm(f, 'label_ocr')} /></div>}
+        {flow === 'search' && <div className="space-y-3"><SearchFood onPick={toConfirm} /><div className="border-t border-line pt-3"><p className="mb-2 text-xs text-muted">Have the nutrition values? You can enter them directly.</p><Button variant="outline" onClick={() => setFlow('manual')}>Enter nutrition manually</Button></div></div>}
+        {flow === 'manual' && <div className="space-y-3"><Button variant="subtle" onClick={() => setFlow('search')}>Back to search</Button><ManualEntry onSubmit={(f) => toConfirm(f, 'manual')} /></div>}
         {flow === 'confirm' && draftFood && (
           <div className="space-y-3">
             <ErrorNote>{flowError}</ErrorNote>

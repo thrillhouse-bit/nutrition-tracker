@@ -194,3 +194,37 @@ account ID that owns it. Never bind a token to a different person. A user's
 connected OAuth account takes precedence; a failed OAuth refresh does not
 fall back to the legacy token. Multi-user deployments should use per-account
 OAuth and leave both legacy variables unset. No schema migration is required.
+
+## Workout consent for existing connections
+
+Oura documents `workout` as a separate OAuth permission; `daily` covers daily
+summaries and does not grant workout access. New connection authorization now
+requests `email personal daily workout`. See the [official authentication
+documentation](https://cloud.ouraring.com/docs/authentication).
+
+Existing users who approved the earlier daily-only request must reconnect or
+reauthorize from Connections and approve the workout permission. Do not delete
+their connection or rotate stored credentials for them: ordinary token refresh
+cannot add consent. Existing daily readiness/activity/sleep syncing remains
+usable while workout consent is pending.
+
+Production verification on September 5 found a successful core sync at
+`2026-09-05T04:32:09.392Z` (two records accepted), while the separate workout
+request returned 401. Report this as partial capability, not a fully broken
+Oura connection or verified workout sync. Confirm a successful workout request
+after the user completes consent; do not infer success merely from the core
+`last_synced_at` timestamp.
+
+Insights now reads retained, account-owned Oura and Apple workout records,
+using AFP's session normalization/deduplication. It shows the first real day
+immediately and labels the source of those records. The measure is recorded
+workout minutes, not physiological strain; daily calories/steps and missing
+days are not converted to training or assumed rest days. Disabled sources are
+excluded. Garmin direct daily summaries still cannot supply concrete workout
+history; workouts exported through Apple Health retain Apple provenance.
+
+`integrations.settings.workout_sync` records the separate workout request's
+status (`ok`, `needs_authorization`, or `sync_error`) and attempt timestamp.
+Both scheduled and manual backfills use this path. Insights exposes that
+actionable status alongside any retained history without obscuring successful
+daily syncing. A subsequent successful workout request clears the warning.

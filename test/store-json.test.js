@@ -695,6 +695,22 @@ describe('JsonStore upsertFoodByBarcode', () => {
 })
 
 describe('JsonStore hydration log', () => {
+  it('isolates and persists optional preferences, merges concurrent patches, exports and deletes them', async () => {
+    const file = path.join(dir, 'store.json')
+    const s = new JsonStore(file)
+    const one = await s.createUser({ email: 'prefs-one@example.test', password_hash: 'hash' })
+    const two = await s.createUser({ email: 'prefs-two@example.test', password_hash: 'hash' })
+    expect((await s.getHydrationPreferences(one.id)).goal_ml).toBeNull()
+    await Promise.all([s.setHydrationPreferences(one.id, { goal_ml: 2000 }), s.setHydrationPreferences(one.id, { unit: 'oz', quick_add_ml: [236.5882365, 500, 750] })])
+    const saved = await new JsonStore(file).getHydrationPreferences(one.id)
+    expect(saved).toEqual({ goal_ml: 2000, unit: 'oz', quick_add_ml: [236.5882365, 500, 750] })
+    expect((await s.getHydrationPreferences(two.id)).goal_ml).toBeNull()
+    expect((await s.exportUserData(one.id)).hydration_preferences).toEqual(saved)
+    await s.setHydrationPreferences(one.id, { goal_ml: null })
+    expect(await s.getHydrationPreferences(one.id)).toEqual({ ...saved, goal_ml: null })
+    await s.deleteUser(one.id)
+    expect((await s.load()).hydration_preferences[one.id]).toBeUndefined()
+  })
   it('normalizes timestamps, isolates accounts, exports, and cascades on account deletion', async () => {
     const s = new JsonStore(path.join(dir, 'store.json'))
     const one = await s.createUser({ email: 'water-one@example.test', password_hash: 'hash' })

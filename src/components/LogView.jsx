@@ -1,15 +1,9 @@
 import { useMemo } from 'react'
 import { MEALS, entryNutrient, fmt } from '../lib/nutrition.js'
 import { EmptyState, TextButton } from './ui.jsx'
+import FoodEntryChoices from './FoodEntryChoices.jsx'
+import MealMacroSummary from './MealMacroSummary.jsx'
 
-// The alternative capture methods, below the primary (barcode) card. Each opens
-// the shared add-food sheet in App at the right step, so the scanning / OCR /
-// search / manual plumbing lives in one place — these are just entry points.
-const ALTS = [
-  { key: 'label', title: 'Photograph the label', caption: 'Capture the label now. We’ll extract it when you’re online.' },
-  { key: 'manual', title: 'Enter it manually', caption: 'Search, or type the panel yourself.' },
-  { key: 'search', title: 'Search foods', caption: 'Find produce and items without a barcode.' },
-]
 
 // Meal order for grouping; anything untagged sorts last under "Other".
 const MEAL_ORDER = [...MEALS, '']
@@ -104,54 +98,9 @@ export default function LogView({
         </span>
       </div>
 
-      {/* Capture methods — the primary cobalt card and its alternatives */}
+      {/* Two entry paths share the global Add food hierarchy. */}
       <section className="space-y-2.5">
-        {/* PRIMARY — the white-on-cobalt "moment that matters" */}
-        <div className="bg-cobalt px-[18px] pb-[18px] pt-5 text-oncobalt">
-          <div className="flex items-baseline justify-between">
-            <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em]">Primary</span>
-            <span className="text-[9.5px] font-medium uppercase tracking-[0.12em] opacity-75">Camera ready</span>
-          </div>
-          <div className="serif mt-3 text-[30px] leading-[1.05]">Scan a barcode</div>
-          <div className="mt-[18px] flex items-center gap-4">
-            {/* Barcode viewfinder — corner brackets + scan line, in white */}
-            <div aria-hidden className="relative h-14 w-24 shrink-0">
-              <span className="absolute left-0 top-0 h-4 w-4 border-l-2 border-t-2 border-white" />
-              <span className="absolute right-0 top-0 h-4 w-4 border-r-2 border-t-2 border-white" />
-              <span className="absolute bottom-0 left-0 h-4 w-4 border-b-2 border-l-2 border-white" />
-              <span className="absolute bottom-0 right-0 h-4 w-4 border-b-2 border-r-2 border-white" />
-              <span className="absolute left-3 right-3 top-1/2 h-0.5 -translate-y-1/2 bg-white" />
-            </div>
-            <p className="text-[12.5px] leading-[1.45] opacity-90">
-              Fastest path — matched against your saved foods first, then the open database.
-            </p>
-          </div>
-          <button
-            onClick={() => openAdd('scan')}
-            className="mt-[18px] block w-full bg-card py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-cobalt transition hover:bg-cobalt-soft"
-          >
-            Open scanner
-          </button>
-        </div>
-
-        {/* ALTERNATIVES — equal-weight ink-outline cards. ALTS has an odd count
-            (3), so a plain 2-col grid leaves the last card beside a dead
-            cell; give it the full row instead of a third, cramped column. */}
-        <div className="grid grid-cols-2 gap-2.5">
-          {ALTS.map((a, i) => (
-            <button
-              key={a.key}
-              onClick={() => openAdd(a.key)}
-              className={`border-[1.5px] border-ink px-3.5 py-[15px] text-left transition hover:bg-fill ${
-                i === ALTS.length - 1 && ALTS.length % 2 === 1 ? 'col-span-2' : ''
-              }`}
-            >
-              <div className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Alternative</div>
-              <div className="serif mt-2.5 text-[19px] leading-[1.15] text-ink">{a.title}</div>
-              <div className="mt-2 text-[11px] leading-[1.4] text-muted">{a.caption}</div>
-            </button>
-          ))}
-        </div>
+        <FoodEntryChoices onChoose={openAdd} />
 
         {/* Offline note — logging still works and queues */}
         {!online && (
@@ -168,7 +117,7 @@ export default function LogView({
           <div className="flex items-center justify-between pb-1.5">
             <h2 className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted">Quick add · Recent</h2>
             <TextButton className="-my-2 py-2.5 text-[9.5px] uppercase" onClick={() => openAdd('menu')}>
-              All foods
+              Add another food
             </TextButton>
           </div>
           <div>
@@ -207,7 +156,7 @@ export default function LogView({
           <div className="py-8 text-center text-sm text-muted">Loading…</div>
         ) : entries.length === 0 ? (
           <EmptyState title="Nothing logged yet">
-            Scan, photograph, search, or type in your first item above.
+            Search for a food or scan a package to add your first item.
           </EmptyState>
         ) : (
           <div className="space-y-5">
@@ -219,6 +168,7 @@ export default function LogView({
                     <span className="numeral text-ink">{fmt(g.kcal, 0)}</span> kcal
                   </span>
                 </div>
+                <MealMacroSummary entries={g.rows} />
                 <div>
                   {g.rows.map((e) => (
                     <EntryRow key={e.id} entry={e} onEdit={onEditEntry} onDelete={onDeleteEntry} />

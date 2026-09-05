@@ -43,6 +43,8 @@ describe('one credible daily planning loop', () => {
     expect(el.textContent).toContain('Plan')
     expect(el.textContent).toContain('Canonical AFP panel')
     expect(el.textContent).not.toContain('Quick targets')
+    expect(el.querySelector('time').getAttribute('dateTime')).toBe('2026-08-31')
+    expect(el.querySelector('time').textContent).toContain('August')
   })
 
   it('onboarding goes directly to the canonical profile with no calculator/manual fork', async () => {

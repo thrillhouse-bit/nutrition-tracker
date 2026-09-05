@@ -11,7 +11,7 @@ import crypto from 'node:crypto'
 const BASE = 'https://api.ouraring.com/v2/usercollection'
 const AUTHORIZE_URL = 'https://cloud.ouraring.com/oauth/authorize'
 const TOKEN_URL = 'https://api.ouraring.com/oauth/token'
-const SCOPES = 'email personal daily'
+const SCOPES = 'email personal daily workout'
 const TIMEOUT_MS = 8000
 
 export function ouraConfigured(userId) {
@@ -246,12 +246,10 @@ export function normalizeWorkout(record = {}) {
 }
 
 // Workouts (auto-detected or manually logged in the Oura app) for a date
-// range. Requires the same `daily` scope — VERIFY: Oura's docs list workout
-// under the same personal-data grant as the other usercollection endpoints
-// this app already calls with `daily`, but this hasn't been confirmed
-// against a real 403 (this app has never had an Oura workout-scope error to
-// observe). Paginated (fetchAllPages) since a wide backfill window can
-// easily hold more workouts than one page.
+// range. Requires the separate `workout` scope documented at
+// https://cloud.ouraring.com/docs/authentication. Existing daily-only grants
+// need user reauthorization; token refresh cannot expand consent. Paginated
+// because a wide backfill window can hold more workouts than one page.
 export async function workoutsRange(token, fromYmd, toYmd) {
   const rows = await fetchAllPages('workout', token, { start_date: fromYmd, end_date: toYmd })
   return rows.map(normalizeWorkout).filter((w) => w.id != null && w.day != null)

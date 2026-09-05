@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { num, fmt, ymd, dayBounds, lbToKg, kgToLb, ftInToCm, cmToFtIn } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
 import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, StatusMark, Meter, Why } from './ui.jsx'
@@ -454,11 +454,11 @@ function OverrideControl({ date, targets, currentOverrides, onChanged }) {
 
   if (!open) {
     return (
-      <div className="flex items-center justify-between gap-3 border-t border-line pt-3.5">
-        <p className="text-[11.5px] leading-snug text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-t border-line pt-4">
+        <p className="min-w-0 flex-1 basis-56 text-sm leading-relaxed text-muted">
           {hasOverride ? 'This day has a manual override applied.' : 'Need a different number just for today? Override it without changing your profile.'}
         </p>
-        <TextButton onClick={openForm} chevron>{hasOverride ? 'Edit override' : 'Override today'}</TextButton>
+        <TextButton onClick={openForm} className="shrink-0" chevron>{hasOverride ? 'Edit override' : 'Override today'}</TextButton>
       </div>
     )
   }
@@ -466,7 +466,7 @@ function OverrideControl({ date, targets, currentOverrides, onChanged }) {
   return (
     <div className="space-y-3 border-t border-line pt-3.5">
       <ErrorNote>{error}</ErrorNote>
-      <p className="text-xs text-faint">
+      <p className="text-sm leading-relaxed text-muted">
         Leave a field blank to keep the plan's own number (shown as a placeholder) — only a field you fill in
         becomes a day-specific override. Your profile defaults are untouched either way.
       </p>
@@ -507,20 +507,21 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   const [error, setError] = useState('')
   const [editingProfile, setEditingProfile] = useState(false)
   const [editingWorkout, setEditingWorkout] = useState(undefined) // undefined = closed, null = new, object = editing
+  const loadGeneration = useRef(0)
 
   const day = ymd(date)
 
   const load = () => {
-    let alive = true
+    const generation = ++loadGeneration.current
     setLoading(true); setError('')
     Promise.all([api.afpPlan(day, dayBounds(date)), api.listAfpWorkouts(day, day), api.getAfpProfile()])
       .then(([p, w, prof]) => {
-        if (!alive) return
+        if (generation !== loadGeneration.current) return
         setPlan(p); setWorkouts(w.workouts || []); setProfile(prof.profile)
       })
-      .catch((err) => { if (alive) setError(err.message || 'Could not load your daily fuel plan.') })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
+      .catch((err) => { if (generation === loadGeneration.current) setError(err.message || 'Could not load your daily fuel plan.') })
+      .finally(() => { if (generation === loadGeneration.current) setLoading(false) })
+    return () => { ++loadGeneration.current }
   }
 
   useEffect(load, [day, refreshKey])
@@ -542,7 +543,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   }
 
   if (loading && !plan) return <Spinner label="Building your daily fuel plan…" />
-  if (error) return <ErrorNote>{error}</ErrorNote>
+  if (error) return <div className="mt-6 space-y-3"><ErrorNote>{error}</ErrorNote><Button variant="outline" onClick={refresh}>Try again</Button></div>
 
   const p = plan?.plan
   if (editingProfile) {
@@ -573,22 +574,23 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   // target cannot accidentally dereference automatic-only reasoning.
   if (p.source === 'manual') {
     return (
-      <div className="mt-5 space-y-5">
-        <header className="flex items-baseline justify-between gap-3">
-          <h3 className="serif text-[22px] leading-none text-ink">Daily Fuel Plan</h3>
+      <div className="mt-6 space-y-6">
+        <header className="flex flex-wrap items-baseline justify-between gap-3">
+          <h3 className="serif text-[26px] leading-tight text-ink">Daily Fuel Plan</h3>
           <TextButton onClick={() => setEditingProfile(true)} chevron>Edit targets</TextButton>
         </header>
         <Notice>
           <strong>Manual or clinician-configured targets.</strong> Body Current will not calculate or adjust targets automatically for this profile.
         </Notice>
-        <section className="border-t border-line pt-3.5">
+        <section aria-label="Your daily targets" className="border-y border-line bg-cobalt-soft p-4">
+          <h4 className="mb-4 text-base font-semibold text-ink">Your daily targets</h4>
           <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
             {[['calories', 'Energy', 'kcal'], ['protein_g', 'Protein', 'g'], ['carbs_g', 'Carbs', 'g'], ['fat_g', 'Fat', 'g']].map(([k, label, unit]) => {
               const progress = plan.progress?.[k]
               return <div key={k}>
-                <div className="numeral text-2xl leading-none text-ink">{fmt(p.targets[k])}<span className="ml-1 text-xs font-medium text-muted">{unit}</span></div>
-                <div className="eyebrow mt-1.5">{label}</div>
-                {progress && <div className="mt-1 text-[10.5px] text-muted">{fmt(progress.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, progress.remaining), unit === 'kcal' ? 0 : 1)} left</div>}
+                <div className="numeral text-[32px] leading-tight text-ink">{fmt(p.targets[k])}<span className="ml-1 text-sm font-medium text-muted">{unit}</span></div>
+                <div className="mt-1 text-sm font-semibold text-ink">{label}</div>
+                {progress && <div className="mt-2 text-sm leading-relaxed text-muted">{fmt(progress.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, progress.remaining), unit === 'kcal' ? 0 : 1)} left</div>}
               </div>
             })}
           </div>
@@ -599,9 +601,9 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   }
 
   return (
-    <div className="mt-5 space-y-5">
-      <header className="flex items-baseline justify-between gap-3">
-        <h3 className="serif text-[22px] leading-none text-ink">Daily Fuel Plan</h3>
+    <div className="mt-6 space-y-6">
+      <header className="flex flex-wrap items-baseline justify-between gap-3">
+        <h3 className="serif text-[26px] leading-tight text-ink">Daily Fuel Plan</h3>
         <TextButton onClick={() => setEditingProfile(true)} chevron>Edit profile</TextButton>
       </header>
 
@@ -620,24 +622,25 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       )}
 
       {p.warnings?.length > 0 && (
-        <div className="space-y-1.5 border border-line-strong bg-fill p-3 text-[12.5px] leading-snug text-ink">
+        <div className="space-y-2 border border-line-strong bg-fill p-4 text-sm leading-relaxed text-ink">
           {p.warnings.map((w, i) => <p key={i}>{w.message}</p>)}
         </div>
       )}
 
       {/* Targets + progress */}
-      <section className="border-t border-line pt-3.5">
+      <section aria-label="Your daily targets" className="border-y border-line bg-cobalt-soft p-4">
+        <h4 className="mb-4 text-base font-semibold text-ink">Your daily targets</h4>
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
           {[['calories', 'Energy', 'kcal'], ['protein_g', 'Protein', 'g'], ['carbs_g', 'Carbs', 'g'], ['fat_g', 'Fat', 'g']].map(([k, label, unit]) => {
             const prog = plan.progress?.[k]
             return (
               <div key={k}>
-                <div className="numeral text-2xl leading-none text-ink">{fmt(p.targets[k])}<span className="ml-1 text-xs font-medium text-muted">{unit}</span></div>
-                <div className="eyebrow mt-1.5">{label}</div>
+                <div className="numeral text-[32px] leading-tight text-ink">{fmt(p.targets[k])}<span className="ml-1 text-sm font-medium text-muted">{unit}</span></div>
+                <div className="mt-1 text-sm font-semibold text-ink">{label}</div>
                 {prog && (
                   <>
                     <Meter value={prog.actual} target={prog.target} className="mt-2" />
-                    <div className="mt-1 text-[10.5px] text-muted">{fmt(prog.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, prog.remaining), unit === 'kcal' ? 0 : 1)} left</div>
+                    <div className="mt-2 text-sm leading-relaxed text-muted">{fmt(prog.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, prog.remaining), unit === 'kcal' ? 0 : 1)} left</div>
                   </>
                 )}
               </div>
@@ -647,12 +650,13 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         {p.overridesApplied && (
           <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-cobalt">Manual override applied</p>
         )}
-        <p className="mt-3 text-xs text-faint">Estimated starting target · not yet calibrated to your observed response.</p>
+        <p className="mt-4 border-t border-line pt-3 text-sm leading-relaxed text-muted">Estimated starting target · not yet calibrated to your observed response.</p>
       </section>
 
       <OverrideControl date={day} targets={p.targets} currentOverrides={plan.overrides} onChanged={refresh} />
 
-      {/* Why this changed */}
+      <section aria-label="Why these targets" className="border-t border-line pt-5">
+      <h4 className="text-lg font-semibold text-ink">Why these targets</h4>
       <Why
         label="Why this changed"
         items={[
@@ -673,17 +677,19 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
 
       {/* BMI — optional context only */}
       {p.bmi && (
-        <p className="text-xs text-faint">
+        <p className="text-sm leading-relaxed text-muted">
           BMI {p.bmi.value} — shown as optional context only. It is not used to set your fueling
           targets and is not a health diagnosis.
         </p>
       )}
+      </section>
 
       {/* Carb periodization */}
-      <section className="border-t border-line pt-3.5">
-        <h4 className="eyebrow mb-2">Carbohydrate plan — {p.trainingLoad.tier.replace(/_/g, ' ')}</h4>
+      <section className="border-t border-line pt-5">
+        <h4 className="mb-3 text-lg font-semibold text-ink">Training &amp; carbohydrate plan</h4>
+        <p className="mb-2 text-sm font-semibold text-cobalt">Carbohydrate plan — {p.trainingLoad.tier.replace(/_/g, ' ')}</p>
         <p className="text-sm text-ink">This daily carbohydrate range reflects the logged and planned training context for today.</p>
-        <p className="mt-1 text-xs text-muted">{p.carbPlan.perKg ?? p.carbPlan.gPerKgChosen} g/kg · band {p.carbPlan.band[0]}–{p.carbPlan.band[1]} g/kg · included in today's carbohydrate target, not added on top.</p>
+        <p className="mt-2 text-sm leading-relaxed text-muted">{p.carbPlan.perKg ?? p.carbPlan.gPerKgChosen} g/kg · band {p.carbPlan.band[0]}–{p.carbPlan.band[1]} g/kg · included in today's carbohydrate target, not added on top.</p>
         {(p.carbPlan.guidance?.preworkout || p.carbPlan.preworkout) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.preworkout ? <>Pre-session: {p.carbPlan.guidance.preworkout.gPerKg[0]}–{p.carbPlan.guidance.preworkout.gPerKg[1]} g/kg, {p.carbPlan.guidance.preworkout.timingHours[0]}–{p.carbPlan.guidance.preworkout.timingHours[1]} hours before.</> : <>Pre-session: ~{p.carbPlan.preworkout.grams} g, {p.carbPlan.preworkout.timing}.</>}</p>}
         {(p.carbPlan.guidance?.duringWorkout || p.carbPlan.duringWorkout) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.duringWorkout ? <>During the session: {p.carbPlan.guidance.duringWorkout.gramsPerHour[0]}–{p.carbPlan.guidance.duringWorkout.gramsPerHour[1]} g/hour. Amounts near 90 g/hour require a hard, tolerated long session, multi-transportable carbohydrate, and gut training.</> : <>During the session: ~{p.carbPlan.duringWorkout.gramsPerHour} g/hour.</>}</p>}
         {(p.carbPlan.guidance?.recovery || p.carbPlan.recovery) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.recovery?.message || p.carbPlan.recovery?.note}</p>}
@@ -700,11 +706,11 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       {/* Planned sessions */}
       <section className="border-t border-line pt-3.5">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h4 className="eyebrow">Planned sessions today</h4>
+          <h4 className="text-lg font-semibold text-ink">Planned sessions today</h4>
           <TextButton onClick={() => setEditingWorkout(null)} chevron>Add session</TextButton>
         </div>
         {workouts.length === 0 ? (
-          <p className="text-sm text-muted">No sessions planned — showing your rest-day carbohydrate band.</p>
+          <p className="text-sm leading-relaxed text-muted">No sessions added here yet. Synced workouts may still contribute to the training context above.</p>
         ) : (
           <ul className="space-y-2">
             {workouts.map((w) => (
@@ -733,7 +739,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         )}
       </Sheet>
 
-      <p className="border-t border-line pt-3.5 text-xs text-faint">
+      <p className="border-t border-line pt-4 text-sm leading-relaxed text-muted">
         Educational nutritional-planning guidance based on population estimates — not medical advice, a diagnosis,
         real-time metabolic adaptation, or a guaranteed outcome. Talk with a doctor or registered dietitian before
         making significant changes, especially if automatic planning is unavailable for your profile.

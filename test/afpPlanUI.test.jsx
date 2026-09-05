@@ -82,6 +82,43 @@ function fullPlan(overrides = {}) {
 }
 
 describe('AdaptiveFuelPlan: empty/loading states', () => {
+  it('ignores an older date response after the selected date changes', async () => {
+    let resolveOlder
+    api.afpPlan.mockImplementationOnce(() => new Promise(resolve => { resolveOlder = resolve }))
+      .mockResolvedValue(fullPlan({ targets: { calories: 3100, protein_g: 150, carbs_g: 400, fat_g: 85 } }))
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<AdaptiveFuelPlan date={new Date('2026-08-24T12:00:00')} refreshKey={0} />) })
+    await act(async () => { root.render(<AdaptiveFuelPlan date={new Date('2026-08-25T12:00:00')} refreshKey={0} />) })
+    expect(container.textContent).toContain('3,100')
+    await act(async () => { resolveOlder(fullPlan()) })
+    expect(container.textContent).toContain('3,100')
+    expect(container.querySelector('section[aria-label="Your daily targets"]').textContent).not.toContain('2,000')
+    await act(async () => { root.unmount() })
+  })
+
+  it('offers retry after a failed load and restores the plan', async () => {
+    api.afpPlan.mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue(fullPlan())
+    const el = await renderAfp()
+    expect(el.textContent).toContain('Connection lost')
+    const retry = [...el.querySelectorAll('button')].find(b => b.textContent === 'Try again')
+    await act(async () => { retry.click(); await Promise.resolve(); await Promise.resolve() })
+    expect(el.querySelector('section[aria-label="Your daily targets"]')).toBeTruthy()
+    expect(el.textContent).not.toContain('Connection lost')
+  })
+
+  it('keeps targets before explanations and training, with warnings visible', async () => {
+    api.afpPlan.mockResolvedValue(fullPlan({ warnings: [{ message: 'Review your training inputs.' }] }))
+    const el = await renderAfp()
+    const headings = [...el.querySelectorAll('h4')].map(h => h.textContent)
+    expect(headings).toEqual(['Your daily targets', 'Why these targets', 'Training & carbohydrate plan', 'Planned sessions today'])
+    expect(el.textContent).toContain('Review your training inputs.')
+    expect(el.textContent).toContain('800 logged · 1,200 left')
+    expect(el.textContent).toContain('Synced workouts may still contribute')
+    expect(el.textContent).not.toContain('showing your rest-day carbohydrate band')
+  })
+
   it('shows a setup CTA, not an error, when the profile is incomplete', async () => {
     api.afpPlan.mockResolvedValue(NO_PLAN_YET)
     const el = await renderAfp()

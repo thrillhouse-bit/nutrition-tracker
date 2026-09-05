@@ -20,6 +20,7 @@ const fake = vi.hoisted(() => {
     inviteRedemptions: new Set(), // deterministic digests only; retained after account deletion
     entries: [], // { id, food_id, logged_at, servings_consumed, meal, food }
     waterEntries: [],
+    hydrationPreferences: {},
     integrations: {}, // keyed by provider only — one user drives this whole file
     appleSignals: {},
     ouraAccounts: [],
@@ -43,6 +44,8 @@ const fake = vi.hoisted(() => {
   }
   let userSeq = 0
   const store = {
+    getHydrationPreferences: async (userId) => state.hydrationPreferences[userId] || { goal_ml: null, unit: 'ml', quick_add_ml: [250, 500, 750] },
+    setHydrationPreferences: async (userId, preferences) => (state.hydrationPreferences[userId] = { goal_ml: null, unit: 'ml', quick_add_ml: [250, 500, 750], ...state.hydrationPreferences[userId], ...preferences }),
     // --- auth / users ----------------------------------------------------
     createUser: async ({ email, password_hash, legal_version = null, invite_code_digest = null }) => {
       if (invite_code_digest && state.inviteRedemptions.has(invite_code_digest)) {
@@ -153,6 +156,11 @@ const fake = vi.hoisted(() => {
       return rows.length
     },
     listAppleSignals: async (userId, day) => state.appleSignals[day] || [],
+    listTrainingWorkouts: async (userId, provider, from, to) => {
+      if (provider === 'oura') return state.ouraWorkouts.filter(r => r.day >= from && r.day <= to)
+      if (provider === 'apple') return Object.entries(state.appleSignals).flatMap(([day, rows]) => day >= from && day <= to ? rows.filter(r => r.metric === 'workout').map(r => ({ ...r, day })) : [])
+      return []
+    },
     // Real training-load history: derived from the same appleSignals state
     // replaceAppleSignals/listAppleSignals already use, ranged like
     // listOuraHistory below. This whole module is vi.mock'd out for the
@@ -1367,6 +1375,19 @@ describe('POST /api/oura/backfill', () => {
       const body = await res.json()
       expect(body.workoutsSaved).toBe(0)
       expect(body.daysSaved).toBe(1) // readiness still saved
+      expect(fake.state.integrations.oura.settings.workout_sync.status).toBe('sync_error')
+    })
+
+    it('reports workout consent separately while core daily sync succeeds, and clears it after a successful request', async () => {
+      oura.workoutsRange = async () => { throw Object.assign(new Error('Unauthorized'), { status: 401 }) }
+      expect((await post('/api/oura/backfill?days=10', {})).status).toBe(200)
+      expect(fake.state.integrations.oura.settings.workout_sync.status).toBe('needs_authorization')
+      expect(fake.state.integrations.oura.last_synced_at).toBeTruthy()
+      const insight = await (await get('/api/insights?window=30')).json()
+      expect(insight.workoutHistoryStatus.sources.find(s => s.provider === 'oura').status).toBe('needs_authorization')
+      oura.workoutsRange = async () => []
+      await post('/api/oura/backfill?days=10', {})
+      expect(fake.state.integrations.oura.settings.workout_sync.status).toBe('ok')
     })
 
     it('workouts fetched for a real connected account are saved and attributed to that account', async () => {
@@ -1764,8 +1785,8 @@ describe('GET /api/insights workoutLoad', () => {
     const res = await get('/api/insights?window=7')
     const body = await res.json()
     expect(body.workoutLoad).toEqual([
-      { date: '2026-08-20', minutes: 50, sessions: 2 },
-      { date: '2026-08-24', minutes: 45, sessions: 1 },
+      { date: '2026-08-20', minutes: 50, sessions: 2, providers: ['apple'] },
+      { date: '2026-08-24', minutes: 45, sessions: 1, providers: ['apple'] },
     ])
   })
 

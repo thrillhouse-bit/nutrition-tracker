@@ -42,6 +42,8 @@ export const DEFAULT_TARGETS = {
 // Neon can return numeric columns as strings while JSON storage preserves
 // numbers. Keep the public hydration/export contract backend-independent.
 const normalizeWaterEntry = (entry) => entry && ({ ...entry, amount_ml: Number(entry.amount_ml) })
+export const DEFAULT_HYDRATION_PREFERENCES = { goal_ml: null, unit: 'ml', quick_add_ml: [250, 500, 750] }
+const normalizeHydrationPreferences = (row) => row ? ({ goal_ml: row.goal_ml == null ? null : Number(row.goal_ml), unit: row.unit, quick_add_ml: [...row.quick_add_ml].map(Number) }) : ({ ...DEFAULT_HYDRATION_PREFERENCES, quick_add_ml: [...DEFAULT_HYDRATION_PREFERENCES.quick_add_ml] })
 
 // Per-user biometric profile — this is the "nothing saved yet" shape, never a
 // 404: the calculator UI needs somewhere to start from even before the user
@@ -375,6 +377,24 @@ export class PgStore {
   }
 
   // --- hydration log (user-owned) -------------------------------------------
+  async getHydrationPreferences(userId) {
+    const sql = await this.ready()
+    const rows = await sql`select goal_ml, unit, quick_add_ml from hydration_preferences where user_id = ${userId}`
+    return normalizeHydrationPreferences(rows[0])
+  }
+  async setHydrationPreferences(userId, preferences) {
+    const sql = await this.ready()
+    const initial = { ...DEFAULT_HYDRATION_PREFERENCES, ...preferences }
+    const rows = await sql`insert into hydration_preferences (user_id, goal_ml, unit, quick_add_ml)
+      values (${userId}, ${initial.goal_ml}, ${initial.unit}, ${JSON.stringify(initial.quick_add_ml)}::jsonb)
+      on conflict (user_id) do update set
+      goal_ml = case when ${Object.hasOwn(preferences, 'goal_ml')} then excluded.goal_ml else hydration_preferences.goal_ml end,
+      unit = case when ${Object.hasOwn(preferences, 'unit')} then excluded.unit else hydration_preferences.unit end,
+      quick_add_ml = case when ${Object.hasOwn(preferences, 'quick_add_ml')} then excluded.quick_add_ml else hydration_preferences.quick_add_ml end,
+      updated_at = now()
+      returning goal_ml, unit, quick_add_ml`
+    return normalizeHydrationPreferences(rows[0])
+  }
   async listWaterEntries(userId, { from, to }) {
     const sql = await this.ready()
     const rows = await sql`select id, amount_ml, logged_at, created_at from water_entries
@@ -649,6 +669,15 @@ export class PgStore {
     const sql = await this.ready()
     const rows = await sql`select day, value from wearable_signals where user_id = ${userId} and provider = 'apple' and metric = 'workout' and day between ${fromYmd} and ${toYmd} order by day`
     return aggregateWorkoutRows(rows)
+  }
+
+  async listTrainingWorkouts(userId, provider, fromYmd, toYmd) {
+    const sql = await this.ready()
+    if (provider === 'oura') return sql`select w.* from oura_workouts w join oura_accounts a on a.id = w.account_id where a.user_id = ${userId} and w.day between ${fromYmd} and ${toYmd} order by w.day, w.start_datetime`
+    if (provider === 'apple') return sql`select * from wearable_signals where user_id = ${userId} and provider = 'apple' and metric = 'workout' and day between ${fromYmd} and ${toYmd} order by day, recorded_at`
+    // Garmin currently supplies daily summaries, not verified workout rows.
+    // Never transform daily energy/steps into invented training sessions.
+    return []
   }
 
   // --- Manual workout input (per user per day) --------------------------------
@@ -1152,6 +1181,7 @@ export class PgStore {
       account: accountRows[0] || null,
       nutrition_logs: nutritionLogs,
       hydration_logs: hydrationLogs.map(normalizeWaterEntry),
+      hydration_preferences: await this.getHydrationPreferences(userId),
       target_history: targetHistory,
       profile: profileRows[0] || null,
       provider_connections: { oura: ouraConnections, garmin: garminConnections, settings: integrations },
@@ -1442,6 +1472,17 @@ export class JsonStore {
     return true
   }
 
+  async getHydrationPreferences(userId) {
+    const d = await this.load()
+    return normalizeHydrationPreferences(d.hydration_preferences?.[Number(userId)])
+  }
+  async setHydrationPreferences(userId, preferences) {
+    const d = await this.load()
+    d.hydration_preferences ||= {}
+    d.hydration_preferences[Number(userId)] = normalizeHydrationPreferences({ ...normalizeHydrationPreferences(d.hydration_preferences[Number(userId)]), ...preferences })
+    await this.persist()
+    return normalizeHydrationPreferences(d.hydration_preferences[Number(userId)])
+  }
   async listWaterEntries(userId, { from, to }) {
     const d = await this.load(); const uid = Number(userId)
     const start = this.#utcIso(from); const end = this.#utcIso(to)
@@ -1709,6 +1750,17 @@ export class JsonStore {
     const rows = (d.wearable_signals || [])
       .filter((s) => s.user_id === uid && s.provider === 'apple' && s.metric === 'workout' && s.day >= fromYmd && s.day <= toYmd)
     return aggregateWorkoutRows(rows)
+  }
+
+  async listTrainingWorkouts(userId, provider, fromYmd, toYmd) {
+    const d = await this.load()
+    const inRange = r => r.day >= fromYmd && r.day <= toYmd
+    if (provider === 'oura') {
+      const ids = new Set((d.oura_accounts || []).filter(a => a.user_id === Number(userId)).map(a => a.id))
+      return (d.oura_workouts || []).filter(r => ids.has(r.account_id) && inRange(r))
+    }
+    if (provider === 'apple') return (d.wearable_signals || []).filter(r => r.user_id === Number(userId) && r.provider === 'apple' && r.metric === 'workout' && inRange(r))
+    return []
   }
 
   // --- Manual workout input (per user per day) — see PgStore's sibling
@@ -2143,6 +2195,7 @@ export class JsonStore {
       account: safeAccount,
       nutrition_logs: nutritionLogs,
       hydration_logs: hydrationLogs,
+      hydration_preferences: normalizeHydrationPreferences(d.hydration_preferences?.[uid]),
       target_history: d.targets.filter(byUser),
       profile: d.profiles?.[uid] || null,
       provider_connections: { oura: ouraConnections, garmin: garminConnections, settings: integrations },
@@ -2177,6 +2230,7 @@ export class JsonStore {
     }
     d.entries = d.entries.filter((row) => row.user_id !== uid)
     d.water_entries = (d.water_entries || []).filter((row) => row.user_id !== uid)
+    if (d.hydration_preferences) delete d.hydration_preferences[uid]
     d.targets = d.targets.filter((row) => row.user_id !== uid)
     d.oura_accounts = (d.oura_accounts || []).filter((row) => row.user_id !== uid)
     d.oura_workouts = (d.oura_workouts || []).filter((row) => !ouraAccountIds.has(row.account_id))
