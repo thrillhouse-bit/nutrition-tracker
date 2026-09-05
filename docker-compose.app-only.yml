@@ -40,10 +40,18 @@ services:
       - "127.0.0.1:3001:3001"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.fuel.rule=Host(`${SITE_ADDRESS}`) || Host(`${SITE_ADDRESS_WWW}`) || Host(`${SITE_ADDRESS_LEGACY}`)"
+      - "traefik.http.routers.fuel.rule=Host(`${SITE_ADDRESS}`) || Host(`${SITE_ADDRESS_LEGACY}`)"
       - "traefik.http.routers.fuel.entrypoints=websecure"
       - "traefik.http.routers.fuel.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
       - "traefik.http.services.fuel.loadbalancer.server.port=3001"
+      - "traefik.http.routers.fuel-www.rule=Host(`${SITE_ADDRESS_WWW}`)"
+      - "traefik.http.routers.fuel-www.entrypoints=websecure"
+      - "traefik.http.routers.fuel-www.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.routers.fuel-www.service=fuel"
+      - "traefik.http.routers.fuel-www.middlewares=fuel-canonical-www"
+      - "traefik.http.middlewares.fuel-canonical-www.redirectregex.regex=^https://[^/]+/(.*)"
+      - "traefik.http.middlewares.fuel-canonical-www.redirectregex.replacement=https://${SITE_ADDRESS}/$${1}"
+      - "traefik.http.middlewares.fuel-canonical-www.redirectregex.permanent=true"
 
 volumes:
   app-data:
