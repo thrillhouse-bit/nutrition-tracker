@@ -100,6 +100,11 @@ export const signupIpLimiter = new FixedWindowLimiter({
   windowMs: positiveInt(process.env.AUTH_SIGNUP_WINDOW_MS, 60 * 60 * 1000),
 })
 
+export const recoveryIpLimiter = new FixedWindowLimiter({
+  max: positiveInt(process.env.AUTH_RECOVERY_IP_MAX, 5),
+  windowMs: positiveInt(process.env.AUTH_RECOVERY_WINDOW_MS, 60 * 60 * 1000),
+})
+
 export function clientRateLimitKey(req) {
   return req.ip || req.socket?.remoteAddress || 'unknown-client'
 }

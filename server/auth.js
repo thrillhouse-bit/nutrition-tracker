@@ -54,14 +54,18 @@ function sign(payload) {
   return crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex')
 }
 
-export function createSessionToken(userId) {
-  const payload = b64url(JSON.stringify({ uid: userId, exp: Date.now() + SESSION_TTL_MS }))
+export function createSessionToken(userId, sessionVersion = 1) {
+  const payload = b64url(JSON.stringify({ uid: userId, sv: Number(sessionVersion) || 1, exp: Date.now() + SESSION_TTL_MS }))
   return `${payload}.${sign(payload)}`
 }
 
 // Returns the user id, or null for any invalid/expired/tampered token —
 // never throws, so callers can treat "no session" and "bad session" the same.
 export function verifySessionToken(token) {
+  return verifySessionClaims(token)?.uid ?? null
+}
+
+export function verifySessionClaims(token) {
   if (typeof token !== 'string' || !token.includes('.')) return null
   const [payload, sig] = token.split('.')
   const expectedSig = sign(payload)
@@ -76,7 +80,7 @@ export function verifySessionToken(token) {
   }
   if (!data || typeof data.uid !== 'number' && typeof data.uid !== 'string') return null
   if (typeof data.exp !== 'number' || data.exp < Date.now()) return null
-  return data.uid
+  return { uid: data.uid, sessionVersion: Number(data.sv) || 1 }
 }
 
 export const SESSION_COOKIE_NAME = SESSION_COOKIE
@@ -90,7 +94,7 @@ export const SESSION_COOKIE_OPTS = {
 
 // Cookie parsing without a dependency (express.json() doesn't parse cookies,
 // and this app otherwise avoids adding packages for something this small).
-function parseCookies(header) {
+export function parseCookies(header) {
   const out = {}
   if (!header) return out
   for (const part of header.split(';')) {
@@ -103,6 +107,10 @@ function parseCookies(header) {
   return out
 }
 
+export function readCookie(req, name) {
+  return parseCookies(req?.headers?.cookie)[name] || null
+}
+
 // Attaches req.userId (a real id) or req.userId = null. Never rejects by
 // itself — requireAuth (below) is the actual gate, so routes that must stay
 // reachable without a session (health, auth endpoints, OAuth callbacks,
@@ -110,7 +118,9 @@ function parseCookies(header) {
 // req.userId when present without being forced through requireAuth.
 export function attachUser(req, res, next) {
   const cookies = parseCookies(req.headers.cookie)
-  req.userId = verifySessionToken(cookies[SESSION_COOKIE]) ?? null
+  const claims = verifySessionClaims(cookies[SESSION_COOKIE])
+  req.userId = claims?.uid ?? null
+  req.sessionVersion = claims?.sessionVersion ?? null
   next()
 }
 
@@ -119,8 +129,8 @@ export function requireAuth(req, res, next) {
   next()
 }
 
-export function setSessionCookie(res, userId) {
-  res.cookie(SESSION_COOKIE, createSessionToken(userId), SESSION_COOKIE_OPTS)
+export function setSessionCookie(res, userId, sessionVersion = 1) {
+  res.cookie(SESSION_COOKIE, createSessionToken(userId, sessionVersion), SESSION_COOKIE_OPTS)
 }
 
 export function clearSessionCookie(res) {

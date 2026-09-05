@@ -15,6 +15,7 @@ import {
   requireAuth,
   setSessionCookie,
   clearSessionCookie,
+  readCookie,
 } from './auth.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -67,6 +68,7 @@ import {
   loginIpLimiter,
   sendRateLimit,
   signupIpLimiter,
+  recoveryIpLimiter,
 } from './authRateLimit.js'
 import { securityHeaders } from './securityHeaders.js'
 import { validateRpgSavePutBody, validateRpgSaveRestoreBody } from './rpgSave.js'
@@ -210,6 +212,18 @@ for (const kind of ['privacy', 'terms']) {
 
 // --- auth (public) ----------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const RECOVERY_PENDING_COOKIE = 'bc_recovery_pending'
+const RECOVERY_COOKIE = 'bc_recovery'
+const RECOVERY_START_TTL_MS = 10 * 60 * 1000
+const RECOVERY_RESET_TTL_MS = 10 * 60 * 1000
+const recoveryCookieOpts = (maxAge, path = '/api/auth/recovery') => ({
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  maxAge,
+  path,
+})
+const digestRecoveryValue = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex')
 
 function currentLegalAcceptanceRequired(user, legal = legalStatus()) {
   return Boolean(
@@ -224,6 +238,12 @@ function publicUser(user, legal = legalStatus()) {
     email: user.email,
     legalAcceptanceRequired: currentLegalAcceptanceRequired(user, legal),
   }
+}
+
+function sessionMatchesUser(req, user) {
+  // Apple ingest credentials deliberately do not carry browser-session
+  // claims. Legacy browser cookies predate `sv` and decode as version 1.
+  return Boolean(user && (req.sessionVersion == null || Number(user.session_version || 1) === Number(req.sessionVersion)))
 }
 
 app.post('/api/auth/signup', asyncH(async (req, res) => {
@@ -266,7 +286,7 @@ app.post('/api/auth/signup', asyncH(async (req, res) => {
     if (alpha.inviteRequired && (err.status === 409 || err.code === 'INVITE_UNAVAILABLE')) throw inviteUnavailableError()
     throw err
   }
-  setSessionCookie(res, user.id)
+  setSessionCookie(res, user.id, user.session_version || 1)
   res.status(201).json({ user: { id: user.id, email: user.email, legalAcceptanceRequired: false } })
 }))
 
@@ -295,7 +315,65 @@ app.post('/api/auth/login', asyncH(async (req, res) => {
   const ok = await verifyPassword(password, user?.password_hash || NO_SUCH_USER_HASH)
   if (!user || !ok) return res.status(401).json({ error: 'Incorrect email or password.' })
   loginCredentialLimiter.clear(credentialKey)
-  setSessionCookie(res, user.id)
+  setSessionCookie(res, user.id, user.session_version || 1)
+  res.json({ user: publicUser(user) })
+}))
+
+// Password recovery deliberately returns the same response for known,
+// unknown, linked and unlinked addresses. Oura is proof of identity only
+// when that exact Oura identity was linked before recovery began.
+app.post('/api/auth/recovery/start', asyncH(async (req, res) => {
+  const limit = recoveryIpLimiter.consume(clientRateLimitKey(req))
+  if (!limit.allowed) return sendRateLimit(res, [limit])
+  await store.pruneExpiredPasswordRecoveries()
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  // Keep the DB-call shape uniform for valid, invalid, known and unknown
+  // addresses so response timing does not become an account oracle.
+  const lookupEmail = EMAIL_RE.test(email) ? email : 'invalid-recovery-address.invalid'
+  const user = await store.getUserByEmail(lookupEmail)
+  const accounts = await store.listOuraAccounts(user?.id ?? 0)
+  const eligibleUserId = user && accounts.length > 0 ? user.id : null
+  const startToken = crypto.randomBytes(32).toString('base64url')
+  const oauthState = ouraSignState('recovery')
+  await store.createPasswordRecoveryChallenge({
+    user_id: eligibleUserId,
+    start_token_digest: digestRecoveryValue(startToken),
+    oauth_state_digest: digestRecoveryValue(oauthState),
+    expires_at: new Date(Date.now() + RECOVERY_START_TTL_MS).toISOString(),
+  })
+  res.cookie(RECOVERY_PENDING_COOKIE, `${startToken}|${oauthState}`, recoveryCookieOpts(RECOVERY_START_TTL_MS, '/api'))
+  res.status(202).json({
+    message: 'Continue with Oura to verify the account.',
+    continueUrl: '/api/auth/recovery/oura',
+  })
+}))
+
+app.get('/api/auth/recovery/oura', asyncH(async (req, res) => {
+  if (!ouraOAuthConfigured()) return res.redirect('/?recovery=failed')
+  const pending = readCookie(req, RECOVERY_PENDING_COOKIE)
+  const [startToken, oauthState] = String(pending || '').split('|')
+  const challenge = startToken ? await store.getPasswordRecoveryByStartToken(digestRecoveryValue(startToken)) : null
+  if (!challenge || challenge.oauth_state_digest !== digestRecoveryValue(oauthState) || challenge.consumed_at || Date.parse(challenge.expires_at) <= Date.now()) {
+    return res.redirect('/?recovery=failed')
+  }
+  // Recovery needs only identity; normal Oura connection keeps its broader
+  // activity/readiness/workout scope unchanged.
+  res.redirect(ouraAuthorizeUrl(oauthState, 'email personal'))
+}))
+
+app.post('/api/auth/recovery/reset', asyncH(async (req, res) => {
+  const password = String(req.body?.password || '')
+  const confirmation = String(req.body?.confirmation || '')
+  if (password.length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters.' })
+  if (password !== confirmation) return res.status(400).json({ error: 'Passwords do not match.' })
+  const token = readCookie(req, RECOVERY_COOKIE)
+  if (!token) return res.status(401).json({ error: 'Recovery verification expired. Start again.' })
+  const passwordHash = await hashPassword(password)
+  const user = await store.consumePasswordRecovery(digestRecoveryValue(token), passwordHash)
+  res.clearCookie(RECOVERY_COOKIE, recoveryCookieOpts(undefined))
+  res.clearCookie(RECOVERY_PENDING_COOKIE, recoveryCookieOpts(undefined, '/api'))
+  if (!user) return res.status(401).json({ error: 'Recovery verification expired. Start again.' })
+  setSessionCookie(res, user.id, user.session_version || 1)
   res.json({ user: publicUser(user) })
 }))
 
@@ -310,6 +388,10 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', asyncH(async (req, res) => {
   if (req.userId == null) return res.json({ user: null })
   const user = await store.getUserById(req.userId)
+  if (!sessionMatchesUser(req, user)) {
+    clearSessionCookie(res)
+    return res.json({ user: null })
+  }
   res.json({ user: publicUser(user) })
 }))
 
@@ -318,6 +400,11 @@ app.get('/api/auth/me', asyncH(async (req, res) => {
 // acknowledgement, and stores the server's version (never a client-supplied
 // version string).
 app.post('/api/auth/legal-acceptance', requireAuth, asyncH(async (req, res) => {
+  const sessionUser = await store.getUserById(req.userId)
+  if (!sessionMatchesUser(req, sessionUser)) {
+    clearSessionCookie(res)
+    return res.status(401).json({ error: 'Not signed in.' })
+  }
   const legal = legalStatus()
   if (!legal.ready) return res.status(503).json({ error: 'The legal documents are temporarily unavailable.' })
   if (req.body?.acceptLegal !== true) {
@@ -369,7 +456,7 @@ requireAuthRouter.use((req, res, next) => {
 // client state. The lookup intentionally returns no password hash.
 requireAuthRouter.use(asyncH(async (req, res, next) => {
   const user = await store.getUserById(req.userId)
-  if (!user) {
+  if (!sessionMatchesUser(req, user)) {
     clearSessionCookie(res)
     return res.status(401).json({ error: 'Not signed in.' })
   }
@@ -916,33 +1003,101 @@ requireAuthRouter.get('/oura/summary', asyncH(async (req, res) => {
 // the same reasoning.
 const ouraConnectPending = new Map() // nonce -> { userId, exp }
 
-app.get('/api/oura/connect', (req, res) => {
+app.get('/api/oura/connect', asyncH(async (req, res) => {
   if (req.userId == null) return res.redirect('/?error=not_signed_in')
+  const user = await store.getUserById(req.userId)
+  if (!sessionMatchesUser(req, user)) {
+    clearSessionCookie(res)
+    return res.redirect('/?error=not_signed_in')
+  }
   if (!ouraOAuthConfigured()) return res.status(501).send('Oura OAuth is not configured on the server.')
   const state = ouraSignState()
   const nonce = state.split('.')[0]
-  ouraConnectPending.set(nonce, { userId: req.userId, exp: Date.now() + 10 * 60 * 1000 })
+  ouraConnectPending.set(nonce, { userId: req.userId, sessionVersion: Number(user.session_version) || 1, exp: Date.now() + 10 * 60 * 1000 })
   res.redirect(ouraAuthorizeUrl(state))
-})
+}))
 
 // OAuth callback: verify state, exchange the code, store the account, return.
 app.get('/api/oura/callback', asyncH(async (req, res) => {
   const { code, state, error } = req.query
+  const recoveryState = typeof state === 'string' && state.split('.')[0]?.startsWith('recovery_')
+  if (recoveryState) {
+    const pendingCookie = readCookie(req, RECOVERY_PENDING_COOKIE)
+    res.clearCookie(RECOVERY_PENDING_COOKIE, recoveryCookieOpts(undefined, '/api'))
+    if (error || !code || !ouraVerifyState(state)) return res.redirect('/?recovery=failed')
+    const challenge = await store.getPasswordRecoveryByOauthState(digestRecoveryValue(state))
+    const [startToken, cookieState] = String(pendingCookie || '').split('|')
+    if (!challenge || !startToken || cookieState !== state || challenge.start_token_digest !== digestRecoveryValue(startToken) || challenge.user_id == null || challenge.consumed_at || Date.parse(challenge.expires_at) <= Date.now()) {
+      return res.redirect('/?recovery=failed')
+    }
+    let info
+    try {
+      const tokens = await ouraExchangeCode(String(code))
+      info = await ouraPersonalInfo(tokens.access_token)
+    } catch {
+      return res.redirect('/?recovery=failed')
+    }
+    const user = await store.getUserById(challenge.user_id)
+    const accounts = user ? await store.listOuraAccounts(user.id) : []
+    const identityId = String(info?.id || '').trim()
+    let linkedMatches = false
+    for (const account of accounts) {
+      if (identityId && account.oura_user_id && String(account.oura_user_id) === identityId) {
+        linkedMatches = true
+        break
+      }
+      if (account.oura_user_id) continue
+      try {
+        const token = await ouraValidAccessToken(account, (tokens) => store.updateOuraTokens(user.id, account.id, tokens))
+        const linkedInfo = await ouraPersonalInfo(token)
+        if (identityId && String(linkedInfo?.id || '') === identityId) {
+          linkedMatches = await store.setOuraUserId(user.id, account.id, identityId)
+          if (linkedMatches) break
+        }
+      } catch {
+        // Try another already-linked account; never turn provider detail into
+        // a distinct recovery response.
+      }
+      const recoveryEmail = String(info?.email || '').trim().toLowerCase()
+      if (identityId && recoveryEmail && String(account.label || '').trim().toLowerCase() === recoveryEmail) {
+        linkedMatches = await store.setOuraUserId(user.id, account.id, identityId)
+        if (linkedMatches) break
+      }
+    }
+    if (!user || !linkedMatches) return res.redirect('/?recovery=failed')
+    const recoveryToken = crypto.randomBytes(32).toString('base64url')
+    const activated = await store.activatePasswordRecovery(
+      challenge.id,
+      digestRecoveryValue(recoveryToken),
+      new Date(Date.now() + RECOVERY_RESET_TTL_MS).toISOString(),
+    )
+    if (!activated) return res.redirect('/?recovery=failed')
+    res.cookie(RECOVERY_COOKIE, recoveryToken, recoveryCookieOpts(RECOVERY_RESET_TTL_MS))
+    return res.redirect('/?recovery=ready')
+  }
   if (error || !code || !ouraVerifyState(state)) return res.redirect('/?oura=error')
   const nonce = String(state).split('.')[0]
   const pending = ouraConnectPending.get(nonce)
   ouraConnectPending.delete(nonce)
   const userId = pending && pending.exp >= Date.now() ? pending.userId : req.userId
   if (userId == null) return res.redirect('/?oura=error') // no session AND no pinned initiator — can't attribute this connection to anyone
-  if (!(await store.getUserById(userId))) return res.redirect('/?oura=error')
+  const callbackUser = await store.getUserById(userId)
+  if (!callbackUser || (pending ? Number(callbackUser.session_version || 1) !== Number(pending.sessionVersion || 1) : !sessionMatchesUser(req, callbackUser))) return res.redirect('/?oura=error')
   const tokens = await ouraExchangeCode(String(code))
   const info = await ouraPersonalInfo(tokens.access_token)
-  const account = await store.saveOuraAccount(userId, {
-    label: info?.email || info?.id || 'Oura account',
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    expires_at: ouraExpiryFrom(tokens.expires_in),
-  })
+  if (!info?.id) return res.redirect('/?oura=error')
+  let account
+  try {
+    account = await store.saveOuraAccount(userId, {
+      label: info?.email || info?.id || 'Oura account',
+      oura_user_id: String(info.id),
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: ouraExpiryFrom(tokens.expires_in),
+    })
+  } catch {
+    return res.redirect('/?oura=error')
+  }
   markSyncing(userId, 'oura')
   try {
     await trackedOuraBackfill(userId, tokens.access_token, 30, account.id)
@@ -1013,14 +1168,19 @@ requireAuthRouter.delete('/oura/accounts/:id', asyncH(async (req, res) => {
 // redirect round-trip to Garmin and back).
 const garminPkce = new Map()
 
-app.get('/api/garmin/connect', (req, res) => {
+app.get('/api/garmin/connect', asyncH(async (req, res) => {
   if (req.userId == null) return res.redirect('/?error=not_signed_in')
+  const user = await store.getUserById(req.userId)
+  if (!sessionMatchesUser(req, user)) {
+    clearSessionCookie(res)
+    return res.redirect('/?error=not_signed_in')
+  }
   if (!garminReleaseReady()) return res.status(501).send('Garmin is not enabled on this server.')
   const state = crypto.randomBytes(16).toString('hex')
   const { verifier, challenge } = garminPkcePair()
-  garminPkce.set(state, { verifier, userId: req.userId, exp: Date.now() + 10 * 60 * 1000 })
+  garminPkce.set(state, { verifier, userId: req.userId, sessionVersion: Number(user.session_version) || 1, exp: Date.now() + 10 * 60 * 1000 })
   res.redirect(garminAuthorizeUrl({ state, challenge }))
-})
+}))
 
 app.get('/api/garmin/callback', asyncH(async (req, res) => {
   const { code, state, error } = req.query
@@ -1028,7 +1188,8 @@ app.get('/api/garmin/callback', asyncH(async (req, res) => {
   garminPkce.delete(String(state || ''))
   if (error || !code || !entry || entry.exp < Date.now()) return res.redirect('/?garmin=error')
   if (!garminReleaseReady()) return res.redirect('/?garmin=error')
-  if (!(await store.getUserById(entry.userId))) return res.redirect('/?garmin=error')
+  const callbackUser = await store.getUserById(entry.userId)
+  if (!callbackUser || Number(callbackUser.session_version || 1) !== Number(entry.sessionVersion || 1)) return res.redirect('/?garmin=error')
   const tokens = await garminExchangeCode({ code: String(code), verifier: entry.verifier })
   // VERIFY (see integrations/garmin.js): the id fetched here is what a later
   // PUSHED webhook uses to route back to this account — there's no session

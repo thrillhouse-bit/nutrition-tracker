@@ -26,7 +26,12 @@ GIT_SHA="$(git rev-parse HEAD)"
 export GIT_SHA
 
 echo "Deploying $GIT_SHA via $COMPOSE_FILE ..." >&2
-docker compose -f "$COMPOSE_FILE" up -d --build
+docker compose -f "$COMPOSE_FILE" build app
+# Apply idempotent schema changes before the new server can receive traffic.
+# The check happens inside the container so .env secrets are never sourced or
+# echoed by this script; JSON-store deployments simply skip the migration.
+docker compose -f "$COMPOSE_FILE" run --rm app sh -c 'if [ -n "${DATABASE_URL:-}" ]; then npm run db:init; fi'
+docker compose -f "$COMPOSE_FILE" up -d --no-build
 
 echo "Waiting for the app to answer /api/health ..." >&2
 for _ in $(seq 1 15); do

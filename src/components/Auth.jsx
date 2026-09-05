@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { Button, ErrorNote, Field, inputCls } from './ui.jsx'
 
@@ -33,6 +33,9 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
   const [acceptedLegal, setAcceptedLegal] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
   const [showInviteCode, setShowInviteCode] = useState(false)
+  const [confirmation, setConfirmation] = useState('')
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const errorRef = useRef(null)
   const oathbearer = surface === 'oathbearer'
 
   useEffect(() => {
@@ -42,6 +45,24 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
       .catch(() => { if (alive) setLegal({ ready: false, signupEnabled: false }) })
     return () => { alive = false }
   }, [])
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const recovery = url.searchParams.get('recovery')
+    if (recovery === 'ready') setMode('recovery-reset')
+    if (recovery === 'failed') {
+      setMode('recovery-start')
+      setError('Oura could not verify a linked Body Current account. Check the account you chose or start again.')
+    }
+    if (recovery) {
+      url.searchParams.delete('recovery')
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
 
   // Invite links are a delivery mechanism, not storage. Consume the code once
   // into the controlled field, immediately remove it from the address/history,
@@ -58,12 +79,42 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
 
   const submit = async (e) => {
     e.preventDefault()
+    if (busy) return
     setError('')
+    if (mode === 'recovery-reset') {
+      if (password.length < 12) return setError('Password must be at least 12 characters.')
+      if (password !== confirmation) return setError('Passwords do not match.')
+      setBusy(true)
+      try {
+        const { user } = await api.resetPassword(password, confirmation)
+        setPassword('')
+        setConfirmation('')
+        onAuthed(user)
+      } catch (err) {
+        setPassword('')
+        setConfirmation('')
+        setError(err.message || 'The password could not be reset. Start again.')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     if (mode === 'signup' && !legal?.signupEnabled) return setError(legal?.ready ? 'New accounts are temporarily unavailable.' : 'New accounts are temporarily unavailable while the legal documents are finalized.')
     if (mode === 'signup' && !acceptedLegal) return setError('Agree to the Terms of Service and acknowledge the Privacy Policy to create an account.')
     if (mode === 'signup' && legal?.inviteRequired && !sanitizeInviteCode(inviteCode)) return setError('Enter a valid invitation code to create an account.')
     const cleanEmail = email.trim().toLowerCase()
     if (!EMAIL_RE.test(cleanEmail)) return setError('Enter a valid email address.')
+    if (mode === 'recovery-start') {
+      setBusy(true)
+      try {
+        const result = await api.startPasswordRecovery(cleanEmail)
+        window.location.assign(result.continueUrl)
+      } catch (err) {
+        setError(err.message || 'Recovery could not start. Try again.')
+        setBusy(false)
+      }
+      return
+    }
     if (mode === 'signup' && password.length < 8) return setError('Password must be at least 8 characters.')
     setBusy(true)
     try {
@@ -83,10 +134,14 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
       <header className="mb-8">
         <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Oathbearer' : 'Body Current'}</div>
         <h1 className="serif text-4xl leading-none text-ink">
-          {mode === 'signup' ? 'Create your account' : 'Sign in'}
+          {mode === 'signup' ? 'Create your account' : mode === 'recovery-start' ? 'Recover your account' : mode === 'recovery-reset' ? 'Choose a new password' : 'Sign in'}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          {mode === 'signup'
+          {mode === 'recovery-start'
+            ? 'Verify with the Oura account already linked to Body Current.'
+            : mode === 'recovery-reset'
+              ? 'Use at least 12 characters. This verification can be used only once.'
+              : mode === 'signup'
             ? oathbearer
               ? 'One account owns your chronicle, characters, inventory, choices, and cross-device progress.'
               : 'One account, one plan — your log, targets, and connected wearables live here.'
@@ -97,8 +152,8 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
       </header>
 
       <form onSubmit={submit} className="space-y-4" noValidate>
-        <ErrorNote>{error}</ErrorNote>
-        <Field label="Email">
+        <div ref={errorRef} tabIndex={error ? -1 : undefined}><ErrorNote>{error}</ErrorNote></div>
+        {mode !== 'recovery-reset' && <Field label="Email">
           <input
             type="email"
             autoComplete="email"
@@ -110,7 +165,7 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
             className={inputCls}
             placeholder="you@example.com"
           />
-        </Field>
+        </Field>}
         {mode === 'signup' && legal?.inviteRequired && (
           <Field label="Invitation code" hint="Use the private code you received with your alpha invitation.">
             <div className="relative">
@@ -137,13 +192,13 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
             </div>
           </Field>
         )}
-        <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters.' : undefined}>
+        {mode !== 'recovery-start' && <Field label={mode === 'recovery-reset' ? 'New password' : 'Password'} hint={mode === 'signup' ? 'At least 8 characters.' : mode === 'recovery-reset' ? 'At least 12 characters.' : undefined}>
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              autoComplete={mode === 'signup' || mode === 'recovery-reset' ? 'new-password' : 'current-password'}
               required
-              minLength={mode === 'signup' ? 8 : undefined}
+              minLength={mode === 'signup' ? 8 : mode === 'recovery-reset' ? 12 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={`${inputCls} pr-16`}
@@ -159,7 +214,24 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
               {showPassword ? 'Hide' : 'Show'}
             </button>
           </div>
-        </Field>
+        </Field>}
+        {mode === 'recovery-reset' && <Field label="Confirm new password">
+          <div className="relative">
+            <input
+              type={showConfirmation ? 'text' : 'password'}
+              autoComplete="new-password"
+              required
+              minLength={12}
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              className={`${inputCls} pr-16`}
+              placeholder="••••••••••••"
+            />
+            <button type="button" onClick={() => setShowConfirmation((shown) => !shown)} aria-label={showConfirmation ? 'Hide password confirmation' : 'Show password confirmation'} aria-pressed={showConfirmation} className="absolute inset-y-0 right-0 min-w-14 px-2 text-xs font-semibold text-cobalt hover:text-cobalt-ink">
+              {showConfirmation ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </Field>}
         {mode === 'signup' && legal?.signupEnabled && (
           <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-relaxed text-muted">
             <input
@@ -174,12 +246,23 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
             </span>
           </label>
         )}
-        <Button type="submit" disabled={busy || (mode === 'signup' && (!legal?.signupEnabled || !acceptedLegal || (legal?.inviteRequired && !inviteCode.trim())))} className="w-full">
-          {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+        <Button type="submit" aria-busy={busy} disabled={busy || (mode === 'signup' && (!legal?.signupEnabled || !acceptedLegal || (legal?.inviteRequired && !inviteCode.trim())))} className="w-full">
+          {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : mode === 'recovery-start' ? 'Continue with Oura' : mode === 'recovery-reset' ? 'Reset password' : 'Sign in'}
         </Button>
       </form>
 
-      {mode === 'signup' || legal?.signupEnabled ? (
+      {mode === 'login' && (
+        <button type="button" onClick={() => { setMode('recovery-start'); setPassword(''); setError('') }} className="mt-3 min-h-11 text-sm font-semibold text-cobalt hover:text-cobalt-ink">
+          Forgot password?
+        </button>
+      )}
+      {(mode === 'recovery-start' || mode === 'recovery-reset') && (
+        <button type="button" onClick={() => { setMode('login'); setPassword(''); setConfirmation(''); setError('') }} disabled={busy} className="mt-3 min-h-11 text-sm font-semibold text-cobalt hover:text-cobalt-ink disabled:opacity-50">
+          Back to sign in
+        </button>
+      )}
+
+      {(mode === 'login' || mode === 'signup') && (mode === 'signup' || legal?.signupEnabled ? (
         <button
           type="button"
           onClick={() => { setMode((m) => (m === 'signup' ? 'login' : 'signup')); setShowPassword(false); setShowInviteCode(false); setAcceptedLegal(false); setInviteCode(''); setError('') }}
@@ -191,7 +274,7 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
         <p className="mt-6 text-center text-sm text-muted">
           {legal === null ? 'Checking new-account availability…' : legal.ready ? 'New accounts are temporarily paused.' : 'New accounts are temporarily paused while the legal documents are finalized.'}
         </p>
-      )}
+      ))}
 
       <p className="mt-5 text-center text-xs leading-relaxed text-faint">
         Review {oathbearer ? "Oathbearer's" : "Body Current's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>

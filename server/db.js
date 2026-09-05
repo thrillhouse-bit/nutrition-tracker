@@ -226,7 +226,66 @@ export class PgStore {
 
   async getUserById(id) {
     const sql = await this.ready()
-    const rows = await sql`select id, email, legal_version, legal_accepted_at, created_at from users where id = ${id} limit 1`
+    const rows = await sql`select id, email, legal_version, legal_accepted_at, session_version, created_at from users where id = ${id} limit 1`
+    return rows[0] || null
+  }
+
+  async createPasswordRecoveryChallenge({ user_id, start_token_digest, oauth_state_digest, expires_at }) {
+    const sql = await this.ready()
+    const rows = await sql`
+      insert into password_recovery_challenges (user_id, start_token_digest, oauth_state_digest, expires_at)
+      values (${user_id}, ${start_token_digest}, ${oauth_state_digest}, ${expires_at})
+      returning id, user_id, start_token_digest, oauth_state_digest, expires_at, verified_at, consumed_at`
+    return rows[0]
+  }
+
+  async pruneExpiredPasswordRecoveries() {
+    const sql = await this.ready()
+    const rows = await sql`delete from password_recovery_challenges where expires_at <= now() returning id`
+    return rows.length
+  }
+
+  async getPasswordRecoveryByStartToken(startTokenDigest) {
+    const sql = await this.ready()
+    const rows = await sql`select * from password_recovery_challenges where start_token_digest = ${startTokenDigest} limit 1`
+    return rows[0] || null
+  }
+
+  async getPasswordRecoveryByOauthState(oauthStateDigest) {
+    const sql = await this.ready()
+    const rows = await sql`select * from password_recovery_challenges where oauth_state_digest = ${oauthStateDigest} limit 1`
+    return rows[0] || null
+  }
+
+  async activatePasswordRecovery(id, recoveryTokenDigest, expiresAt) {
+    const sql = await this.ready()
+    const rows = await sql`
+      update password_recovery_challenges
+      set recovery_token_digest = ${recoveryTokenDigest}, verified_at = now(), expires_at = ${expiresAt}
+      where id = ${id} and user_id is not null and verified_at is null and recovery_token_digest is null and consumed_at is null and expires_at > now()
+      returning id`
+    return Boolean(rows[0])
+  }
+
+  async consumePasswordRecovery(recoveryTokenDigest, passwordHash) {
+    const sql = await this.ready()
+    const rows = await sql`
+      with claimed as (
+        update password_recovery_challenges
+        set consumed_at = now()
+        where recovery_token_digest = ${recoveryTokenDigest}
+          and verified_at is not null and consumed_at is null and expires_at > now()
+        returning user_id
+      )
+      , updated_user as (
+        update users set password_hash = ${passwordHash}, session_version = session_version + 1
+        where id = (select user_id from claimed)
+        returning id, email, legal_version, legal_accepted_at, session_version, created_at
+      ), cleared_apple as (
+        update integrations set settings = settings - 'ingest_token'
+        where user_id = (select id from updated_user) and provider = 'apple'
+      )
+      select * from updated_user`
     return rows[0] || null
   }
 
@@ -516,13 +575,29 @@ export class PgStore {
     return sql`select * from oura_accounts order by user_id asc, id asc`
   }
 
-  async saveOuraAccount(userId, { label, access_token, refresh_token, expires_at }) {
+  async saveOuraAccount(userId, { label, oura_user_id = null, access_token, refresh_token, expires_at }) {
     const sql = await this.ready()
     const rows = await sql`
-      insert into oura_accounts (user_id, label, access_token, refresh_token, expires_at)
-      values (${userId}, ${label}, ${access_token}, ${refresh_token}, ${expires_at})
+      insert into oura_accounts (user_id, label, oura_user_id, access_token, refresh_token, expires_at)
+      values (${userId}, ${label}, ${oura_user_id}, ${access_token}, ${refresh_token}, ${expires_at})
+      on conflict (oura_user_id) where oura_user_id is not null do update set
+        label = excluded.label, access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token, expires_at = excluded.expires_at
+      where oura_accounts.user_id = excluded.user_id
       returning *`
+    if (!rows[0]) throw Object.assign(new Error('This Oura account is already linked.'), { status: 409 })
     return rows[0]
+  }
+
+  async setOuraUserId(userId, id, ouraUserId) {
+    const sql = await this.ready()
+    try {
+      const rows = await sql`update oura_accounts set oura_user_id = ${ouraUserId} where id = ${id} and user_id = ${userId} and oura_user_id is null returning id`
+      return Boolean(rows[0])
+    } catch (err) {
+      if (err.code === '23505') return false
+      throw err
+    }
   }
 
   async updateOuraTokens(userId, id, { access_token, refresh_token, expires_at }) {
@@ -1232,6 +1307,7 @@ export class JsonStore {
     this.writing = Promise.resolve()
     this.userCreation = Promise.resolve()
     this.rpgSaveWrites = Promise.resolve()
+    this.passwordRecoveryWrites = Promise.resolve()
   }
 
   async load() {
@@ -1260,11 +1336,13 @@ export class JsonStore {
     // backfill path.
     this.data.users = this.data.users || []
     this.data.alpha_invite_redemptions = this.data.alpha_invite_redemptions || []
+    this.data.password_recovery_challenges = this.data.password_recovery_challenges || []
     this.data.rpg_saves = this.data.rpg_saves || {}
     this.data.rpg_save_history = this.data.rpg_save_history || {}
     this.data.water_entries = this.data.water_entries || []
     this.data.seq = this.data.seq || {}
     this.data.seq.user = this.data.seq.user || 0
+    this.data.seq.password_recovery = this.data.seq.password_recovery || 0
     this.data.seq.water = this.data.seq.water || 0
     return this.data
   }
@@ -1313,6 +1391,7 @@ export class JsonStore {
         legal_version,
         legal_accepted_at: legal_version ? now : null,
         invite_code_digest: invite_code_digest || null,
+        session_version: 1,
         created_at: now,
       }
       d.users.push(row)
@@ -1335,7 +1414,73 @@ export class JsonStore {
   async getUserById(id) {
     const d = await this.load()
     const u = d.users.find((u) => u.id === Number(id))
-    return u ? { id: u.id, email: u.email, legal_version: u.legal_version || null, legal_accepted_at: u.legal_accepted_at || null, created_at: u.created_at } : null
+    return u ? { id: u.id, email: u.email, legal_version: u.legal_version || null, legal_accepted_at: u.legal_accepted_at || null, session_version: Number(u.session_version) || 1, created_at: u.created_at } : null
+  }
+
+  async createPasswordRecoveryChallenge({ user_id, start_token_digest, oauth_state_digest, expires_at }) {
+    const d = await this.load()
+    const row = { id: ++d.seq.password_recovery, user_id: user_id == null ? null : Number(user_id), start_token_digest, oauth_state_digest, recovery_token_digest: null, expires_at, verified_at: null, consumed_at: null, created_at: new Date().toISOString() }
+    d.password_recovery_challenges.push(row)
+    await this.persist()
+    return { ...row }
+  }
+
+  async pruneExpiredPasswordRecoveries() {
+    const d = await this.load()
+    const before = d.password_recovery_challenges.length
+    d.password_recovery_challenges = d.password_recovery_challenges.filter((row) => Date.parse(row.expires_at) > Date.now())
+    if (d.password_recovery_challenges.length !== before) await this.persist()
+    return before - d.password_recovery_challenges.length
+  }
+
+  async getPasswordRecoveryByStartToken(startTokenDigest) {
+    const d = await this.load()
+    return d.password_recovery_challenges.find((row) => row.start_token_digest === startTokenDigest) || null
+  }
+
+  async getPasswordRecoveryByOauthState(oauthStateDigest) {
+    const d = await this.load()
+    return d.password_recovery_challenges.find((row) => row.oauth_state_digest === oauthStateDigest) || null
+  }
+
+  async activatePasswordRecovery(id, recoveryTokenDigest, expiresAt) {
+    const operation = async () => {
+      const d = await this.load()
+      const row = d.password_recovery_challenges.find((item) => item.id === Number(id))
+      if (!row || row.user_id == null || row.verified_at || row.recovery_token_digest || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) return false
+      row.recovery_token_digest = recoveryTokenDigest
+      row.verified_at = new Date().toISOString()
+      row.expires_at = expiresAt
+      await this.persist()
+      return true
+    }
+    const pending = this.passwordRecoveryWrites.then(operation, operation)
+    this.passwordRecoveryWrites = pending.then(() => undefined, () => undefined)
+    return pending
+  }
+
+  async consumePasswordRecovery(recoveryTokenDigest, passwordHash) {
+    const operation = async () => {
+      const d = await this.load()
+      const row = d.password_recovery_challenges.find((item) => item.recovery_token_digest === recoveryTokenDigest)
+      if (!row || !row.verified_at || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) return null
+      const user = d.users.find((item) => item.id === Number(row.user_id))
+      if (!user) return null
+      row.consumed_at = new Date().toISOString()
+      user.password_hash = passwordHash
+      user.session_version = (Number(user.session_version) || 1) + 1
+      const appleKey = `${user.id}:apple`
+      const apple = d.integrations?.[appleKey]
+      if (apple?.settings) {
+        const { ingest_token, ...settings } = apple.settings
+        apple.settings = settings
+      }
+      await this.persist()
+      return { id: user.id, email: user.email, legal_version: user.legal_version || null, legal_accepted_at: user.legal_accepted_at || null, session_version: user.session_version, created_at: user.created_at }
+    }
+    const pending = this.passwordRecoveryWrites.then(operation, operation)
+    this.passwordRecoveryWrites = pending.then(() => undefined, () => undefined)
+    return pending
   }
 
   async acceptLegalVersion(userId, legalVersion) {
@@ -1588,14 +1733,22 @@ export class JsonStore {
     return [...(d.oura_accounts || [])]
   }
 
-  async saveOuraAccount(userId, { label, access_token, refresh_token, expires_at }) {
+  async saveOuraAccount(userId, { label, oura_user_id = null, access_token, refresh_token, expires_at }) {
     const d = await this.load()
     d.oura_accounts = d.oura_accounts || []
+    const canonical = oura_user_id ? d.oura_accounts.find((row) => row.oura_user_id === oura_user_id) : null
+    if (canonical && canonical.user_id !== Number(userId)) throw Object.assign(new Error('This Oura account is already linked.'), { status: 409 })
+    if (canonical) {
+      Object.assign(canonical, { label: label || null, access_token, refresh_token, expires_at: expires_at || null })
+      await this.persist()
+      return canonical
+    }
     d.seq.oura = (d.seq.oura || 0) + 1
     const row = {
       id: d.seq.oura,
       user_id: Number(userId),
       label: label || null,
+      oura_user_id,
       access_token,
       refresh_token,
       expires_at: expires_at || null,
@@ -1604,6 +1757,16 @@ export class JsonStore {
     d.oura_accounts.push(row)
     await this.persist()
     return row
+  }
+
+  async setOuraUserId(userId, id, ouraUserId) {
+    const d = await this.load()
+    if ((d.oura_accounts || []).some((row) => row.oura_user_id === ouraUserId && row.user_id !== Number(userId))) return false
+    const account = (d.oura_accounts || []).find((row) => row.id === Number(id) && row.user_id === Number(userId) && !row.oura_user_id)
+    if (!account) return false
+    account.oura_user_id = ouraUserId
+    await this.persist()
+    return true
   }
 
   async updateOuraTokens(userId, id, { access_token, refresh_token, expires_at }) {

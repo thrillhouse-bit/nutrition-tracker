@@ -87,6 +87,42 @@ Source of business truth: `legal/privacy-policy.html` sections 6, 8, and 9;
   local storage, private in-memory state, and returns to authentication. There
   is no Undo because the database deletion is a cascade hard-delete.
 
+## Password recovery
+
+Signed-out users may choose **Forgot password?** and enter their Body Current
+email. The start response is identical for invalid, unknown, unlinked, and
+eligible addresses, including the same database-read shape, so it cannot be
+used to enumerate accounts. Recovery then requests only Oura identity scopes
+(`email personal`); the normal wearable connection flow retains its broader
+daily and workout scopes.
+
+Recovery succeeds only when Oura returns the same immutable Oura subject as an
+Oura account already linked to the requested Body Current user before recovery
+began. Body Current and Oura emails may differ, and mutable connection labels
+are never identity proof. OAuth state is signed, bound to the initiating
+browser, and purpose-separated from normal Oura connection state. Failures
+never create, replace, or relink a wearable account.
+
+Legacy Oura rows created before immutable subjects were stored have one
+one-time migration path: a fresh recovery grant may bootstrap the canonical
+Oura subject only when its provider-returned email equals the provider-sourced
+email label already stored on that Oura row, or when the old stored grant still
+returns the same subject. The Body Current account email alone is never this
+fallback. New and reconnected accounts fail closed when Oura omits a subject.
+
+Successful verification issues a ten-minute, one-use recovery credential in an
+HttpOnly, Secure-in-production, SameSite=Lax cookie. It never appears in a URL,
+browser storage, response body, or log. The reset form requires matching
+passwords of at least 12 characters, blocks duplicate submission, clears both
+fields after any server attempt, consumes the credential atomically with the
+scrypt password update, and signs the user in. Expired, reused, tampered, or
+missing credentials return the same restart direction.
+
+The atomic password update increments the account's persisted session version,
+invalidating every older browser cookie on every host/domain, and removes that
+user's Apple ingest token. The successful reset receives the sole current
+browser session. Apple hardware must be explicitly paired again afterward.
+
 ## Hydration log
 
 Today owns the account-scoped manual water log. It reads the browser's

@@ -14,6 +14,7 @@ create table if not exists users (
   legal_version text,
   legal_accepted_at timestamptz,
   invite_code_digest text unique,
+  session_version integer not null default 1,
   created_at    timestamptz not null default now()
 );
 
@@ -23,7 +24,24 @@ create table if not exists users (
 alter table users add column if not exists legal_version text;
 alter table users add column if not exists legal_accepted_at timestamptz;
 alter table users add column if not exists invite_code_digest text;
+alter table users add column if not exists session_version integer not null default 1;
 create unique index if not exists users_invite_code_digest_idx on users (invite_code_digest) where invite_code_digest is not null;
+
+-- Password recovery is proven through an Oura identity that was already
+-- linked to the same Body Current account. Only opaque digests are retained;
+-- the short-lived browser credentials themselves never enter the database.
+create table if not exists password_recovery_challenges (
+  id                    bigint generated always as identity primary key,
+  user_id               bigint references users (id) on delete cascade,
+  start_token_digest    text not null unique,
+  oauth_state_digest    text not null unique,
+  recovery_token_digest text unique,
+  expires_at            timestamptz not null,
+  verified_at           timestamptz,
+  consumed_at           timestamptz,
+  created_at            timestamptz not null default now()
+);
+create index if not exists password_recovery_challenges_expiry_idx on password_recovery_challenges (expires_at);
 
 -- Oathbearer RPG save state. One authoritative snapshot per account keeps
 -- cross-device play deterministic while `revision` provides optimistic
@@ -153,6 +171,7 @@ create index if not exists daily_targets_user_id_idx on daily_targets (user_id, 
 create table if not exists oura_accounts (
   id            bigint generated always as identity primary key,
   user_id       bigint not null references users (id) on delete cascade,
+  oura_user_id  text,
   label         text,                          -- e.g. the account email, for display
   access_token  text not null,
   refresh_token text not null,
@@ -160,6 +179,8 @@ create table if not exists oura_accounts (
   created_at    timestamptz not null default now()
 );
 create index if not exists oura_accounts_user_id_idx on oura_accounts (user_id);
+alter table oura_accounts add column if not exists oura_user_id text;
+create unique index if not exists oura_accounts_oura_user_id_idx on oura_accounts (oura_user_id) where oura_user_id is not null;
 
 -- Connected Garmin accounts (OAuth 2.0 PKCE), per user. Same shape as
 -- oura_accounts.

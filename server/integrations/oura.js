@@ -267,8 +267,8 @@ export function oauthConfigured() {
 
 // Stateless CSRF token: a random nonce signed (HMAC) with the client secret, so
 // the callback verifies it without any server-side session store.
-export function signState() {
-  const nonce = crypto.randomBytes(16).toString('hex')
+export function signState(purpose = 'connect') {
+  const nonce = `${purpose === 'recovery' ? 'recovery_' : ''}${crypto.randomBytes(16).toString('hex')}`
   const sig = crypto
     .createHmac('sha256', process.env.OURA_CLIENT_SECRET || '')
     .update(nonce)
@@ -288,12 +288,12 @@ export function verifyState(state) {
   return a.length === b.length && crypto.timingSafeEqual(a, b)
 }
 
-export function authorizeUrl(state) {
+export function authorizeUrl(state, scopes = SCOPES) {
   const u = new URL(AUTHORIZE_URL)
   u.searchParams.set('response_type', 'code')
   u.searchParams.set('client_id', process.env.OURA_CLIENT_ID)
   u.searchParams.set('redirect_uri', process.env.OURA_REDIRECT_URI)
-  u.searchParams.set('scope', SCOPES)
+  u.searchParams.set('scope', scopes)
   u.searchParams.set('state', state)
   return u.toString()
 }

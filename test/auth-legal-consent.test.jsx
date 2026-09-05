@@ -9,6 +9,8 @@ vi.mock('../src/api/client.js', () => ({
     legalStatus: vi.fn(() => Promise.resolve({ ready: true, signupEnabled: true })),
     signup: vi.fn(() => Promise.resolve({ user: { id: 7, email: 'person@example.test' } })),
     login: vi.fn(),
+    startPasswordRecovery: vi.fn(() => Promise.resolve({ continueUrl: '/api/auth/recovery/oura' })),
+    resetPassword: vi.fn(() => Promise.resolve({ user: { id: 7, email: 'person@example.test' } })),
     acceptCurrentLegal: vi.fn(() => Promise.resolve({ user: { id: 7, email: 'person@example.test', legalAcceptanceRequired: false } })),
   },
 }))
@@ -23,6 +25,7 @@ afterEach(() => {
   if (container) document.body.removeChild(container)
   container = null
   vi.clearAllMocks()
+  window.history.replaceState({}, '', '/')
 })
 
 async function renderAuth(onAuthed = vi.fn()) {
@@ -131,5 +134,57 @@ describe('existing-account legal re-consent', () => {
 
     await act(async () => button('Sign out').click())
     expect(onLogout).toHaveBeenCalledOnce()
+  })
+})
+
+describe('password recovery', () => {
+  it('offers recovery from sign in and shows the Oura identity explanation', async () => {
+    await renderAuth()
+    await act(async () => button('Forgot password?').click())
+    expect(container.textContent).toContain('Recover your account')
+    expect(container.textContent).toContain('Oura account already linked')
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+    expect(button('Continue with Oura')).toBeTruthy()
+  })
+
+  it('renders the one-use reset state from the callback marker, removes it from history, and submits matching passwords', async () => {
+    window.history.replaceState({}, '', '/?recovery=ready')
+    const onAuthed = vi.fn()
+    await renderAuth(onAuthed)
+    expect(window.location.search).toBe('')
+    expect(container.textContent).toContain('Choose a new password')
+    const passwords = container.querySelectorAll('input[autocomplete="new-password"]')
+    expect(passwords).toHaveLength(2)
+    await act(async () => {
+      setInputValue(passwords[0], 'new-password-123')
+      setInputValue(passwords[1], 'new-password-123')
+    })
+    await act(async () => {
+      container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+      await Promise.resolve()
+    })
+    expect(api.resetPassword).toHaveBeenCalledWith('new-password-123', 'new-password-123')
+    expect(onAuthed).toHaveBeenCalledWith({ id: 7, email: 'person@example.test' })
+  })
+
+  it('shows a generic callback failure, cleans the URL, and blocks mismatched passwords client-side', async () => {
+    window.history.replaceState({}, '', '/?recovery=failed')
+    await renderAuth()
+    expect(window.location.search).toBe('')
+    expect(container.textContent).toContain('could not verify a linked Body Current account')
+
+    await act(async () => button('Back to sign in').click())
+    window.history.replaceState({}, '', '/?recovery=ready')
+    if (container) document.body.removeChild(container)
+    container = null
+    await renderAuth()
+    const passwords = container.querySelectorAll('input[autocomplete="new-password"]')
+    await act(async () => {
+      setInputValue(passwords[0], 'new-password-123')
+      setInputValue(passwords[1], 'different-pass-123')
+      container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })
+    expect(container.textContent).toContain('Passwords do not match')
+    expect(api.resetPassword).not.toHaveBeenCalled()
   })
 })

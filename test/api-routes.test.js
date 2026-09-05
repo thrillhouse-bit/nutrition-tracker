@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import { computeTrend } from '../server/weightTrend.js'
+import { hashPassword } from '../server/auth.js'
 
 // Route-level tests: the real Express app, an in-memory store (so no test ever
 // touches server/.data/store.json), and a stubbed Oura module (no network).
@@ -24,6 +25,7 @@ const fake = vi.hoisted(() => {
     integrations: {}, // keyed by provider only — one user drives this whole file
     appleSignals: {},
     ouraAccounts: [],
+    passwordRecoveryChallenges: [],
     ouraHistory: [], // { day, value }
     ouraWorkouts: [], // { account_id, oura_id, day, ... }
     weightEntries: [], // { day, kg }
@@ -60,7 +62,7 @@ const fake = vi.hoisted(() => {
         throw error
       }
       const now = new Date().toISOString()
-      const row = { id: ++userSeq, email, password_hash, legal_version, legal_accepted_at: legal_version ? now : null, invite_code_digest, created_at: now }
+      const row = { id: ++userSeq, email, password_hash, legal_version, legal_accepted_at: legal_version ? now : null, invite_code_digest, session_version: 1, created_at: now }
       state.users.push(row)
       if (invite_code_digest) state.inviteRedemptions.add(invite_code_digest)
       return { id: row.id, email: row.email, created_at: row.created_at }
@@ -68,7 +70,40 @@ const fake = vi.hoisted(() => {
     getUserByEmail: async (email) => state.users.find((u) => u.email === email) || null,
     getUserById: async (id) => {
       const u = state.users.find((u) => u.id === Number(id))
-      return u ? { id: u.id, email: u.email, legal_version: u.legal_version, legal_accepted_at: u.legal_accepted_at, created_at: u.created_at } : null
+      return u ? { id: u.id, email: u.email, legal_version: u.legal_version, legal_accepted_at: u.legal_accepted_at, session_version: u.session_version || 1, created_at: u.created_at } : null
+    },
+    createPasswordRecoveryChallenge: async (challenge) => {
+      const row = { id: state.passwordRecoveryChallenges.length + 1, ...challenge, recovery_token_digest: null, verified_at: null, consumed_at: null }
+      state.passwordRecoveryChallenges.push(row)
+      return row
+    },
+    pruneExpiredPasswordRecoveries: async () => {
+      const before = state.passwordRecoveryChallenges.length
+      state.passwordRecoveryChallenges = state.passwordRecoveryChallenges.filter((row) => Date.parse(row.expires_at) > Date.now())
+      return before - state.passwordRecoveryChallenges.length
+    },
+    getPasswordRecoveryByStartToken: async (digest) => state.passwordRecoveryChallenges.find((row) => row.start_token_digest === digest) || null,
+    getPasswordRecoveryByOauthState: async (digest) => state.passwordRecoveryChallenges.find((row) => row.oauth_state_digest === digest) || null,
+    activatePasswordRecovery: async (id, digest, expiresAt) => {
+      const row = state.passwordRecoveryChallenges.find((item) => item.id === id)
+      if (!row || row.user_id == null || row.verified_at || row.recovery_token_digest || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) return false
+      row.recovery_token_digest = digest
+      row.verified_at = new Date().toISOString()
+      row.expires_at = expiresAt
+      return true
+    },
+    consumePasswordRecovery: async (digest, passwordHash) => {
+      const row = state.passwordRecoveryChallenges.find((item) => item.recovery_token_digest === digest)
+      if (!row || !row.verified_at || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) return null
+      const user = state.users.find((item) => item.id === Number(row.user_id))
+      if (!user) return null
+      row.consumed_at = new Date().toISOString()
+      user.password_hash = passwordHash
+      user.session_version = (user.session_version || 1) + 1
+      if (state.integrations.apple?.user_id === user.id && state.integrations.apple.settings) {
+        delete state.integrations.apple.settings.ingest_token
+      }
+      return { ...user }
     },
     acceptLegalVersion: async (id, legalVersion) => {
       const user = state.users.find((row) => row.id === Number(id))
@@ -185,7 +220,22 @@ const fake = vi.hoisted(() => {
       }
       return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1))
     },
-    listOuraAccounts: async (userId) => state.ouraAccounts,
+    listOuraAccounts: async (userId) => state.ouraAccounts.filter((account) => Number(account.user_id ?? authUserId) === Number(userId)),
+    saveOuraAccount: async (userId, account) => {
+      const existing = account.oura_user_id ? state.ouraAccounts.find((row) => row.oura_user_id === account.oura_user_id) : null
+      if (existing && Number(existing.user_id) !== Number(userId)) throw Object.assign(new Error('This Oura account is already linked.'), { status: 409 })
+      if (existing) { Object.assign(existing, account); return existing }
+      const row = { id: state.ouraAccounts.length + 1, user_id: Number(userId), ...account }
+      state.ouraAccounts.push(row)
+      return row
+    },
+    setOuraUserId: async (userId, id, ouraUserId) => {
+      if (state.ouraAccounts.some((row) => row.oura_user_id === ouraUserId && Number(row.user_id) !== Number(userId))) return false
+      const row = state.ouraAccounts.find((account) => account.id === Number(id) && Number(account.user_id ?? authUserId) === Number(userId) && !account.oura_user_id)
+      if (!row) return false
+      row.oura_user_id = ouraUserId
+      return true
+    },
     listGarminAccounts: async (userId) => state.garminAccounts,
     updateOuraTokens: async (userId, id, tokens) => {},
     saveOuraWorkouts: async (accountId, workouts) => {
@@ -322,6 +372,7 @@ const fake = vi.hoisted(() => {
 
 const oura = vi.hoisted(() => ({
   legacy: false, // whether OURA_TOKEN-style config appears present
+  oauthEnabled: false,
   dailySummary: async () => null,
   activityRange: async () => [],
   dailyReadiness: async () => null,
@@ -330,6 +381,8 @@ const oura = vi.hoisted(() => ({
   dailySleepScore: async () => null,
   sleepScoreRange: async () => [],
   workoutsRange: async () => [],
+  exchangeCode: async () => ({ access_token: 'recovery-access-token' }),
+  personalInfo: async () => ({ id: 'oura-route-user', email: 'different-oura@example.com' }),
 }))
 
 const foodSearch = vi.hoisted(() => ({
@@ -347,6 +400,7 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
   return {
     ...real,
     ouraConfigured: () => oura.legacy,
+    oauthConfigured: () => oura.oauthEnabled || Boolean(process.env.OURA_CLIENT_ID && process.env.OURA_CLIENT_SECRET && process.env.OURA_REDIRECT_URI),
     getToken: () => 'legacy-token',
     dailySummary: (...args) => oura.dailySummary(...args),
     activityRange: (...args) => oura.activityRange(...args),
@@ -356,6 +410,8 @@ vi.mock('../server/integrations/oura.js', async (importOriginal) => {
     dailySleepScore: (...args) => oura.dailySleepScore(...args),
     sleepScoreRange: (...args) => oura.sleepScoreRange(...args),
     workoutsRange: (...args) => oura.workoutsRange(...args),
+    exchangeCode: (...args) => oura.exchangeCode(...args),
+    fetchPersonalInfo: (...args) => oura.personalInfo(...args),
   }
 })
 
@@ -373,6 +429,7 @@ beforeAll(async () => {
     GARMIN_CLIENT_SECRET: 'route-test-secret',
     GARMIN_REDIRECT_URI: 'http://localhost.test/api/garmin/callback',
     GARMIN_INTEGRATION_VERIFIED: 'true',
+    AUTH_RECOVERY_IP_MAX: '100',
   })
   const { default: app } = await import('../server/index.js')
   server = app.listen(0)
@@ -405,9 +462,13 @@ afterEach(() => {
   delete process.env.APPLE_INGEST_TOKEN
   process.env.GARMIN_INTEGRATION_VERIFIED = 'true'
   oura.legacy = false
+  oura.oauthEnabled = false
   oura.dailySummary = async () => null
+  oura.exchangeCode = async () => ({ access_token: 'recovery-access-token' })
+  oura.personalInfo = async () => ({ id: 'oura-route-user', email: 'different-oura@example.com' })
   fake.state.entries = []
   fake.state.waterEntries = []
+  fake.state.passwordRecoveryChallenges = []
   fake.state.garminAccounts = []
   fake.state.garminDailies = {}
   fake.state.appleSignals = {}
@@ -429,6 +490,197 @@ afterEach(() => {
   // Note: fake.state.users is intentionally NOT reset — the one signed-up
   // test user (and authCookie/authUserId) must survive across every test in
   // this file.
+})
+
+function cookiePair(response, name) {
+  const raw = response.headers.get('set-cookie') || ''
+  const match = raw.match(new RegExp(`(?:^|,\\s*)${name}=([^;]+)`))
+  return match ? `${name}=${match[1]}` : ''
+}
+
+describe('Oura-verified password recovery', () => {
+  async function startRecovery(email) {
+    oura.oauthEnabled = true
+    return fetch(`${base}/api/auth/recovery/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+  }
+
+  async function beginOura(pendingCookie) {
+    const response = await fetch(`${base}/api/auth/recovery/oura`, {
+      headers: { Cookie: pendingCookie },
+      redirect: 'manual',
+    })
+    return { response, location: new URL(response.headers.get('location')) }
+  }
+
+  it('resets through a previously linked matching Oura identity and consumes the credential once', async () => {
+    const originalPassword = 'original-password-123'
+    const user = await fake.store.createUser({ email: 'recovery-body@example.com', password_hash: await hashPassword(originalPassword), legal_version: '2026-09-04' })
+    fake.state.ouraAccounts = [{ id: 91, user_id: user.id, label: 'mutable label', oura_user_id: 'oura-route-user', access_token: 'revoked-old-token', refresh_token: 'revoked-refresh', expires_at: new Date(0).toISOString() }]
+    const oldLogin = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, password: originalPassword }) })
+    const oldSession = cookiePair(oldLogin, 'nt_session')
+    fake.state.integrations.apple = { user_id: user.id, provider: 'apple', enabled: true, demo: false, settings: { ingest_token: 'old-device-token' } }
+    const start = await startRecovery(' RECOVERY-BODY@example.com ')
+    expect(start.status).toBe(202)
+    expect(await start.json()).toEqual({ message: 'Continue with Oura to verify the account.', continueUrl: '/api/auth/recovery/oura' })
+    const pendingCookie = cookiePair(start, 'bc_recovery_pending')
+    expect(pendingCookie).toBeTruthy()
+
+    const { response: authorize, location } = await beginOura(pendingCookie)
+    expect(authorize.status).toBe(302)
+    expect(location.origin).toBe('https://cloud.ouraring.com')
+    expect(location.searchParams.get('scope')).toBe('email personal')
+    const state = location.searchParams.get('state')
+    expect(state).toMatch(/^recovery_/)
+
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    const callback = await fetch(`${base}/api/oura/callback?code=one-use-code&state=${encodeURIComponent(state)}`, { headers: { Cookie: pendingCookie }, redirect: 'manual' })
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = previousNodeEnv
+    expect(callback.status).toBe(302)
+    expect(callback.headers.get('location')).toBe('/?recovery=ready')
+    const recoveryCookie = cookiePair(callback, 'bc_recovery')
+    expect(recoveryCookie).toBeTruthy()
+    expect(callback.headers.get('set-cookie')).toContain('HttpOnly')
+    expect(callback.headers.get('set-cookie')).toContain('Secure')
+    expect(callback.headers.get('set-cookie')).toContain('SameSite=Lax')
+    expect(callback.headers.get('set-cookie')).toContain('Path=/api/auth/recovery')
+
+    const duplicateCallback = await fetch(`${base}/api/oura/callback?code=duplicate-code&state=${encodeURIComponent(state)}`, { headers: { Cookie: pendingCookie }, redirect: 'manual' })
+    expect(duplicateCallback.headers.get('location')).toBe('/?recovery=failed')
+
+    const reset = await fetch(`${base}/api/auth/recovery/reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: recoveryCookie },
+      body: JSON.stringify({ password: 'new-password-123', confirmation: 'new-password-123' }),
+    })
+    expect(reset.status).toBe(200)
+    expect((await reset.clone().json()).user.email).toBe(user.email)
+    const newSession = cookiePair(reset, 'nt_session')
+
+    const reuse = await fetch(`${base}/api/auth/recovery/reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: recoveryCookie },
+      body: JSON.stringify({ password: 'another-password-123', confirmation: 'another-password-123' }),
+    })
+    expect(reuse.status).toBe(401)
+
+    const staleMe = await fetch(`${base}/api/auth/me`, { headers: { Cookie: oldSession } })
+    expect((await staleMe.json()).user).toBeNull()
+    const staleProtected = await fetch(`${base}/api/entries?from=2026-01-01T00:00:00.000Z&to=2026-01-02T00:00:00.000Z`, { headers: { Cookie: oldSession } })
+    expect(staleProtected.status).toBe(401)
+    const staleOuraConnect = await fetch(`${base}/api/oura/connect`, { headers: { Cookie: oldSession }, redirect: 'manual' })
+    expect(staleOuraConnect.status).toBe(401)
+    const staleGarminConnect = await fetch(`${base}/api/garmin/connect`, { headers: { Cookie: oldSession }, redirect: 'manual' })
+    expect(staleGarminConnect.status).toBe(401)
+    const staleLegal = await fetch(`${base}/api/auth/legal-acceptance`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: oldSession }, body: JSON.stringify({ acceptLegal: true }) })
+    expect(staleLegal.status).toBe(401)
+    expect((await fetch(`${base}/api/auth/me`, { headers: { Cookie: newSession } })).status).toBe(200)
+    const staleDevice = await fetch(`${base}/api/apple/ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer old-device-token' }, body: JSON.stringify({ date: '2026-09-05', samples: [] }) })
+    expect(staleDevice.status).toBe(401)
+    const pairedAgain = await fetch(`${base}/api/apple/token`, { method: 'POST', headers: { Cookie: newSession } })
+    expect(pairedAgain.status).toBe(200)
+    expect((await pairedAgain.json()).token).not.toBe('old-device-token')
+
+    const login = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email, password: 'new-password-123' }),
+    })
+    expect(login.status).toBe(200)
+    fake.state.users = fake.state.users.filter((item) => item.id !== user.id)
+  })
+
+  it('keeps start responses non-enumerating and never activates an unknown account', async () => {
+    const known = await startRecovery('route-tests@example.com')
+    const unknown = await startRecovery('nobody@example.com')
+    expect(unknown.status).toBe(known.status)
+    expect(await unknown.clone().json()).toEqual(await known.json())
+    const { location } = await beginOura(cookiePair(unknown, 'bc_recovery_pending'))
+    const pending = cookiePair(unknown, 'bc_recovery_pending')
+    const callback = await fetch(`${base}/api/oura/callback?code=unknown&state=${encodeURIComponent(location.searchParams.get('state'))}`, { headers: { Cookie: pending }, redirect: 'manual' })
+    expect(callback.headers.get('location')).toBe('/?recovery=failed')
+    expect(cookiePair(callback, 'bc_recovery')).toBe('')
+  })
+
+  it('rejects a different Oura identity, tampered state, short passwords, and mismatched confirmation', async () => {
+    fake.state.ouraAccounts = [{ id: 92, user_id: authUserId, label: 'route-tests@example.com', access_token: 'stored-access-token', refresh_token: 'stored-refresh', expires_at: new Date(Date.now() + 3_600_000).toISOString() }]
+    const start = await startRecovery('route-tests@example.com')
+    const { location } = await beginOura(cookiePair(start, 'bc_recovery_pending'))
+    const state = location.searchParams.get('state')
+
+    const pending = cookiePair(start, 'bc_recovery_pending')
+    const tampered = await fetch(`${base}/api/oura/callback?code=x&state=${encodeURIComponent(`${state}x`)}`, { headers: { Cookie: pending }, redirect: 'manual' })
+    expect(tampered.headers.get('location')).toBe('/?recovery=failed')
+
+    oura.personalInfo = async (token) => token === 'recovery-access-token' ? { id: 'someone-else', email: 'someone-else@example.com' } : { id: 'oura-route-user', email: 'stored@example.com' }
+    const mismatch = await fetch(`${base}/api/oura/callback?code=x&state=${encodeURIComponent(state)}`, { headers: { Cookie: pending }, redirect: 'manual' })
+    expect(mismatch.headers.get('location')).toBe('/?recovery=failed')
+    expect(cookiePair(mismatch, 'bc_recovery')).toBe('')
+
+    const missingCookie = await fetch(`${base}/api/oura/callback?code=x&state=${encodeURIComponent(state)}`, { redirect: 'manual' })
+    expect(missingCookie.headers.get('location')).toBe('/?recovery=failed')
+
+    const short = await fetch(`${base}/api/auth/recovery/reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'short', confirmation: 'short' }),
+    })
+    expect(short.status).toBe(400)
+    const different = await fetch(`${base}/api/auth/recovery/reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'long-enough-password', confirmation: 'different-password' }),
+    })
+    expect(different.status).toBe(400)
+  })
+
+  it('fails closed when Oura OAuth is unavailable and when the initiating-browser cookie is missing', async () => {
+    const start = await startRecovery('route-tests@example.com')
+    const pending = cookiePair(start, 'bc_recovery_pending')
+    oura.oauthEnabled = false
+    const unavailable = await fetch(`${base}/api/auth/recovery/oura`, { headers: { Cookie: pending }, redirect: 'manual' })
+    expect(unavailable.headers.get('location')).toBe('/?recovery=failed')
+    oura.oauthEnabled = true
+    const { location } = await beginOura(pending)
+    const callback = await fetch(`${base}/api/oura/callback?code=x&state=${encodeURIComponent(location.searchParams.get('state'))}`, { redirect: 'manual' })
+    expect(callback.headers.get('location')).toBe('/?recovery=failed')
+  })
+
+  it('fails recovery when canonical-subject backfill loses a cross-account collision race', async () => {
+    fake.state.ouraAccounts = [{ id: 93, user_id: authUserId, label: 'legacy-provider@example.com', access_token: 'stored-access-token', refresh_token: 'stored-refresh', expires_at: new Date(Date.now() + 3_600_000).toISOString() }]
+    oura.personalInfo = async () => ({ id: 'same-subject', email: 'different-address@example.com' })
+    const originalSetOuraUserId = fake.store.setOuraUserId
+    fake.store.setOuraUserId = async () => false
+    const start = await startRecovery('route-tests@example.com')
+    const pending = cookiePair(start, 'bc_recovery_pending')
+    const { location } = await beginOura(pending)
+    const callback = await fetch(`${base}/api/oura/callback?code=race&state=${encodeURIComponent(location.searchParams.get('state'))}`, { headers: { Cookie: pending }, redirect: 'manual' })
+    fake.store.setOuraUserId = originalSetOuraUserId
+    expect(callback.headers.get('location')).toBe('/?recovery=failed')
+    expect(cookiePair(callback, 'bc_recovery')).toBe('')
+  })
+
+  it('persists the immutable Oura subject during the normal connect flow', async () => {
+    oura.oauthEnabled = true
+    fake.state.ouraAccounts = []
+    const connect = await fetch(`${base}/api/oura/connect`, { headers: { Cookie: authCookie }, redirect: 'manual' })
+    const state = new URL(connect.headers.get('location')).searchParams.get('state')
+    const callback = await fetch(`${base}/api/oura/callback?code=normal-connect&state=${encodeURIComponent(state)}`, { redirect: 'manual' })
+    expect(callback.headers.get('location')).toBe('/?oura=connected')
+    expect(fake.state.ouraAccounts).toHaveLength(1)
+    expect(fake.state.ouraAccounts[0].oura_user_id).toBe('oura-route-user')
+  })
+
+  it('does not save a normal Oura connection when personal_info omits its immutable subject', async () => {
+    oura.oauthEnabled = true
+    oura.personalInfo = async () => ({ email: 'provider@example.com' })
+    fake.state.ouraAccounts = []
+    const connect = await fetch(`${base}/api/oura/connect`, { headers: { Cookie: authCookie }, redirect: 'manual' })
+    const state = new URL(connect.headers.get('location')).searchParams.get('state')
+    const callback = await fetch(`${base}/api/oura/callback?code=no-subject&state=${encodeURIComponent(state)}`, { redirect: 'manual' })
+    expect(callback.headers.get('location')).toBe('/?oura=error')
+    expect(fake.state.ouraAccounts).toHaveLength(0)
+  })
 })
 
 const post = (path, body, headers = {}) =>
