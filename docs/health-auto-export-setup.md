@@ -24,8 +24,8 @@ HAE only ever receives it, it never creates one.
 
 1. Open the app in a browser, sign in, and go to **Connections**.
 2. Expand the **Apple Health** row.
-3. Under **Pair the companion**, click **Generate pairing token**.
-4. Copy the token shown — it's a long hex string, and it's **shown once**.
+3. In the guided setup, click **Generate pairing token**, then confirm replacing any existing token. Opening the guide never rotates a token.
+4. Use **Copy header value** — this includes `Bearer ` followed by the token. The field is masked by default and available only while this guide remains open.
    Losing it isn't fatal (see [Security](#security--privacy-the-token-is-a-password) below), but you'll need to
    generate a new one and re-paste it into HAE if you don't copy it now.
 
@@ -41,14 +41,18 @@ it, not a separate credential.
 
 ## Step 2 — configure Health Auto Export
 
-In the HAE app: **Automations → New Automation → REST API**.
+In the HAE app: **Automations → New Automation → REST API**. Create **two**
+automations: `Body Current Workouts` with data type Workouts, and
+`Body Current Health` with data type Health Metrics. Both use the same URL
+and Authorization header. REST API automation may require a paid HAE plan.
+Follow the [official REST API guide](https://help.healthyapps.dev/en/health-auto-export/automations/rest-api/).
 
 | Field | What to enter |
 |---|---|
 | **Name** | Anything recognizable — e.g. `Body Current` |
-| **URL** | `https://<your-domain>/api/apple/health-auto-export` |
+| **URL** | Use **Copy export URL** in Body Current. It uses the HTTPS origin you are signed into, followed by `/api/apple/health-auto-export`. |
 | **Headers → Add Header** | Key: `Authorization` — Value: `Bearer <your token from Step 1>` |
-| **Data to export** | Workouts, and under Health Metrics: Steps, Active Energy, Heart Rate Variability, Resting Heart Rate. Sleep Analysis if you want sleep. (Symptoms/ECG/cycle-tracking/state-of-mind aren't read by this app — leave them off.) |
+| **Data to export** | First automation: Workouts. Second automation: Health Metrics, selecting Steps, Active Energy, Heart Rate Variability, Resting Heart Rate and Sleep Analysis as desired. |
 | **Format** | JSON (not CSV — the server only parses JSON) |
 
 The **URL must be a real, publicly reachable HTTPS address** — this is your
@@ -61,6 +65,25 @@ self-hosted off a home network, this needs your actual deployed domain (see
 Before relying on it, use HAE's **Manual Export** / "run once" action and
 confirm you get a 200 back (see [Troubleshooting](#troubleshooting) below)
 rather than waiting for a scheduled run to eventually fire.
+
+For the first test select Today, daily health summaries, and disable workout
+routes and detailed workout metrics. In Body Current use **Check for received
+data**. The displayed last-received time comes from the server; token creation
+does not establish a connection. Test a day with a real workout and inspect
+Today and Insights after the upload. Device testing remains required.
+
+## Garmin through an iPhone
+
+Garmin users can use Garmin Connect → Apple Health → Health Auto Export.
+Enable Connect under Apple Health's profile → Apps and Services, choose the
+shared categories, and sync the Garmin while Garmin Connect remains open.
+Then follow the two-automation setup above. If Connect is missing, first enable
+Apple Health in Garmin Connect → More → Settings → Connect Apps.
+
+This is a partial Apple Health import, not direct Garmin pairing. Routes and
+detailed activity heart-rate data do not transfer through this route. Android
+requires direct Garmin integration, which remains unavailable until developer
+approval and configuration. See [Garmin's sharing instructions](https://support.garmin.com/en-US/?faq=lK5FPB9iPF5PXFkIpFlFPA).
 
 ## Supported metrics
 

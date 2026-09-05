@@ -592,13 +592,17 @@ export class PgStore {
 
   async setIntegration(userId, provider, patch) {
     const sql = await this.ready()
-    const m = { ...(await this.getIntegration(userId, provider)), ...patch }
+    const m = { enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {}, ...patch }
     const rows = await sql`
       insert into integrations (user_id, provider, enabled, demo, connected_at, last_synced_at, error, settings)
       values (${userId}, ${provider}, ${m.enabled}, ${m.demo}, ${m.connected_at}, ${m.last_synced_at}, ${m.error}, ${JSON.stringify(m.settings || {})})
       on conflict (user_id, provider) do update set
-        enabled = excluded.enabled, demo = excluded.demo, connected_at = excluded.connected_at,
-        last_synced_at = excluded.last_synced_at, error = excluded.error, settings = excluded.settings
+        enabled = case when ${Object.hasOwn(patch, 'enabled')} then excluded.enabled else integrations.enabled end,
+        demo = case when ${Object.hasOwn(patch, 'demo')} then excluded.demo else integrations.demo end,
+        connected_at = case when ${Object.hasOwn(patch, 'connected_at')} then excluded.connected_at else integrations.connected_at end,
+        last_synced_at = case when ${Object.hasOwn(patch, 'last_synced_at')} then excluded.last_synced_at else integrations.last_synced_at end,
+        error = case when ${Object.hasOwn(patch, 'error')} then excluded.error else integrations.error end,
+        settings = coalesce(integrations.settings, '{}'::jsonb) || excluded.settings
       returning *`
     return rows[0]
   }
@@ -616,6 +620,24 @@ export class PgStore {
       await sql`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value, unit, extra)
         values (${userId}, 'apple', ${r.metric}, ${day}, ${r.recorded_at}, ${r.fetched_at}, ${JSON.stringify(r.value ?? null)}, ${r.unit || null}, ${r.extra ? JSON.stringify(r.extra) : null})`
     }
+    return rows.length
+  }
+
+  // Independent exporter automations send partial days. Serialize per user,
+  // replacing only the metric/day or the same workout instant, never siblings.
+  async mergeAppleSignals(userId, day, rows) {
+    if (!rows.length) return 0
+    const sql = await this.ready()
+    await sql.transaction((tx) => [
+      tx`select pg_advisory_xact_lock(74123, ${Number(userId)}::integer)`,
+      ...rows.flatMap((r) => [
+        tx`delete from wearable_signals where user_id = ${userId} and provider = 'apple' and day = ${day} and metric = ${r.metric}
+          and ((${r.metric} <> 'workout' and recorded_at <= ${r.recorded_at}::timestamptz) or (${r.metric} = 'workout' and recorded_at = ${r.recorded_at}::timestamptz))`,
+        tx`insert into wearable_signals (user_id, provider, metric, day, recorded_at, fetched_at, value, unit, extra)
+          select ${userId}, 'apple', ${r.metric}, ${day}::date, ${r.recorded_at}::timestamptz, ${r.fetched_at}::timestamptz, ${JSON.stringify(r.value ?? null)}::jsonb, ${r.unit || null}, ${r.extra ? JSON.stringify(r.extra) : null}::jsonb
+          where ${r.metric} = 'workout' or not exists (select 1 from wearable_signals where user_id = ${userId} and provider = 'apple' and day = ${day} and metric = ${r.metric} and recorded_at > ${r.recorded_at}::timestamptz)`,
+      ]),
+    ])
     return rows.length
   }
 
@@ -1642,6 +1664,7 @@ export class JsonStore {
     d.integrations = d.integrations || {}
     const key = `${userId}:${provider}`
     const m = { ...(d.integrations[key] || { user_id: Number(userId), provider, enabled: true, demo: true, settings: {} }), ...patch, user_id: Number(userId), provider }
+    m.settings = { ...(d.integrations[key]?.settings || {}), ...(patch.settings || {}) }
     d.integrations[key] = m
     await this.persist()
     return m
@@ -1661,6 +1684,18 @@ export class JsonStore {
         recorded_at: r.recorded_at || null, fetched_at: r.fetched_at || null,
         value: r.value ?? null, unit: r.unit || null, extra: r.extra || null,
       })
+    }
+    await this.persist()
+    return rows.length
+  }
+
+  async mergeAppleSignals(userId, day, rows) {
+    if (!rows.length) return 0
+    const d = await this.load()
+    for (const r of rows) {
+      if (r.metric !== 'workout' && (d.wearable_signals || []).some((s) => s.user_id === Number(userId) && s.provider === 'apple' && s.day === day && s.metric === r.metric && Date.parse(s.recorded_at) > Date.parse(r.recorded_at))) continue
+      d.wearable_signals = (d.wearable_signals || []).filter((s) => !(s.user_id === Number(userId) && s.provider === 'apple' && s.day === day && s.metric === r.metric && (r.metric !== 'workout' || new Date(s.recorded_at).getTime() === new Date(r.recorded_at).getTime())))
+      d.wearable_signals.push({ ...r, user_id: Number(userId), provider: 'apple', day })
     }
     await this.persist()
     return rows.length

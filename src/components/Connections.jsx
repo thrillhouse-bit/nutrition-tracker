@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { Button, ErrorNote, Field, inputCls, Meter, Sheet, Spinner, StatusMark, TextButton, Toggle } from './ui.jsx'
+import ApplePairingGuide from './ApplePairingGuide.jsx'
 import { ACCENT_PALETTES } from '../lib/accentTheme.js'
 
 // Human "time since" for a last-sync timestamp.
@@ -243,7 +244,7 @@ export function AccountControls({ user, onLogout, onAccountDeleted }) {
   )
 }
 
-function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
+function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupRequest, onOpenApple }) {
   const {
     id, name, connect, categories = [], status, demo, enabled, last_synced_at, permissions, partial,
     last_attempted_sync, last_sync_counts, sync_error,
@@ -260,6 +261,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   const attemptedLabel = since(last_attempted_sync)
   const context = categories.slice(0, 3).join(' · ')
   const [open, setOpen] = useState(false)
+  useEffect(() => { if (id === 'apple' && appleSetupRequest) setOpen(true) }, [id, appleSetupRequest])
   const working = busy === id
   // Disconnecting means re-doing an OAuth flow to undo, so it gets a second
   // tap rather than firing on the first — mirrors no other confirm pattern
@@ -268,33 +270,6 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
   // the panel) drops back to the unconfirmed state.
   const [confirmingId, setConfirmingId] = useState(null)
   useEffect(() => { if (!open) setConfirmingId(null) }, [open])
-
-  // Apple Health has no OAuth account to connect — this is the only in-app
-  // action for it, and until this existed there was no way to use the
-  // integration end to end: POST /api/apple/token worked, but nothing in the
-  // UI ever called it. The token is shown once (it has to be, so it can be
-  // copied into the companion) and regenerating invalidates the previous one.
-  const [appleToken, setAppleToken] = useState(null)
-  const [copied, setCopied] = useState(false)
-  const generateAppleToken = async () => {
-    setBusy(id)
-    setCopied(false)
-    try {
-      const { token } = await api.appleToken()
-      setAppleToken(token)
-    } finally {
-      setBusy(null)
-    }
-  }
-  const copyAppleToken = async () => {
-    try {
-      await navigator.clipboard.writeText(appleToken)
-      setCopied(true)
-    } catch {
-      // Clipboard access can be denied/unavailable — the token is still
-      // selectable text in the field below, so this never blocks pairing.
-    }
-  }
 
   const patch = async (body) => {
     setBusy(id)
@@ -326,6 +301,8 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
         Manage
       </Button>
     )
+  } else if (id === 'garmin' && notConfigured) {
+    action = <Button variant="outline" onClick={() => setOpen(v => !v)}>Sync options</Button>
   } else if (oauth && notConfigured) {
     // A "Connect" link here would navigate to /api/{id}/connect, which
     // 501s — this server has no OAuth client id/secret for this provider at
@@ -391,7 +368,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
           )}
           {!isDemo && notConfigured && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
-              Not set up on this server — ask the operator to configure {name}
+              {id === 'garmin' ? 'Direct sync pending approval · iPhone route available below' : `Not set up on this server — ask the operator to configure ${name}`}
             </div>
           )}
           {!isDemo && status === 'disconnected' && (
@@ -441,7 +418,20 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
       {/* Expanded panel: accounts / ingest instructions + per-provider toggles. */}
       {open && (
         <div className="mt-3 space-y-3 border-t border-line pt-3">
-          {oauth ? (
+          {id === 'garmin' && notConfigured ? (
+            <div className="space-y-3 text-sm">
+              <div className="eyebrow">Sync through Apple Health · iPhone</div>
+              <p className="text-muted">Direct Garmin sign-in is awaiting developer approval. On iPhone, Garmin Connect can share supported activities through Apple Health and Health Auto Export.</p>
+              <ol className="list-decimal space-y-2 pl-5 text-muted">
+                <li>In Apple Health, open your profile → Apps and Services → Connect. Allow Workouts and the categories you want to share.</li>
+                <li>If Connect is missing, open Garmin Connect → More → Settings → Connect Apps → Apple Health, and enable sharing.</li>
+                <li>Sync your Garmin while Garmin Connect stays open. Confirm the activity appears in Apple Health, then complete the Apple Health setup below.</li>
+              </ol>
+              <p className="text-xs text-muted">This route imports partial data under Apple Health, not a direct Garmin connection. Garmin does not share GPS routes or full activity heart-rate detail here. Android needs the direct Garmin integration, which is not available yet.</p>
+              <Button variant="outline" onClick={onOpenApple}>Set up Apple Health export</Button>
+              <a className="block py-2 text-cobalt underline hover:text-cobalt-ink" href="https://support.garmin.com/en-US/?faq=lK5FPB9iPF5PXFkIpFlFPA" target="_blank" rel="noreferrer">Garmin sharing instructions ↗</a>
+            </div>
+          ) : oauth ? (
             <div className="space-y-2">
               {accounts?.length > 0 ? (
                 <div className="space-y-1.5">
@@ -498,84 +488,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
               )}
             </div>
           ) : (
-            // Apple Health: no cloud API — a native iOS/watch companion reads
-            // HealthKit on-device and syncs it to your own server.
-            <div className="space-y-3 text-sm">
-              <div>
-                <div className="eyebrow pb-1.5">What it reads &amp; why</div>
-                <p className="text-muted">
-                  The Apple Watch / iPhone companion reads your workouts &amp; timing, active energy, exercise, and
-                  sleep — plus heart-rate / HRV as optional context — to explain and time your fueling. It never reads
-                  clinical data and never changes a target on its own.
-                </p>
-              </div>
-
-              {/* Per-category status — available vs. shares no data (never "denied"). */}
-              {permissions?.requested?.length > 0 && (
-                <div>
-                  <div className="eyebrow pb-1.5">Categories</div>
-                  <div className="grid grid-cols-1 gap-y-1">
-                    {APPLE_READS.filter((c) => permissions.requested.includes(c) || (permissions.available || []).includes(c)).map((c) => {
-                      const on = (permissions.available || []).includes(c)
-                      return (
-                        <div key={c} className="flex items-center justify-between gap-3">
-                          <span className="text-[12px] text-ink">{APPLE_CATEGORY_LABEL[c] || c}</span>
-                          <StatusMark status={on ? 'fresh' : 'unavailable'} label={on ? 'Shared' : 'No data'} />
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <div className="eyebrow pb-1.5">Storage &amp; control</div>
-                <p className="text-muted">
-                  The companion reads these on your iPhone / Apple Watch and syncs them to your own server. Nothing is
-                  sent to any third party. You choose which signals influence your plan, and you can delete synced data
-                  at any time.
-                </p>
-              </div>
-
-              <div>
-                <div className="eyebrow pb-1.5">Pair the companion</div>
-                <p className="text-muted">
-                  The iOS/watch companion has no login of its own — it authenticates with a pairing token generated
-                  here. Generate one, then enter it in the companion's Settings.
-                </p>
-                <p className="text-[11px] text-faint">
-                  No Mac to build the native companion? The same token also works with the App Store app{' '}
-                  <span className="font-semibold text-muted">Health Auto Export</span> — no code required. See{' '}
-                  <code className="bg-fill px-1">docs/health-auto-export-setup.md</code> for exact setup steps.
-                </p>
-                {appleToken ? (
-                  <div className="mt-2 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <input
-                        readOnly
-                        value={appleToken}
-                        onFocus={(e) => e.target.select()}
-                        className="min-w-0 flex-1 truncate border border-line bg-fill px-2.5 py-2 font-mono text-[12px]"
-                      />
-                      <Button variant="outline" onClick={copyAppleToken}>{copied ? 'Copied' : 'Copy'}</Button>
-                    </div>
-                    <p className="text-[11px] text-faint">
-                      Shown once — copy it now. Generating a new token immediately invalidates this one.
-                    </p>
-                  </div>
-                ) : (
-                  <Button variant="outline" className="mt-2" disabled={working} onClick={generateAppleToken}>
-                    {working ? <Spinner /> : 'Generate pairing token'}
-                  </Button>
-                )}
-              </div>
-
-              <p className="text-[11px] leading-relaxed text-faint">
-                Choose exactly what to share in the iOS <span className="font-semibold text-muted">Health app → Sharing → this app</span>.
-                Categories you don’t share simply show “No data”; we can’t see them. Samples reach your server at{' '}
-                <code className="bg-fill px-1">/api/apple/ingest</code>.
-              </p>
-            </div>
+            <ApplePairingGuide onRefetch={onRefetch} enabled={enabled} lastSyncedAt={last_synced_at} />
           )}
 
           {isDemo && (
@@ -619,6 +532,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy }) {
 }
 
 export default function Connections({ refreshKey, onChanged, user, onLogout, onAccountDeleted, accent = 'cobalt', onAccentChange, sessionKey }) {
+  const [appleSetupRequest, setAppleSetupRequest] = useState(0)
   const [conn, setConn] = useState(null)
   const [ouraAccts, setOuraAccts] = useState([])
   const [garminAccts, setGarminAccts] = useState([])
@@ -755,6 +669,8 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
             onRefetch={load}
             busy={busy}
             setBusy={setBusy}
+            appleSetupRequest={appleSetupRequest}
+            onOpenApple={() => setAppleSetupRequest(n => n + 1)}
           />
         ))}
       </section>

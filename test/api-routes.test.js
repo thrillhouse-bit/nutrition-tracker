@@ -128,6 +128,7 @@ const fake = vi.hoisted(() => {
     // token-rotation test).
     setIntegration: async (userId, p, patch) => {
       const m = { ...(state.integrations[p] || { provider: p, enabled: true, demo: true, settings: {} }), ...patch, user_id: userId, provider: p }
+      m.settings = { ...(state.integrations[p]?.settings || {}), ...(patch.settings || {}) }
       state.integrations[p] = m
       return m
     },
@@ -147,6 +148,10 @@ const fake = vi.hoisted(() => {
     getLatestTargets: async (userId) => state.targets,
     savePlan: async (userId, date, plan) => ({ date, ...plan }),
     replaceAppleSignals: async (userId, day, rows) => { state.appleSignals[day] = rows; return rows.length },
+    mergeAppleSignals: async (userId, day, rows) => {
+      for (const row of rows) state.appleSignals[day] = [...(state.appleSignals[day] || []).filter(s => s.metric !== row.metric || (row.metric === 'workout' && s.recorded_at !== row.recorded_at)), row]
+      return rows.length
+    },
     listAppleSignals: async (userId, day) => state.appleSignals[day] || [],
     // Real training-load history: derived from the same appleSignals state
     // replaceAppleSignals/listAppleSignals already use, ranged like
@@ -812,6 +817,19 @@ describe('POST /api/apple/ingest token gate', () => {
 })
 
 describe('POST /api/apple/health-auto-export (third-party exporter adapter)', () => {
+  it('preserves separate automation results and ignores empty or unknown exports', async () => {
+    process.env.APPLE_INGEST_TOKEN = 'sekret'
+    const headers = { authorization: 'Bearer sekret' }
+    await post('/api/apple/health-auto-export', { data: { workouts: [{ name: 'Running', start: '2026-08-20 07:00:00 -0700', duration: 1800 }] } }, headers)
+    await post('/api/apple/health-auto-export', { data: { metrics: [{ name: 'steps', data: [{ date: '2026-08-20 12:00:00 -0700', qty: 5000 }, { date: '2026-08-21 12:00:00 -0700', qty: 6000 }] }] } }, headers)
+    expect(fake.state.appleSignals['2026-08-20']).toHaveLength(2)
+    expect(fake.state.appleSignals['2026-08-21']).toHaveLength(1)
+    const before = JSON.stringify(fake.state.integrations.apple)
+    const res = await post('/api/apple/health-auto-export', { data: {} }, headers)
+    expect((await res.json()).ingested).toBe(0)
+    expect(JSON.stringify(fake.state.integrations.apple)).toBe(before)
+    expect(fake.state.appleSignals['2026-08-20']).toHaveLength(2)
+  })
   const haeBody = {
     data: {
       workouts: [{ name: 'Running', start: '2026-08-20 07:00:00 -0700', duration: 1800, activeEnergyBurned: { qty: 300, units: 'kcal' } }],

@@ -45,7 +45,7 @@ const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'
 // can correct it with a restartless env change in dev and so tests can
 // exercise both the set and unset branches.
 function publicBaseUrl() {
-  return (process.env.OMNIFUEL_PUBLIC_URL || 'https://omnifuelapp.tech').replace(/\/+$/, '')
+  return (process.env.BODY_CURRENT_PUBLIC_URL || process.env.OMNIFUEL_PUBLIC_URL || 'https://omnifuelapp.tech').replace(/\/+$/, '')
 }
 
 // Bearer parse for THIS surface only. Same regex as index.js's
@@ -88,7 +88,7 @@ export function registerAgentRoutes(app, deps) {
         bearer: {
           type: 'http',
           scheme: 'bearer',
-          description: 'Instance-operator token (OMNIFUEL_A2A_TOKEN) for the fueling-status skill.',
+          description: 'Instance-operator token (BODY_CURRENT_A2A_TOKEN) for the fueling-status skill.',
         },
       },
       skills: [
@@ -236,6 +236,8 @@ export function registerAgentRoutes(app, deps) {
     const body = {
       ok: true,
       service: 'omnifuel',
+      displayName: 'Body Current',
+      serviceId: 'body-current',
       time: now.toISOString(),
       backend, // 'postgres' | 'json-file'
       providers: {
@@ -249,7 +251,7 @@ export function registerAgentRoutes(app, deps) {
 
     // Read per request, matching APPLE_INGEST_TOKEN's precedent, so a token
     // rotation doesn't need a code change and tests can drive both branches.
-    const configured = process.env.OMNIFUEL_A2A_TOKEN
+    const configured = process.env.BODY_CURRENT_A2A_TOKEN || process.env.OMNIFUEL_A2A_TOKEN
     if (!configured) {
       // Unset means the fueling tier is off — permanently and visibly, even
       // when a caller presents a bearer. "not configured" (not an auth

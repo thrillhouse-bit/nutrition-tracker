@@ -1721,7 +1721,7 @@ registered after the `LEGAL_ACCEPTANCE_REQUIRED` gate in
 legal-consent enforcement as the rest of the app. The in-game sign-in
 screen (`RPGAccountGate.jsx`, new) reuses the existing `Auth`/
 `LegalReconsent` components with a new `surface` prop that only
-changes display copy ("Oathbearer" branding vs. "OmniFuel Tech") — the
+changes display copy ("Oathbearer" branding vs. "Body Current") — the
 actual signup/login/legal-consent logic is the same code path as the
 main app, so it inherits the same server-side alpha/legal gating
 automatically rather than needing (or risking) a second implementation.

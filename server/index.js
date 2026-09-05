@@ -1663,9 +1663,8 @@ function normalizeApplePermissions(p, rows) {
 // necessarily shared across every user on the box, same tradeoff as the
 // legacy Oura PAT above.
 requireAuthRouter.post('/apple/token', asyncH(async (req, res) => {
-  const row = await store.getIntegration(req.userId, 'apple')
   const token = crypto.randomBytes(24).toString('hex')
-  await store.setIntegration(req.userId, 'apple', { settings: { ...(row.settings || {}), ingest_token: token } })
+  await store.setIntegration(req.userId, 'apple', { settings: { ingest_token: token } })
   res.json({ token })
 }))
 
@@ -1718,7 +1717,7 @@ async function resolveAppleIngestUser(req) {
 // shape, and the Health Auto Export adapter's translated shape) — one
 // persistence path, so permissions/last-synced bookkeeping never drifts
 // between the two.
-async function ingestAppleSamples(userId, day, rawSamples, rawPermissions) {
+async function ingestAppleSamples(userId, day, rawSamples, rawPermissions, merge = false) {
   const nowIso = new Date().toISOString()
   const rows = (Array.isArray(rawSamples) ? rawSamples : [])
     .filter((s) => s && typeof s.metric === 'string' && s.metric)
@@ -1730,13 +1729,15 @@ async function ingestAppleSamples(userId, day, rawSamples, rawPermissions) {
       fetched_at: s.fetched_at || nowIso,
       extra: s.extra && typeof s.extra === 'object' ? s.extra : null,
     }))
-  const n = await store.replaceAppleSignals(userId, day, rows)
+  if (!rows.length) return { ingested: 0, day, permissions: [] }
+  const n = await store[merge ? 'mergeAppleSignals' : 'replaceAppleSignals'](userId, day, rows)
   const cur = await store.getIntegration(userId, 'apple')
   const perms = normalizeApplePermissions(rawPermissions, rows)
+  if (merge) for (const key of ['requested', 'available']) perms[key] = [...new Set([...(cur.settings?.permissions?.[key] || []), ...perms[key]])]
   await store.setIntegration(userId, 'apple', {
     connected_at: cur.connected_at || nowIso,
     last_synced_at: nowIso,
-    settings: { ...(cur.settings || {}), permissions: perms },
+    settings: { permissions: perms },
   })
   return { ingested: n, day, permissions: perms }
 }
@@ -1775,11 +1776,17 @@ app.post('/api/apple/health-auto-export', asyncH(async (req, res) => {
     return res.status(403).json({ error: 'Apple Health is disabled for this account.' })
   }
   const { date, samples, unmapped } = mapHealthAutoExportPayload(req.body, localYmd())
-  const result = await ingestAppleSamples(userId, date, samples)
+  const groups = new Map()
+  for (const sample of samples) groups.set(sample.day, [...(groups.get(sample.day) || []), sample])
+  let ingested = 0
+  for (const [day, daySamples] of groups) {
+    const result = await ingestAppleSamples(userId, day, daySamples, undefined, true)
+    ingested += result.ingested
+  }
   if (unmapped.length) {
     console.log('[apple-health-auto-export]', JSON.stringify({ userId, unmapped }))
   }
-  res.json({ ...result, unmapped })
+  res.json({ ingested, day: date, days: [...groups.keys()], unmapped })
 }))
 
 // Insights: nutrition trends over a window; signal correlations flagged as

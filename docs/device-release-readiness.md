@@ -6,11 +6,11 @@ Web invite distribution can proceed after the application release gates pass wit
 
 ## Apple native companion
 
-### Existing Apple ingestion: migrate before a second account signs up
+### Existing Apple ingestion: preserve account pairing
 
-The legacy global `APPLE_INGEST_TOKEN` is accepted only while the server has exactly one account. A second signup makes that token return unauthorized; keeping it in the environment does not preserve ingestion. Before invite distribution, the existing owner must open Connections → Apple Health → How to sync → Generate pairing token while signed into their own account. Copy the once-shown token directly into the native companion's Health settings or the existing Health Auto Export automation's authentication header. Use `x-ingest-token` for the native adapter, or `Authorization: Bearer <token>` for the export adapter; keep the existing endpoint. Never put the token in a URL, handoff, or screenshot.
+Production inspection confirmed 17 accounts and all three Apple integration rows already holding per-user tokens. Preserve those tokens; no forced rotation or pre-invite migration is indicated. The legacy global `APPLE_INGEST_TOKEN` is already rejected by the multi-user guard. New testers generate their own token under Connections → Apple Health and copy it into their chosen sender. Use `x-ingest-token` for the native adapter, or `Authorization: Bearer <token>` for Health Auto Export. Never put the token in a URL, handoff, or screenshot.
 
-Trigger an actual device export/sync and confirm success and an updated Apple sync timestamp for the owner. Record that transition as release evidence before enabling invites. Generating another token invalidates the previous per-user token, so update every active sender when rotating. Each tester must generate their own token after signup. The session-gated `/api/apple/token` and both ingest paths have a rotation regression in `test/api-routes.test.js`; tests do not prove the owner's device has been reconfigured. After confirmed migration, the operator can remove the legacy global token through the normal environment deployment process.
+Each tester should trigger an actual device export and confirm an updated sync timestamp. Generating another token invalidates the previous token, so update every active sender only when intentionally rotating. The session-gated `/api/apple/token` and both ingest paths have rotation regression coverage in `test/api-routes.test.js`; server tests are not physical-device evidence.
 
 Observed on the development Mac: `xcode-select -p` selects `/Library/Developer/CommandLineTools`; `xcodegen` is absent; `security find-identity -v -p codesigning` reports zero valid identities. Source has a blank development team and example bundle/App Group identifiers. No signed build or physical-device test is claimed.
 

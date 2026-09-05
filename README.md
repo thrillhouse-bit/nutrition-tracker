@@ -401,7 +401,7 @@ diagnosis. Nothing on this surface writes.
 **Two tiers, one route.** Anonymous callers get **operational facts only** —
 the same config-level fields as `GET /api/health` (backend, which
 integrations are configured) plus `fueling: { available: false }`. Presenting
-`Authorization: Bearer <OMNIFUEL_A2A_TOKEN>` unlocks the **fueling tier**:
+`Authorization: Bearer <BODY_CURRENT_A2A_TOKEN>` unlocks the **fueling tier**:
 today's kcal logged, entry count, minutes since the last log, baseline vs.
 plan-adjusted targets with the day's adjustment factors, per-provider status +
 freshness, and a top-level `demo` flag whenever any contributing adjustment
@@ -412,7 +412,7 @@ to probe against.
 
 Honest refusals, in the same spirit as the rest of the app:
 
-- `OMNIFUEL_A2A_TOKEN` unset → `fueling: { available: false, reason: "not configured" }`, even with a token presented.
+- Both current and legacy A2A token variables unset → `fueling: { available: false, reason: "not configured" }`, even with a token presented.
 - Not exactly one account → `reason: "no sole account"` — the same rule as the
   legacy Apple ingest token: a single shared secret can only be attributed
   while there is exactly one person it could mean.
@@ -421,8 +421,13 @@ Honest refusals, in the same spirit as the rest of the app:
 
 | Env var | Meaning |
 |---|---|
-| `OMNIFUEL_A2A_TOKEN` | Bearer token for the fueling tier. Unset = the tier is off, permanently and visibly. |
-| `OMNIFUEL_PUBLIC_URL` | Public origin written into the agent card's `url` (default `https://omnifuelapp.tech`). |
+| `BODY_CURRENT_A2A_TOKEN` | Bearer token for the fueling tier. Takes precedence over the legacy `OMNIFUEL_A2A_TOKEN` alias. Both unset = tier off. |
+| `BODY_CURRENT_PUBLIC_URL` | Public origin written into the agent card's `url` (default `https://omnifuelapp.tech`). Takes precedence over the legacy `OMNIFUEL_PUBLIC_URL` alias. |
+
+Agent metadata identifies the product as `displayName: "Body Current"` and
+`serviceId: "body-current"`; its existing `service` field and artifact name remain
+compatible with older clients. See `docs/brand-compatibility.md` for the remaining
+infrastructure identifiers and the domain migration requirements.
 
 ## MVP feature scope
 

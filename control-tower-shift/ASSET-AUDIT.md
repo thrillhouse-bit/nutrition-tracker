@@ -1,4 +1,4 @@
-# Asset audit — what the OmniFuel repo offers Control Tower Shift
+# Asset audit — what the Body Current repo offers Control Tower Shift
 
 Audited 2026-08-30 across `src/`, `public/`, and `index.html`.
 

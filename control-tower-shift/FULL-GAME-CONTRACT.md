@@ -160,7 +160,7 @@ game. Production deployment remains blocked until all gates pass.
 
 ## Release rules
 
-1. `main` and production may continue receiving unrelated OmniFuel fixes, but
+1. `main` and production may continue receiving unrelated Body Current fixes, but
    the Oathbearer complete-game branch is not merged or deployed in fragments.
 2. No lane may call a module “done” unless its sources, sinks, UI, save behavior,
    failure paths, quests, and browser behavior are integrated.

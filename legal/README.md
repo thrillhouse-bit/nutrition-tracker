@@ -1,7 +1,7 @@
 # Legal pages (TEMPLATES — review before use)
 
 Two self-contained, hostable HTML pages for the Body Current app, branded
-for **omnifuelapp.tech**:
+for **Body Current**, hosted at the existing production domain:
 
 - `privacy-policy.html`
 - `terms-of-service.html`

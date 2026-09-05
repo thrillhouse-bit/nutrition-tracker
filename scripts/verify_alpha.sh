@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only release gate for the invite-only OmniFuel alpha.
+# Read-only release gate for the invite-only Body Current alpha.
 #
 # Usage:
 #   scripts/verify_alpha.sh https://omnifuelapp.tech
@@ -53,7 +53,7 @@ header_value() {
   ' "$file"
 }
 
-echo "== OmniFuel alpha release gate: $BASE =="
+echo "== Body Current alpha release gate: $BASE =="
 
 health_code="$(request health /api/health)"
 backend="$(json_field "$probe_dir/health.body" backend)"

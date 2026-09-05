@@ -149,8 +149,8 @@ lighting, NPC, enemy, and boss identity without proprietary imitation.
 - Full save migration, corrupt-save, offline shell, and PWA route verification.
 - Performance budgets on representative desktop and mobile hardware.
 - Automated critical-path browser suite plus representative visual regression.
-- Decide whether Oathbearer remains an embedded OmniFuel route or becomes a
-  separately branded build; the current PWA manifest still belongs to OmniFuel.
+- Decide whether Oathbearer remains an embedded Body Current route or becomes a
+  separately branded build; the current PWA manifest still belongs to Body Current.
 
 ## Deliberate non-goals
 

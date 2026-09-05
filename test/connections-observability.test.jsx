@@ -80,6 +80,22 @@ function ouraRow(el) {
   return el.querySelector('[data-provider="oura"]')
 }
 
+it('opens the iPhone Garmin bridge and Apple guide without rotating credentials or changing Oura', async () => {
+  mockConnections({ status: 'connected', demo: false, last_synced_at: '2026-09-04T12:00:00Z' })
+  const el = await renderConnections()
+  const originalOura = ouraRow(el).textContent
+  const garmin = el.querySelector('[data-provider="garmin"]')
+  const button = [...garmin.querySelectorAll('button')].find(b => b.textContent === 'Sync options')
+  await act(async () => button.click())
+  expect(garmin.textContent).toContain('Android needs the direct Garmin integration')
+  expect(garmin.querySelector('a[href="/api/garmin/connect"]')).toBeNull()
+  await act(async () => [...garmin.querySelectorAll('button')].find(b => b.textContent === 'Set up Apple Health export').click())
+  expect(el.querySelector('[aria-label="Apple Health guided setup"]')).not.toBeNull()
+  expect(api.appleToken).not.toHaveBeenCalled()
+  expect(api.setProvider).not.toHaveBeenCalled()
+  expect(ouraRow(el).textContent).toBe(originalOura)
+})
+
 describe('Connections: not-configured is distinct from demo and from disconnected', () => {
   it('a not-configured-but-demo-allowed Oura keeps the (accurate) Demo data badge, plus an explicit "why" note the plain demo case never shows', async () => {
     mockConnections({ status: 'not-configured', demo: true })

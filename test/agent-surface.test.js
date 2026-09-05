@@ -128,6 +128,8 @@ afterAll(() => {
 afterEach(() => {
   delete process.env.OMNIFUEL_A2A_TOKEN
   delete process.env.OMNIFUEL_PUBLIC_URL
+  delete process.env.BODY_CURRENT_A2A_TOKEN
+  delete process.env.BODY_CURRENT_PUBLIC_URL
   oura.legacy = false
   oura.calls = []
   fake.state.users = []
@@ -264,10 +266,25 @@ describe('GET /.well-known/agent-card.json', () => {
     card = await (await get('/.well-known/agent-card.json')).json()
     expect(card.url).toBe('https://omnifuelapp.tech/a2a')
   })
+
+  it('prefers the Body Current public URL over its legacy alias', async () => {
+    process.env.OMNIFUEL_PUBLIC_URL = 'https://legacy.example.test'
+    process.env.BODY_CURRENT_PUBLIC_URL = 'https://current.example.test/'
+    const card = await (await get('/.well-known/agent-card.json')).json()
+    expect(card.url).toBe('https://current.example.test/a2a')
+  })
 })
 
 // ===========================================================================
 describe('GET /api/agent/status — anonymous tier', () => {
+  it('uses the Body Current token in preference to the legacy token', async () => {
+    process.env.OMNIFUEL_A2A_TOKEN = A2A_TOKEN
+    process.env.BODY_CURRENT_A2A_TOKEN = 'body-current-token-precedence'
+    const oldToken = await (await get('/api/agent/status', { authorization: `Bearer ${A2A_TOKEN}` })).json()
+    expect(oldToken.fueling).toEqual({ available: false, reason: 'token required' })
+    const currentToken = await (await get('/api/agent/status', { authorization: 'Bearer body-current-token-precedence' })).json()
+    expect(currentToken.fueling.reason).not.toBe('token required')
+  })
   it('reports operational facts, refuses fueling, and leaks no personal figure even when the store holds them', async () => {
     process.env.OMNIFUEL_A2A_TOKEN = A2A_TOKEN
     seedSoleUserWithData()
@@ -281,13 +298,15 @@ describe('GET /api/agent/status — anonymous tier', () => {
     const body = await res.json()
     expect(body.ok).toBe(true)
     expect(body.service).toBe('omnifuel')
+    expect(body.displayName).toBe('Body Current')
+    expect(body.serviceId).toBe('body-current')
     expect(body.backend).toBe('json-file')
     expect(Number.isFinite(Date.parse(body.time))).toBe(true)
     // Config-level facts only — exactly /api/health's vocabulary.
     expect(body.providers).toEqual({ ocr: 'not-configured', usda: 'not-configured', oura: 'not-configured', garmin: 'not-configured' })
     expect(body.fueling).toEqual({ available: false, reason: 'token required' })
     // Nothing else may ride along on the anonymous body.
-    expect(Object.keys(body).sort()).toEqual(['backend', 'fueling', 'ok', 'providers', 'service', 'time'])
+    expect(Object.keys(body).sort()).toEqual(['backend', 'displayName', 'fueling', 'ok', 'providers', 'service', 'serviceId', 'time'])
     // The leak control: the store HAS personal data right now (seeded above);
     // none of its distinctive figures may appear anywhere in this body.
     const text = JSON.stringify(body)

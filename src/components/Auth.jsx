@@ -22,7 +22,7 @@ function inviteFromLocation(url) {
 // tour or guest mode — just sign in or create the one account this device
 // will use. Mirrors the server's own validation (auth.js / index.js) so a bad
 // submission never round-trips to learn something the client already knows.
-export default function Auth({ onAuthed, surface = 'omnifuel' }) {
+export default function Auth({ onAuthed, surface = 'body-current' }) {
   const [mode, setMode] = useState('login') // 'login' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -201,7 +201,7 @@ export default function Auth({ onAuthed, surface = 'omnifuel' }) {
   )
 }
 
-export function LegalReconsent({ user, onAccepted, onLogout, surface = 'omnifuel' }) {
+export function LegalReconsent({ user, onAccepted, onLogout, surface = 'body-current' }) {
   const [acknowledged, setAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')

@@ -2,9 +2,12 @@
 
 ## Candidate and operating rules
 
-- Candidate worktree: `/Users/jacksonkemper/Documents/Codex/2026-08-25/this/work/body-current-release`, detached at `ed7972b`. The earlier lineage warning was caused by shallow history and a stale `origin/main` tracking ref. A fresh `git ls-remote origin refs/heads/main` returned `ed7972bd6cd80368c51da38ef7d75fd08709778c`; after deepening history, `git merge-base HEAD f9f8374` returned the live SHA `f9f837410642a1c40bcba3ffa3e28a2aea249962`. The candidate descends from production and preserves intervening Oathbearer work. It remains dirty/uncommitted: freeze workers, review the whole diff, create a release branch and commit, and retest before deploying. Never reset this worktree.
+- Worktree: `/Users/jacksonkemper/Documents/Codex/2026-08-25/this/work/body-current-release`, branch `codex/body-current-weekend-release`. Release `de5c8e7` is deployed. Its release evidence recorded 138 test files / 1,866 tests passing, production backup restoration verified, migration completed, and private invites ready. Recheck live `/api/version` and the current diff before subsequent releases. Preserve intervening Oathbearer work and unknown untracked duplicate files ending in ` 2`; never reset this worktree.
 - Preserve technical infrastructure identifiers (`omnifuelapp.tech`, `OMNIFUEL_*`, service IDs, callback URLs, DB names) unless a verified coordinated change says otherwise. Product-facing identity is **Body Current**.
 - Run `git status --short` before edits. Use focused tests first, then `npm test`, `npm run build`, and `git diff --check`. Do not report hardware, provider, legal, migration, or deploy readiness without evidence.
+- The user authorizes continued fixes and deployment. Hermes background job `edd76da674ba` runs every two hours using direct local Ollama `gemma4` only. Preserve that no-cost execution restriction; do not substitute paid providers or Codex agents for its autonomous background work. Check its actual status before claiming it is running.
+- September 5 follow-up: Body Current branding sweep and guided Apple/Garmin setup completed; existing Oura path preserved. Frozen verification: 140 files / 1,881 tests passed, build passed, dependency audit zero vulnerabilities, independent review passed. See `docs/brand-compatibility.md` and `docs/device-release-readiness.md` for capabilities and retained identifiers. Installed users should refresh/reopen after deployment; confirm `/api/version` against the latest release commit.
+- Apple exporter automations now merge partial metric/day uploads, deduplicate workout retries, retain actual offsets/local days, and ignore empty payloads without changing freshness. Integration patches are atomic so concurrent ingestion cannot restore a rotated token. Focused tests (224) and real PostgreSQL concurrency checks passed using synthetic disposable data. Hardware export still needs the tester's real-device confirmation; direct Garmin partner access and Apple native signing remain unavailable.
 
 ## Identity and UI
 
@@ -35,7 +38,7 @@
 
 ## Release checklist and residuals
 
-1. Before any schema migration, take and verify a production backup; apply `schema.sql` through the reviewed path, then validate account counts and `water_entries`.
+1. The initial release backup/migration is complete. Before any further schema migration, take and verify a fresh production backup; apply `schema.sql` through the reviewed path, then validate account counts and `water_entries`.
 2. Check legal/session/invite configuration, current `npm audit --omit=dev`, provider contract readiness, and native signing. The three moderate advisories were resolved with a targeted `qs@6.16.0` override, keeping Express 4 and body-parser compatible. Installed dependency audit returned zero vulnerabilities. Preserve this override until upstream dependency ranges include the patched release; do not run blind audit-fix downgrades.
 3. Build from an identified commit only. Deploy only with authorization. Smoke-test auth/legal/invite, account isolation, AFP manual/fail-closed behavior, hydration CRUD/export/delete, and provider status; keep a rollback artifact.
 

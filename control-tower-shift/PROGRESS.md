@@ -3,7 +3,7 @@
 ## Project overview
 
 One original Greek-mythic game universe (two modes planned: arena campaign +
-story RPG) living inside the OmniFuel repo as a self-contained subdirectory
+story RPG) living inside the Body Current repo as a self-contained subdirectory
 (`control-tower-shift/`). Phase A replaces the old abstract circle/glyph
 presentation and wave-driven tower-defence with a playable arena campaign: a
 deity moves through authored Greek-mythic maps, uses deity powers + deliberate

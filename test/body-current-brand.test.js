@@ -18,7 +18,7 @@ describe('Body Current brand surfaces', () => {
 
   it('retains intentional technical and separate-product identifiers', () => {
     expect(fs.readFileSync(path.join(root, 'server/agent.js'), 'utf8')).toContain("service: 'omnifuel'")
-    expect(fs.readFileSync(path.join(root, 'src/components/Auth.jsx'), 'utf8')).toContain("surface = 'omnifuel'")
+    expect(fs.readFileSync(path.join(root, 'src/components/Auth.jsx'), 'utf8')).toContain("surface = 'body-current'")
     expect(fs.readFileSync(path.join(root, 'src/components/Auth.jsx'), 'utf8')).toContain('Oathbearer')
   })
 })

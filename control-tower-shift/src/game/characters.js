@@ -1,4 +1,4 @@
-// The pantheon of OmniFuel — domain gods, heroic figures, and titans.
+// The pantheon of Body Current — domain gods, heroic figures, and titans.
 // Players choose a deity from Tier 1 at the start, and unlock higher tiers
 // as they prove their mastery. Each god grants a signature ability and
 // faces monster waves drawn from the opposing pantheon.
