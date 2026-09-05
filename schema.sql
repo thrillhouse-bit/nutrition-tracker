@@ -297,7 +297,11 @@ create table if not exists profile (
   updated_at    timestamptz not null default now()
 );
 alter table profile add column if not exists accent text not null default 'cobalt';
-do $$ begin alter table profile add constraint profile_accent_check check (accent in ('cobalt', 'emerald', 'ruby')); exception when duplicate_object then null; end $$;
+-- Keep this compatible with the deliberately small statement runner in
+-- server/scripts/init-db.js, which executes one semicolon-delimited statement
+-- at a time and therefore cannot safely parse a PostgreSQL DO $$ block.
+alter table profile drop constraint if exists profile_accent_check;
+alter table profile add constraint profile_accent_check check (accent in ('cobalt', 'emerald', 'ruby'));
 
 -- Snapshot of a day's plan, per user: baseline vs. adjusted targets, the
 -- rationale for each adjustment, and the signals it was based on (so "why?"
