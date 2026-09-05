@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import { store, backend } from './db.js'
-import { createRpgAuthorityBootstrap, presentRpgAuthority, validateRpgAuthorityBootstrapBody } from './rpgAuthority.js'
+import { createRpgAuthorityBootstrap, presentRpgAuthority, replayRpgAuthorityCommand, validateRpgAuthorityBootstrapBody, validateRpgAuthorityCommandBody } from './rpgAuthority.js'
 import {
   hashPassword,
   verifyPassword,
@@ -495,6 +495,37 @@ requireAuthRouter.put('/rpg/save/v2', asyncH(async (req, res) => {
     error: 'RPG authority story commands are not implemented yet.',
     code: 'RPG_AUTHORITY_STORY_COMMANDS_NOT_IMPLEMENTED',
   })
+}))
+
+requireAuthRouter.post('/rpg/save/v2/commands', asyncH(async (req, res) => {
+  if (backend !== 'postgres') return rpgAuthorityPostgresOnly(res)
+  const envelope = validateRpgAuthorityCommandBody(req.body)
+  if (typeof store.getRpgAuthorityCommandReceipt !== 'function' || typeof store.applyRpgAuthorityStoryCommand !== 'function') {
+    return res.status(501).json({ error: 'RPG authority command persistence is unavailable.', code: 'RPG_AUTHORITY_COMMANDS_NOT_IMPLEMENTED' })
+  }
+  // Receipt lookup happens before revision validation. A lost response can be
+  // retried with its now-stale expected revision and still return its exact
+  // immutable persisted authority result; a reused key never replays a new
+  // command.
+  const receipt = await store.getRpgAuthorityCommandReceipt(req.userId, envelope)
+  if (receipt.outcome === 'replayed') {
+    return res.status(200).json(receipt.response)
+  }
+  if (receipt.outcome === 'idempotency_mismatch') {
+    return res.status(409).json({ error: 'RPG authority idempotency key conflict.', code: 'RPG_AUTHORITY_IDEMPOTENCY_CONFLICT' })
+  }
+  if (receipt.outcome === 'command_id_conflict') {
+    return res.status(409).json({ error: 'RPG authority command ID conflict.', code: 'RPG_AUTHORITY_COMMAND_ID_CONFLICT' })
+  }
+  const current = await store.getRpgAuthority(req.userId)
+  if (!current) return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
+  const next = replayRpgAuthorityCommand(current, envelope)
+  const result = await store.applyRpgAuthorityStoryCommand(req.userId, envelope, next)
+  if (result.outcome === 'not_found') return res.status(404).json({ error: 'RPG authority state not found.', code: 'RPG_AUTHORITY_NOT_FOUND' })
+  if (result.outcome === 'conflict') return res.status(409).json({ error: 'RPG authority revision conflict.', code: 'RPG_AUTHORITY_REVISION_CONFLICT' })
+  if (result.outcome === 'idempotency_mismatch') return res.status(409).json({ error: 'RPG authority idempotency key conflict.', code: 'RPG_AUTHORITY_IDEMPOTENCY_CONFLICT' })
+  if (result.outcome === 'command_id_conflict') return res.status(409).json({ error: 'RPG authority command ID conflict.', code: 'RPG_AUTHORITY_COMMAND_ID_CONFLICT' })
+  res.status(result.outcome === 'replayed' ? 200 : 201).json(result.response)
 }))
 
 // --- barcode lookup (cache -> OFF -> USDA) ---------------------------------

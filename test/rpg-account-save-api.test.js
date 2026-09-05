@@ -7,11 +7,18 @@ import {
   validateRpgSavePutBody,
   validateRpgSaveRestoreBody,
 } from '../server/rpgSave.js'
-import { createRpgAuthorityBootstrap, presentRpgAuthority, validateRpgAuthorityBootstrapBody } from '../server/rpgAuthority.js'
+import {
+  canonicalRpgJson,
+  createRpgAuthorityBootstrap,
+  presentRpgAuthority,
+  rpgAuthorityCommandDigest,
+  validateRpgAuthorityBootstrapBody,
+  validateRpgAuthorityCommandBody,
+} from '../server/rpgAuthority.js'
 import { signupIpLimiter } from '../server/authRateLimit.js'
 
 const fake = vi.hoisted(() => {
-  const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), nextUserId: 0 }
+  const state = { users: [], saves: new Map(), histories: new Map(), authorities: new Map(), authorityHistory: new Map(), authorityReceipts: new Map(), nextUserId: 0 }
   const clone = (value) => value == null ? value : structuredClone(value)
   const publicSave = (row) => row && ({
     payload: clone(row.payload),
@@ -31,6 +38,14 @@ const fake = vi.hoisted(() => {
   const publicAuthority = (row) => row && ({
     story: clone(row.story), storyRevision: row.storyRevision,
     authoritative: clone(row.authoritative), inventoryRevision: row.inventoryRevision,
+  })
+  const commandResponse = (authority, envelope, createdAt = new Date().toISOString()) => ({
+    receipt: {
+      protocolVersion: 1, commandId: envelope.commandId, idempotencyKey: envelope.idempotencyKey,
+      intentDigest: envelope.digest, storyRevision: authority.storyRevision,
+      inventoryRevision: authority.inventoryRevision, createdAt,
+    },
+    story: clone(authority.story),
   })
   const store = {
     createUser: async ({ email, password_hash, legal_version }) => {
@@ -101,6 +116,38 @@ const fake = vi.hoisted(() => {
       state.authorityHistory.set(uid, [{ storyRevision: row.storyRevision, story: clone(row.story) }])
       return { outcome: 'bootstrapped', authority: publicAuthority(row) }
     },
+    getRpgAuthorityCommandReceipt: async (userId, envelope) => {
+      const receipt = (state.authorityReceipts.get(Number(userId)) || [])
+        .find((entry) => entry.idempotencyKey === envelope.idempotencyKey || entry.commandId === envelope.commandId)
+      if (!receipt) return { outcome: 'missing', authority: null }
+      if (receipt.idempotencyKey === envelope.idempotencyKey) {
+        return receipt.digest === envelope.digest
+          ? { outcome: 'replayed', response: clone(receipt.response) }
+          : { outcome: 'idempotency_mismatch', authority: null }
+      }
+      return receipt.digest === envelope.digest
+        ? { outcome: 'replayed', response: clone(receipt.response) }
+        : { outcome: 'command_id_conflict', authority: null }
+    },
+    applyRpgAuthorityStoryCommand: async (userId, envelope, next) => {
+      const uid = Number(userId)
+      const existing = await store.getRpgAuthorityCommandReceipt(uid, envelope)
+      if (existing.outcome !== 'missing') return existing
+      const current = state.authorities.get(uid)
+      if (!current) return { outcome: 'not_found', authority: null }
+      if (current.storyRevision !== envelope.expectedStoryRevision || current.inventoryRevision !== envelope.expectedInventoryRevision) return { outcome: 'conflict', authority: null }
+      const authority = {
+        story: clone(next.story), storyRevision: next.storyRevision,
+        authoritative: clone(current.authoritative), inventoryRevision: current.inventoryRevision,
+      }
+      state.authorities.set(uid, authority)
+      state.authorityHistory.set(uid, [{ storyRevision: authority.storyRevision, story: clone(authority.story) }, ...(state.authorityHistory.get(uid) || [])].slice(0, 20))
+      const receipts = state.authorityReceipts.get(uid) || []
+      const response = commandResponse(authority, envelope)
+      receipts.push({ commandId: envelope.commandId, idempotencyKey: envelope.idempotencyKey, digest: envelope.digest, response: clone(response) })
+      state.authorityReceipts.set(uid, receipts)
+      return { outcome: 'written', response }
+    },
     exportUserData: async (userId) => {
       const user = state.users.find((candidate) => candidate.id === Number(userId))
       return {
@@ -118,6 +165,7 @@ const fake = vi.hoisted(() => {
       state.histories.delete(uid)
       state.authorities.delete(uid)
       state.authorityHistory.delete(uid)
+      state.authorityReceipts.delete(uid)
       return state.users.length < before
     },
   }
@@ -210,6 +258,26 @@ describe('RPG save request validation', () => {
     expect(validateRpgAuthorityBootstrapBody({})).toEqual({})
     expect(() => validateRpgAuthorityBootstrapBody({ inventory: { currency: 999 } })).toThrow(/empty object/i)
     expect(() => validateRpgAuthorityBootstrapBody([])).toThrow(/empty object/i)
+  })
+
+  it('accepts only the exact story-command envelope and allowlisted reducer commands', () => {
+    const body = { protocolVersion: 1, commandId: 'accept-1', idempotencyKey: 'key-1', expectedStoryRevision: 1, expectedInventoryRevision: 1, command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' } }
+    expect(validateRpgAuthorityCommandBody(body)).toMatchObject({ command: { type: 'ACCEPT_QUEST' } })
+    expect(() => validateRpgAuthorityCommandBody({ ...body, inventory: {} })).toThrow()
+    expect(() => validateRpgAuthorityCommandBody({ ...body, command: { type: 'TALK', npcId: 'thessa', conversationId: 'act1-thessa-introduction' } })).toThrow()
+    expect(() => validateRpgAuthorityCommandBody({ ...body, command: { type: 'ACCEPT_QUEST', questId: body.command.questId, entityId: body.command.entityId } })).toThrow()
+    expect(() => validateRpgAuthorityCommandBody({ ...body, command: { ...body.command, currency: 9 } })).toThrow()
+  })
+
+  it('hashes the complete typed envelope in canonical key order', () => {
+    const body = { protocolVersion: 1, commandId: 'accept-1', idempotencyKey: 'key-1', expectedStoryRevision: 1, expectedInventoryRevision: 1, command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' } }
+    const parsed = validateRpgAuthorityCommandBody(body)
+    const reordered = validateRpgAuthorityCommandBody({ ...body, command: { trigger: 'talk', entityId: 'ianthe-chartwright', questId: 'cq-act2-ianthe-open-chart', type: 'ACCEPT_QUEST' } })
+    expect(rpgAuthorityCommandDigest(parsed)).toBe(rpgAuthorityCommandDigest(reordered))
+    expect(canonicalRpgJson({ b: 1, a: { d: true, c: null } })).toBe('{"a":{"c":null,"d":true},"b":1}')
+    expect(rpgAuthorityCommandDigest({ ...parsed, expectedStoryRevision: 2 })).toBe(parsed.digest)
+    expect(rpgAuthorityCommandDigest({ ...parsed, idempotencyKey: 'key-2' })).toBe(parsed.digest)
+    expect(rpgAuthorityCommandDigest({ ...parsed, command: { ...parsed.command, trigger: 'station' } })).not.toBe(parsed.digest)
   })
 })
 
@@ -350,6 +418,95 @@ describe('Postgres-only RPG authority v2 API', () => {
     expect(await legacy.json()).toMatchObject({ code: 'RPG_AUTHORITY_LEGACY_PROMOTION_DENIED' })
   })
 
+  it('replays one physical quest acceptance from an immutable receipt before stale revision checks', async () => {
+    const account = await signup('rpg-v2-command@example.test')
+    expect((await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body: {} })).status).toBe(400)
+    expect((await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body: {
+      protocolVersion: 1, commandId: 'accept-1', idempotencyKey: 'key-1', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+      command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+    } })).status).toBe(404)
+
+    await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+    const row = fake.state.authorities.get(account.user.id)
+    row.story.world = { regionId: 'pelagos-isles', mapId: 'chartwright-hall', spawnId: 'from-pelagos', position: { x: 290, y: 286 }, facing: 0 }
+    const ledgerBefore = structuredClone(row.authoritative)
+    const body = {
+      protocolVersion: 1, commandId: 'accept-1', idempotencyKey: 'key-1', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+      command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+    }
+    const written = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body })
+    expect(written.status).toBe(201)
+    const first = await written.json()
+    expect(first).toMatchObject({
+      receipt: { protocolVersion: 1, commandId: 'accept-1', idempotencyKey: 'key-1', storyRevision: 2, inventoryRevision: 1 },
+      story: { quests: { 'cq-act2-ianthe-open-chart': { state: 'active', objectiveIndex: 0 } } },
+    })
+    expect(JSON.stringify(first)).not.toContain('authoritative')
+    expect(JSON.stringify(first.story)).not.toContain('inventory')
+    expect(fake.state.authorities.get(account.user.id).authoritative).toEqual(ledgerBefore)
+    expect(fake.state.authorities.get(account.user.id).inventoryRevision).toBe(1)
+
+    const staleRetry = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body })
+    expect(staleRetry.status).toBe(200)
+    expect(await staleRetry.json()).toEqual(first)
+
+    const sameIntentNewKey = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body: { ...body, idempotencyKey: 'key-2', expectedStoryRevision: 2 } })
+    expect(sameIntentNewKey.status).toBe(200)
+    expect(await sameIntentNewKey.json()).toEqual(first)
+
+    const keyMismatch = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body: { ...body, command: { ...body.command, trigger: 'station' } } })
+    expect(keyMismatch.status).toBe(409)
+    expect(await keyMismatch.json()).toMatchObject({ code: 'RPG_AUTHORITY_IDEMPOTENCY_CONFLICT' })
+    const commandIdMismatch = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body: { ...body, idempotencyKey: 'other-key', command: { ...body.command, trigger: 'station' } } })
+    expect(commandIdMismatch.status).toBe(409)
+    expect(await commandIdMismatch.json()).toMatchObject({ code: 'RPG_AUTHORITY_COMMAND_ID_CONFLICT' })
+
+    const staleNewCommand = await request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body: { ...body, commandId: 'accept-2', idempotencyKey: 'key-3' } })
+    expect(staleNewCommand.status).toBe(409)
+    expect(fake.state.authorityHistory.get(account.user.id)).toHaveLength(2)
+    expect(fake.state.authorityReceipts.get(account.user.id)).toHaveLength(1)
+  })
+
+  it('serializes concurrent same-key deliveries into one write and one receipt replay', async () => {
+    const account = await signup('rpg-v2-command-race@example.test')
+    await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+    const row = fake.state.authorities.get(account.user.id)
+    row.story.world = { regionId: 'pelagos-isles', mapId: 'chartwright-hall', spawnId: 'from-pelagos', position: { x: 290, y: 286 }, facing: 0 }
+    const body = {
+      protocolVersion: 1, commandId: 'accept-race', idempotencyKey: 'race-key', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+      command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+    }
+    const responses = await Promise.all([
+      request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body }),
+      request('/api/rpg/save/v2/commands', { cookie: account.cookie, method: 'POST', body }),
+    ])
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 201])
+    const payloads = await Promise.all(responses.map((response) => response.json()))
+    expect(payloads[0]).toEqual(payloads[1])
+    expect(fake.state.authorityHistory.get(account.user.id)).toHaveLength(2)
+    expect(fake.state.authorityReceipts.get(account.user.id)).toHaveLength(1)
+  })
+
+  it('scopes command receipts to the authenticated account', async () => {
+    const one = await signup('rpg-v2-command-owner@example.test')
+    const two = await signup('rpg-v2-command-other@example.test')
+    const body = {
+      protocolVersion: 1, commandId: 'shared-command', idempotencyKey: 'shared-key', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+      command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+    }
+    for (const account of [one, two]) {
+      await request('/api/rpg/save/v2', { cookie: account.cookie, method: 'POST', body: {} })
+      const row = fake.state.authorities.get(account.user.id)
+      row.story.world = { regionId: 'pelagos-isles', mapId: 'chartwright-hall', spawnId: 'from-pelagos', position: { x: 290, y: 286 }, facing: 0 }
+    }
+    expect((await request('/api/rpg/save/v2/commands', { cookie: one.cookie, method: 'POST', body })).status).toBe(201)
+    const second = await request('/api/rpg/save/v2/commands', { cookie: two.cookie, method: 'POST', body })
+    expect(second.status).toBe(201)
+    expect((await second.json()).receipt.commandId).toBe('shared-command')
+    expect(fake.state.authorityReceipts.get(one.user.id)).toHaveLength(1)
+    expect(fake.state.authorityReceipts.get(two.user.id)).toHaveLength(1)
+  })
+
   it('presents ledger-owned Wayfinding across trusted v2 reads and rejects malformed or split ownership rows', () => {
     const bootstrap = createRpgAuthorityBootstrap()
     const authoritative = structuredClone(bootstrap.authoritative)
@@ -476,6 +633,72 @@ describe('PgStore RPG save contract', () => {
     expect(stale).toMatchObject({ outcome: 'conflict', save: { revision: 5 } })
     expect(calls.at(-1).values).toEqual([41])
   })
+
+  it('writes v2 command receipt, story, history, and audit in one locked statement without rereading authority', async () => {
+    const { PgStore } = await vi.importActual('../server/db.js')
+    const store = new PgStore('postgres://unused')
+    const calls = []
+    const bootstrap = createRpgAuthorityBootstrap()
+    const envelope = validateRpgAuthorityCommandBody({
+      protocolVersion: 1, commandId: 'accept-pg', idempotencyKey: 'receipt-pg', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+      command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+    })
+    store.sql = (strings, ...values) => {
+      const query = strings.join('?').replace(/\s+/g, ' ').trim()
+      calls.push({ query, values })
+      return [{
+        written_command_id: envelope.commandId, written_idempotency_key: envelope.idempotencyKey, written_digest: envelope.digest,
+        written_response_story: bootstrap.story, written_story_revision: 2, written_inventory_revision: 1,
+        written_created_at: '2026-09-04T00:00:00.000Z',
+      }]
+    }
+    const result = await store.applyRpgAuthorityStoryCommand(41, envelope, { story: bootstrap.story, storyRevision: 2, inventoryRevision: 1 })
+    expect(result).toMatchObject({
+      outcome: 'written',
+      response: { receipt: { commandId: 'accept-pg', intentDigest: envelope.digest, storyRevision: 2, inventoryRevision: 1 }, story: bootstrap.story },
+    })
+    expect(calls).toHaveLength(1)
+    expect(calls[0].query).toContain('for update of p, l')
+    expect(calls[0].query).toContain('locked.story_revision = ?')
+    expect(calls[0].query).toContain('locked.inventory_revision = ?')
+    expect(calls[0].query).toContain('story_revision = p.story_revision + 1')
+    expect(calls[0].query).toContain('insert into rpg_story_projection_history')
+    expect(calls[0].query).toContain('insert into rpg_story_command_audit')
+    expect(calls[0].query).toContain('insert into rpg_story_command_receipts')
+    expect(calls[0].query).toContain('on conflict do nothing')
+    expect(calls[0].query).not.toContain('interval')
+    expect(calls[0].values).toContain(41)
+    expect(calls[0].values).toContain(envelope.expectedStoryRevision)
+    expect(calls[0].values).toContain(envelope.expectedInventoryRevision)
+  })
+
+  it('fresh-reads the immutable receipt after a concurrent statement snapshot has no written row', async () => {
+    const { PgStore } = await vi.importActual('../server/db.js')
+    const store = new PgStore('postgres://unused')
+    const bootstrap = createRpgAuthorityBootstrap()
+    const envelope = validateRpgAuthorityCommandBody({
+      protocolVersion: 1, commandId: 'accept-raced-pg', idempotencyKey: 'receipt-raced-pg', expectedStoryRevision: 1, expectedInventoryRevision: 1,
+      command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+    })
+    const calls = []
+    store.sql = (strings, ...values) => {
+      const query = strings.join('?').replace(/\s+/g, ' ').trim()
+      calls.push({ query, values })
+      if (query.startsWith('with locked')) return [{}]
+      if (query.startsWith('select command_id')) return [{
+        command_id: envelope.commandId, idempotency_key: envelope.idempotencyKey, command_digest: envelope.digest,
+        response_story: bootstrap.story, story_revision: 2, inventory_revision: 1, created_at: '2026-09-04T00:00:00.000Z',
+      }]
+      throw new Error(`unexpected SQL: ${query}`)
+    }
+    const result = await store.applyRpgAuthorityStoryCommand(73, envelope, { story: bootstrap.story, storyRevision: 2, inventoryRevision: 1 })
+    expect(result).toMatchObject({ outcome: 'replayed', response: { receipt: { commandId: envelope.commandId, storyRevision: 2 }, story: bootstrap.story } })
+    expect(calls).toHaveLength(2)
+    expect(calls[1].query).toContain('from rpg_story_command_receipts')
+    expect(calls[1].values).toContain(73)
+    expect(calls[1].values).toContain(envelope.idempotencyKey)
+    expect(calls[1].values).toContain(envelope.commandId)
+  })
 })
 
 describe('Postgres schema lifecycle', () => {
@@ -492,5 +715,9 @@ describe('Postgres schema lifecycle', () => {
     expect(schema).toMatch(/rpg_save_history[\s\S]*user_id\s+bigint not null references users \(id\) on delete cascade/i)
     expect(schema).toMatch(/rpg_save_history[\s\S]*payload\s+jsonb not null/i)
     expect(schema).toMatch(/primary key \(user_id, revision\)/i)
+    expect(schema).toMatch(/create table if not exists rpg_story_command_receipts/i)
+    expect(schema).toMatch(/rpg_story_command_receipts[\s\S]*primary key \(user_id, command_id\)/i)
+    expect(schema).toMatch(/rpg_story_command_receipts[\s\S]*unique \(user_id, idempotency_key\)/i)
+    expect(schema).toMatch(/rpg_story_command_receipts[\s\S]*response_story\s+jsonb not null/i)
   })
 })

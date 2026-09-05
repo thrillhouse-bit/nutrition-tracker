@@ -62,5 +62,19 @@ describe('RPG authority v2 JSON backend boundary', () => {
       expect(response.status).toBe(501)
       expect(await response.json()).toMatchObject({ code: 'RPG_AUTHORITY_POSTGRES_REQUIRED' })
     }
+    const command = await fetch(`${base}/api/rpg/save/v2/commands`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        protocolVersion: 1,
+        commandId: 'json-boundary-command',
+        idempotencyKey: 'json-boundary-key',
+        expectedStoryRevision: 1,
+        expectedInventoryRevision: 1,
+        command: { type: 'ACCEPT_QUEST', questId: 'cq-act2-ianthe-open-chart', entityId: 'ianthe-chartwright', trigger: 'talk' },
+      }),
+    })
+    expect(command.status).toBe(501)
+    expect(await command.json()).toMatchObject({ code: 'RPG_AUTHORITY_POSTGRES_REQUIRED' })
   })
 })

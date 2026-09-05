@@ -29,6 +29,21 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+function rpgAuthorityReceiptResponse(row) {
+  return {
+    receipt: {
+      protocolVersion: 1,
+      commandId: row.command_id,
+      idempotencyKey: row.idempotency_key,
+      intentDigest: row.command_digest,
+      storyRevision: Number(row.story_revision),
+      inventoryRevision: Number(row.inventory_revision),
+      createdAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
+    },
+    story: row.response_story,
+  }
+}
+
 export const DEFAULT_TARGETS = {
   calories: 2000,
   protein_g: 150,
@@ -1050,6 +1065,108 @@ export class PgStore {
     if (authority) return { outcome: 'exists', authority }
     const legacy = await sql`select 1 from rpg_saves where user_id = ${userId} limit 1`
     return { outcome: legacy[0] ? 'legacy' : 'conflict', authority: null }
+  }
+
+  async getRpgAuthorityCommandReceipt(userId, envelope) {
+    const sql = await this.ready()
+    const rows = await sql`
+      select command_id, idempotency_key, command_digest, response_story, story_revision, inventory_revision, created_at
+      from rpg_story_command_receipts
+      where user_id = ${userId}
+        and (idempotency_key = ${envelope.idempotencyKey} or command_id = ${envelope.commandId})
+      order by created_at desc limit 1`
+    const receipt = rows[0]
+    if (!receipt) return { outcome: 'missing', authority: null }
+    if (receipt.idempotency_key === envelope.idempotencyKey) {
+      return receipt.command_digest === envelope.digest
+        ? { outcome: 'replayed', response: rpgAuthorityReceiptResponse(receipt) }
+        : { outcome: 'idempotency_mismatch', authority: null }
+    }
+    return receipt.command_digest === envelope.digest
+      ? { outcome: 'replayed', response: rpgAuthorityReceiptResponse(receipt) }
+      : { outcome: 'command_id_conflict', authority: null }
+  }
+
+  // One statement is the transaction boundary.  The projection/ledger row is
+  // locked before receipt lookup, so concurrent commands for one account
+  // serialize; receipt insertion never leaks a unique-constraint error.
+  async applyRpgAuthorityStoryCommand(userId, envelope, next) {
+    const sql = await this.ready()
+    const rows = await sql`
+      with locked as (
+        select p.user_id, p.story_revision, l.authoritative, l.inventory_revision
+        from rpg_story_projections p
+        join rpg_authority_ledgers l using (user_id)
+        where p.user_id = ${userId}
+        for update of p, l
+      ), receipt as (
+        select r.command_id, r.idempotency_key, r.command_digest, r.response_story, r.story_revision, r.inventory_revision, r.created_at
+        from rpg_story_command_receipts r
+        join locked l on l.user_id = r.user_id
+        where r.idempotency_key = ${envelope.idempotencyKey} or r.command_id = ${envelope.commandId}
+        order by r.created_at desc limit 1
+      ), updated as (
+        update rpg_story_projections p
+        set story = ${JSON.stringify(next.story)}::jsonb,
+            story_revision = p.story_revision + 1,
+            updated_at = now()
+        from locked
+        where p.user_id = locked.user_id
+          and locked.story_revision = ${envelope.expectedStoryRevision}
+          and locked.inventory_revision = ${envelope.expectedInventoryRevision}
+          and not exists (select 1 from receipt)
+        returning p.user_id, p.story, p.story_revision
+      ), history as (
+        insert into rpg_story_projection_history (user_id, story_revision, story, created_at, saved_at)
+        select user_id, story_revision, story, now(), now() from updated
+      ), audit as (
+        insert into rpg_story_command_audit (user_id, story_revision, command_id, command_digest)
+        select user_id, story_revision, ${envelope.commandId}, ${envelope.digest} from updated
+      ), written as (
+        insert into rpg_story_command_receipts (user_id, command_id, idempotency_key, command_digest, response_story, story_revision, inventory_revision)
+        select updated.user_id, ${envelope.commandId}, ${envelope.idempotencyKey}, ${envelope.digest}, updated.story, updated.story_revision, locked.inventory_revision
+        from updated join locked using (user_id)
+        on conflict do nothing
+        returning command_id, idempotency_key, command_digest, response_story, story_revision, inventory_revision, created_at
+      )
+      select
+        (select command_id from receipt) as receipt_command_id,
+        (select idempotency_key from receipt) as receipt_idempotency_key,
+        (select command_digest from receipt) as receipt_digest,
+        (select response_story from receipt) as receipt_response_story,
+        (select story_revision from receipt) as receipt_story_revision,
+        (select inventory_revision from receipt) as receipt_inventory_revision,
+        (select created_at from receipt) as receipt_created_at,
+        (select command_id from written) as written_command_id,
+        (select idempotency_key from written) as written_idempotency_key,
+        (select command_digest from written) as written_digest,
+        (select response_story from written) as written_response_story,
+        (select story_revision from written) as written_story_revision,
+        (select inventory_revision from written) as written_inventory_revision,
+        (select created_at from written) as written_created_at
+      from locked`
+    const row = rows[0]
+    if (!row) return { outcome: 'not_found', authority: null }
+    if (row.receipt_digest != null) {
+      if (row.receipt_idempotency_key === envelope.idempotencyKey) {
+        return row.receipt_digest === envelope.digest
+          ? { outcome: 'replayed', response: rpgAuthorityReceiptResponse({ command_id: row.receipt_command_id, idempotency_key: row.receipt_idempotency_key, command_digest: row.receipt_digest, response_story: row.receipt_response_story, story_revision: row.receipt_story_revision, inventory_revision: row.receipt_inventory_revision, created_at: row.receipt_created_at }) }
+          : { outcome: 'idempotency_mismatch', authority: null }
+      }
+      return row.receipt_digest === envelope.digest
+        ? { outcome: 'replayed', response: rpgAuthorityReceiptResponse({ command_id: row.receipt_command_id, idempotency_key: row.receipt_idempotency_key, command_digest: row.receipt_digest, response_story: row.receipt_response_story, story_revision: row.receipt_story_revision, inventory_revision: row.receipt_inventory_revision, created_at: row.receipt_created_at }) }
+        : { outcome: 'command_id_conflict', authority: null }
+    }
+    if (!row.written_response_story) {
+      // A concurrent same-key writer may have committed after this statement
+      // took its snapshot. Use a fresh receipt-only snapshot, never a fresh
+      // authority read, so the loser returns the immutable winner response
+      // instead of surfacing a serialization/unique-key artifact.
+      const raced = await this.getRpgAuthorityCommandReceipt(userId, envelope)
+      if (raced.outcome !== 'missing') return raced
+      return { outcome: 'conflict', authority: null }
+    }
+    return { outcome: 'written', response: rpgAuthorityReceiptResponse({ command_id: row.written_command_id, idempotency_key: row.written_idempotency_key, command_digest: row.written_digest, response_story: row.written_response_story, story_revision: row.written_story_revision, inventory_revision: row.written_inventory_revision, created_at: row.written_created_at }) }
   }
 
   // Complete account-owned data export. Credentials, OAuth tokens, Apple

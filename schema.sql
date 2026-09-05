@@ -85,6 +85,31 @@ create table if not exists rpg_story_projection_history (
 );
 create index if not exists rpg_story_projection_history_user_revision_idx
   on rpg_story_projection_history (user_id, story_revision desc);
+-- Idempotency tombstones are intentionally durable in this first authority
+-- checkpoint.  Do not add a TTL delete until compaction can atomically retain
+-- enough command identity to prevent a retired key from mutating story again.
+create table if not exists rpg_story_command_receipts (
+  user_id bigint not null references users (id) on delete cascade,
+  command_id text not null check (char_length(command_id) between 1 and 128),
+  idempotency_key text not null check (char_length(idempotency_key) between 1 and 192),
+  command_digest text not null check (command_digest ~ '^[0-9a-f]{64}$'),
+  response_story jsonb not null,
+  story_revision bigint not null check (story_revision >= 1),
+  inventory_revision bigint not null check (inventory_revision >= 1),
+  created_at timestamptz not null default now(),
+  primary key (user_id, command_id),
+  unique (user_id, idempotency_key)
+);
+create index if not exists rpg_story_command_receipts_user_created_idx
+  on rpg_story_command_receipts (user_id, created_at desc);
+create table if not exists rpg_story_command_audit (
+  user_id bigint not null references users (id) on delete cascade,
+  story_revision bigint not null,
+  command_id text not null,
+  command_digest text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, story_revision)
+);
 
 -- A durable, digest-only redemption ledger. `user_id` is deliberately set
 -- null (not cascaded) on account deletion: deleting an alpha account must not
