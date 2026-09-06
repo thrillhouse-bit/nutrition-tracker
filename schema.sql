@@ -245,18 +245,22 @@ create table if not exists garmin_dailies (
 -- Provider-agnostic "fueling intelligence" entities ------------------------
 
 -- One row per user per wearable provider: connection status + which signals
--- influence the plan (user-controlled) + demo toggle.
+-- influence the plan (user-controlled). `demo` is retained temporarily for
+-- backward compatibility, but runtime sample data is disabled.
 create table if not exists integrations (
   user_id        bigint not null references users (id) on delete cascade,
   provider       text not null,                -- 'oura' | 'garmin' | 'apple'
   enabled        boolean not null default true,
-  demo           boolean not null default true, -- allow demo data when no real data
+  demo           boolean not null default false,
   connected_at   timestamptz,
   last_synced_at timestamptz,
   error          text,
   settings       jsonb not null default '{}'::jsonb,
   primary key (user_id, provider)
 );
+
+alter table integrations alter column demo set default false;
+update integrations set demo = false where demo is distinct from false;
 
 -- Normalized wearable signals with provenance + freshness, per user. Used for
 -- Apple Health (ingested by a native companion / Health export) and any

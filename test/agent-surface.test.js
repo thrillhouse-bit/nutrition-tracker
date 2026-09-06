@@ -358,9 +358,9 @@ describe('GET /api/agent/status — bearer tier', () => {
     // (no permission lists, no sync-error history) — nothing configured in
     // this environment, so all three are deterministic.
     expect(f.providers).toEqual([
-      { id: 'oura', status: 'not-configured', demo: true, last_synced_at: null },
-      { id: 'garmin', status: 'not-configured', demo: true, last_synced_at: null },
-      { id: 'apple', status: 'demo', demo: true, last_synced_at: null },
+      { id: 'oura', status: 'not-configured', demo: false, last_synced_at: null },
+      { id: 'garmin', status: 'not-configured', demo: false, last_synced_at: null },
+      { id: 'apple', status: 'disconnected', demo: false, last_synced_at: null },
     ])
     // The operational half of the body is unchanged by the tier.
     expect(body.providers).toEqual({ ocr: 'not-configured', usda: 'not-configured', oura: 'not-configured', garmin: 'not-configured' })
@@ -379,9 +379,9 @@ describe('GET /api/agent/status — bearer tier', () => {
     let body = await (await get('/api/agent/status', bearer(A2A_TOKEN))).json()
     expect(body.fueling.demo).toBe(false)
     // Real figures must not be demo-flagged just because a never-connected
-    // provider is demo-ALLOWED (all three provider rows above carry
-    // demo:true) — the flag tracks contributing rows, not provider config.
-    expect(body.fueling.providers.some((p) => p.demo)).toBe(true)
+    // Provider status never advertises runtime sample data. The fueling flag
+    // tracks contributing rows independently.
+    expect(body.fueling.providers.some((p) => p.demo)).toBe(false)
 
     fake.state.plans = {} // no snapshot: nothing demo contributed either
     body = await (await get('/api/agent/status', bearer(A2A_TOKEN))).json()

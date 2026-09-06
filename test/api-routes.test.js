@@ -1814,14 +1814,13 @@ describe('GET /api/today: real Oura data beats Garmin\'s default demo (Task 1 pr
     expect(body.signals.workout.value.label).not.toBe('Evening Run')
   })
 
-  it('control: with no Oura account connected, Garmin\'s default demo still fills the workout slot unchanged (the fresh-account experience is not regressed)', async () => {
+  it('with no account connected, the fresh-account response contains no sample workout', async () => {
     fake.state.ouraAccounts = [] // never connected
     const res = await get('/api/today')
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.signals.workout.provider).toBe('garmin')
-    expect(body.signals.workout.demo).toBe(true)
-    expect(body.signals.workout.value.label).toBe('Evening Run')
+    expect(body.signals.workout).toBeNull()
+    expect(body.providers.every((provider) => provider.demo === false)).toBe(true)
   })
 })
 
@@ -2242,13 +2241,13 @@ describe('GET /api/insights targets + onTargetDetail', () => {
       '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29', '2026-08-30', '2026-08-31',
     ])
     expect(body.onTargetDetail).toEqual([
-      { date: '2026-08-25', tracked: false, onTarget: null },
-      { date: '2026-08-26', tracked: false, onTarget: null },
-      { date: '2026-08-27', tracked: true, onTarget: true },
-      { date: '2026-08-28', tracked: true, onTarget: false },
-      { date: '2026-08-29', tracked: false, onTarget: null },
-      { date: '2026-08-30', tracked: true, onTarget: true },
-      { date: '2026-08-31', tracked: false, onTarget: null },
+      { date: '2026-08-25', tracked: false, onTarget: null, completion: null, completionBand: null },
+      { date: '2026-08-26', tracked: false, onTarget: null, completion: null, completionBand: null },
+      { date: '2026-08-27', tracked: true, onTarget: true, completion: 100, completionBand: 100 },
+      { date: '2026-08-28', tracked: true, onTarget: false, completion: 100, completionBand: 100 },
+      { date: '2026-08-29', tracked: false, onTarget: null, completion: null, completionBand: null },
+      { date: '2026-08-30', tracked: true, onTarget: true, completion: 95, completionBand: 75 },
+      { date: '2026-08-31', tracked: false, onTarget: null, completion: null, completionBand: null },
     ])
     // Same source computation, not two implementations that could disagree:
     // the count of true entries in onTargetDetail must equal onTargetDays.
@@ -2266,7 +2265,7 @@ describe('GET /api/insights targets + onTargetDetail', () => {
     const body = await res.json()
 
     const trackedDay = body.onTargetDetail.find((d) => d.date === '2026-08-30')
-    expect(trackedDay).toEqual({ date: '2026-08-30', tracked: true, onTarget: false })
+    expect(trackedDay).toEqual({ date: '2026-08-30', tracked: true, onTarget: false, completion: 72, completionBand: 50 })
     expect(body.targets.calories).toBeGreaterThan(0)
     expect(body.nutrition.onTargetDays).toBe(0)
   })

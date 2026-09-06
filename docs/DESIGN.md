@@ -1,5 +1,21 @@
 # DESIGN.md — visual/UX design rationale
 
+## 5 Sep 2026 — real-only signals and completion spectrum
+
+Runtime sample wearable data has been removed. An account without a linked
+wearable now reads as **Fuel + hydration mode** and retains its useful food,
+water, plan, recommendation, and connection actions; the empty three-column
+Daily signals strip is omitted. This avoids presenting blank recovery metrics
+or a "No workout set" prompt as though they were device readings.
+
+Insights' daily strip now encodes calorie-target completion rather than the
+less-informative binary on-target verdict. Each logged day uses the active
+account accent at the server-owned 25/50/75/100 reached threshold, darkest at
+completion. The neutral track means no log. The exact percentage is exposed in
+the segment label and tooltip, and the caption states the direction, so shade
+is never the only carrier of meaning. No new palette token or rounded surface
+was introduced.
+
 ## 4 Sep 2026 — two food-entry paths
 
 Log's four competing capture cards collapse to two shared choices: Search foods

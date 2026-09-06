@@ -14,9 +14,9 @@
 //              Health-export import) that POSTs normalized samples to
 //              /api/apple/ingest. So Apple is push-in, like a webhook.
 //
-// When a provider has no real data, it runs in DEMO mode (clearly labelled),
-// using a seeded evening-run scenario so the whole experience works with no
-// accounts. Demo data must never be presented as a live connection.
+// Provider output is always account-owned, real data. When a provider has no
+// reading, the normalized signal is absent; the UI handles that state without
+// inventing a sample workout, readiness score, or energy total.
 import { ouraConfigured, oauthConfigured as ouraOAuthConfigured, getToken as ouraToken, dailySummary as ouraDailySummary, dailyReadiness as ouraDailyReadiness, dailySleepHours as ouraDailySleepHours, dailySleepScore as ouraDailySleepScore, validAccessToken as ouraValidToken } from './integrations/oura.js'
 import { garminReleaseReady } from './integrations/garmin.js'
 
@@ -157,53 +157,18 @@ function sig(value, extra) {
   // answers "did the provider successfully refresh it?". Only a live read
   // for the currently requested day may use freshness_at. Historical rows
   // remain dated by their measurement time, even if fetched now.
-  return { value, freshness: freshnessOf(extra.freshness_at || extra.recorded_at), ...extra }
-}
-
-// --- demo scenario: an evening run ----------------------------------------
-// Timestamps are relative to `now` so the scenario always reads as "today".
-export function demoSignals(nowDate = new Date()) {
-  const morning = new Date(nowDate); morning.setHours(7, 5, 0, 0)
-  const fetched = nowDate.toISOString()
-  const run = new Date(nowDate); run.setHours(17, 30, 0, 0)
-  return {
-    oura: {
-      readiness: sig(82, { unit: 'score', provider: 'oura', recorded_at: morning.toISOString(), fetched_at: fetched, demo: true }),
-      sleep: sig(7.4, { unit: 'h', score: 78, provider: 'oura', recorded_at: morning.toISOString(), fetched_at: fetched, demo: true }),
-    },
-    garmin: {
-      workout: sig(
-        { label: 'Evening Run', shortLabel: 'run', kind: 'run', time: '5:30 PM', startHour: 17.5, est_kcal: 520, status: 'planned' },
-        { provider: 'garmin', recorded_at: fetched, fetched_at: fetched, demo: true },
-      ),
-      expenditure: sig(1820, { unit: 'kcal', active: 430, provider: 'garmin', recorded_at: fetched, fetched_at: fetched, demo: true }),
-      steps: sig(4200, { unit: 'steps', provider: 'garmin', recorded_at: fetched, fetched_at: fetched, demo: true }),
-    },
-    apple: {
-      expenditure: sig(1760, { unit: 'kcal', active: 405, provider: 'apple', recorded_at: fetched, fetched_at: fetched, demo: true }),
-      steps: sig(4050, { unit: 'steps', provider: 'apple', recorded_at: fetched, fetched_at: fetched, demo: true }),
-      sleep: sig(7.2, { unit: 'h', provider: 'apple', recorded_at: morning.toISOString(), fetched_at: fetched, demo: true }),
-      hrv: sig(62, { unit: 'ms', provider: 'apple', recorded_at: morning.toISOString(), fetched_at: fetched, demo: true }),
-    },
-  }
+  return { value, freshness: extra.freshness_at ? 'fresh' : freshnessOf(extra.recorded_at), ...extra }
 }
 
 // --- provider status (Connections tab) ------------------------------------
 // status ∈ connected | syncing | stale | disconnected | not-configured |
-// error | demo — the Connections screen's own STATE REFERENCE legend already
-// anticipated `syncing`/`error` glyphs before anything here ever emitted
-// them. `not-configured` is env-level (nobody on this server CAN connect —
-// same fact /api/health already reports per-provider as 'not-configured'),
-// distinct from `demo` (this user specifically never connected, but the
-// server could accept one) and from `disconnected` (configured, but this
-// user turned off the demo fallback and hasn't connected). A provider can be
-// not-configured AND still show demo data (`demo` field independent of
-// `status` — ProviderRow's isDemo check reads `provider.demo`, not the
-// status string, for exactly this reason).
+// error. `not-configured` is env-level (nobody on this server can connect),
+// while `disconnected` means the integration is available but this account
+// has not linked it. The legacy `demo` response field remains false for API
+// compatibility during the alpha migration.
 export async function providerStatus(store, userId, id, nowDate = new Date()) {
   const meta = PROVIDERS[id]
   const settings = await store.getIntegration(userId, id)
-  const demoAllowed = settings?.demo !== false
 
   if (id === 'oura') {
     const configured = ouraConfigured(userId) || ouraOAuthConfigured()
@@ -216,19 +181,19 @@ export async function providerStatus(store, userId, id, nowDate = new Date()) {
       last_sync_counts: settings?.settings?.last_sync_counts || null,
       sync_error: settings?.error || null,
     }
-    if (!configured) return { ...meta, ...obs, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
+    if (!configured) return { ...meta, ...obs, status: 'not-configured', demo: false, last_synced_at: null }
     const oauthAccounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : []
     const accounts = oauthAccounts.length ? oauthAccounts : (ouraConfigured(userId) ? [{ id: 'legacy' }] : [])
-    if (!accounts.length) return { ...meta, ...obs, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
+    if (!accounts.length) return { ...meta, ...obs, status: 'disconnected', demo: false, last_synced_at: null }
     if (isSyncing(userId, id)) return { ...meta, ...obs, status: 'syncing', demo: false, last_synced_at: settings?.last_synced_at || null }
     const lastSynced = settings?.last_synced_at || null
     const ageH = lastSynced ? HOURS(nowDate.getTime() - new Date(lastSynced).getTime()) : Infinity
     return { ...meta, ...obs, status: ageH <= PROVIDER_STALE_HOURS ? 'connected' : 'stale', demo: false, last_synced_at: lastSynced }
   }
   if (id === 'garmin') {
-    if (!garminReleaseReady()) return { ...meta, status: 'not-configured', demo: demoAllowed, last_synced_at: null }
+    if (!garminReleaseReady()) return { ...meta, status: 'not-configured', demo: false, last_synced_at: null }
     const accounts = await store.listGarminAccounts(userId)
-    if (!accounts.length) return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null }
+    if (!accounts.length) return { ...meta, status: 'disconnected', demo: false, last_synced_at: null }
     const daily = await store.getGarminDaily(accounts[0].id, ymd(nowDate)).catch(() => null)
     const status = daily ? 'connected' : 'stale'
     return { ...meta, status, demo: false, last_synced_at: settings?.last_synced_at || null }
@@ -243,12 +208,12 @@ export async function providerStatus(store, userId, id, nowDate = new Date()) {
     const lastSync = settings?.last_synced_at || null
     if (has) return { ...meta, status: 'connected', demo: false, last_synced_at: lastSync, permissions: perms, partial }
     // Synced before but nothing today: stale if the last sync was recent, else
-    // disconnected. Only fall back to demo when the companion never connected.
+    // disconnected. A never-connected companion remains disconnected.
     if (settings?.connected_at) {
       const ageH = lastSync ? HOURS(nowDate.getTime() - new Date(lastSync).getTime()) : Infinity
       return { ...meta, status: ageH <= 48 ? 'stale' : 'disconnected', demo: false, last_synced_at: lastSync, permissions: perms, partial }
     }
-    return { ...meta, status: demoAllowed ? 'demo' : 'disconnected', demo: demoAllowed, last_synced_at: null, permissions: perms }
+    return { ...meta, status: 'disconnected', demo: false, last_synced_at: null, permissions: perms }
   }
   return { ...meta, status: 'disconnected', demo: false }
 }
@@ -426,92 +391,30 @@ async function realSignals(store, userId, id, queryDate, nowDate, isRequestedCur
   return {}
 }
 
-// Demo may only stand in for a provider that was never configured/connected —
-// the same predicate providerStatus uses to report `status: 'demo'`. Falling
-// back to demo whenever a provider merely had no data *today* fed the plan a
-// seeded evening run for a really-connected account whose watch hadn't synced
-// yet, while the Connections tab said stale, demo: false.
-//
-// Must check THIS USER's own account, not just whether the server can do
-// OAuth at all — checking only ouraConfigured()/garminReleaseReady() (server-
-// wide: are the app's own client id/secret set) meant that the moment ANY
-// user connected a real Oura account, the server counted as "configured" for
-// EVERY user, so every other, never-connected user's oura branch stopped
-// counting as neverConnected — realSignals returned {} (no token) and demo
-// was skipped too, leaving them with nothing for readiness/sleep at all,
-// while the Connections tab correctly kept reporting Oura as available to
-// connect. providerStatus (above) already got this right per-user; this now
-// asks the same question the same way, so demo and status can't drift again.
-async function neverConnected(store, userId, id, settings) {
-  if (id === 'oura') {
-    if (!(ouraConfigured(userId) || ouraOAuthConfigured())) return true
-    const accounts = ouraOAuthConfigured() ? await store.listOuraAccounts(userId) : []
-    return accounts.length === 0 && !ouraConfigured(userId)
-  }
-  if (id === 'garmin') {
-    if (!garminReleaseReady()) return true
-    return (await store.listGarminAccounts(userId)).length === 0
-  }
-  if (id === 'apple') return !settings?.connected_at
-  return false
-}
-
 // --- compose one signal per metric, respecting provenance + toggles -------
 // `queryDate` (defaults to `nowDate`) is which day's REAL provider data to
 // read — /api/today passes the day the user is actually viewing here, so
 // navigating to a past/future day shows that day's readiness/sleep/workout
 // instead of always today's (owner, 25 Aug 2026: signals stayed pinned to
 // "now" regardless of which day Today's prev/next arrows had navigated to).
-// `nowDate` still governs the DEMO scenario (demoSignals) and every
-// fetched_at stamp below — demo is a canned "what it looks like connected"
-// preview that was never meant to vary by day, and fetched_at genuinely is
-// "when we made this API call" metadata, distinct from which day the DATA
-// itself is about.
+// `nowDate` governs every fetched_at stamp below; it is distinct from which
+// day the data itself is about.
 export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate, { isRequestedCurrentDay } = {}) {
   const settings = {}
   for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(userId, id)
-  const demo = demoSignals(nowDate)
 
-  // Gather per-provider signals: real first, else demo (if allowed & enabled).
+  // Gather only real, account-owned provider signals.
   const perProvider = {}
   for (const id of Object.keys(PROVIDERS)) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
-    const real = await realSignals(store, userId, id, queryDate, nowDate, isRequestedCurrentDay ?? ymd(queryDate) === ymd(nowDate))
-    if (Object.keys(real).length) perProvider[id] = real
-    else if (settings[id]?.demo !== false && (await neverConnected(store, userId, id, settings[id]))) perProvider[id] = demo[id] || {}
-    else perProvider[id] = {}
+    perProvider[id] = await realSignals(store, userId, id, queryDate, nowDate, isRequestedCurrentDay ?? ymd(queryDate) === ymd(nowDate))
   }
 
-  // Merge per metric: ANY provider's real (non-demo) value outranks ANY
-  // provider's demo value, regardless of PREFERENCE order — only fall back to
-  // demo when no provider in the list has real data for that metric. This is
-  // two passes rather than one so PREFERENCE order still breaks ties WITHIN
-  // each pass (two demo providers, or — hypothetically — two real ones,
-  // still resolve by the existing preference order).
-  //
-  // Before this, a single pass took the first non-null value in PREFERENCE
-  // order with no real/demo distinction, so a provider listed earlier that
-  // was merely in default demo mode (never connected) pre-empted a
-  // correctly-connected, later-listed provider's real data outright — e.g.
-  // `workout: ['garmin', 'apple', 'oura']` let Garmin's canned "Evening Run"
-  // win over a real, connected Oura account's actual workout every single
-  // time, purely because Garmin sorts first, never because Garmin's demo was
-  // in any sense a better answer. Confirmed live: `garmin: "not-configured"`,
-  // `oura: "oauth"`, yet Workouts showed the fixed demo scenario.
+  // Merge one real signal per metric; preference only resolves conflicts
+  // between real providers.
   const out = {}
   for (const [metric, order] of Object.entries(PREFERENCE)) {
-    let chosen = null
-    for (const id of order) {
-      const s = perProvider[id]?.[metric]
-      if (s && s.value != null && s.demo !== true) { chosen = s; break }
-    }
-    if (!chosen) {
-      for (const id of order) {
-        const s = perProvider[id]?.[metric]
-        if (s && s.value != null) { chosen = s; break }
-      }
-    }
-    out[metric] = chosen
+    out[metric] = order.map((id) => perProvider[id]?.[metric]).find((s) => s && s.value != null) || null
   }
 
   // A manually-entered workout (server/db.js's getManualWorkout — no

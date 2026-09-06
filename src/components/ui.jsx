@@ -325,8 +325,6 @@ function MarkGlyph({ status }) {
     return <span aria-hidden className="shrink-0 border border-ink" style={{ ...box, backgroundImage: HATCH }} />
   if (status === 'stale' || status === 'unavailable')
     return <span aria-hidden className="shrink-0 border border-ink bg-paper" style={box} />
-  if (status === 'demo')
-    return <span aria-hidden className="flex shrink-0 items-center justify-center border border-ink bg-paper" style={box}><span className="bg-ink" style={{ width: 3, height: 3 }} /></span>
   // disconnected AND not-configured share this dashed "nothing active" shape
   // (same family as stale/unavailable sharing one hollow glyph above) — the
   // WORD is what tells them apart: "Not connected" (this user hasn't linked
@@ -337,7 +335,7 @@ function MarkGlyph({ status }) {
 
 const WORDS = {
   connected: 'Connected', syncing: 'Syncing', stale: 'Stale', disconnected: 'Not connected',
-  'not-configured': 'Not configured', error: 'Error', demo: 'Demo data', fresh: 'Fresh', unavailable: 'No data',
+  'not-configured': 'Not configured', error: 'Error', fresh: 'Fresh', unavailable: 'No data',
 }
 
 // Shape + word status mark. Word carries the meaning so color is never the only
@@ -355,38 +353,18 @@ export const StatusTag = StatusMark // compat alias
 // Short forms of the STATE REFERENCE words, for the <360px single-line chip
 // below only — StatusMark's own defaults (WORDS above) stay the full words
 // everywhere else in the app.
-const SHORT_WORDS = { demo: 'Demo', unavailable: 'No data' }
+const SHORT_WORDS = { unavailable: 'No data' }
 
-// Provenance for any wearable-derived value: source + freshness (or demo).
-//
-// `compact`: the masthead's global sync line already discloses "SAMPLE
-// SIGNALS · NOT A LIVE SYNC" once per screen when every present signal is
-// demo (Today.jsx) — an audit found each ContextCell repeating "Demo data"
-// underneath it, saying the same thing a 4th time on one all-demo screen.
-// Callers pass this only from that exact state, and it only drops anything
-// when THIS signal is itself demo — a live/stale/unavailable cell is never
-// what the global line said, so it always keeps its own mark. A genuinely
-// mixed live/demo screen never sets this (the global line names a live
-// provider instead), so a demo cell there still carries full disclosure —
-// the one screen state where the global line is silent about it.
+// Provenance for a real wearable-derived value: source + freshness. A legacy
+// demo payload is treated as unavailable instead of being displayed.
 export function SourceLabel({ signal, compact = false, className = '' }) {
   if (!signal) return null
   const provider = signal.provider ? signal.provider[0].toUpperCase() + signal.provider.slice(1) : 'Signal'
-  const status = signal.demo ? 'demo' : signal.freshness || 'fresh'
-
-  if (compact && status === 'demo') {
-    return (
-      <span className={`inline-flex items-center text-[11px] font-semibold uppercase tracking-[0.1em] text-muted ${className}`}>
-        {provider}
-      </span>
-    )
-  }
+  const status = signal.demo ? 'unavailable' : signal.freshness || 'fresh'
 
   // A 3-column context strip leaves ~71px of inner width per cell at 320px
-  // (measured) for the whole provider+status line — "Oura" beside a full
-  // "Demo data"/"Stale" mark never fits there, so flex-wrap (below) put them
-  // on two rows at EVERY width tested, 320 through 430 (measured: "Oura" at
-  // y172, "Demo data" at y193, same left edge, unchanged from 320 to 430).
+  // (measured) for the whole provider+status line — a provider beside the
+  // full freshness word may wrap on narrow screens.
   // That two-line form is fine once the column has room to spare, but below
   // 360px it was landing right under "Readiness"/"Sleep"/"Workouts" and
   // breaking the three-column rhythm the audit flagged. Two sibling spans,

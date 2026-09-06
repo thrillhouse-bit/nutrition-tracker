@@ -219,7 +219,24 @@ absence of a reading for the viewed calendar day does not mean the provider is
 disconnected. A linked provider with no current-day signal is labelled
 "connected — awaiting today's readings," retains Oura's real refresh action,
 and routes connection management to Connections. Only an account with no linked
-provider and no live signal may show "No wearable connected."
+provider and no live signal enters **Fuel + hydration mode**. Today keeps food,
+hydration, targets, recommendations, and the connection action functional, but
+omits the three-column Daily signals strip entirely. A manual workout remains
+valid Plan context; it does not impersonate a wearable connection.
+
+Runtime demo/sample wearable data is prohibited. Provider composition returns
+only account-owned readings, missing metrics remain null, connection status
+never reports a demo state, and the legacy database `demo` field is fixed false
+during migration. Cached legacy demo payloads are ignored defensively by Today.
+
+### Insights daily completion
+
+Insights receives one entry for every calendar day in its selected window. For
+days with a positive calorie target and food log, the server returns the exact
+clamped completion percentage and one reached-threshold band: 25%, 50%, 75%, or
+100%. The client maps those bands to increasingly dark strengths of the current
+account accent. No-log or no-target days use the neutral track. Every segment
+has an exact text label/tooltip; color is not the sole information channel.
 
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|

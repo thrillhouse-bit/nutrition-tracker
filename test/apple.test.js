@@ -49,7 +49,7 @@ describe('Apple Health ingested signals flow through the provider-neutral model'
   })
 })
 
-describe('Apple provider status (connected / partial / stale / disconnected / demo)', () => {
+describe('Apple provider status (connected / partial / stale / disconnected)', () => {
   const withPerms = (requested, available) => ({
     connected_at: nowIso(), last_synced_at: nowIso(), settings: { permissions: { requested, available } },
   })
@@ -81,9 +81,10 @@ describe('Apple provider status (connected / partial / stale / disconnected / de
     expect(st.status).toBe('disconnected')
   })
 
-  it('falls back to demo only when the companion never connected', async () => {
+  it('is disconnected when the companion never connected', async () => {
     const st = await providerStatus(appleStore({ rows: [] }), USER, 'apple', new Date())
-    expect(st.status).toBe('demo')
+    expect(st.status).toBe('disconnected')
+    expect(st.demo).toBe(false)
   })
 
   it('never reports "denied" — an unavailable category is simply absent', async () => {

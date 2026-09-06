@@ -62,17 +62,15 @@ const DAYS = Array.from({ length: 5 }).map((_, i) => ({
   totals: { calories: 2000 + i * 50, protein_g: 140 + i * 5 },
 }))
 
-// 2 no-log days, then 5 tracked days alternating on/off target — a realistic
-// mixed window rather than an all-one-state fixture that couldn't tell three
-// states apart.
+// Two no-log days, then tracked days spanning all four completion shades.
 const ON_TARGET_DETAIL = [
-  { date: '2026-08-18', tracked: false, onTarget: null },
-  { date: '2026-08-19', tracked: false, onTarget: null },
-  { date: '2026-08-20', tracked: true, onTarget: true },
-  { date: '2026-08-21', tracked: true, onTarget: false },
-  { date: '2026-08-22', tracked: true, onTarget: true },
-  { date: '2026-08-23', tracked: true, onTarget: true },
-  { date: '2026-08-24', tracked: true, onTarget: false },
+  { date: '2026-08-18', tracked: false, onTarget: null, completion: null, completionBand: null },
+  { date: '2026-08-19', tracked: false, onTarget: null, completion: null, completionBand: null },
+  { date: '2026-08-20', tracked: true, onTarget: false, completion: 20, completionBand: 25 },
+  { date: '2026-08-21', tracked: true, onTarget: false, completion: 51, completionBand: 50 },
+  { date: '2026-08-22', tracked: true, onTarget: false, completion: 76, completionBand: 75 },
+  { date: '2026-08-23', tracked: true, onTarget: true, completion: 100, completionBand: 100 },
+  { date: '2026-08-24', tracked: true, onTarget: false, completion: 100, completionBand: 100 },
 ]
 
 const BASE_RESPONSE = {
@@ -93,8 +91,8 @@ function proteinSection(el) {
 function energySection(el) {
   return Array.from(el.querySelectorAll('section')).find((s) => /^energy/i.test(s.textContent))
 }
-function onTargetSection(el) {
-  return Array.from(el.querySelectorAll('section')).find((s) => /^on target/i.test(s.textContent))
+function completionSection(el) {
+  return Array.from(el.querySelectorAll('section')).find((s) => /^intake completion/i.test(s.textContent))
 }
 
 describe('Insights: protein-consistency chart', () => {
@@ -128,36 +126,34 @@ describe('Insights: protein-consistency chart', () => {
   })
 })
 
-describe('Insights: on-target dot-row', () => {
-  it('renders one real cell per window day, split into on-target/off-target/no-log by the server-computed detail', async () => {
+describe('Insights: daily completion spectrum', () => {
+  it('renders one accessible cell per day across the server-computed 25/50/75/100 bands', async () => {
     api.insights.mockResolvedValue(BASE_RESPONSE)
     const el = await renderInsights()
 
-    const section = onTargetSection(el)
+    const section = completionSection(el)
     expect(section).toBeTruthy()
-    expect(section.textContent).toContain('3/5 days') // nutrition.onTargetDays / trackedDays
+    expect(section.textContent).toContain('5/7 logged')
 
-    const cells = section.querySelectorAll('[aria-hidden]')
+    const cells = section.querySelectorAll('[title]')
     expect(cells).toHaveLength(ON_TARGET_DETAIL.length)
     const classesOf = (i) => cells[i].className
     // no-log days (indices 0-1)
     expect(classesOf(0)).toContain('bg-track')
     expect(classesOf(1)).toContain('bg-track')
-    // on-target days (indices 2, 4, 5)
-    expect(classesOf(2)).toContain('bg-cobalt')
-    expect(classesOf(4)).toContain('bg-cobalt')
+    expect(classesOf(2)).toContain('bg-cobalt/25')
+    expect(classesOf(3)).toContain('bg-cobalt/45')
+    expect(classesOf(4)).toContain('bg-cobalt/70')
     expect(classesOf(5)).toContain('bg-cobalt')
-    // off-target days (indices 3, 6)
-    expect(classesOf(3)).toContain('bg-ink/35')
-    expect(classesOf(6)).toContain('bg-ink/35')
+    expect(cells[4].getAttribute('aria-label')).toContain('76% of calorie target logged')
   })
 
   it('CONTROL: renders no on-target section at all when the server sends no per-day detail', async () => {
     api.insights.mockResolvedValue({ ...BASE_RESPONSE, onTargetDetail: [] })
     const el = await renderInsights()
 
-    expect(onTargetSection(el)).toBeFalsy()
-    expect(el.textContent).not.toContain('On target ·')
+    expect(completionSection(el)).toBeFalsy()
+    expect(el.textContent).not.toContain('Intake completion ·')
   })
 })
 

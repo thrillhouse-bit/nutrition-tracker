@@ -150,7 +150,7 @@ describe('providerStatus: oura not-configured / syncing / stale, and observabili
     const store = makeStore()
     const st = await providerStatus(store, 1, 'oura', new Date())
     expect(st.status).toBe('not-configured')
-    expect(st.demo).toBe(true) // demo can still show even though nobody could ever connect
+    expect(st.demo).toBe(false)
   })
 
   it('not-configured AND demo disabled still reads not-configured, not disconnected — env-level trumps the user toggle', async () => {

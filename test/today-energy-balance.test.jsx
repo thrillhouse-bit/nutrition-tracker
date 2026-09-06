@@ -102,7 +102,7 @@ describe('Today: Energy balance card', () => {
     expect(text).toMatch(/Surplus/)
   })
 
-  it('labels a demo expenditure reading as demo, never presenting it as live', () => {
+  it('ignores a legacy demo expenditure reading instead of presenting it', () => {
     const text = renderToday(
       {
         baseline: { calories: 2200 },
@@ -110,7 +110,8 @@ describe('Today: Energy balance card', () => {
       },
       [FOOD_ENTRY(1000)],
     )
-    expect(text).toMatch(/Demo/i)
+    expect(text).toMatch(/No data/i)
+    expect(text).not.toMatch(/Demo|1,820|820.*Deficit/i)
   })
 
   it('shows an em-dash, not a silent zero, when expenditure is unavailable', () => {

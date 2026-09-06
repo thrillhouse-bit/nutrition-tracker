@@ -1,12 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { composeSignals, providerStatus } from '../server/providers.js'
 
-// Demo signals must agree with the provider-status matrix: providerStatus only
-// ever reports `demo` for a provider that is unconfigured / never connected
-// ("Only fall back to demo when the companion never connected"). composeSignals
-// used to fabricate demo signals for any provider with no data *today*, so a
-// really-connected Garmin whose watch hadn't synced yet fed the plan a seeded
-// "Evening Run" while the Connections tab said stale, demo: false.
+// Runtime signals must always be real. Legacy `demo` flags may remain in old
+// fixture rows during migration, but neither provider status nor composition
+// may turn them into sample health data.
 
 const GARMIN_ENV = ['GARMIN_CLIENT_ID', 'GARMIN_CLIENT_SECRET', 'GARMIN_REDIRECT_URI', 'GARMIN_INTEGRATION_VERIFIED']
 const saved = {}
@@ -53,7 +50,7 @@ function makeStore({ garminAccounts = [], garminDaily = null, appleIntegration =
   }
 }
 
-describe('composeSignals demo fallback vs providerStatus', () => {
+describe('composeSignals never fabricates wearable data', () => {
   it('does not fabricate demo Garmin signals for a connected account with no data today', async () => {
     setGarminEnv(true)
     const store = makeStore({ garminAccounts: [{ id: 1 }], garminDaily: null, appleIntegration: { demo: false } })
@@ -93,17 +90,15 @@ describe('composeSignals demo fallback vs providerStatus', () => {
     expect(sig.expenditure.demo).toBe(false)
   })
 
-  it('still falls back to demo for a provider that was never configured or connected (control)', async () => {
+  it('returns empty signals for a provider that was never configured or connected', async () => {
     setGarminEnv(false)
     const store = makeStore() // no creds, no accounts, no connected_at
     const sig = await composeSignals(store, new Date(), USER)
-    expect(sig.workout.provider).toBe('garmin')
-    expect(sig.workout.demo).toBe(true)
-    expect(sig.hrv.provider).toBe('apple')
-    expect(sig.hrv.demo).toBe(true)
+    expect(sig.workout).toBeNull()
+    expect(sig.hrv).toBeNull()
   })
 
-  it('honors demo: false even for a never-connected provider (control)', async () => {
+  it('stays empty when the legacy demo flag is already false', async () => {
     setGarminEnv(false)
     const store = makeStore({ appleIntegration: { demo: false } })
     const sig = await composeSignals(store, new Date(), USER)

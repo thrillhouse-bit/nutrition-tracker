@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NUTRIENTS, fmt, num, ymd } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, StatusMark, Toggle, Why } from './ui.jsx'
+import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, Toggle, Why } from './ui.jsx'
 import SmartPlanForm from './SmartPlanForm.jsx'
 import AdaptiveFuelPlan from './AdaptiveFuelPlan.jsx'
 
@@ -268,8 +268,10 @@ export default function Plan({ date, refreshKey, onChanged }) {
 
   const baseline = plan?.baseline
   const adjusted = plan?.adjusted || baseline || {}
-  const rationale = plan?.rationale || []
-  const signals = plan?.signals || {}
+  // Legacy plan snapshots may contain seeded rationale/signals from releases
+  // before real-only wearable data. They are ignored rather than resurfaced.
+  const rationale = (plan?.rationale || []).filter((r) => r?.demo !== true)
+  const signals = Object.fromEntries(Object.entries(plan?.signals || {}).filter(([, signal]) => signal?.demo !== true))
   const influence = plan?.influence || {}
   const hasBaseline = baseline && NUTRIENTS.some((n) => baseline[n.key] != null)
 
@@ -300,13 +302,6 @@ export default function Plan({ date, refreshKey, onChanged }) {
     }
   }
 
-  // Demo must never look like a live connection. Today marks every context
-  // cell; Plan is the other adjusted-targets surface and inherited nothing —
-  // its first audit found zero "demo" on the rendered tab while a Sand tag
-  // read "ADJUSTED FOR RUN" off seeded data.
-  const anyDemo =
-    Object.values(signals).some((s) => s?.demo) || rationale.some((r) => r.demo)
-
   // Context tags derived from the rationale — the same reasons the table shows.
   const tags = useMemo(() => {
     const out = []
@@ -326,7 +321,7 @@ export default function Plan({ date, refreshKey, onChanged }) {
   // tagged with its source so nothing is opaque.
   const whyItems = rationale.map((r) => {
     const prefix = r.effect && r.effect !== 'no change' ? `${r.effect} — ` : ''
-    return `${prefix}${r.detail} (${provLabel(r.source)}${r.demo ? ', demo' : ''})`
+    return `${prefix}${r.detail} (${provLabel(r.source)})`
   })
 
   // Rows: the four macros the design names, plus any extra target the user has
@@ -352,9 +347,7 @@ export default function Plan({ date, refreshKey, onChanged }) {
     const dayTarget = `DAY TARGET ${fmt(adjusted.protein_g)} g P · ${fmt(adjusted.carbs_g)} g C`
     if (workoutOK) {
       const wTime = wv.time || ''
-      // A bare provider name on seeded data reads as a live sync; say DEMO.
-      const prov = [(wSig.provider || '').toUpperCase(), wSig.demo ? 'DEMO' : null]
-        .filter(Boolean).join(' · ')
+      const prov = (wSig.provider || '').toUpperCase()
       if (endurance) {
         const preCarb = Math.max(30, round(num(adjusted.carbs_g) * 0.25, 5))
         const preProtein = Math.max(15, round(num(adjusted.protein_g) * 0.2, 5))
@@ -409,7 +402,6 @@ export default function Plan({ date, refreshKey, onChanged }) {
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="serif text-[32px] leading-none text-ink">Plan</h2>
         <span className="flex items-baseline gap-3">
-          {anyDemo && <StatusMark status="demo" className="text-[10px] uppercase tracking-[0.1em]" />}
           <span className="tnum text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{dateStamp(date)}</span>
           {/* The only way to adjust targets used to live below the tags, the
               "Why this changed" disclosure, and the full target table — a

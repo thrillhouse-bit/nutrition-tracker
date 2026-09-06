@@ -102,7 +102,7 @@ describe('Today header: day-context sentence — live signals', () => {
     expect(el.textContent).toMatch(/Slept 7h 24m last night\./)
   })
 
-  it('CONTROL: a demo readiness reading never contributes to the live sentence, even though the card still shows it', async () => {
+  it('a legacy demo readiness reading is ignored when a real workout exists', async () => {
     const el = await renderToday({
       ...BASE,
       signals: {
@@ -110,29 +110,28 @@ describe('Today header: day-context sentence — live signals', () => {
         workout: { value: { label: 'Evening Run', shortLabel: 'run', status: 'planned', time: '5:30 PM' }, provider: 'garmin', freshness: 'fresh', demo: false },
       },
     })
-    // The workout is real, so this is still a "live" screen overall — but the
-    // demo readiness must never be voiced as "Strong recovery." in the
-    // header sentence, only disclosed (as demo) in the Readiness card itself.
     expect(el.textContent).not.toMatch(/Strong recovery\./)
     expect(el.textContent).toMatch(/Evening Run planned at 5:30 PM\./)
-    expect(el.textContent).toMatch(/Demo data/)
+    expect(el.textContent).not.toMatch(/Demo data|90/)
   })
 })
 
-describe('Today header: honest alternate messages — demo-only and no-connection', () => {
-  it('shows a sample-data message (not a fabricated sentence) when every present signal is demo', async () => {
+describe('Today header: honest food-only and connected-without-data states', () => {
+  it('treats a legacy demo-only payload as food-and-hydration mode', async () => {
     const el = await renderToday({
       ...BASE,
       signals: { readiness: { value: 82, provider: 'oura', freshness: 'fresh', demo: true } },
     })
-    expect(el.textContent).toMatch(/Showing sample recovery data/)
+    expect(el.textContent).toMatch(/FUEL \+ HYDRATION MODE/)
+    expect(el.textContent).not.toMatch(/Daily signals|Demo data/)
     expect(el.textContent).not.toMatch(/Strong recovery\.|Solid recovery\.|Moderate recovery\.|Low recovery\./)
   })
 
   it('shows a no-connection message with a Connect CTA when nothing is present at all', async () => {
     const onGoToConnections = vi.fn()
     const el = await renderToday({ ...BASE, signals: {} }, { onGoToConnections })
-    expect(el.textContent).toMatch(/No wearable connected yet/)
+    expect(el.textContent).toMatch(/Food, hydration, and your daily plan work without a wearable/)
+    expect(el.textContent).not.toMatch(/Daily signals|No workout set/)
     const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Connect a wearable'))
     expect(btn).toBeTruthy()
     await act(async () => { btn.click() })
@@ -322,20 +321,18 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
     expect(el.textContent).toMatch(/Evening Run/)
   })
 
-  it('offers "Set workout" as the next action when no workout is set and a destination exists', async () => {
+  it('does not show an empty workout cell when no wearable is connected', async () => {
     const onGoToPlan = vi.fn()
     const el = await renderToday({ ...BASE, signals: {} }, { onGoToPlan })
-    expect(el.textContent).toMatch(/Set workout/)
+    expect(el.textContent).not.toMatch(/Daily signals|Set workout|No workout set/)
     const btn = [...el.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || '').includes('Set a workout'))
-    expect(btn).toBeTruthy()
-    await act(async () => { btn.click() })
-    expect(onGoToPlan).toHaveBeenCalledTimes(1)
+    expect(btn).toBeUndefined()
+    expect(onGoToPlan).not.toHaveBeenCalled()
   })
 
-  it('CONTROL: "Set workout" does not render (and nothing is clickable) when there is no destination to go to', async () => {
+  it('also omits the empty workout cell when there is no Plan destination', async () => {
     const el = await renderToday({ ...BASE, signals: {} })
-    expect(el.textContent).toMatch(/No workout set/)
-    expect(el.textContent).not.toMatch(/Set workout/)
+    expect(el.textContent).not.toMatch(/Daily signals|No workout set|Set workout/)
   })
 
   it('a long workout name never breaks layout — full text still reaches the DOM (CSS truncation, not data loss)', async () => {
@@ -347,21 +344,21 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
     expect(el.textContent).toContain(longName)
   })
 
-  it('a manual workout\'s intensity + kind forms the subject ("Easy run"), matching the header sentence exactly', async () => {
+  it('manual-only workout context does not impersonate a wearable signal', async () => {
     const el = await renderToday({
       ...BASE,
       signals: { workout: { value: { kind: 'run', intensity: 'easy', time: '5:30 PM', status: 'planned' }, provider: 'manual', freshness: 'fresh', demo: false } },
     })
-    expect(el.textContent).toMatch(/Easy run/)
+    expect(el.textContent).toMatch(/FUEL \+ HYDRATION MODE/)
+    expect(el.textContent).not.toMatch(/Daily signals|Easy run/)
   })
 
-  it('shows duration/energy only when real, with an "est." qualifier only for a manual estimate', async () => {
+  it('keeps manual-only duration and energy out of the wearable strip', async () => {
     const el = await renderToday({
       ...BASE,
       signals: { workout: { value: { label: 'Morning Ride', durationMin: 40, estKcal: 380, status: 'completed', time: '6:30 AM' }, provider: 'manual', freshness: 'fresh', demo: false } },
     })
-    expect(el.textContent).toMatch(/40 min/)
-    expect(el.textContent).toMatch(/~380 kcal est\./)
+    expect(el.textContent).not.toMatch(/Daily signals|40 min|~380 kcal est\./)
   })
 
   it('CONTROL: a synced (non-manual) workout\'s energy is never marked "est." — it is the device\'s own reading', async () => {
@@ -373,12 +370,12 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
     expect(el.textContent).not.toMatch(/est\./)
   })
 
-  it('never fabricates a calorie estimate: a manual workout with a duration but no weight on file shows an honest note instead of a number', async () => {
+  it('manual-only missing estimates stay off the wearable strip', async () => {
     const el = await renderToday({
       ...BASE,
       signals: { workout: { value: { label: 'Afternoon Run', durationMin: 30, estKcal: null, status: 'planned', time: '3:00 PM' }, provider: 'manual', freshness: 'fresh', demo: false } },
     })
-    expect(el.textContent).toMatch(/Add your weight for a calorie estimate/)
+    expect(el.textContent).not.toMatch(/Add your weight for a calorie estimate/)
     expect(el.textContent).not.toMatch(/~null/)
   })
 })
@@ -386,11 +383,8 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
 describe('Today: no implicit/hardcoded demo data anywhere in the redesign', () => {
   it('a fully empty composite (no signals, zero entries) never shows a number that was not real', async () => {
     const el = await renderToday({ baseline: { calories: 2200 }, signals: {} }, {})
-    // Every Daily Signals reading is an honest em-dash + "No data", never 0
-    // or a placeholder figure standing in for a real reading.
-    expect(el.textContent).toMatch(/No workout set/)
-    const emDashes = [...el.querySelectorAll('.text-faint')].filter((n) => n.textContent.trim() === '—')
-    expect(emDashes.length).toBeGreaterThanOrEqual(2) // readiness + sleep
+    expect(el.textContent).toMatch(/FUEL \+ HYDRATION MODE/)
+    expect(el.textContent).not.toMatch(/Daily signals|No workout set|Evening Run|82|7\.4/)
   })
 })
 

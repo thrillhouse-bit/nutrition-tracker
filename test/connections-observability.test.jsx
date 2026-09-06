@@ -56,14 +56,14 @@ async function renderConnections() {
 
 // Garmin/Apple fixtures held constant — every test below is about the Oura
 // row specifically, so these two are the plainest fixed backdrop (garmin
-// genuinely not-configured in every test env here; apple genuinely demo).
-const GARMIN_FIXTURE = { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['expenditure', 'steps'], status: 'not-configured', demo: true, enabled: true, last_synced_at: null }
-const APPLE_FIXTURE = { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'active energy', 'exercise', 'sleep', 'heart rate', 'body weight'], status: 'demo', demo: true, enabled: true, last_synced_at: null, permissions: null, partial: false }
+// genuinely not-configured in every test env here; Apple is disconnected).
+const GARMIN_FIXTURE = { id: 'garmin', name: 'Garmin', connect: 'oauth', categories: ['expenditure', 'steps'], status: 'not-configured', demo: false, enabled: true, last_synced_at: null }
+const APPLE_FIXTURE = { id: 'apple', name: 'Apple Health', connect: 'ingest', categories: ['workouts', 'active energy', 'exercise', 'sleep', 'heart rate', 'body weight'], status: 'disconnected', demo: false, enabled: true, last_synced_at: null, permissions: null, partial: false }
 
 function ouraFixture(overrides = {}) {
   return {
     id: 'oura', name: 'Oura', connect: 'oauth', categories: ['readiness', 'sleep', 'expenditure', 'steps', 'workouts'],
-    status: 'demo', demo: true, enabled: true, last_synced_at: null,
+    status: 'disconnected', demo: false, enabled: true, last_synced_at: null,
     last_attempted_sync: null, last_sync_counts: null, sync_error: null,
     ...overrides,
   }
@@ -96,24 +96,22 @@ it('opens the iPhone Garmin bridge and Apple guide without rotating credentials 
   expect(ouraRow(el).textContent).toBe(originalOura)
 })
 
-describe('Connections: not-configured is distinct from demo and from disconnected', () => {
-  it('a not-configured-but-demo-allowed Oura keeps the (accurate) Demo data badge, plus an explicit "why" note the plain demo case never shows', async () => {
+describe('Connections: not-configured is distinct from disconnected', () => {
+  it('ignores a legacy demo flag and reports the real not-configured state', async () => {
     mockConnections({ status: 'not-configured', demo: true })
     const el = await renderConnections()
     const row = ouraRow(el)
-    // isDemo (provider.demo, not the status string) still drives the primary
-    // badge here — demo data genuinely IS what's showing, so that's honest —
-    // but the specific reason gets its own line rather than reading exactly
-    // like an ordinary "just hasn't connected yet" demo row.
-    expect(row.textContent).toMatch(/Demo data — not a live connection/)
-    expect(row.textContent).toMatch(/Not available on this server/)
+    expect(row.textContent).toMatch(/Not configured/)
+    expect(row.textContent).not.toMatch(/Demo data/)
+    expect(row.textContent).toMatch(/Not set up on this server/)
   })
 
-  it('CONTROL: an ordinary demo Oura (configured, simply never connected) shows the demo line WITHOUT the not-configured note', async () => {
-    mockConnections({ status: 'demo', demo: true })
+  it('ignores a legacy demo flag for a disconnected account', async () => {
+    mockConnections({ status: 'disconnected', demo: true })
     const el = await renderConnections()
     const row = ouraRow(el)
-    expect(row.textContent).toMatch(/Demo data — not a live connection/)
+    expect(row.textContent).toMatch(/Not connected/)
+    expect(row.textContent).not.toMatch(/Demo data/)
     expect(row.textContent).not.toMatch(/Not available on this server/)
   })
 
@@ -226,12 +224,12 @@ describe('Connections: last_sync_counts surfaced in the expanded panel', () => {
   })
 })
 
-describe('Connections: STATE REFERENCE legend documents the new states', () => {
-  it('lists both Demo data and Not configured as named, distinct rows', async () => {
+describe('Connections: STATE REFERENCE legend documents live states', () => {
+  it('lists Not configured without advertising a demo mode', async () => {
     mockConnections()
     const el = await renderConnections()
     expect(el.textContent).toMatch(/STATE REFERENCE/i)
-    expect(el.textContent).toMatch(/Demo data/)
+    expect(el.textContent).not.toMatch(/Demo data/)
     expect(el.textContent).toMatch(/Not configured/)
   })
 })

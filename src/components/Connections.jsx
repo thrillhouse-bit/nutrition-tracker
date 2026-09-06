@@ -45,16 +45,11 @@ const SIGNALS = [
 // design's word differs (DISCONNECTED vs the component's "Not connected").
 // Stale's 48h figure matches PROVIDER_STALE_HOURS in server/providers.js (the
 // same threshold Apple's own status branch already used) — not a separate
-// number invented for this legend. `demo`/`not-configured` were always
-// reachable states but weren't listed here until this legend needed to tell
-// them apart from `disconnected` — a provider can be not-configured on the
-// server and STILL show demo data (two independent facts), which is why
-// they're distinct rows rather than one.
+// number invented for this legend.
 const STATES = [
   { status: 'connected', desc: 'Solid mark · syncing on schedule' },
   { status: 'syncing', desc: 'Hatched · progress bar shown' },
   { status: 'stale', desc: 'Hollow · last successful sync over 48 h ago' },
-  { status: 'demo', desc: 'Hollow dot · seeded sample data, never a live connection' },
   { status: 'not-configured', desc: 'Dashed · this server has no client id/secret for this provider at all' },
   { status: 'disconnected', label: 'Disconnected', desc: 'Dashed · recommendations use intake only' },
   { status: 'error', desc: 'Mark plus reason and a retry action' },
@@ -66,7 +61,7 @@ const CTA =
 
 // One provider row: name, shape+word status, a device/context sub-line, and a
 // state-appropriate action. MANAGE / How-to-sync expand an inline panel that
-// carries the accounts + the per-provider enable/demo toggles.
+// carries the accounts + the per-provider influence toggle.
 // Plain-language "what is read" per HealthKit category, for the Apple panel.
 const APPLE_CATEGORY_LABEL = {
   workouts: 'Workouts & timing',
@@ -246,17 +241,12 @@ export function AccountControls({ user, onLogout, onAccountDeleted }) {
 
 function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupRequest, onOpenApple }) {
   const {
-    id, name, connect, categories = [], status, demo, enabled, last_synced_at, permissions, partial,
+    id, name, connect, categories = [], status, enabled, last_synced_at, permissions, partial,
     last_attempted_sync, last_sync_counts, sync_error,
   } = provider
   const oauth = connect === 'oauth'
   const connectedish = status === 'connected' || status === 'stale' || status === 'syncing'
   const notConfigured = status === 'not-configured'
-  // `demo` is its own field, independent of `status` — a not-configured
-  // provider can still show demo data (two separate facts: can anyone on
-  // this server ever connect vs. is this user currently seeing sample data),
-  // so this reads the flag directly rather than assuming status === 'demo'.
-  const isDemo = demo === true
   const syncedLabel = since(last_synced_at)
   const attemptedLabel = since(last_attempted_sync)
   const context = categories.slice(0, 3).join(' · ')
@@ -307,8 +297,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
     // A "Connect" link here would navigate to /api/{id}/connect, which
     // 501s — this server has no OAuth client id/secret for this provider at
     // all, so there is no functional action to offer any user, not just this
-    // one. Showing Connect anyway (as the general oauth branch below does for
-    // demo/disconnected) would look identical to a live, working option right
+    // one. Showing Connect anyway would look identical to a live option right
     // up until the click fails.
     action = (
       <span
@@ -319,7 +308,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
       </span>
     )
   } else if (oauth) {
-    // disconnected / error / demo: the primary action is to connect (a browser
+    // disconnected / error: the primary action is to connect (a browser
     // navigation to the OAuth start on your own server — never a fetch).
     action = (
       <a href={`/api/${id}/connect`} className={`${CTA} bg-cobalt text-oncobalt hover:bg-cobalt-ink`}>
@@ -341,42 +330,26 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
         <div className="min-w-0">
           <div className="serif text-[21px] leading-none text-ink">{DISPLAY_NAME[id] || name}</div>
 
-          <StatusMark status={status} label={isDemo ? 'Demo data' : undefined} className="mt-2.5" />
-
-          {/* Demo honesty — a seeded provider is never dressed as a live link. */}
-          {isDemo && (
-            <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
-              Demo data — not a live connection
-            </div>
-          )}
-          {/* Demo can be showing for two independent reasons — this user
-              never connected (nothing further to say) vs. nobody on this
-              server ever could (worth saying, so a user doesn't go looking
-              for a Connect button that would only 501). */}
-          {isDemo && notConfigured && (
-            <div className="mt-1 text-[10.5px] uppercase tracking-[0.06em] text-faint">
-              Not available on this server
-            </div>
-          )}
+          <StatusMark status={status} className="mt-2.5" />
 
           {/* Device / context · last sync (or start, mid-sync). */}
-          {!isDemo && connectedish && syncedLabel && (
+          {connectedish && syncedLabel && (
             <div className="tnum mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
               {context && `${context} · `}
               {status === 'syncing' ? 'Started' : 'Last sync'} {syncedLabel}
             </div>
           )}
-          {!isDemo && notConfigured && (
+          {notConfigured && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
               {id === 'garmin' ? 'Direct sync pending approval · iPhone route available below' : `Not set up on this server — ask the operator to configure ${name}`}
             </div>
           )}
-          {!isDemo && status === 'disconnected' && (
+          {status === 'disconnected' && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
               Not syncing — recommendations use intake only
             </div>
           )}
-          {!isDemo && status === 'error' && (
+          {status === 'error' && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-faint">
               Sync error — reconnect to resume
             </div>
@@ -388,13 +361,13 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
               the `error` StatusMark above (dead — no status branch has ever
               emitted it): this renders off the real, persisted field for
               whichever status is actually showing (most often `stale`). */}
-          {!isDemo && sync_error && (
+          {sync_error && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-alert">
               {describeSyncError(sync_error)}
               {attemptedLabel && ` — last attempt ${attemptedLabel}`}
             </div>
           )}
-          {!isDemo && partial && (
+          {partial && (
             <div className="mt-2 text-[10.5px] uppercase tracking-[0.06em] text-muted">
               Partial — some categories share no data
             </div>
@@ -403,7 +376,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
 
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {action}
-          {/* Non-connected oauth still needs a way to reach demo/enable options. */}
+          {/* Non-connected OAuth still needs a way to reach enable options. */}
           {oauth && !connectedish && (
             <TextButton chevron className="py-2 text-[11px]" onClick={() => setOpen((v) => !v)}>
               {open ? 'Hide options' : 'Options'}
@@ -491,12 +464,6 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
             <ApplePairingGuide onRefetch={onRefetch} enabled={enabled} lastSyncedAt={last_synced_at} />
           )}
 
-          {isDemo && (
-            <p className="text-[11px] text-faint">
-              Showing demo data so you can try the experience — connect above to use your own.
-            </p>
-          )}
-
           {/* Per-provider controls (preserve api.setProvider wiring). */}
           <div className="space-y-3 border-t border-line pt-3">
             <label className="flex items-center justify-between gap-3">
@@ -509,18 +476,6 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
                 onChange={(v) => patch({ enabled: v })}
                 label={`Use ${name} in plan`}
                 id={`enable-${id}`}
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-ink">Demo data when offline</span>
-                <span className="block text-xs text-muted">Use seeded sample data when there's no live sync</span>
-              </span>
-              <Toggle
-                checked={demo !== false}
-                onChange={(v) => patch({ demo: v })}
-                label={`Demo data for ${name}`}
-                id={`demo-${id}`}
               />
             </label>
             {working && <p className="text-xs text-faint">Saving…</p>}

@@ -1766,7 +1766,7 @@ requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   res.json({ date, signals: await composeSignals(store, now, req.userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay }) })
 }))
 
-// Connections: provider statuses (incl. demo) + the plan-influence toggles.
+// Connections: real provider statuses + the plan-influence toggles.
 requireAuthRouter.get('/connections', asyncH(async (req, res) => {
   const providers = await allProviderStatuses(store, req.userId)
   const withEnabled = []
@@ -1802,9 +1802,9 @@ requireAuthRouter.put('/connections/:provider', asyncH(async (req, res) => {
   if (!['oura', 'garmin', 'apple'].includes(id)) return res.status(404).json({ error: 'Unknown provider.' })
   const patch = {}
   if (req.body?.enabled != null) patch.enabled = !!req.body.enabled
-  if (req.body?.demo != null) patch.demo = !!req.body.demo
+  patch.demo = false
   const row = await store.setIntegration(req.userId, id, patch)
-  res.json({ provider: id, enabled: row.enabled !== false, demo: row.demo !== false })
+  res.json({ provider: id, enabled: row.enabled !== false, demo: false })
 }))
 
 // The HealthKit categories the companion may read (minimum fueling context).
@@ -2031,7 +2031,16 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     // for "no target exists," which would misreport a day as "off-target"
     // that was never compared against anything.
     const onTarget = totals && calTarget > 0 ? isOnTarget(totals) : null
-    return { date, tracked: !!totals, onTarget }
+    const completion = totals && calTarget > 0
+      ? Math.max(0, Math.min(100, Math.round((totals.calories / calTarget) * 100)))
+      : null
+    const completionBand = completion == null
+      ? null
+      : completion >= 100 ? 100
+        : completion >= 75 ? 75
+          : completion >= 50 ? 50
+            : 25
+    return { date, tracked: !!totals, onTarget, completion, completionBand }
   })
   const ouraReadiness = (await store.listOuraHistory?.(req.userId, windowStartYmd, windowEndYmd)) || []
 
@@ -2065,11 +2074,10 @@ requireAuthRouter.get('/insights', asyncH(async (req, res) => {
     // that the current target was reconstructed independently for every day.
     targets: { calories: calTarget, protein_g: proteinTarget, hasTargets, basis: 'current_afp_plan' },
     days,
-    // Per-day on-target detail for the FULL window (see isOnTarget above) —
-    // the Insights dot-row's source of truth. `onTarget` is null for a day
-    // with no log entry at all (nothing to judge) and also null for every
-    // day when calTarget is 0 (no calorie target to be within ±10% of) —
-    // both are "nothing to show," never rendered as a false "missed it."
+    // Per-day detail for the full window. `completion` is the exact clamped
+    // percentage of the current calorie target logged; `completionBand` is
+    // its 25/50/75/100 visual bucket. Both are null when there is no log or
+    // no positive target. `onTarget` remains for the summary statistic.
     onTargetDetail,
     ouraReadiness: ouraReadinessOut,
     weight,

@@ -682,12 +682,12 @@ export class PgStore {
   async getIntegration(userId, provider) {
     const sql = await this.ready()
     const rows = await sql`select * from integrations where user_id = ${userId} and provider = ${provider} limit 1`
-    return rows[0] || { user_id: userId, provider, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+    return rows[0] || { user_id: userId, provider, enabled: true, demo: false, connected_at: null, last_synced_at: null, error: null, settings: {} }
   }
 
   async setIntegration(userId, provider, patch) {
     const sql = await this.ready()
-    const m = { enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {}, ...patch }
+    const m = { enabled: true, demo: false, connected_at: null, last_synced_at: null, error: null, settings: {}, ...patch }
     const rows = await sql`
       insert into integrations (user_id, provider, enabled, demo, connected_at, last_synced_at, error, settings)
       values (${userId}, ${provider}, ${m.enabled}, ${m.demo}, ${m.connected_at}, ${m.last_synced_at}, ${m.error}, ${JSON.stringify(m.settings || {})})
@@ -1860,14 +1860,14 @@ export class JsonStore {
   async getIntegration(userId, provider) {
     const d = await this.load()
     const key = `${userId}:${provider}`
-    return (d.integrations || {})[key] || { user_id: Number(userId), provider, enabled: true, demo: true, connected_at: null, last_synced_at: null, error: null, settings: {} }
+    return (d.integrations || {})[key] || { user_id: Number(userId), provider, enabled: true, demo: false, connected_at: null, last_synced_at: null, error: null, settings: {} }
   }
 
   async setIntegration(userId, provider, patch) {
     const d = await this.load()
     d.integrations = d.integrations || {}
     const key = `${userId}:${provider}`
-    const m = { ...(d.integrations[key] || { user_id: Number(userId), provider, enabled: true, demo: true, settings: {} }), ...patch, user_id: Number(userId), provider }
+    const m = { ...(d.integrations[key] || { user_id: Number(userId), provider, enabled: true, demo: false, settings: {} }), ...patch, user_id: Number(userId), provider }
     m.settings = { ...(d.integrations[key]?.settings || {}), ...(patch.settings || {}) }
     d.integrations[key] = m
     await this.persist()

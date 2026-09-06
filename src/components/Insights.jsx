@@ -431,38 +431,33 @@ export default function Insights({ refreshKey, onGoToConnections }) {
                 <Stat label="On-target days" value={num(nutrition?.onTargetDays)} />
               </Card>
 
-              {/* ON TARGET — the Card's "On-target days" count, visualized per
-                  day (server/index.js's onTargetDetail: the SAME ±10%-of-
-                  calorie-target computation the count above derives from,
-                  computed once server-side rather than re-derived here — see
-                  the isOnTarget comment in that route). Three real states per
-                  cell, same dot-bar shape as Sleep×Fiber's below but a third
-                  state added: cobalt = on target, mid-ink = logged but missed
-                  it, faint track = no log that day (identical to Sleep×Fiber's
-                  own "not logged" fill, not a new color). No color name is
-                  spelled out per-cell (this file's precedent — Sleep×Fiber's
-                  existing 2-state bar — already communicates its meaning only
-                  through the caption below it, not a legend on every dot). */}
+              {/* Daily intake completion uses four ordered strengths of the
+                  active accent. The server owns the 25/50/75/100 bucketing;
+                  this chart only maps each band to a visual shade. Exact
+                  percentages remain available through labels/tooltips, so
+                  color is never the only carrier of meaning. */}
               {onTargetDetail.length > 0 && (
                 <section>
                   <SectionHead
-                    label={`On target · last ${window} days`}
-                    right={<span className="tnum text-[13px] text-muted">{num(nutrition?.onTargetDays)}/{tracked} days</span>}
+                    label={`Intake completion · last ${window} days`}
+                    right={<span className="tnum text-[13px] text-muted">{tracked}/{window} logged</span>}
                   />
-                  <div className="mt-3 flex gap-0.5">
+                  <div className="mt-3 flex gap-0.5" role="img" aria-label={`Daily calorie-target completion for the last ${window} days`}>
                     {onTargetDetail.map((d) => (
                       <div
                         key={d.date}
-                        aria-hidden
-                        className={`h-[5px] flex-1 ${d.onTarget === true ? 'bg-cobalt' : d.onTarget === false ? 'bg-ink/35' : 'bg-track'}`}
+                        title={d.completion == null ? `${shortDate(d.date)}: no log` : `${shortDate(d.date)}: ${d.completion}% complete`}
+                        aria-label={d.completion == null ? `${shortDate(d.date)}: no log` : `${shortDate(d.date)}: ${d.completion}% of calorie target logged`}
+                        className={`h-2 flex-1 ${d.completionBand === 100 ? 'bg-cobalt' : d.completionBand === 75 ? 'bg-cobalt/70' : d.completionBand === 50 ? 'bg-cobalt/45' : d.completionBand === 25 ? 'bg-cobalt/25' : 'bg-track'}`}
                       />
                     ))}
                   </div>
                   <ChartCaption
                     left={shortDate(onTargetDetail[0].date)}
-                    mid="On-target · off-target · no log"
+                    mid="25 · 50 · 75 · 100% · darker is closer"
                     right={shortDate(onTargetDetail[onTargetDetail.length - 1].date)}
                   />
+                  <p className="mt-1 text-center text-[10px] text-faint">Unfilled days have no food log.</p>
                 </section>
               )}
 

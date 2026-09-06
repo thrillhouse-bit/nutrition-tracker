@@ -370,8 +370,8 @@ export default function Today({ date, data, dataError, entries, loading, online,
   // Today — signals.expenditure/signals.steps kept flowing through
   // /api/today (composeSignals, with the same demo/freshness/provenance
   // every other card here already uses) with no surface rendering them.
-  const exp = signals.expenditure
-  const steps = signals.steps
+  const exp = signals.expenditure?.demo === true ? null : signals.expenditure
+  const steps = signals.steps?.demo === true ? null : signals.steps
   const expMissing = !exp || exp.value == null
   const stepsMissing = !steps || steps.value == null
   const netBalance = expMissing ? null : calDone - num(exp.value)
@@ -379,24 +379,29 @@ export default function Today({ date, data, dataError, entries, loading, online,
   // Context readings — computed up front so the header's sync line and day
   // sentence below (which read rd/sl/wo) and the Daily Signals cards further
   // down share exactly one set of values, never two.
-  const rd = signals.readiness
-  const sl = signals.sleep
-  const wo = signals.workout
+  // Ignore any legacy sample payload defensively while cached clients and old
+  // server responses age out. The provider layer no longer emits demo data.
+  const rd = signals.readiness?.demo === true ? null : signals.readiness
+  const sl = signals.sleep?.demo === true ? null : signals.sleep
+  const wo = signals.workout?.demo === true ? null : signals.workout
   const rdMissing = !rd || rd.value == null
   const slMissing = !sl || sl.value == null
   const woLabel = wo?.value?.shortLabel || wo?.value?.label
   const hm = slMissing ? null : hoursToHm(sl.value)
 
-  // Sync line — honest about what actually reported. Show the live providers if
-  // any signal is a real (non-demo) reading; otherwise say plainly that these are
-  // sample readings or that nothing is connected. Never imply a live sync.
+  // Sync line — honest about what actually reported. Manual workout input is
+  // useful plan context, but it is not a wearable connection and must never
+  // make the header claim a device synced.
   const present = ['readiness', 'sleep', 'workout'].map((k) => signals[k]).filter(Boolean)
-  const liveProviders = [...new Set(present.filter((s) => !s.demo && s.provider).map((s) => s.provider.toUpperCase()))]
+  const wearablePresent = present.filter((s) => !s.demo && ['oura', 'garmin', 'apple'].includes(s.provider))
+  const liveProviders = [...new Set(wearablePresent.map((s) => s.provider.toUpperCase()))]
   const linkedProviders = providerStates.filter((p) => ['connected', 'syncing', 'stale'].includes(p.status))
   const linkedProviderDisplayNames = [...new Set(linkedProviders.map((p) => String(p.name || p.id || '')).filter(Boolean))]
   const linkedProviderNames = linkedProviderDisplayNames.map((name) => name.toUpperCase())
   const connectedWithoutData = liveProviders.length === 0 && linkedProviders.length > 0
   const linkedNeedsAttention = linkedProviders.some((p) => p.status === 'stale' || p.sync_error)
+  const hasWearableConnection = linkedProviders.length > 0 || wearablePresent.length > 0
+  const showDailySignals = !todayLoading && hasWearableConnection
 
   // Wearable refresh / honest per-provider capability, for the header below.
   // Oura is the only one of the three with a real "ask for fresh data"
@@ -462,12 +467,9 @@ export default function Today({ date, data, dataError, entries, loading, online,
     altMessage = linkedNeedsAttention
       ? `${displayNames} ${verb} connected, but recent readings have not arrived. Check the connection.`
       : `${displayNames} ${verb} connected — awaiting today's readings.`
-  } else if (present.length > 0) {
-    syncText = 'SAMPLE SIGNALS · NOT A LIVE SYNC'
-    altMessage = 'Showing sample recovery data — connect a wearable for your own.'
   } else {
-    syncText = 'NO WEARABLES CONNECTED'
-    altMessage = 'No wearable connected yet — logging still works great on its own.'
+    syncText = 'FUEL + HYDRATION MODE'
+    altMessage = 'Food, hydration, and your daily plan work without a wearable.'
   }
 
   const contribLine = contributorLine(rd)
@@ -645,7 +647,12 @@ export default function Today({ date, data, dataError, entries, loading, online,
         </div>
       )}
 
-      {/* Daily signals — Readiness, Sleep, and Workout read as ONE connected
+      {/* Daily signals — only shown once a real wearable is linked or has
+          supplied a real reading. Food-only accounts get a compact, useful
+          header state instead of three empty measurements and a fake workout
+          action.
+
+          Readiness, Sleep, and Workout read as ONE connected
           system (a shared hairline-divided strip, the same swatch/eyebrow/
           source-provenance scaffolding as before) rather than three
           unrelated decorative cards: Readiness gets the row's one signature
@@ -660,7 +667,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
           Workout (the one with the most to say: type, time, status,
           duration/energy) gets it, per the product ask's own "if the
           workout context needs more room." */}
-      <div>
+      {showDailySignals && <div>
         <h3 className="eyebrow px-3">Daily signals</h3>
         <div className="mt-2 grid grid-cols-3 divide-x divide-line border-y border-line-strong min-[560px]:grid-cols-[1fr_1fr_1.3fr]">
           {todayLoading ? (
@@ -754,7 +761,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
             </>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* The "next action" sheet — the focal moment. An audit measured three
           near-equal-weight serif moments above the fold (masthead 32px,

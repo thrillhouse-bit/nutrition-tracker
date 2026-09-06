@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { freshnessOf, composeSignals, demoSignals, PROVIDERS, ymd } from '../server/providers.js'
+import { freshnessOf, composeSignals, PROVIDERS, ymd } from '../server/providers.js'
 
 describe('freshnessOf', () => {
   const now = Date.now()
@@ -31,21 +31,7 @@ describe('provider abstraction', () => {
   })
 })
 
-describe('demoSignals (evening-run scenario)', () => {
-  it('produces coherent demo values across providers', () => {
-    const s = demoSignals(new Date())
-    expect(s.oura.readiness.value).toBe(82)
-    expect(s.oura.sleep.value).toBeCloseTo(7.4, 1)
-    expect(s.garmin.workout.value.kind).toBe('run')
-    expect(s.garmin.workout.value.startHour).toBe(17.5)
-    expect(s.apple.steps.value).toBeGreaterThan(0)
-    // demo flag is set everywhere
-    expect(s.oura.readiness.demo).toBe(true)
-    expect(s.garmin.workout.demo).toBe(true)
-  })
-})
-
-describe('composeSignals with no credentials → demo, per-metric provenance', () => {
+describe('composeSignals with no connected credentials', () => {
   const store = {
     getIntegration: async (userId, id) => ({ enabled: true, demo: true, settings: {} }),
     listOuraAccounts: async (userId) => [],
@@ -54,20 +40,16 @@ describe('composeSignals with no credentials → demo, per-metric provenance', (
     listAppleSignals: async (userId, day) => [],
     updateOuraTokens: async () => {},
   }
-  it('picks one source per metric by preference, marked demo', async () => {
+  it('returns no fabricated health readings', async () => {
     // composeSignals(store, nowDate, userId) — nowDate is 2nd, userId 3rd.
     const sig = await composeSignals(store, new Date(), 1)
-    expect(sig.readiness.provider).toBe('oura')
-    expect(sig.readiness.demo).toBe(true)
-    expect(sig.workout.provider).toBe('garmin')
-    expect(sig.expenditure.provider).toBe('garmin') // garmin preferred over apple
-    expect(sig.sleep.provider).toBe('oura')
+    expect(sig).toMatchObject({ readiness: null, sleep: null, workout: null, expenditure: null, steps: null, hrv: null })
   })
 
   it('has no manual-workout override effect when the store does not implement getManualWorkout (control — old fakes without it keep working)', async () => {
     expect(store.getManualWorkout).toBeUndefined()
     const sig = await composeSignals(store, new Date(), 1)
-    expect(sig.workout.provider).toBe('garmin') // unchanged from the demo fallback above
+    expect(sig.workout).toBeNull()
   })
 })
 
@@ -166,10 +148,10 @@ describe('composeSignals: manual workout input overrides any wearable source', (
     expect(sig.workout.value.recorded_at).toBeUndefined()
   })
 
-  it('falls back to the normal preference order when no manual workout is set for today (control)', async () => {
+  it('returns no workout when no manual or wearable workout exists', async () => {
     const store = { ...baseStore, getManualWorkout: async () => null }
     const sig = await composeSignals(store, new Date(), 1)
-    expect(sig.workout.provider).toBe('garmin') // demo fallback, unaffected
+    expect(sig.workout).toBeNull()
   })
 })
 
@@ -211,14 +193,11 @@ describe('composeSignals: demo fallback follows THIS USER\'s own connection, not
     updateOuraTokens: async () => {},
   }
 
-  it('a user with NO Oura account still gets demo readiness/sleep once the server has real Oura OAuth configured', async () => {
+  it('a user with no Oura account receives no sample readings even when server OAuth is configured', async () => {
     const store = { ...baseStore, listOuraAccounts: async () => [] }
     const sig = await composeSignals(store, new Date(), 1)
-    expect(sig.readiness.provider).toBe('oura')
-    expect(sig.readiness.demo).toBe(true)
-    expect(sig.readiness.value).toBe(82) // the seeded demo score
-    expect(sig.sleep.provider).toBe('oura')
-    expect(sig.sleep.demo).toBe(true)
+    expect(sig.readiness).toBeNull()
+    expect(sig.sleep).toBeNull()
   })
 
   it('control: a user WITH a real (but currently data-less) Oura account gets no demo fallback — a real connection never fakes its own gap', async () => {
@@ -542,20 +521,13 @@ describe('composeSignals: demo may never outrank real data, regardless of PREFER
     expect(sig.sleep).toEqual(expect.objectContaining({ provider: 'apple', demo: false, value: 6.8 }))
   })
 
-  it('control: with NOTHING connected anywhere, every metric still falls back to its normal demo value, completely unchanged from before the fix', async () => {
+  it('with nothing connected anywhere, every wearable metric remains empty', async () => {
     const store = {
       ...baseStore,
       listOuraAccounts: async () => [],
       listAppleSignals: async () => [],
     }
     const sig = await composeSignals(store, new Date(), 1)
-    // Same values demoSignals() seeds — a fresh signup with no wearables
-    // connected at all must see exactly this, not a blank Today.
-    expect(sig.readiness).toEqual(expect.objectContaining({ provider: 'oura', demo: true, value: 82 }))
-    expect(sig.sleep).toEqual(expect.objectContaining({ provider: 'oura', demo: true, value: 7.4 }))
-    expect(sig.workout).toEqual(expect.objectContaining({ provider: 'garmin', demo: true, value: expect.objectContaining({ label: 'Evening Run' }) }))
-    expect(sig.expenditure).toEqual(expect.objectContaining({ provider: 'garmin', demo: true, value: 1820 }))
-    expect(sig.steps).toEqual(expect.objectContaining({ provider: 'garmin', demo: true, value: 4200 }))
-    expect(sig.hrv).toEqual(expect.objectContaining({ provider: 'apple', demo: true, value: 62 }))
+    expect(sig).toMatchObject({ readiness: null, sleep: null, workout: null, expenditure: null, steps: null, hrv: null })
   })
 })
