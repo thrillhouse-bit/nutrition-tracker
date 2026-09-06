@@ -228,6 +228,9 @@ Runtime demo/sample wearable data is prohibited. Provider composition returns
 only account-owned readings, missing metrics remain null, connection status
 never reports a demo state, and the legacy database `demo` field is fixed false
 during migration. Cached legacy demo payloads are ignored defensively by Today.
+Regenerable legacy `daily_plans` snapshots that explicitly contain demo
+provenance are deleted during schema initialization; source food, hydration,
+profile, account, and real wearable rows are not part of that cleanup.
 
 ### Insights daily completion
 

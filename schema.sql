@@ -322,6 +322,14 @@ create table if not exists daily_plans (
   primary key (user_id, date)
 );
 
+-- Legacy releases cached plans adjusted by seeded wearable signals. These
+-- rows are regenerable projections, not source logs; removing only snapshots
+-- that explicitly contain demo provenance prevents old sample adjustments
+-- from resurfacing after runtime demo mode is retired.
+delete from daily_plans
+where jsonb_path_exists(coalesce(rationale, '[]'::jsonb), '$[*] ? (@.demo == true)')
+   or jsonb_path_exists(coalesce(signal_snapshot, '{}'::jsonb), '$.** ? (@.demo == true)');
+
 -- Adaptive Fuel Plan (server/afp/engine.js) ---------------------------------
 -- Deliberately a SEPARATE set of tables from profile/daily_targets/
 -- daily_plans above: the Adaptive Fuel Plan is an additive, independently-
