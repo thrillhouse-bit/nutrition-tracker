@@ -442,7 +442,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
                     label={`Intake completion · last ${window} days`}
                     right={<span className="tnum text-[13px] text-muted">{tracked}/{window} logged</span>}
                   />
-                  <div className="mt-3 flex gap-0.5" role="img" aria-label={`Daily calorie-target completion for the last ${window} days`}>
+                  <div className="mt-3 flex gap-0.5" role="group" aria-label={`Daily calorie-target completion for the last ${window} days`}>
                     {onTargetDetail.map((d) => (
                       <div
                         key={d.date}
