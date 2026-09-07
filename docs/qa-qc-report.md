@@ -1912,3 +1912,13 @@ No fixes made or attempted by this pass. Updated the two now-stale
 superseded since the comparison itself no longer applies) and added a
 new Info item recording this release and its independent verification
 for future passes' reference.
+
+## 2026-09-07 — Check-in pass (recurring, consolidated 04:36/08:36 UTC)
+
+Two more scheduled firings queued while idle; consolidated as before.
+`origin/main` unchanged (still `ed7972b`). The release branch
+(`codex/body-current-weekend-release`) is also unchanged — its tip
+(`0adafee`) still matches what both `omnifuelapp.tech` and
+`bodycurrent.app` serve live, same commit verified last pass. No new
+commits on either line since the Body Current release pass. No fixes
+needed this pass.
