@@ -63,8 +63,9 @@ doesn't repeat that ground.
 | Info | Deploy config | `SESSION_SECRET`'s production state is unconfirmed (unset in every dev environment checked so far) — if unset in production, any restart for any reason mass-logs-out every signed-in user, independent of any other change | Needs an owner verification, not a code fix (flagged by the same audit) |
 | Info | Live deploy | Live site stuck at commit `45bbf76` (PR #95, the food-search overhaul) for 3 consecutive check-ins — ~19.5 hours behind `main` as of 2026-08-27 12:42 UTC, having missed PR #96's already-reviewed, low-risk `MAX_RESULTS` tuning change | Resolved (2026-08-27, owner deploy — site now matches current `main` HEAD exactly) |
 | Info | Live deploy | Live site stuck at commit `431e2b0` since before PR #121 — now ~4 days / 32 commits behind `main` as of 2026-08-31 08:36 UTC. All missed app-code changes are the two already-reviewed, opt-in features this report tracked live (Control Tower Shift behind a URL hash, the read-only A2A surface) plus their follow-up fixes — no pending fix to an existing user-facing issue is stuck behind this | Resolved (2026-09-01 — live site redeployed, `GET /api/version` now matches current `main` HEAD `58f1223` exactly) |
-| Info | Live deploy | `GET /api/legal/status` on the live site reports `signupEnabled: false` — none of the 7 required `LEGAL_*` operator env vars (entity name, effective date, jurisdiction, hosting location, contact email, year, review acknowledgement) are configured in production, so new signups are currently blocked. Also reports `inviteRequired: true`, meaning `ALPHA_INVITE_ONLY` is already set — the owner appears mid-rollout on the new invite-only alpha launch (PR #137) but hasn't yet set the legal vars it depends on. Existing accounts are unaffected (legal re-consent gate only activates once `legal.ready` is true) | Reported (2026-09-01) — owner deploy/config action, not a code fix; new signups blocked until resolved |
-| Info | Live deploy | Live site stuck at `f9f8374` (before PR #148) as of 2026-09-03 04:36 UTC — the first Oathbearer deploy lag involving real app-code (new `rpg_saves`/`rpg_save_history` tables, new authenticated routes), not just docs. Schema changes are additive/idempotent (`create table if not exists`) per this session's own review, so no deploy risk from the gap itself — but live players of the game currently have no cross-device save until this deploys. Nutrition-tracking core app unaffected either way | Reported (2026-09-03) — owner deploy action, not a code fix |
+| Info | Live deploy | `GET /api/legal/status` on the live site reports `signupEnabled: false` — none of the 7 required `LEGAL_*` operator env vars (entity name, effective date, jurisdiction, hosting location, contact email, year, review acknowledgement) are configured in production, so new signups are currently blocked. Also reports `inviteRequired: true`, meaning `ALPHA_INVITE_ONLY` is already set — the owner appears mid-rollout on the new invite-only alpha launch (PR #137) but hasn't yet set the legal vars it depends on. Existing accounts are unaffected (legal re-consent gate only activates once `legal.ready` is true) | Resolved (2026-09-07 — live site now reports `signupEnabled: true`, `version: "2026-09-04"`, as part of the Body Current release below) |
+| Info | Live deploy | Live site stuck at `f9f8374` (before PR #148) as of 2026-09-03 04:36 UTC — the first Oathbearer deploy lag involving real app-code (new `rpg_saves`/`rpg_save_history` tables, new authenticated routes), not just docs. Schema changes are additive/idempotent (`create table if not exists`) per this session's own review, so no deploy risk from the gap itself — but live players of the game currently have no cross-device save until this deploys. Nutrition-tracking core app unaffected either way | Superseded (2026-09-07) — the live site has since moved to an entirely separate release branch (see below); this specific `main`-vs-live gap no longer applies as framed |
+| Info | Live deploy / release process | The live site (`omnifuelapp.tech`, with `bodycurrent.app` now the canonical domain) is running commit `0adafee`, which is **not reachable from `main` at all** — it's the tip of a long-lived, never-opened-as-a-PR branch (`codex/body-current-weekend-release`) built by a separate AI session with the repo owner's direct authorization, deployed straight to the production VPS outside the GitHub PR/`main` flow this report has used as its live-vs-repo baseline all session. It represents a full product rebrand ("Body Current"), including a new Oura-identity-based password-recovery flow, hydration logging, and extensive AFP/Apple-integration hardening. Independently verified rather than trusted: `npm test` 1922/1922, `npm run build` clean, `npm audit --omit=dev` 0 vulnerabilities (including the claimed `qs@6.16.0` override), live invite-gated signup returns an identical generic error for both no-code and garbage-code attempts (no enumeration oracle), the new `/api/water` route is auth-gated (401 unauthenticated), all security headers still present, and the password-recovery code (`server/index.js`) reads as a carefully designed, identity-only Oura-gated flow with uniform timing/response shape. **Going forward, this report's "live site vs. `main`" comparisons no longer reflect what's actually deployed** — production now tracks this separate branch, not `main` | Reported (2026-09-07) — a deliberate, authorized release outside this report's normal branch, not a defect; noted so future passes don't keep comparing live against the wrong baseline |
 
 ## 2026-08-25 — First pass
 
@@ -1813,3 +1814,101 @@ Nothing new in the repo — `origin/main` unchanged since the last
 check-in (still `b87d0a1`). Live site also unchanged (`f9f8374`) —
 both tracked Info items hold, ninth consecutive quiet pass. No fixes
 needed this pass.
+
+## 2026-09-07 — Check-in pass (recurring, consolidating 12 queued firings across ~2026-09-05/06)
+
+This session was idle for an extended stretch; 12 identical scheduled
+firings queued up (2026-09-05 00:36 UTC through 2026-09-06 20:36 UTC).
+Consolidated into one pass covering current state, as in every prior
+multi-firing gap — but this time current state changed substantially.
+
+**`origin/main` itself is unchanged** — still `ed7972b`, the same
+commit as the last real check-in. But the live site is not: `GET
+/api/version` now returns `0adafee`, and that commit **does not exist
+anywhere in `main`'s history**. Tracing it down: `0adafee` is the tip
+of `origin/codex/body-current-weekend-release`, a long-lived branch
+that has never been opened as a pull request (confirmed via
+`list_pull_requests` — zero PRs, open or closed, for that branch; zero
+open PRs in the repo at all right now). Reading that branch's own two
+handoff documents (`docs/weekend-invite-release.md`,
+`docs/CLAUDE-HANDOFF.md`) explains what happened: a separate AI
+session, working with the repo owner's direct authorization, has been
+preparing and shipping a full product rebrand — **Body Current**,
+canonical domain `bodycurrent.app`, with `omnifuelapp.tech` kept only
+as a migration alias — deployed straight to the production VPS via a
+documented backup/migrate/rollback runbook, entirely outside the
+GitHub PR → `main` flow this report has used as its live-vs-repo
+baseline for the whole session.
+
+This is the largest single event this report has tracked, and also
+the first time "compare live against `main`" has stopped being a valid
+check — so this pass verified independently rather than either
+trusting the handoff docs' own claims or assuming something was wrong
+just because it diverged from `main`:
+
+- **Branding**: `curl`'d the live root page — `<title>Body Current</title>`,
+  and `https://bodycurrent.app/` resolves (200) directly, not just as
+  a redirect target.
+- **Security headers unaffected**: full CSP/`X-Frame-Options`/HSTS/
+  `Permissions-Policy` set exactly as before, confirmed via `curl -I`
+  against the live domain.
+- **Legal/signup gate now resolved**: `GET /api/legal/status` reports
+  `ready: true`, `signupEnabled: true`, `version: "2026-09-04"` — the
+  two-pass-old blocked-signups Info item is genuinely fixed as part of
+  this release, not coincidentally.
+- **Invite gating verified live, not just read**: a signup attempt
+  with no invite code and one with a garbage invite code both returned
+  the identical generic `"This invitation is invalid or has already
+  been used."` — no account-existence or code-validity oracle, exactly
+  as the handoff doc claims.
+- **New hydration route correctly gated**: `GET /api/water`
+  unauthenticated → 401.
+- **Test suite and build reproduced independently**: checked out the
+  branch into a separate git worktree (not touching this session's own
+  `main` checkout), ran `npm install` (0 vulnerabilities, confirming
+  the claimed `qs@6.16.0` override is actually present in
+  `package.json`), `npm test` — 145 files, **1922/1922** passing (higher
+  than the handoff doc's last recorded count, consistent with commits
+  landing after that note was written), and `npm run build` — clean,
+  Oathbearer's game chunks (`ControlTowerRPG`, `ControlTowerShift`,
+  `RPGAccountGate`) still present and unaffected alongside the rebrand.
+- **New password-recovery flow read directly, not summarized from the
+  doc**: `server/index.js`'s `/api/auth/recovery/*` routes use Oura
+  OAuth as identity proof only for accounts that already had an Oura
+  account linked before recovery began, store only digests of
+  recovery tokens, return the identical response/timing for known,
+  unknown, linked, and unlinked addresses (explicit code comment
+  states the rationale and mirrors this report's own long-standing
+  login-timing-oracle concern), rate-limit the start endpoint, and
+  require a 12+ character new password with confirmation match before
+  consuming the single-use token. This reads as a genuinely careful
+  design, not just an asserted one.
+
+**Not independently re-verified** (would mean re-doing work a
+different, already-careful process already did, or isn't practical
+from outside VPS access): the actual production database
+backup/restore/migration steps, the ownerless-row-cleanup script's
+production run, native Apple/Garmin signing readiness (both handoff
+docs are explicit these remain unavailable pending real
+credentials/hardware), and the medical-safety fail-closed conditions
+newly added to the Adaptive Fuel Plan engine (the code comments and
+cited literature read as substantive, but verifying clinical-safety
+logic is out of this report's scope and competence).
+
+**Nothing here is a defect to fix.** This is a deliberate, carefully
+documented, security-conscious release, authorized directly by the
+repo owner, running on infrastructure and a branch this session
+doesn't operate on — there is no PR to merge, no branch to reconcile
+into `main` in the way this report normally works, and every claim
+checked held up. The one actionable note for future passes: **live-site
+checks from here on should be understood as checking whatever is
+actually deployed (currently this release branch), not assumed to
+track `main`** — the two have genuinely diverged as separate lines,
+and this report's own "live matches `main` HEAD" language from every
+earlier pass should not be read backwards as implying they still do.
+
+No fixes made or attempted by this pass. Updated the two now-stale
+`main`-vs-live Info items above (one resolved by this release, one
+superseded since the comparison itself no longer applies) and added a
+new Info item recording this release and its independent verification
+for future passes' reference.
