@@ -1922,3 +1922,10 @@ Two more scheduled firings queued while idle; consolidated as before.
 `bodycurrent.app` serve live, same commit verified last pass. No new
 commits on either line since the Body Current release pass. No fixes
 needed this pass.
+
+## 2026-09-07 — Check-in pass (recurring, consolidated 12:37/16:36 UTC)
+
+Two more scheduled firings queued while idle; consolidated as before.
+`origin/main` unchanged (still `ed4d800`). Release branch tip still
+`0adafee`, still matching both live domains exactly. No fixes needed
+this pass.
