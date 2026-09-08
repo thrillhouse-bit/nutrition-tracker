@@ -82,7 +82,11 @@ safe-area padding, and hairline-separated sections. Content density is compact
 but touch controls remain at least 44px. Layouts may widen progressively, but
 must remain complete at 320px and must not introduce horizontal scrolling.
 Loading and empty states preserve the information hierarchy; an absent feature
-does not leave a decorative hole.
+does not leave a decorative hole. Today leads with date and compact connection
+context, then one dominant daily priority before supporting signals and intake.
+Secondary arithmetic and entry-management detail use progressive disclosure;
+Today previews only the three most recent food entries and routes the complete
+history to Log.
 
 ## Elevation & Depth
 
@@ -104,7 +108,9 @@ Shared controls in `src/components/ui.jsx` own default, hover, focus-visible,
 disabled, busy, destructive, error, sheet, spinner, and skeleton treatments.
 Every status combines shape and text. Disabled controls remain readable;
 loading indicators name what is being loaded; failures retain user input and
-offer a real retry or recovery action.
+offer a real retry or recovery action. `Disclosure` owns inline expandable
+secondary detail with a 44px button, announced expanded state, preserved
+content state, and the shared focus treatment.
 
 ### Buttons and actions
 

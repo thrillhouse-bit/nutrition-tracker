@@ -35,7 +35,14 @@ export function automaticPlanEligibility(profile = {}) {
 }
 
 export function isAfpProfileReady(profile) {
-  return !!profile && REQUIRED.every((key) => profile[key] !== null && profile[key] !== undefined && profile[key] !== '')
+  if (!profile) return false
+  if (profile.plan_mode === 'manual' || profile.plan_mode === 'clinician') {
+    const targets = profile.manual_targets
+    return !!targets && ['calories', 'protein_g', 'carbs_g', 'fat_g']
+      .every((key) => targets[key] !== null && targets[key] !== undefined && targets[key] !== ''
+        && Number.isFinite(Number(targets[key])) && Number(targets[key]) >= 0)
+  }
+  return REQUIRED.every((key) => profile[key] !== null && profile[key] !== undefined && profile[key] !== '')
 }
 
 export function legacyGoalToAfp(goal) {

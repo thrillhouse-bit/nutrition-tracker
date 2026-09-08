@@ -2648,6 +2648,21 @@ describe('GET/PUT /api/afp/profile', () => {
     expect(res.status).toBe(400)
   })
 
+  it.each(['inactive', 'low'])('accepts the canonical NASEM activity option %s used by onboarding', async (activity_level) => {
+    const res = await put('/api/afp/profile', { activity_level })
+    expect(res.status).toBe(200)
+    expect((await res.json()).profile.activity_level).toBe(activity_level)
+  })
+
+  it('marks a complete manual target profile ready without automatic-estimate fields', async () => {
+    const res = await put('/api/afp/profile', {
+      plan_mode: 'manual',
+      manual_targets: { calories: 2200, protein_g: 150, carbs_g: 240, fat_g: 71.1 },
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).ready).toBe(true)
+  })
+
   it('accepts sex: null (the "prefer not to say" path)', async () => {
     await put('/api/afp/profile', { sex: 'male' })
     const res = await put('/api/afp/profile', { sex: null })

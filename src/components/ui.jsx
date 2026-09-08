@@ -4,7 +4,7 @@
 // circles), hairline rules in ink, cobalt as the single accent, status shown by
 // SHAPE + WORD (never color alone), Bodoni numerals, Archivo labels. White is a
 // moment that matters. Every control has a visible focus ring and a real label.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { fmt, num } from '../lib/nutrition.js'
 
 /* --- buttons ------------------------------------------------------------- */
@@ -114,6 +114,30 @@ export function SectionTitle({ children, right, className = '' }) {
     <div className={`mb-2 flex items-baseline justify-between ${className}`}>
       <h3 className="eyebrow">{children}</h3>
       {right}
+    </div>
+  )
+}
+
+// Shared inline disclosure for secondary information. The explicit button
+// gives every caller the same 44px target, focus treatment, and announced
+// expanded state without adding another modal or screen-local accordion.
+export function Disclosure({ label, meta, children, className = '', contentClassName = '', defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const contentId = useId()
+  return (
+    <div className={`border-y border-line ${className}`}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-11 w-full items-center gap-3 py-2.5 text-left"
+      >
+        <span className="flex-1 text-[14px] font-bold leading-tight text-ink">{label}</span>
+        {meta && <span className="tnum max-w-[55%] text-right text-[10.5px] font-medium leading-snug text-muted">{meta}</span>}
+        <span aria-hidden className={`text-[15px] leading-none text-muted transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
+      </button>
+      <div id={contentId} hidden={!open} className={`border-t border-line ${contentClassName}`}>{children}</div>
     </div>
   )
 }

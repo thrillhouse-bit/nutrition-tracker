@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import { ymd } from '../lib/nutrition.js'
-import { Button, TextButton, ErrorNote } from './ui.jsx'
+import { Button, Disclosure, TextButton, ErrorNote } from './ui.jsx'
 import HydrationSettings from './HydrationSettings.jsx'
 import { DEFAULT_HYDRATION, waterAmount, quantityDraft, editQuantity } from '../lib/hydration.js'
 const isToday = d => ymd(d) === ymd(new Date())
@@ -77,24 +77,26 @@ export default function HydrationPanel({ date, hydration, onChanged }) {
   return (
     <section aria-labelledby="hydration-heading" className="border-y border-line py-4">
       <div className="flex items-end justify-between gap-3">
-        <div><h3 id="hydration-heading" className="eyebrow">Hydration</h3><p className="mt-1 text-sm text-muted">{preferences.goal_ml ? 'Manual water intake · your own goal' : 'Manual water intake · no personalized target'}</p></div>
-        <div className="text-right"><div className="numeral text-2xl text-ink">{waterAmount(total, preferences.unit)}</div><div className="eyebrow">Logged</div></div>
+        <div><h2 id="hydration-heading" className="text-[15px] font-bold leading-tight text-ink">Hydration</h2><p className="mt-1 text-[11px] text-muted">{preferences.goal_ml ? 'Your water goal' : 'Manual water tracking'}</p></div>
+        <div className="text-right"><div className="numeral text-[26px] font-semibold leading-none text-ink">{waterAmount(total, preferences.unit)}</div><div className="eyebrow mt-1">Logged</div></div>
       </div>
-      <div className="mt-2 flex items-center justify-between gap-3"><p className="text-xs text-muted">{preferences.goal_ml ? (isToday(date) ? `Your daily goal: ${waterAmount(preferences.goal_ml, preferences.unit)}` : 'History shows intake only; your current goal is not applied to past days.') : 'Set an optional goal and your usual cup sizes.'}</p><TextButton onClick={() => setSettingsOpen(true)}>Customize</TextButton></div>
+      <div className="mt-1 flex items-center justify-between gap-3"><p className="text-[11px] leading-snug text-muted">{preferences.goal_ml ? (isToday(date) ? `Goal ${waterAmount(preferences.goal_ml, preferences.unit)}` : 'Your current goal is not applied to past days') : 'No goal set'}</p><TextButton onClick={() => setSettingsOpen(true)} className="text-[11px]">Customize</TextButton></div>
       {preferences.goal_ml && isToday(date) && <div className="mt-2"><div role="progressbar" aria-label="Water logged toward your own goal" aria-valuemin={0} aria-valuemax={preferences.goal_ml} aria-valuenow={Math.min(total, preferences.goal_ml)} aria-valuetext={`${waterAmount(total, preferences.unit)} logged of your ${waterAmount(preferences.goal_ml, preferences.unit)} goal`} className="h-2 overflow-hidden bg-fill"><div className="h-full bg-cobalt" style={{ width: `${Math.min(100, Math.max(0, total / preferences.goal_ml * 100))}%` }} /></div><p className="mt-1 text-xs text-muted">{total >= preferences.goal_ml ? 'Your chosen goal is met.' : `${waterAmount(preferences.goal_ml - total, preferences.unit)} to your chosen goal`}</p></div>}
       <div className="mt-3 flex gap-2" aria-label="Quick add water">
         {preferences.quick_add_ml.map((ml, index) => <Button key={index} variant="outline" className="min-h-11 flex-1 px-2 text-xs" disabled={busy} onClick={() => quickAdd(ml)}>+{waterAmount(ml, preferences.unit)}</Button>)}
       </div>
-      <form noValidate onSubmit={save} className="mt-3 grid gap-2 border-t border-line pt-3 sm:grid-cols-[1fr_90px_1.35fr_auto]">
-        <label className="min-w-0"><span className="eyebrow mb-1 block">Amount</span><input aria-label="Water amount" inputMode="decimal" value={amount.text} onChange={(e) => setAmount(editQuantity(e.target.value, unit))} className="w-full border border-line-strong bg-paper px-2 py-2 text-sm text-ink" /></label>
-        <label><span className="eyebrow mb-1 block">Unit</span><select aria-label="Water unit" value={unit} onChange={(e) => changeUnit(e.target.value)} className="min-h-11 w-full border border-line-strong bg-paper px-2 text-sm text-ink"><option value="ml">mL</option><option value="oz">US fl oz</option></select></label>
-        <label><span className="eyebrow mb-1 block">When</span><input aria-label="Water time" type="datetime-local" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} className="min-h-11 w-full border border-line-strong bg-paper px-2 text-sm text-ink" /></label>
-        <Button type="submit" disabled={busy} className="self-end">{busy ? 'Saving…' : editing ? 'Save' : 'Add water'}</Button>
-      </form>
-      {editing && <TextButton className="mt-2" onClick={() => { setEditing(null); setError('') }}>Cancel edit</TextButton>}
+      <Disclosure label="More water options" meta={entries.length ? `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}` : 'Amount, time & history'} className="mt-3 px-1" contentClassName="pb-1 pt-3">
+        <form noValidate onSubmit={save} className="grid gap-2 sm:grid-cols-[1fr_90px_1.35fr_auto]">
+          <label className="min-w-0"><span className="eyebrow mb-1 block">Amount</span><input aria-label="Water amount" inputMode="decimal" value={amount.text} onChange={(e) => setAmount(editQuantity(e.target.value, unit))} className="w-full border border-line-strong bg-paper px-2 py-2 text-sm text-ink" /></label>
+          <label><span className="eyebrow mb-1 block">Unit</span><select aria-label="Water unit" value={unit} onChange={(e) => changeUnit(e.target.value)} className="min-h-11 w-full border border-line-strong bg-paper px-2 text-sm text-ink"><option value="ml">mL</option><option value="oz">US fl oz</option></select></label>
+          <label><span className="eyebrow mb-1 block">When</span><input aria-label="Water time" type="datetime-local" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} className="min-h-11 w-full border border-line-strong bg-paper px-2 text-sm text-ink" /></label>
+          <Button type="submit" disabled={busy} className="self-end">{busy ? 'Saving…' : editing ? 'Save' : 'Add water'}</Button>
+        </form>
+        {editing && <TextButton className="mt-2" onClick={() => { setEditing(null); setError('') }}>Cancel edit</TextButton>}
+        {entries.length > 0 && <div className="mt-3 border-t border-line">{entries.map((entry) => <div key={entry.id} className="flex min-h-11 items-center gap-2 border-b border-line"><span className="w-12 tnum text-[10.5px] text-muted">{timeHm(entry.logged_at)}</span><span className="flex-1 text-sm text-ink">{waterAmount(entry.amount_ml, preferences.unit)}</span><TextButton onClick={() => beginEdit(entry)}>Edit</TextButton><button type="button" onClick={() => remove(entry)} disabled={busy} className="h-11 w-11 text-faint hover:text-alert disabled:cursor-not-allowed" aria-label={`Delete ${waterAmount(entry.amount_ml, preferences.unit)} water entry`}>✕</button></div>)}</div>}
+      </Disclosure>
       {error && <ErrorNote className="mt-2">{error}</ErrorNote>}
       {settingsOpen && <HydrationSettings preferences={preferences} onClose={() => setSettingsOpen(false)} onSaved={saved => { if (!alive.current) return; setPreferences(saved); setUnit(saved.unit); setAmount(q => quantityDraft(q.ml, saved.unit)); setSettingsOpen(false); onChanged?.() }} />}
-      {entries.length > 0 && <div className="mt-3 border-t border-line">{entries.map((entry) => <div key={entry.id} className="flex min-h-11 items-center gap-2 border-b border-line"><span className="w-12 tnum text-[10.5px] text-muted">{timeHm(entry.logged_at)}</span><span className="flex-1 text-sm text-ink">{waterAmount(entry.amount_ml, preferences.unit)}</span><TextButton onClick={() => beginEdit(entry)}>Edit</TextButton><button type="button" onClick={() => remove(entry)} disabled={busy} className="h-11 w-11 text-faint hover:text-alert disabled:cursor-not-allowed" aria-label={`Delete ${waterAmount(entry.amount_ml, preferences.unit)} water entry`}>✕</button></div>)}</div>}
     </section>
   )
 }

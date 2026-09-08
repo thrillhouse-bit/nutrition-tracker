@@ -69,7 +69,7 @@ const FOOD_ENTRY = (calories) => ({
   food: { name: 'Test food', calories },
 })
 
-describe('Today: Energy balance card', () => {
+describe('Today: Energy and movement disclosure', () => {
   it('renders in/out/net from a real (non-demo) expenditure signal, plus steps', () => {
     const text = renderToday(
       {
@@ -81,13 +81,15 @@ describe('Today: Energy balance card', () => {
       },
       [FOOD_ENTRY(1800)],
     )
-    expect(text).toMatch(/Energy balance/)
+    expect(text).toMatch(/Energy & movement/)
     expect(text).toMatch(/1,800|1800/) // in
     expect(text).toMatch(/2,500|2500/) // out
     expect(text).toMatch(/700/) // |1800 - 2500| = 700
     expect(text).toMatch(/Deficit/) // 1800 - 2500 < 0
     expect(text).toMatch(/8,341|8341/) // steps
     expect(text).toMatch(/Garmin/)
+    const disclosure = [...container.querySelectorAll('button')].find((node) => node.textContent.includes('Energy & movement'))
+    expect(disclosure?.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('renders a surplus when logged intake exceeds expenditure', () => {
@@ -110,17 +112,16 @@ describe('Today: Energy balance card', () => {
       },
       [FOOD_ENTRY(1000)],
     )
-    expect(text).toMatch(/No data/i)
+    expect(text).not.toMatch(/Energy & movement|No data/i)
     expect(text).not.toMatch(/Demo|1,820|820.*Deficit/i)
   })
 
-  it('shows an em-dash, not a silent zero, when expenditure is unavailable', () => {
+  it('omits secondary energy arithmetic when no wearable expenditure or steps exist', () => {
     const text = renderToday(
       { baseline: { calories: 2200 }, signals: {} },
       [FOOD_ENTRY(1000)],
     )
-    expect(text).toMatch(/Energy balance/)
-    expect(text).toMatch(/No data/i)
+    expect(text).not.toMatch(/Energy & movement|No data/i)
     expect(text).not.toMatch(/Surplus|Deficit/)
   })
 })

@@ -221,8 +221,24 @@ disconnected. A linked provider with no current-day signal is labelled
 and routes connection management to Connections. Only an account with no linked
 provider and no live signal enters **Fuel + hydration mode**. Today keeps food,
 hydration, targets, recommendations, and the connection action functional, but
-omits the three-column Daily signals strip entirely. A manual workout remains
-valid Plan context; it does not impersonate a wearable connection.
+omits the three-column Daily signals strip entirely. A linked account with no
+current-day readings also omits that strip rather than rendering three empty
+measurements. The compact header connection row owns provider name, freshness,
+last-sync context, and the real Refresh/Manage/Connect action. A manual workout
+remains valid Plan context; it does not impersonate a wearable connection.
+
+### Today information hierarchy
+
+Today is a daily decision surface, not a complete dashboard. Date and connection
+state are compact context. The next recommendation is the dominant first card,
+followed by available wearable signals and current intake. Energy arithmetic is
+secondary and expands inline only when expenditure or step data exists.
+
+Hydration keeps its total, goal progress, Customize action, and three quick-add
+amounts immediately available. Exact amount/time entry and water history expand
+under **More water options**. Food history on Today is limited to the three most
+recent entries; **View all** opens the complete Log. These disclosures use the
+shared button-based `Disclosure` owner and preserve keyboard and focus behavior.
 
 Runtime demo/sample wearable data is prohibited. Provider composition returns
 only account-owned readings, missing metrics remain null, connection status

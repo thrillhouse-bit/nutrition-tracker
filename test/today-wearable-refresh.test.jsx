@@ -228,7 +228,7 @@ describe('Today: Apple — honest no-cloud-API copy, never a working refresh', (
 })
 
 describe('Today: mixed-provider sanity (control) — the strip never conflates providers', () => {
-  it('shows the Oura button AND the Garmin caption together when both are genuinely live for different cards, with no cross-talk', async () => {
+  it('summarizes mixed live providers together while preserving Oura refresh, with no Apple cross-talk', async () => {
     const el = await renderToday({
       baseline: { calories: 2200 },
       signals: {
@@ -237,7 +237,7 @@ describe('Today: mixed-provider sanity (control) — the strip never conflates p
       },
     })
     expect(refreshBtn(el)).toBeTruthy()
-    expect(el.textContent).toMatch(/Garmin syncs automatically/i)
+    expect(el.textContent).toMatch(/Oura \+ Garmin synced/i)
     expect(el.textContent).not.toMatch(/companion app/i)
   })
 })

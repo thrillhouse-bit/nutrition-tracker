@@ -85,7 +85,10 @@ export const AfpProfilePatchSchema = z.object({
   sex: z.enum(['male', 'female']).nullable().optional(),
   body_fat_pct: z.number().finite().min(1).max(70).nullable().optional(),
   equation_stratum: z.enum(['men', 'women', 'unsure']).nullable().optional(),
-  activity_level: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']).nullable().optional(),
+  // `inactive` / `low` are the canonical NASEM categories presented by the
+  // AFP form and consumed by the engine. The older calculator aliases remain
+  // accepted so migrated profiles keep working at the same API boundary.
+  activity_level: z.enum(['inactive', 'low', 'sedentary', 'light', 'moderate', 'active', 'very_active']).nullable().optional(),
   // Accept historic values at the boundary, then normalize them to one of the
   // four canonical AFP strategies in the route handler.
   goal: z.enum(['maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance', 'maintain', 'gradual_loss', 'loss', 'lose_fat', 'gradual_gain', 'gain', 'build_muscle', 'endurance', 'performance', 'fuel_performance', 'custom']).optional(),

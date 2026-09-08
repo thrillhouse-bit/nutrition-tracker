@@ -116,13 +116,50 @@ describe('Today header: day-context sentence — live signals', () => {
   })
 })
 
+describe('Today information hierarchy', () => {
+  it('leads with a strong date and places the daily priority before supporting signals and intake', async () => {
+    const el = await renderToday({
+      ...BASE,
+      recommendation: { title: 'Build a balanced lunch', detail: 'Start with protein and produce.', kind: 'on_track', why: [] },
+      signals: { readiness: { value: 78, provider: 'oura', freshness: 'fresh', demo: false } },
+    })
+    const title = [...el.querySelectorAll('h1')].find((node) => node.textContent === 'Today')
+    const priority = el.querySelector('#today-recommendation')
+    const signals = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'Daily signals')
+    const intake = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'Intake so far')
+    expect(title?.className).toContain('font-semibold')
+    expect(priority).toBeTruthy()
+    expect(priority.compareDocumentPosition(signals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(signals.compareDocumentPosition(intake) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps hydration details closed by default and limits Today to the three most recent foods', async () => {
+    const entries = Array.from({ length: 5 }, (_, index) => ({
+      id: index + 1,
+      logged_at: new Date(Date.now() + index * 1000).toISOString(),
+      servings_consumed: 1,
+      food: { name: `Meal ${index + 1}`, calories: 100 },
+    }))
+    const el = await renderToday({ ...BASE, signals: {} }, { entries })
+    const waterDisclosure = [...el.querySelectorAll('button')].find((node) => node.textContent.includes('More water options'))
+    expect(waterDisclosure?.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => { waterDisclosure.click() })
+    expect(waterDisclosure?.getAttribute('aria-expanded')).toBe('true')
+    expect(el.textContent).toMatch(/Latest 3 of 5/)
+    expect(el.textContent).not.toMatch(/Meal 1|Meal 2/)
+    expect(el.textContent).toMatch(/Meal 3/)
+    expect(el.textContent).toMatch(/Meal 4/)
+    expect(el.textContent).toMatch(/Meal 5/)
+  })
+})
+
 describe('Today header: honest food-only and connected-without-data states', () => {
   it('treats a legacy demo-only payload as food-and-hydration mode', async () => {
     const el = await renderToday({
       ...BASE,
       signals: { readiness: { value: 82, provider: 'oura', freshness: 'fresh', demo: true } },
     })
-    expect(el.textContent).toMatch(/FUEL \+ HYDRATION MODE/)
+    expect(el.textContent).toMatch(/Fuel \+ hydration mode/i)
     expect(el.textContent).not.toMatch(/Daily signals|Demo data/)
     expect(el.textContent).not.toMatch(/Strong recovery\.|Solid recovery\.|Moderate recovery\.|Low recovery\./)
   })
@@ -132,7 +169,7 @@ describe('Today header: honest food-only and connected-without-data states', () 
     const el = await renderToday({ ...BASE, signals: {} }, { onGoToConnections })
     expect(el.textContent).toMatch(/Food, hydration, and your daily plan work without a wearable/)
     expect(el.textContent).not.toMatch(/Daily signals|No workout set/)
-    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Connect a wearable'))
+    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Connect')
     expect(btn).toBeTruthy()
     await act(async () => { btn.click() })
     expect(onGoToConnections).toHaveBeenCalledTimes(1)
@@ -148,11 +185,11 @@ describe('Today header: honest food-only and connected-without-data states', () 
       signals: { workout: { value: { label: 'Evening Run' }, provider: 'garmin', demo: true } },
     }, { onGoToConnections })
 
-    expect(el.textContent).toMatch(/OURA · CONNECTED/)
+    expect(el.textContent).toMatch(/Oura connected/)
     expect(el.textContent).toMatch(/Oura is connected — awaiting today's readings\./)
-    expect(el.textContent).not.toMatch(/No wearable connected yet|Showing sample recovery data/)
+    expect(el.textContent).not.toMatch(/Daily signals|No wearable connected yet|Showing sample recovery data/)
     expect(el.querySelector('[aria-label="Refresh Oura data"]')).toBeTruthy()
-    const manage = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Manage connection'))
+    const manage = [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Manage')
     expect(manage).toBeTruthy()
     await act(async () => { manage.click() })
     expect(onGoToConnections).toHaveBeenCalledTimes(1)
@@ -164,7 +201,7 @@ describe('Today header: honest food-only and connected-without-data states', () 
       providers: [{ id: 'oura', name: 'Oura', status: 'stale', demo: false, sync_error: 'refresh_token_expired' }],
       signals: {},
     })
-    expect(el.textContent).toMatch(/OURA · NEEDS ATTENTION/)
+    expect(el.textContent).toMatch(/Oura needs attention/)
     expect(el.textContent).toMatch(/recent readings have not arrived/)
     expect(el.textContent).not.toMatch(/No wearable connected yet/)
   })
@@ -175,7 +212,7 @@ describe('Today header: honest food-only and connected-without-data states', () 
       ...BASE,
       signals: { readiness: { value: 78, provider: 'oura', freshness: 'fresh', demo: false } },
     }, { onGoToConnections })
-    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Connect a wearable'))
+    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Connect')
     expect(btn).toBeUndefined()
   })
 
@@ -198,21 +235,21 @@ describe('Today header: stale real sync', () => {
     signals: { sleep: { value: 7.0, provider: 'apple', freshness: 'fresh', demo: false, recorded_at: new Date().toISOString() } },
   }
 
-  it('flags a stale real signal with STALE + a "Manage connection" action', async () => {
+  it('flags a stale real signal with a clear attention state and Manage action', async () => {
     const onGoToConnections = vi.fn()
     const el = await renderToday(STALE, { onGoToConnections })
-    expect(el.textContent).toMatch(/STALE/)
-    expect(el.textContent).toMatch(/LAST SYNCED/)
-    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Manage connection'))
+    expect(el.textContent).toMatch(/needs attention/)
+    expect(el.textContent).toMatch(/Last synced/)
+    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Manage')
     expect(btn).toBeTruthy()
     await act(async () => { btn.click() })
     expect(onGoToConnections).toHaveBeenCalledTimes(1)
   })
 
-  it('CONTROL: a fresh real signal never shows STALE or the Manage-connection action', async () => {
+  it('CONTROL: a fresh real signal never shows the attention or Manage state', async () => {
     const el = await renderToday(FRESH, { onGoToConnections: vi.fn() })
-    expect(el.textContent).not.toMatch(/STALE/)
-    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Manage connection'))
+    expect(el.textContent).not.toMatch(/needs attention/)
+    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Manage')
     expect(btn).toBeUndefined()
   })
 
@@ -228,13 +265,13 @@ describe('Today header: stale real sync', () => {
 describe('Today header: loading — stable geometry, no premature state', () => {
   it('renders a loading indicator and does NOT claim "no wearable connected" while data is still null', async () => {
     const el = await renderToday(null)
-    expect(el.textContent).toMatch(/LOADING/)
+    expect(el.textContent).toMatch(/Updating today/)
     expect(el.textContent).not.toMatch(/No wearable connected yet|Showing sample recovery data/)
   })
 
   it('CONTROL: once data resolves (even to an empty composite), the loading text is gone', async () => {
     const el = await renderToday({ ...BASE, signals: {} })
-    expect(el.textContent).not.toMatch(/LOADING/)
+    expect(el.textContent).not.toMatch(/Updating today/)
   })
 })
 
@@ -269,9 +306,9 @@ describe('Readiness card: plain-language bands', () => {
     expect(el.textContent).not.toMatch(/HRV \d/)
   })
 
-  it('CONTROL: em-dash and "No data" when readiness is missing, never a fabricated band word', async () => {
+  it('CONTROL: omits the strip when every reading is missing, never fabricating a band word', async () => {
     const el = await renderToday({ ...BASE, signals: {} })
-    expect(el.textContent).toMatch(/No data/)
+    expect(el.textContent).not.toMatch(/Daily signals|No data/)
     expect(el.textContent).not.toMatch(/recovery/i)
   })
 })
@@ -349,7 +386,7 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
       ...BASE,
       signals: { workout: { value: { kind: 'run', intensity: 'easy', time: '5:30 PM', status: 'planned' }, provider: 'manual', freshness: 'fresh', demo: false } },
     })
-    expect(el.textContent).toMatch(/FUEL \+ HYDRATION MODE/)
+    expect(el.textContent).toMatch(/Fuel \+ hydration mode/i)
     expect(el.textContent).not.toMatch(/Daily signals|Easy run/)
   })
 
@@ -383,7 +420,7 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
 describe('Today: no implicit/hardcoded demo data anywhere in the redesign', () => {
   it('a fully empty composite (no signals, zero entries) never shows a number that was not real', async () => {
     const el = await renderToday({ baseline: { calories: 2200 }, signals: {} }, {})
-    expect(el.textContent).toMatch(/FUEL \+ HYDRATION MODE/)
+    expect(el.textContent).toMatch(/Fuel \+ hydration mode/i)
     expect(el.textContent).not.toMatch(/Daily signals|No workout set|Evening Run|82|7\.4/)
   })
 })
@@ -461,7 +498,7 @@ describe('A genuine /api/today fetch failure gets an honest message and a retry 
   it('shows an error message and a working retry action when dataError is true', async () => {
     const onChanged = vi.fn()
     const el = await renderToday(null, { dataError: true, onChanged })
-    expect(el.textContent).toMatch(/Couldn't load today's data/)
+    expect(el.textContent).toMatch(/Today’s information couldn’t load/)
     expect(el.textContent).toMatch(/Try again/)
     const retryBtn = [...el.querySelectorAll('button')].find((b) => b.textContent.includes('Try again'))
     expect(retryBtn).toBeTruthy()
@@ -473,7 +510,7 @@ describe('A genuine /api/today fetch failure gets an honest message and a retry 
     const el = await renderToday(null, { dataError: false })
     expect(el.textContent).not.toMatch(/Couldn't load/)
     expect(el.textContent).not.toMatch(/Try again/)
-    expect(el.textContent).toMatch(/LOADING/)
+    expect(el.textContent).toMatch(/Updating today/)
   })
 
   it('CONTROL: a successful load (data present) never shows the error message even if dataError was left stale as true', async () => {
@@ -491,7 +528,7 @@ describe('Hydration is manual context, never an invented target', () => {
     const onChanged = vi.fn()
     const el = await renderToday({ ...BASE, signals: {}, hydration: { total_ml: 750, entries: [{ id: 1, amount_ml: 750, logged_at: new Date().toISOString() }] } }, { onChanged })
     expect(el.textContent).toMatch(/750 mL/)
-    expect(el.textContent).toMatch(/no personalized target/i)
+    expect(el.textContent).toMatch(/No goal set/i)
     const quick = [...el.querySelectorAll('button')].find((button) => button.textContent === '+250 mL')
     await act(async () => { quick.click() })
     expect(add).toHaveBeenCalledWith(expect.objectContaining({ amount_ml: 250, logged_at: expect.any(String) }))

@@ -1,5 +1,30 @@
 # DESIGN.md — visual/UX design rationale
 
+## 7 Sep 2026 — Today reading hierarchy
+
+Today now follows a relevance-first reading order inspired by the information
+architecture of strong wearable apps, including Oura, without copying their
+visual language. One compact header carries the selected day and provider
+freshness. A single **Today's priority** panel becomes the page's strongest
+moment; real daily signals and intake follow as supporting evidence. Provider
+actions stay adjacent to provider status instead of competing with the main
+recommendation.
+
+The page uses progressive disclosure to reduce its initial scan length. Energy
+and movement arithmetic appears only when real expenditure or step data exists
+and is collapsed by default. Hydration keeps total, goal progress, Customize,
+and quick-add controls visible while exact amount/time entry and water history
+move under **More water options**. Today's food preview stops at the three most
+recent entries and sends the full history to Log.
+
+Hierarchy is carried by weight and spacing inside the established editorial
+system: the 31px serif day and 30px serif recommendation are the primary anchors;
+15px bold section labels and key totals are secondary; provider freshness and
+other metadata remain restrained at 10.5–13px. The account accent, warm paper,
+sharp rules, existing type families, and real-data-only contract are unchanged.
+The shared button-based `Disclosure` makes expanded state explicit to assistive
+technology and retains the global 44px target and focus treatment.
+
 ## 5 Sep 2026 — real-only signals and completion spectrum
 
 Runtime sample wearable data has been removed. An account without a linked

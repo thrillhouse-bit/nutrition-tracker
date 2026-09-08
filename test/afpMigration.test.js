@@ -38,4 +38,11 @@ describe('canonical AFP profile migration', () => {
     expect(await ensureCanonicalAfpProfile(store, 1)).toEqual({ profile, ready: true, migrated: false })
     expect(store.getProfile).not.toHaveBeenCalled()
   })
+
+  it('treats a complete manual or clinician target set as ready without automatic-profile fields', () => {
+    const manual_targets = { calories: 2200, protein_g: 150, carbs_g: 240, fat_g: 71.1 }
+    expect(isAfpProfileReady({ plan_mode: 'manual', manual_targets })).toBe(true)
+    expect(isAfpProfileReady({ plan_mode: 'clinician', manual_targets })).toBe(true)
+    expect(isAfpProfileReady({ plan_mode: 'manual', manual_targets: { ...manual_targets, fat_g: null } })).toBe(false)
+  })
 })

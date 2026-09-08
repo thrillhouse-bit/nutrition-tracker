@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import HydrationPanel from './HydrationPanel.jsx'
 import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
-import { Card, Dial, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
+import { Card, Dial, Disclosure, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
 
 // Manual re-fetch window for the Oura backfill button below — a small
 // trailing window is enough to catch anything the daily resync/connect-time
@@ -12,20 +12,18 @@ const OURA_REFRESH_DAYS = 5
 
 const isToday = (d) => ymd(d) === ymd(new Date())
 
-function dayLabel(d) {
+function primaryDayLabel(d) {
   if (isToday(d)) return 'Today'
-  const y = new Date(); y.setDate(y.getDate() - 1)
-  if (ymd(d) === ymd(y)) return 'Yesterday'
-  return new Date(d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+  if (ymd(d) === ymd(yesterday)) return 'Yesterday'
+  return new Date(d).toLocaleDateString(undefined, { weekday: 'long' })
 }
 
-// The header's readable full date — "Wednesday, August 26." Only rendered
-// as a SECOND, secondary piece of text next to "Today"/"Yesterday" (dayLabel
-// above already spells out the weekday/month/day for every other day, so
-// showing this twice for those would be pure repetition — see the header's
-// own render logic below for exactly when each appears).
-function readableFullDate(d) {
-  return new Date(d).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+function dateDetail(d) {
+  const date = new Date(d)
+  const options = { month: 'long', day: 'numeric' }
+  if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric'
+  return date.toLocaleDateString(undefined, options)
 }
 
 // Wall-clock helpers. Sync/updated stamps read naturally (locale, AM/PM);
@@ -401,7 +399,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const connectedWithoutData = liveProviders.length === 0 && linkedProviders.length > 0
   const linkedNeedsAttention = linkedProviders.some((p) => p.status === 'stale' || p.sync_error)
   const hasWearableConnection = linkedProviders.length > 0 || wearablePresent.length > 0
-  const showDailySignals = !todayLoading && hasWearableConnection
+  const showDailySignals = !todayLoading && wearablePresent.length > 0
 
   // Wearable refresh / honest per-provider capability, for the header below.
   // Oura is the only one of the three with a real "ask for fresh data"
@@ -444,31 +442,20 @@ export default function Today({ date, data, dataError, entries, loading, online,
   // can say so plainly and offer a real next step, rather than silently
   // showing the same "SYNCED" copy for a signal that quietly stopped updating.
   const staleSignal = present.find((s) => !s.demo && s.freshness === 'stale')
-  let syncText
   // The header's one-sentence day summary, or an honest alternate message —
-  // built in the SAME branch that decides syncText (rather than a second,
-  // parallel if/else) so the two can never classify "live vs. demo vs. none"
-  // differently.
+  // built from the same source classification as the connection row so the
+  // two never disagree about live, linked-without-data, or food-only state.
   let daySentence = []
   let altMessage = null
   if (syncLive) {
-    if (staleSignal) {
-      const staleWhen = timeShort(staleSignal.recorded_at)
-      syncText = `${liveProviders.join(' + ')} · STALE${staleWhen ? ` · LAST SYNCED ${staleWhen}` : ''}`
-    } else {
-      syncText = `${liveProviders.join(' + ')} · SYNCED${syncTime ? ` ${syncTime}` : ''}`
-    }
     daySentence = daySentenceParts({ rd, sl, wo, hm, isHistoricalDay })
   } else if (connectedWithoutData) {
-    const names = linkedProviderNames.join(' + ')
     const displayNames = linkedProviderDisplayNames.join(' + ')
     const verb = linkedProviderNames.length === 1 ? 'is' : 'are'
-    syncText = `${names} · ${linkedNeedsAttention ? 'NEEDS ATTENTION' : 'CONNECTED'}`
     altMessage = linkedNeedsAttention
       ? `${displayNames} ${verb} connected, but recent readings have not arrived. Check the connection.`
       : `${displayNames} ${verb} connected — awaiting today's readings.`
   } else {
-    syncText = 'FUEL + HYDRATION MODE'
     altMessage = 'Food, hydration, and your daily plan work without a wearable.'
   }
 
@@ -521,120 +508,111 @@ export default function Today({ date, data, dataError, entries, loading, online,
     return items
   }, [rec, rd, sl, wo, calDone, calTarget])
 
+  const providerHeading = liveProviders.map((name) => name[0] + name.slice(1).toLowerCase()).join(' + ')
+  const staleWhen = staleSignal ? timeShort(staleSignal.recorded_at) : ''
+  let connectionHeading
+  let connectionDetail
+  if (dataError && todayLoading) {
+    connectionHeading = "Couldn't update today"
+    connectionDetail = 'Check your connection and try again'
+  } else if (todayLoading) {
+    connectionHeading = 'Updating today'
+    connectionDetail = 'Reading your latest plan and signals'
+  } else if (syncLive) {
+    connectionHeading = `${providerHeading} ${staleSignal ? 'needs attention' : 'synced'}`
+    if (staleSignal) connectionDetail = staleWhen ? `Last synced ${staleWhen}` : 'Recent readings may be out of date'
+    else if (garminLive && !ouraLive && !appleLive) connectionDetail = 'Garmin syncs automatically'
+    else if (appleLive && !ouraLive && !garminLive) connectionDetail = 'Open the companion app to sync Apple Health'
+    else connectionDetail = syncTime ? `Updated ${syncTime}` : 'Latest readings available'
+  } else if (connectedWithoutData) {
+    connectionHeading = `${linkedProviderDisplayNames.join(' + ')} ${linkedNeedsAttention ? 'needs attention' : 'connected'}`
+    connectionDetail = linkedNeedsAttention ? 'Recent readings have not arrived' : "Awaiting today's readings"
+  } else {
+    connectionHeading = 'Fuel + hydration mode'
+    connectionDetail = 'Food, water, and your daily plan work without a wearable'
+  }
+
+  const recentEntries = entries.slice(-3)
+  const hiddenEntryCount = Math.max(0, entries.length - recentEntries.length)
+
+  const recommendationPanel = rec ? (
+    <section aria-labelledby="today-recommendation" className="border-[1.5px] border-line-strong bg-cobalt-soft px-4 pb-4 pt-4 shadow-[0_3px_10px_rgb(18_18_16/0.10)]">
+      <div className="flex items-center justify-between">
+        <span className="eyebrow text-cobalt">Today’s priority</span>
+        {syncLive && syncTime && <span className="tnum text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted">Updated {syncTime}</span>}
+      </div>
+      <h2 id="today-recommendation" className="serif mt-2.5 text-[30px] font-semibold leading-[1.04] tracking-[-0.015em] text-ink">{rec.title}</h2>
+      {rec.detail && <p className="mt-2 max-w-[32rem] text-[13px] leading-[1.5] text-ink/75">{rec.detail}</p>}
+      {whyItems.length > 0 && (
+        <div className="mt-3 border-t border-line">
+          <Why items={whyItems} />
+        </div>
+      )}
+    </section>
+  ) : (
+    <Card white as="section" className="px-4 py-4" aria-labelledby="today-recommendation-empty">
+      <div className="eyebrow mb-2 text-cobalt">Today’s priority</div>
+      <h2 id="today-recommendation-empty" className="text-[15px] font-bold text-ink">Build your next recommendation</h2>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{loading ? 'Reading your plan…' : 'Log food to get a clear next step against today’s plan.'}</p>
+    </Card>
+  )
+
   return (
-    <div className="space-y-5" {...swipeHandlers}>
-      {/* Day context header (26 Aug 2026 redesign) — replaces the old
-          oversized masthead (a 32px title + an 18px date line + a sync dot,
-          each its own row) with one compact block: date nav + readable date
-          on one line, freshness/sync status (secondary — "support the
-          metric, not dominate it") on the next, then a single concrete
-          day-context sentence built only from real data, or an honest
-          alternate message + action when there's nothing real to summarize.
-          The old oversized "Today" masthead ate real vertical space for
-          almost no information; this carries strictly more (date + sync +
-          a synthesized sentence) in less height. */}
-      <div>
-        <div className="flex items-center gap-1">
-          <button onClick={onPrevDay} aria-label="Previous day" className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink">‹</button>
-          <div className="min-w-0 flex-1">
-            <span className="serif text-[19px] leading-none text-ink">{dayLabel(date)}</span>
-            {(isToday(date) || dayLabel(date) === 'Yesterday') && (
-              <span className="ml-1.5 tnum text-[12px] text-muted">{readableFullDate(date)}</span>
-            )}
+    <div className="space-y-6" {...swipeHandlers}>
+      <header className="border-b border-line pb-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 pt-1">
+            <h1 className="serif text-[31px] font-semibold leading-none tracking-[-0.02em] text-ink">{primaryDayLabel(date)}</h1>
+            <p className="tnum mt-1.5 text-[12px] font-medium text-muted">{dateDetail(date)}</p>
           </div>
-          <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-my-2 flex h-11 w-11 shrink-0 items-center justify-center text-xl leading-none text-muted hover:text-ink disabled:opacity-30">›</button>
-          {!isToday(date) && (
-            <TextButton onClick={onToday} className="-mr-2 shrink-0 text-[11px]">Today</TextButton>
-          )}
+          <nav aria-label="Choose day" className="flex shrink-0 items-center">
+            <button onClick={onPrevDay} aria-label="Previous day" className="flex h-11 w-11 items-center justify-center border border-line text-xl leading-none text-muted hover:bg-fill hover:text-ink">‹</button>
+            <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-ml-px flex h-11 w-11 items-center justify-center border border-line text-xl leading-none text-muted hover:bg-fill hover:text-ink disabled:cursor-not-allowed disabled:opacity-30">›</button>
+          </nav>
         </div>
 
-        <div className="mt-1 flex items-center gap-2">
-          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive || linkedNeedsAttention ? 'border border-alert bg-transparent' : connectedWithoutData ? 'border border-cobalt bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
-          <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted tnum">{dataError && todayLoading ? 'COULD NOT LOAD TODAY' : todayLoading ? 'LOADING…' : syncText}</span>
-        </div>
-
-        {/* "Manage connection" — a real, always-available next step for a
-            stale real signal, whichever provider it came from. Oura also
-            gets its own working "Refresh" (below) because it alone has a
-            real re-fetch action; this link is the honest fallback for
-            Garmin/Apple, which don't, and stays useful alongside Oura's
-            button rather than replacing it. */}
-        {!todayLoading && syncLive && staleSignal && onGoToConnections && (
-          <TextButton chevron onClick={onGoToConnections} className="-ml-2 text-[11px]">Manage connection</TextButton>
-        )}
-
-        {/* Wearable refresh strip — relocated here (26 Aug 2026 redesign)
-            from its old spot below the context strip, so the header carries
-            its own retry action directly under the sync status it belongs
-            to. Logic/copy unchanged from before: Oura gets a real, working
-            manual refresh; Garmin/Apple get honest, non-actionable copy
-            instead of a button with nothing real to do (see ouraLive/
-            garminLive/appleLive above for exactly why). Nothing renders here
-            at all for a disconnected or all-demo account — an empty strip
-            under an honest demo/unavailable state is correct, not a bug to
-            fill with a fake control. */}
-        {(ouraLive || ouraConnected || garminLive || appleLive || ouraError) && (
-          <div className="mt-2 space-y-2">
-            {(ouraLive || ouraConnected) && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10.5px] leading-snug text-muted">
-                  Pull the latest readiness, sleep, and workouts from Oura.
-                </span>
-                <Button
-                  variant="outline"
-                  onClick={refreshOura}
-                  disabled={ouraBusy}
-                  aria-label="Refresh Oura data"
-                  className="shrink-0"
-                >
-                  {ouraBusy ? <Spinner /> : 'Refresh'}
-                </Button>
-              </div>
-            )}
-            {garminLive && (
-              <p className="text-[10.5px] leading-snug text-faint">
-                Garmin syncs automatically when connected — there's no manual refresh to trigger.
-              </p>
-            )}
-            {appleLive && (
-              <p className="text-[10.5px] leading-snug text-faint">
-                Open the companion app on your phone or watch to sync new Apple Health data.
-              </p>
-            )}
-            {ouraError && <ErrorNote>{ouraError}</ErrorNote>}
-          </div>
-        )}
-
-        {/* The day-context sentence — the header's one concrete, concise
-            line. Loading keeps the same block height (a muted bar, no text)
-            so nothing shifts once /api/today resolves. */}
-        <div className="mt-2.5">
+        <div className="mt-3 min-h-[20px]">
           {dataError && todayLoading ? (
-            // `&& todayLoading` (i.e. data == null) is defense-in-depth, not
-            // a reachable app state today: App.jsx always clears dataError
-            // alongside a successful setTodayData, so the two shouldn't be
-            // able to disagree — but real data arriving must always win over
-            // a stale error flag if they ever do.
             <>
-              <p className="text-[14.5px] leading-snug text-ink">Couldn't load today's data. Your connection or the server may be having trouble.</p>
+              <p className="text-[14px] font-semibold leading-snug text-ink">Today’s information couldn’t load.</p>
               {onChanged && (
-                <TextButton chevron onClick={onChanged} className="-ml-2 text-[13px]">Try again</TextButton>
+                <TextButton chevron onClick={onChanged} className="-ml-2 text-[12px]">Try again</TextButton>
               )}
             </>
           ) : todayLoading ? (
-            <div className="h-[18px] w-3/4 bg-fill" />
+            <div className="h-5 w-3/4 bg-fill" />
           ) : syncLive ? (
-            daySentence.length > 0 && <p className="text-[14.5px] leading-snug text-ink">{daySentence.join(' ')}</p>
+            daySentence.length > 0 && <p className="text-[15px] font-semibold leading-snug text-ink">{daySentence.join(' ')}</p>
           ) : (
-            <>
-              <p className="text-[14.5px] leading-snug text-muted">{altMessage}</p>
-              {onGoToConnections && (
-                <TextButton chevron onClick={onGoToConnections} className="-ml-2 text-[13px]">{connectedWithoutData ? 'Manage connection' : 'Connect a wearable'}</TextButton>
-              )}
-            </>
+            <p className="text-[13px] leading-relaxed text-muted">{altMessage}</p>
           )}
         </div>
-      </div>
+
+        <div className="mt-4 flex min-h-[54px] items-stretch border-y border-line bg-rail/70">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2">
+            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive || linkedNeedsAttention ? 'border border-alert bg-transparent' : connectedWithoutData ? 'border border-cobalt bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-bold text-ink">{connectionHeading}</div>
+              <div className="truncate text-[10.5px] leading-snug text-muted">{connectionDetail}</div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center border-l border-line">
+            {(ouraLive || ouraConnected) && (
+              <button type="button" onClick={refreshOura} disabled={ouraBusy} aria-label="Refresh Oura data" className="flex min-h-11 min-w-14 items-center justify-center px-3 text-[11px] font-bold text-cobalt hover:bg-fill disabled:cursor-not-allowed disabled:opacity-50">
+                {ouraBusy ? <Spinner /> : 'Refresh'}
+              </button>
+            )}
+            {!todayLoading && ((syncLive && staleSignal) || connectedWithoutData) && onGoToConnections && (
+              <button type="button" onClick={onGoToConnections} className="flex min-h-11 items-center border-l border-line px-3 text-[11px] font-bold text-cobalt hover:bg-fill">Manage</button>
+            )}
+            {!todayLoading && !hasWearableConnection && onGoToConnections && (
+              <button type="button" onClick={onGoToConnections} className="flex min-h-11 items-center px-3 text-[11px] font-bold text-cobalt hover:bg-fill">Connect</button>
+            )}
+          </div>
+        </div>
+        {ouraError && <ErrorNote className="mt-2">{ouraError}</ErrorNote>}
+        {!isToday(date) && <TextButton onClick={onToday} className="-mb-3 -ml-2 mt-1 text-[11px]">Return to today</TextButton>}
+      </header>
 
       {/* Offline / pending-sync strip — Sand, the same "pending, not yet
           synced" tone as the log-row tag above, not the legacy amber warn. */}
@@ -646,6 +624,8 @@ export default function Today({ date, data, dataError, entries, loading, online,
           )}
         </div>
       )}
+
+      {recommendationPanel}
 
       {/* Daily signals — only shown once a real wearable is linked or has
           supplied a real reading. Food-only accounts get a compact, useful
@@ -668,8 +648,11 @@ export default function Today({ date, data, dataError, entries, loading, online,
           duration/energy) gets it, per the product ask's own "if the
           workout context needs more room." */}
       {showDailySignals && <div>
-        <h3 className="eyebrow px-3">Daily signals</h3>
-        <div className="mt-2 grid grid-cols-3 divide-x divide-line border-y border-line-strong min-[560px]:grid-cols-[1fr_1fr_1.3fr]">
+        <div className="flex items-baseline justify-between px-1">
+          <h2 className="text-[15px] font-bold leading-tight text-ink">Daily signals</h2>
+          <span className="text-[10.5px] text-muted">At a glance</span>
+        </div>
+        <div className="mt-2 grid grid-cols-3 divide-x divide-line border-y border-line-strong bg-card/35 min-[560px]:grid-cols-[1fr_1fr_1.3fr]">
           {todayLoading ? (
             <>
               <SignalSkeleton label="Readiness" />
@@ -763,59 +746,6 @@ export default function Today({ date, data, dataError, entries, loading, online,
         </div>
       </div>}
 
-      {/* The "next action" sheet — the focal moment. An audit measured three
-          near-equal-weight serif moments above the fold (masthead 32px,
-          context numerals 30px, this title 29px) with nothing making the
-          recommendation clearly win, so this card gets more weight than the
-          ordinary `Card white` treatment: a heavier border (border-line-
-          strong, 1.5px vs. the default 1px border-line) and a real lifted
-          shadow (vs. `Card white`'s 1px/0.06-alpha hairline, barely visible
-          against paper) plus a touch more top/bottom padding. Background is
-          cobalt-soft, not bg-card's pure #fff — flagged 25 Aug 2026 (owner:
-          "stark", "jarring") as the one surface where that treatment reads
-          as a glaring white cutout rather than a lifted sheet, being the
-          first and most emphasized thing on the page. cobalt-soft is the
-          SAME wash the app already uses for a positive/highlighted moment
-          (App.jsx's success toast: border-cobalt/40 bg-cobalt-soft
-          text-cobalt) and pairs with the eyebrow/Why-this icon already
-          being cobalt here, so the card reads as one cohesive
-          cobalt-accented highlight instead of an unrelated color. Border
-          and shadow are untouched — both are neutral ink-alpha tones (see
-          index.css's --color-line-strong), so they read the same regardless
-          of what's under them, and the weight this whole treatment was
-          built to win stays intact. Hand-rolled rather than `<Card white>` +
-          className overrides: `Card`'s skin string and any override both
-          land in Tailwind's `utilities` layer, and same-layer precedence
-          there is generation-order-dependent, not source order in the
-          className string — not worth relying on for a deliberate design
-          decision. The other two "white moment" surfaces that need a
-          specific weight (Plan.jsx, SmartPlanForm.jsx) still hand-write the
-          bg-card/border/shadow trio for the same reason — this card is
-          deliberately the only one of the three that's no longer white. */}
-      {rec ? (
-        <div className="border-[1.5px] border-line-strong bg-cobalt-soft px-4 pb-3.5 pt-4 shadow-[0_3px_10px_rgb(18_18_16/0.10)]">
-          <div className="flex items-center justify-between">
-            <span className="eyebrow text-cobalt">Recommendation</span>
-            {/* Only the live branch gets a specific clock time — a fresh-
-                looking "Updated 10:25 PM" stamp beside "SAMPLE SIGNALS ·
-                NOT A LIVE SYNC" implied a real sync that never happened. */}
-            {syncLive && syncTime && <span className="tnum text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted">Updated {syncTime}</span>}
-          </div>
-          <h2 className="serif mt-2.5 text-[29px] leading-[1.05] tracking-[-0.01em] text-ink">{rec.title}</h2>
-          {rec.detail && <p className="mt-2 max-w-[300px] text-[13.5px] leading-[1.45] text-ink/80">{rec.detail}</p>}
-          {whyItems.length > 0 && (
-            <div className="mt-2.5 border-t border-line">
-              <Why items={whyItems} />
-            </div>
-          )}
-        </div>
-      ) : (
-        <Card white className="px-4 py-4">
-          <div className="eyebrow mb-2 text-cobalt">Recommendation</div>
-          <p className="text-sm text-muted">{loading ? 'Reading your plan…' : 'Log a few items and connect a wearable to get a fueling recommendation.'}</p>
-        </Card>
-      )}
-
       {/* Intake so far — the calorie headline, budget bar, and macro grid.
           The numeral here used to render at 38px, larger than the
           recommendation card's own 29px title above — the single largest,
@@ -825,9 +755,9 @@ export default function Today({ date, data, dataError, entries, loading, online,
       <section>
         <div className="flex items-end justify-between">
           <div>
-            <div className="eyebrow">Intake so far</div>
+            <h2 className="text-[15px] font-bold leading-tight text-ink">Intake so far</h2>
             <div className="mt-2.5 flex items-baseline gap-2">
-              <span className="numeral text-[27px] leading-[0.9] text-ink">{fmt(calDone, 0)}</span>
+              <span className="numeral text-[30px] font-semibold leading-[0.9] text-ink">{fmt(calDone, 0)}</span>
               <span className="tnum text-[12.5px] text-muted">/ {fmt(calTarget, 0)} kcal</span>
             </div>
           </div>
@@ -859,51 +789,44 @@ export default function Today({ date, data, dataError, entries, loading, online,
         </div>
       </section>
 
-      {/* Energy balance — in vs. out, plus steps. Missing/disabled reads as
-          an em-dash, same "no data, never a silent number" rule as the
-          context strip and log rows above. Given a contained panel 25 Aug
-          2026 (owner: wanted a "face lift") — it used to be bare text
-          sitting directly on the page ground, the only numeral-bearing
-          section on Today with no visual container of its own (Intake so
-          far has its segment bar + macro grid, Recommendation its card).
-          bg-rail (not bg-card): this is a grouped INFO panel, not a
-          "moment that matters" the way Recommendation is — reusing the same
-          neutral wash the nav bar already reads as "contained chrome" keeps
-          the one white/cobalt-soft "this is special" cue meaningful instead
-          of every section fighting for the same visual weight. */}
-      <section className="border border-line bg-rail px-4 py-3.5">
-        <div className="flex items-baseline justify-between">
-          <span className="eyebrow">Energy balance</span>
-          {!stepsMissing && (
-            <span className="tnum text-[10.5px] font-medium uppercase tracking-[0.1em] text-muted">{fmt(steps.value, 0)} steps</span>
-          )}
-        </div>
-        <div className="mt-3 flex items-end gap-2.5">
-          <div className="flex-1">
-            <div className="numeral text-[22px] leading-none text-ink">{fmt(calDone, 0)}</div>
-            <div className="mt-1 eyebrow text-[9px]">In</div>
-          </div>
-          <span className="pb-3 text-muted">−</span>
-          <div className="flex-1">
-            <div className={`numeral text-[22px] leading-none ${expMissing ? 'text-faint' : 'text-ink'}`}>
-              {expMissing ? '—' : fmt(exp.value, 0)}
+      {/* Energy and movement are useful supporting context, not a second
+          headline. Match the Today hierarchy by omitting the section when a
+          wearable supplied neither reading and revealing its arithmetic on
+          demand when data exists. */}
+      {(!expMissing || !stepsMissing) && (
+        <Disclosure
+          label="Energy & movement"
+          meta={!stepsMissing ? `${fmt(steps.value, 0)} steps` : netBalance == null ? 'Wearable context' : `${fmt(Math.abs(netBalance), 0)} kcal ${netBalance > 0 ? 'surplus' : netBalance < 0 ? 'deficit' : 'balanced'}`}
+          className="bg-rail/70 px-3"
+          contentClassName="pb-3 pt-3"
+        >
+          <div className="flex items-end gap-2.5">
+            <div className="flex-1">
+              <div className="numeral text-[22px] leading-none text-ink">{fmt(calDone, 0)}</div>
+              <div className="mt-1 eyebrow text-[9px]">In</div>
             </div>
-            <div className="mt-1 eyebrow text-[9px]">Out</div>
-          </div>
-          <span className="pb-3 text-muted">=</span>
-          <div className="flex-1">
-            <div className={`numeral text-[22px] leading-none ${netBalance == null ? 'text-faint' : netBalance > 0 ? 'text-cobalt' : 'text-ink'}`}>
-              {netBalance == null ? '—' : fmt(Math.abs(netBalance), 0)}
+            <span className="pb-3 text-muted">−</span>
+            <div className="flex-1">
+              <div className={`numeral text-[22px] leading-none ${expMissing ? 'text-faint' : 'text-ink'}`}>
+                {expMissing ? '—' : fmt(exp.value, 0)}
+              </div>
+              <div className="mt-1 eyebrow text-[9px]">Out</div>
             </div>
-            <div className="mt-1 eyebrow text-[9px]">
-              {netBalance == null ? 'Balance' : netBalance === 0 ? 'Balanced' : netBalance > 0 ? 'Surplus' : 'Deficit'}
+            <span className="pb-3 text-muted">=</span>
+            <div className="flex-1">
+              <div className={`numeral text-[22px] leading-none ${netBalance == null ? 'text-faint' : netBalance > 0 ? 'text-cobalt' : 'text-ink'}`}>
+                {netBalance == null ? '—' : fmt(Math.abs(netBalance), 0)}
+              </div>
+              <div className="mt-1 eyebrow text-[9px]">
+                {netBalance == null ? 'Balance' : netBalance === 0 ? 'Balanced' : netBalance > 0 ? 'Surplus' : 'Deficit'}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="mt-3 border-t border-line pt-2">
-          {expMissing ? <StatusTag status="unavailable" /> : <SourceLabel signal={exp} />}
-        </div>
-      </section>
+          <div className="mt-3 border-t border-line pt-2">
+            {expMissing ? <StatusTag status="unavailable" /> : <SourceLabel signal={exp} />}
+          </div>
+        </Disclosure>
+      )}
 
       {/* Today's log — chronological, on the paper ground */}
       <HydrationPanel date={date} hydration={data?.hydration} onChanged={onChanged} />
@@ -911,7 +834,10 @@ export default function Today({ date, data, dataError, entries, loading, online,
       {/* Today's log — chronological, on the paper ground */}
       <section>
         <div className="flex items-center justify-between">
-          <h3 className="eyebrow">Today's log</h3>
+          <div>
+            <h2 className="text-[15px] font-bold leading-tight text-ink">Today’s log</h2>
+            {hiddenEntryCount > 0 && <p className="mt-0.5 text-[10.5px] text-muted">Latest {recentEntries.length} of {entries.length}</p>}
+          </div>
           {/* "View all" views: it goes to the Log tab's grouped day view. It
               used to open the Add sheet — a logging flow under a reviewing
               label. */}
@@ -925,7 +851,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
           <EmptyState title="Nothing logged yet" className="mt-2">Tap Log food to scan a barcode, photograph a label, or add manually.</EmptyState>
         ) : (
           <div className="mt-1">
-            {entries.map((e) => <LogRow key={e.id} entry={e} onEdit={onEditEntry} onDelete={onDeleteEntry} />)}
+            {recentEntries.map((e) => <LogRow key={e.id} entry={e} onEdit={onEditEntry} onDelete={onDeleteEntry} />)}
           </div>
         )}
       </section>
