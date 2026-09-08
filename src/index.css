@@ -95,11 +95,89 @@ body {
    not a second, unrelated color strip. Other pages retain the quiet paper
    rail so their controls never lose contrast. */
 .app-top-nav--today {
-  background: linear-gradient(180deg, rgb(4 8 11 / 0.60), rgb(4 8 11 / 0.28));
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
-  backdrop-filter: blur(12px) saturate(1.08);
-  text-shadow: 0 1px 5px rgb(0 0 0 / 0.72);
+  background:
+    linear-gradient(180deg, rgb(4 8 11 / 0.34), rgb(4 8 11 / 0.12) 72%, transparent),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-cobalt) 12%, transparent), transparent 42%);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.10);
+  -webkit-backdrop-filter: blur(7px) saturate(1.14);
+  backdrop-filter: blur(7px) saturate(1.14);
+  text-shadow: 0 1px 5px rgb(0 0 0 / 0.76);
+}
+
+.app-top-nav-item {
+  min-height: 52px;
+}
+
+.app-top-nav--today .app-top-nav-item--active {
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.86), 0 0 14px color-mix(in srgb, var(--color-current-glow) 56%, transparent);
+}
+
+.app-top-nav-indicator {
+  left: 50%;
+  width: 28px;
+  height: 3px;
+  transform: translateX(-50%);
+}
+
+.app-top-nav-indicator--current {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-progress-mid), #ffffff 52%, var(--color-current-glow));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-cobalt) 66%, transparent), 0 -1px rgb(255 255 255 / 0.68);
+}
+
+.app-top-nav-indicator--paper {
+  background: linear-gradient(90deg, var(--color-progress-mid), var(--color-cobalt), var(--color-cobalt-ink));
+  box-shadow: 0 0 9px color-mix(in srgb, var(--color-cobalt) 26%, transparent);
+}
+
+/* The named account palettes behave like a restrained mineral material on
+   active controls: one directional highlight, a deeper lower edge, and a
+   small colored shadow. Neutral surfaces remain flat and paper-like. */
+.accent-primary {
+  border: 1px solid color-mix(in srgb, var(--color-cobalt-ink) 76%, white);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.20), transparent 42%),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-cobalt) 82%, white), var(--color-cobalt) 52%, var(--color-cobalt-ink));
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.32),
+    inset 0 -1px rgb(0 0 0 / 0.14),
+    0 7px 16px color-mix(in srgb, var(--color-cobalt) 24%, transparent);
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.22);
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+
+.accent-primary:hover {
+  filter: saturate(1.08) brightness(1.04);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.38),
+    inset 0 -1px rgb(0 0 0 / 0.16),
+    0 9px 20px color-mix(in srgb, var(--color-cobalt) 30%, transparent);
+}
+
+.accent-primary:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.18), inset 0 -1px rgb(0 0 0 / 0.16), 0 3px 8px color-mix(in srgb, var(--color-cobalt) 22%, transparent);
+}
+
+.accent-field:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-cobalt) 16%, transparent);
+}
+
+.accent-selection {
+  background:
+    radial-gradient(circle at 88% 10%, color-mix(in srgb, var(--color-cobalt) 20%, transparent), transparent 42%),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-cobalt-soft) 78%, white), var(--color-cobalt-soft));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.70), 0 5px 14px color-mix(in srgb, var(--color-cobalt) 10%, transparent);
+}
+
+.accent-solid {
+  border-color: color-mix(in srgb, var(--color-cobalt-ink) 72%, white);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.18), transparent 48%),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-cobalt) 86%, white), var(--color-cobalt) 58%, var(--color-cobalt-ink));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.28), inset 0 -1px rgb(0 0 0 / 0.12);
+  color: var(--color-oncobalt);
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.20);
 }
 
 /* Body Current's one immersive product surface. The default Alpine field and
@@ -231,16 +309,46 @@ body {
   );
 }
 
+.today-hero-control-cluster,
+.today-connection-panel {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.30);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.055)),
+    color-mix(in srgb, var(--color-cobalt-ink) 10%, rgb(4 8 11 / 0.16));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.18), 0 8px 24px rgb(4 8 11 / 0.16);
+  -webkit-backdrop-filter: blur(14px) saturate(1.18);
+  backdrop-filter: blur(14px) saturate(1.18);
+}
+
 .today-hero-control,
 .today-hero-action {
   cursor: pointer;
-  background: rgb(4 8 11 / 0.06);
+  background: transparent;
   transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.today-hero-control--divided,
+.today-hero-action--divided,
+.today-connection-actions {
+  border-left: 1px solid rgb(255 255 255 / 0.20);
 }
 
 .today-hero-control:hover,
 .today-hero-action:hover {
-  background: rgb(4 8 11 / 0.42);
+  background: rgb(255 255 255 / 0.13);
+}
+
+.today-connection-mark--live {
+  border: 1px solid rgb(255 255 255 / 0.82);
+  background: var(--color-current-glow);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-cobalt) 22%, transparent), 0 0 12px color-mix(in srgb, var(--color-current-glow) 72%, transparent);
+}
+
+.today-connection-mark--quiet {
+  border: 1px solid rgb(255 255 255 / 0.68);
+  background: rgb(4 8 11 / 0.16);
 }
 
 .today-current-field :where(button, [tabindex]):focus-visible {
@@ -263,6 +371,11 @@ body {
 .today-glance-orb-value {
   font-variant-numeric: tabular-nums lining-nums;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.98), 0 3px 10px rgb(0 0 0 / 0.78);
+}
+
+.today-glance-orb svg circle[stroke='var(--color-current-glow)'],
+.today-current-field svg path[stroke='var(--color-current-glow)'] {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-current-glow) 58%, transparent));
 }
 
 button.today-glance-orb {

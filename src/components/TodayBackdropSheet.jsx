@@ -84,7 +84,7 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
                 aria-pressed={selected}
                 onClick={() => chooseScene(scene.id)}
                 disabled={busy}
-                className={`min-h-11 cursor-pointer border p-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong hover:border-ink'}`}
+                className={`min-h-11 cursor-pointer border p-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'accent-selection border-cobalt' : 'border-line-strong hover:border-ink'}`}
               >
                 <ScenePreview scene={scene.id} />
                 <span className="mt-1.5 block text-xs font-bold text-ink">{scene.label}</span>

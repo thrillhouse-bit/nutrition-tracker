@@ -656,12 +656,12 @@ export default function Today({ date, data, dataError, entries, loading, online,
                 <h1 className="serif mt-1 text-[31px] font-semibold leading-none tracking-[-0.02em] text-white">{primaryDayLabel(date)}</h1>
                 <p className="tnum mt-1 text-[11px] font-medium text-white/90">{dateDetail(date)}</p>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="today-hero-control-cluster flex shrink-0 items-center">
                 <nav aria-label="Choose day" className="flex items-center">
                   <button onClick={onPrevDay} aria-label="Previous day" className="today-hero-control flex h-11 w-11 items-center justify-center text-xl leading-none text-white">‹</button>
-                  <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="today-hero-control flex h-11 w-11 items-center justify-center text-xl leading-none text-white disabled:cursor-not-allowed disabled:opacity-35">›</button>
+                  <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="today-hero-control today-hero-control--divided flex h-11 w-11 items-center justify-center text-xl leading-none text-white disabled:cursor-not-allowed disabled:opacity-35">›</button>
                 </nav>
-                <button type="button" onClick={() => setBackdropOpen(true)} className="today-hero-control flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center text-white" aria-label="Change Today backdrop" title="Change backdrop">
+                <button type="button" onClick={() => setBackdropOpen(true)} className="today-hero-control today-hero-control--divided flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center text-white" aria-label="Change Today backdrop" title="Change backdrop">
                   <svg aria-hidden viewBox="0 0 24 24" className="h-[19px] w-[19px]" fill="none" stroke="currentColor" strokeWidth="1.7">
                     <path d="M4 16.5 9.2 11l3.2 3.1 2.1-2.2L20 17.5" />
                     <rect x="3.5" y="4" width="17" height="16" />
@@ -671,22 +671,22 @@ export default function Today({ date, data, dataError, entries, loading, online,
               </div>
             </div>
 
-            <div className="mt-3 flex min-h-[52px] items-stretch border-b border-white/32 bg-white/[0.035] backdrop-blur-[1px]">
+            <div className="today-connection-panel mt-3 flex min-h-[56px] items-stretch">
               <div className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5">
-                <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-white bg-transparent' : linkedHasError ? 'border border-white bg-transparent' : syncLive && !staleSignal ? 'bg-white' : syncLive || linkedNeedsAttention ? 'border border-white bg-transparent' : connectedWithoutData ? 'border border-white bg-transparent' : 'border border-white/60 bg-transparent'}`} />
+                <span aria-hidden className={`today-connection-mark h-2.5 w-2.5 shrink-0 rounded-full ${syncLive && !staleSignal && !linkedHasError && !(dataError && todayLoading) ? 'today-connection-mark--live' : 'today-connection-mark--quiet'}`} />
                 <div className="min-w-0">
                   <div className="text-[12px] font-bold leading-snug text-white">{connectionHeading}</div>
                   <div className="mt-0.5 text-[10.5px] leading-snug text-white/90">{connectionDetail}</div>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center border-l border-white/24">
+              <div className="today-connection-actions flex shrink-0 items-center">
                 {!isHistoricalDay && (ouraLive || ouraConnected) && (
                   <button type="button" onClick={refreshOura} disabled={ouraBusy} aria-label="Refresh Oura data" className="today-hero-action flex min-h-11 min-w-14 items-center justify-center px-3 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
                     {ouraBusy ? <Spinner /> : 'Refresh'}
                   </button>
                 )}
                 {!todayLoading && (linkedHasError || (!isHistoricalDay && ((syncLive && staleSignal) || connectedWithoutData))) && onGoToConnections && (
-                  <button type="button" onClick={onGoToConnections} className="today-hero-action flex min-h-11 items-center border-l border-white/24 px-3 text-[11px] font-bold text-white">Manage</button>
+                  <button type="button" onClick={onGoToConnections} className="today-hero-action today-hero-action--divided flex min-h-11 items-center px-3 text-[11px] font-bold text-white">Manage</button>
                 )}
                 {!todayLoading && !isHistoricalDay && !hasWearableConnection && onGoToConnections && (
                   <button type="button" onClick={onGoToConnections} className="today-hero-action flex min-h-11 items-center px-3 text-[11px] font-bold text-white">Connect</button>

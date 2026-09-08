@@ -1,19 +1,19 @@
 // Shared primitives for the Fueling Intelligence visual system.
 //
-// Rules from the design: sharp rectangles (no rounded corners except true
-// circles), hairline rules in ink, one account accent, status shown by
+// Rules from the design: quiet editorial geometry, one account accent, status shown by
 // SHAPE + WORD (never color alone), Bodoni numerals, Archivo labels. White is a
 // moment that matters. Every control has a visible focus ring and a real label.
 import { useEffect, useId, useRef, useState } from 'react'
 import { fmt, num } from '../lib/nutrition.js'
 
 /* --- buttons ------------------------------------------------------------- */
-// Block CTA: uppercase, tracked, bold, sharp. The design's primary language.
+// Block CTA: uppercase, tracked, bold. Primary actions use the shared polished
+// accent material so every account palette has depth without becoming neon.
 export function Button({ variant = 'primary', className = '', type = 'button', onClick, ...props }) {
   const base =
     'inline-flex items-center justify-center gap-2 px-5 py-4 text-xs font-bold uppercase tracking-[0.13em] transition disabled:opacity-40 disabled:pointer-events-none'
   const variants = {
-    primary: 'bg-cobalt text-oncobalt hover:bg-cobalt-ink',
+    primary: 'accent-primary text-oncobalt',
     outline: 'border-[1.5px] border-ink text-ink hover:bg-fill',
     subtle: 'border-[1.5px] border-line-strong text-muted hover:bg-fill',
     danger: 'border-[1.5px] border-alert/60 text-alert hover:bg-alert/5',
@@ -42,7 +42,7 @@ export function TextButton({ children, chevron = false, className = '', type = '
 
 /* --- inputs -------------------------------------------------------------- */
 export const inputCls =
-  'w-full border border-line bg-card px-3 py-3 text-ink placeholder:text-faint outline-none focus:border-cobalt'
+  'accent-field w-full border border-line bg-card px-3 py-3 text-ink placeholder:text-faint outline-none focus:border-cobalt'
 
 export function Field({ label, children, hint, right }) {
   return (

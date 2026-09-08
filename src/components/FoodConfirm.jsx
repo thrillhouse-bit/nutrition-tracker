@@ -125,7 +125,7 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
   const segCls = (active) =>
     // h-11 = the 44px touch floor; the switch measured 36px tall.
     `h-11 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] transition ${
-      active ? 'bg-cobalt text-oncobalt' : 'text-muted hover:bg-fill'
+      active ? 'accent-solid' : 'text-muted hover:bg-fill'
     }`
 
   return (
@@ -208,7 +208,7 @@ export default function FoodConfirm({ food, onLog, onBack, logging }) {
               key={m}
               onClick={() => setMeal(m)}
               className={`px-3 py-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] transition ${
-                meal === m ? 'border border-cobalt bg-cobalt text-oncobalt' : 'border border-line-strong text-muted hover:bg-fill'
+                meal === m ? 'accent-solid border' : 'border border-line-strong text-muted hover:bg-fill'
               }`}
             >
               {m}

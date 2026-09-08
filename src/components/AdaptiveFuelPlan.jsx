@@ -36,7 +36,7 @@ function OptionCard({ selected, onClick, title, desc, className = '' }) {
       onClick={onClick}
       aria-pressed={selected}
       className={`flex min-h-11 flex-col items-start gap-1 border-[1.5px] p-3.5 text-left transition ${
-        selected ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong hover:bg-fill'
+        selected ? 'accent-selection border-cobalt' : 'border-line-strong hover:bg-fill'
       } ${className}`}
     >
       <span className={`font-semibold ${selected ? 'text-cobalt' : 'text-ink'}`}>{title}</span>
@@ -207,7 +207,7 @@ export function AfpProfileForm({ profile, onCancel, onSaved }) {
         <div className="flex border border-line-strong">
           {[['imperial', 'Imperial · ft, lb'], ['metric', 'Metric · cm, kg']].map(([key, label], i) => (
             <button key={key} type="button" onClick={() => toggleUnits(key)} aria-pressed={units === key}
-              className={`flex-1 py-4 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] transition ${i > 0 ? 'border-l border-line' : ''} ${units === key ? 'bg-cobalt text-oncobalt' : 'text-muted hover:text-ink'}`}>
+              className={`flex-1 py-4 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] transition ${i > 0 ? 'border-l border-line' : ''} ${units === key ? 'accent-solid' : 'text-muted hover:text-ink'}`}>
               {label}
             </button>
           ))}

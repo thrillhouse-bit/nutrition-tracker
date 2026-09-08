@@ -1,5 +1,21 @@
 # DESIGN.md — visual/UX design rationale
 
+## 8 Sep 2026 — Current optics refinement
+
+The Today header no longer uses a visually separate gray tab slab or independent
+flat square hero buttons. Its fixed rail is now a lighter edge-free photo-glass
+overlay with a short luminous account-accent selection mark. Previous/next and
+backdrop choice are grouped into one divided 44px optical control, while the
+connection row uses the same glass grammar and a labeled accent status bead.
+
+The named Sapphire, Emerald, Ruby, Silver, Gold, Crystal, Diamond, and Pearl
+preferences now share one canonical active-state material in `src/index.css`:
+primary actions receive a restrained directional highlight, lower-edge depth,
+and small colored shadow; compact selected segments omit the lift; selected
+option surfaces use the pale accent wash. This is intentionally limited to
+primary and selected states. Ordinary journal surfaces remain quiet and flat,
+so the application does not become a generic glassmorphic dashboard.
+
 ## 8 Sep 2026 — immersive Today field and complete glance rail
 
 Today now opens directly onto the Current Field instead of placing a small

@@ -120,9 +120,12 @@ metrics and settings do not become floating cards.
 
 ## Shapes
 
-Rectangles are square. Circles are allowed only for intrinsically circular
-information such as bounded daily progress, wearable readings, and status dots. Dividers are one-pixel
-ink-alpha rules. Do not introduce pill containers for ordinary labels or data.
+Paper forms and data rows remain square. Circles are allowed for intrinsically
+circular information such as bounded daily progress, wearable readings, and
+status dots. The Today photo field may use 16px optical-glass groups for related
+hero controls and connection state; those groups are one instrument, not a new
+rounded-card default. Dividers are one-pixel ink-alpha rules. Do not introduce
+pill containers for ordinary labels or data.
 
 ## Components
 
@@ -138,10 +141,14 @@ content state, and the shared focus treatment.
 
 ### Buttons and actions
 
-Primary actions use the account accent with white text. Outline actions are
-secondary; text actions are tertiary. Destructive actions use Berry and are
-spatially separated or require confirmation. Busy labels do not change control
-geometry.
+Primary actions use the account accent with white text and one restrained
+mineral treatment: a directional highlight, deeper lower edge, and small
+accent-colored shadow. Compact selected segments use the same gradient without
+the lift; selected option surfaces use the pale accent wash. This material is
+reserved for active or primary states—neutral paper surfaces stay flat.
+Outline actions are secondary; text actions are tertiary. Destructive actions
+use Berry and are spatially separated or require confirmation. Busy labels do
+not change control geometry.
 
 ### Navigation and data display
 
@@ -151,10 +158,13 @@ Charts label their metric, period, endpoints, and reference lines. Daily
 completion is represented by 25/50/75/100 accent strengths with an exact
 accessible percentage per day; the neutral track means no log.
 
-On Today, the fixed rail is a translucent overlay on the actual Current Field,
-with white labels and a white selected rule; the field reserves the rail's
-3.25rem content height so no hero control sits underneath it. All other screens
-keep the warm-paper rail. At-a-glance instrument values use a heavy tabular sans
+On Today, the fixed rail is a light, edge-free photo-glass overlay on the actual
+Current Field, with white labels and a short luminous account-accent indicator;
+it must never read as a separate gray website header. The field reserves the
+rail's 3.25rem content height so no hero control sits underneath it. The day
+arrows and backdrop action form one divided optical control cluster, and
+connection state uses a second glass group with a labeled accent status bead.
+All other screens keep the warm-paper rail. At-a-glance instrument values use a heavy tabular sans
 face with an adaptive compact size, reserving Bodoni for editorial headings and
 large values on quiet paper surfaces.
 

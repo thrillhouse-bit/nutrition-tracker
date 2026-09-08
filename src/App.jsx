@@ -54,7 +54,7 @@ function EntryEditor({ entry, onSave, onDelete, saving }) {
           <button
             key={m || 'none'}
             onClick={() => setMeal(m)}
-            className={`min-h-11 px-3 text-xs font-semibold uppercase tracking-[0.08em] transition ${meal === m ? 'bg-cobalt text-oncobalt' : 'border border-line-strong text-muted hover:bg-fill'}`}
+            className={`min-h-11 px-3 text-xs font-semibold uppercase tracking-[0.08em] transition ${meal === m ? 'accent-solid' : 'border border-line-strong text-muted hover:bg-fill'}`}
           >
             {m || 'untagged'}
           </button>
@@ -477,7 +477,7 @@ export default function App() {
           the labels was chosen so the longest ones ("Insights", "Connect")
           clear the next column's text at that width — a wider
           tracking-[0.09em] measured only ~1.6-2px of margin each side. */}
-      <nav className={`app-top-nav fixed inset-x-0 top-0 z-20 mx-auto flex max-w-xl border-b pt-[env(safe-area-inset-top)] ${todayTab ? 'app-top-nav--today border-white/25' : 'border-line-strong bg-rail'}`}>
+      <nav className={`app-top-nav fixed inset-x-0 top-0 z-20 mx-auto flex max-w-xl border-b pt-[env(safe-area-inset-top)] ${todayTab ? 'app-top-nav--today border-transparent' : 'border-line-strong bg-rail'}`}>
         {TABS.map((t) => {
           const active = tab === t.key
           return (
@@ -485,13 +485,13 @@ export default function App() {
               key={t.key}
               onClick={() => setTab(t.key)}
               aria-current={active ? 'page' : undefined}
-              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] transition-colors ${
+              className={`app-top-nav-item relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] transition-colors ${
                 todayTab
-                  ? active ? 'text-white' : 'text-white/80 hover:text-white'
+                  ? active ? 'app-top-nav-item--active text-white' : 'text-white/72 hover:text-white'
                   : active ? 'text-cobalt' : 'text-muted hover:text-ink'
               }`}
             >
-              {active && <span aria-hidden className={`absolute inset-x-0 bottom-0 h-0.5 ${todayTab ? 'bg-white' : 'bg-cobalt'}`} />}
+              {active && <span aria-hidden className={`app-top-nav-indicator absolute bottom-0 ${todayTab ? 'app-top-nav-indicator--current' : 'app-top-nav-indicator--paper'}`} />}
               {TAB_SHORT[t.key] || t.label}
             </button>
           )

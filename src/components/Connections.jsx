@@ -311,7 +311,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
     // disconnected / error: the primary action is to connect (a browser
     // navigation to the OAuth start on your own server — never a fetch).
     action = (
-      <a href={`/api/${id}/connect`} className={`${CTA} bg-cobalt text-oncobalt hover:bg-cobalt-ink`}>
+      <a href={`/api/${id}/connect`} className={`${CTA} accent-primary text-oncobalt`}>
         {status === 'error' ? 'Reconnect' : `Connect ${name}`}
       </a>
     )
@@ -603,7 +603,7 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
           <legend className="eyebrow">Accent color</legend>
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(ACCENT_PALETTES).map(([id, p]) => (
-              <label key={id} className={`min-h-16 cursor-pointer border p-2.5 transition ${accent === id ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong hover:bg-fill'}`}>
+              <label key={id} className={`min-h-16 cursor-pointer border p-2.5 transition ${accent === id ? 'accent-selection border-cobalt' : 'border-line-strong hover:bg-fill'}`}>
                 <input className="sr-only" type="radio" name="accent" checked={accent === id} onChange={() => changeAccent(id)} />
                 <span className="flex items-center gap-2">
                   <span aria-hidden className="block h-4 w-4 shrink-0 rounded-full border border-black/10" style={{ backgroundColor: p.color }} />
