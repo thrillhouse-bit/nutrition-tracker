@@ -3,7 +3,7 @@ import { readAccountJson, writeAccountJson } from './privateStorage.js'
 export const TODAY_BACKDROP_NAMESPACE = 'today-backdrop'
 export const DEFAULT_TODAY_BACKDROP = Object.freeze({ kind: 'scene', scene: 'tide' })
 export const TODAY_BACKDROP_SCENES = Object.freeze([
-  { id: 'tide', label: 'Tide', description: 'Deep currents shaped by your accent color' },
+  { id: 'tide', label: 'Alpine', description: 'An original high-alpine current at first light' },
   { id: 'ridge', label: 'Ridge', description: 'Layered contours with a quieter horizon' },
   { id: 'dawn', label: 'Dawn', description: 'A warmer field for the start of the day' },
 ])

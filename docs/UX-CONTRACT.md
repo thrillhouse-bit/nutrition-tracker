@@ -231,12 +231,27 @@ remains valid Plan context; it does not impersonate a wearable connection.
 
 ### Today information hierarchy
 
-Today is a daily decision surface, not a complete dashboard. Date and connection
-state are compact context. A horizontally scrollable **At a glance** rail leads
-with actual fuel, protein, and water progress, then adds only wearable readings
-that exist. It never inserts missing or demo readings. The immersive **Current
-Field** is the dominant next moment: its arc visualizes actual calorie-plan
-completion and its text owns the next recommendation. Detailed intake follows.
+Today is a daily decision surface, not a complete dashboard. The immersive
+**Current Field** begins immediately below global navigation and owns compact
+date and connection context, the broad calorie-plan arc, and the next
+recommendation. A horizontally scrollable **At a glance** rail is integrated
+into its upper field and always leads with actual fuel, protein, water, and
+carbohydrate readings, then adds only wearable readings that exist. It never
+inserts missing or demo readings. Unknown and mixed-partial nutrient coverage
+is named rather than converted to zero or a target percentage. Detailed intake
+begins on a warm-paper surface that overlaps the field's lower edge.
+
+The At a glance region is keyboard-focusable, names its contents and arrow-key
+scroll behavior, and retains a visible overflow cue. Its horizontal touch
+gesture is isolated from the parent day-swipe gesture. Static instruments expose
+an exact accessible label; Activity is a native button only when Plan is a real
+destination. Provider status and the complete rail are backed by a local 78%
+near-black information layer regardless of curated or personal image choice;
+small details use at least 86% white. This contrast guarantee does not rely on
+the photo scrim or sampled image pixels. An image-independent lower gradient
+begins at 72% near-black without a card edge behind the calorie arc and
+recommendation, giving their microcopy the same guarantee over bright or
+personal images while leaving the field visibly photographic.
 Energy arithmetic is secondary and expands inline only when expenditure or step
 data exists.
 
@@ -246,8 +261,10 @@ available, and suppress age-derived Stale, Last synced, Refresh, Connect, and
 Manage prompts. Current-day stale/error behavior remains actionable. A genuine
 provider error may still route to Connections from a historical view.
 
-The Current Field offers Tide, Ridge, and Dawn code-native scenes plus **Use my
-photo**. Scene and photo preferences are stored only in account-scoped browser
+The Current Field offers the original bundled **Alpine** photograph (stored as
+the backward-compatible `tide` scene ID), code-native Ridge and Dawn scenes,
+plus **Use my photo**. Alpine is part of the PWA precache and retains a CSS
+fallback; no generic runtime image or API caching is introduced. Scene and photo preferences are stored only in account-scoped browser
 storage and are never uploaded. JPEG, PNG, and WebP sources are limited to 10 MB;
 the browser canvas-resizes to at most 1600px, WebP-reencodes to strip embedded
 metadata, retries smaller encodes, and refuses any resulting data URL above 2 MB.

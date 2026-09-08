@@ -30,9 +30,9 @@ export default defineConfig({
       // shared by every account on a browser, so a URL-keyed runtime cache can
       // return one person's nutrition or wearable data to the next account.
       workbox: {
-        // Story artwork is route-specific and substantially larger than the
-        // install shell. Keep generic PNG/WebP files runtime-fetched; the
-        // required install icons below remain explicitly included.
+        // Generic imagery stays runtime-fetched. The one default Today field
+        // is deliberately listed in includeAssets below because it is part of
+        // the signed-in shell and must not collapse to a blank hero offline.
         globPatterns: ['**/*.{js,css,html,svg,ico,webmanifest}'],
         // Public legal documents are server-rendered and launch-gated. If the
         // app-shell navigation fallback claims them, an installed PWA shows
@@ -40,7 +40,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/privacy\/?$/, /^\/terms\/?$/],
         cleanupOutdatedCaches: true,
       },
-      includeAssets: ['body-current-master.png', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
+      includeAssets: ['body-current-master.png', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png', 'current-fields/alpine-current-v1.jpg'],
       // Installed identity matches the in-app v2 system: the app titles itself
       // "Body Current" (index.html) and paints ivory (#f7f4ec theme-color meta)
       // — the old emerald/navy manifest gave the home-screen install a

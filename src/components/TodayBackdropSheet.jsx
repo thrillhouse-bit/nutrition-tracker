@@ -111,7 +111,7 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
           <div className="mt-3 border-l-2 border-cobalt pl-3">
             <div className="truncate text-sm font-bold text-ink">{backdrop.name}</div>
             <div className="mt-0.5 text-xs text-muted">{formatBytes(backdrop.encodedBytes)} · Stored on this device only</div>
-            <Button variant="subtle" className="mt-3 w-full" disabled={busy} onClick={() => commit(DEFAULT_TODAY_BACKDROP)}>Remove photo and use Tide</Button>
+            <Button variant="subtle" className="mt-3 w-full" disabled={busy} onClick={() => commit(DEFAULT_TODAY_BACKDROP)}>Remove photo and use Alpine</Button>
           </div>
         )}
       </div>

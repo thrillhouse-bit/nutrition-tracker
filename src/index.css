@@ -89,9 +89,10 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Body Current's one immersive product surface. These are code-native fields,
-   not stock photography: the selected account accent supplies the living
-   current while a dark base keeps the hero's white type legible. */
+/* Body Current's one immersive product surface. The default Alpine field is
+   an original bundled image (and works offline); the other curated fields are
+   app-authored gradients. A dark directional scrim keeps the real daily data
+   legible without flattening the landscape into an abstract color panel. */
 .today-current-field,
 .today-backdrop-preview {
   --current-deep: color-mix(in srgb, var(--color-cobalt-ink) 22%, #081116);
@@ -101,10 +102,9 @@ body {
 
 .today-current-field[data-scene='tide'] .today-current-backdrop,
 .today-backdrop-preview[data-scene='tide'] {
-  background-image:
-    radial-gradient(ellipse at 78% 12%, color-mix(in srgb, var(--color-cobalt) 58%, transparent) 0%, transparent 38%),
-    repeating-radial-gradient(ellipse at -8% 104%, transparent 0 28px, color-mix(in srgb, var(--color-current-glow) 42%, transparent) 30px 32px, transparent 34px 48px),
-    linear-gradient(145deg, var(--current-mid), var(--current-deep) 66%);
+  background-image: url('/current-fields/alpine-current-v1.jpg'), linear-gradient(165deg, #496f91, var(--current-deep) 72%);
+  background-position: center 48%;
+  background-size: cover;
 }
 
 .today-current-field[data-scene='ridge'] .today-current-backdrop,
@@ -130,8 +130,8 @@ body {
 
 .today-current-scrim {
   background:
-    linear-gradient(180deg, rgb(5 8 10 / 0.52) 0%, rgb(5 8 10 / 0.15) 37%, rgb(5 8 10 / 0.78) 100%),
-    linear-gradient(90deg, rgb(5 8 10 / 0.18), transparent 50%, rgb(5 8 10 / 0.14));
+    linear-gradient(180deg, rgb(4 8 11 / 0.62) 0%, rgb(4 8 11 / 0.22) 42%, rgb(4 8 11 / 0.84) 86%, rgb(4 8 11 / 0.96) 100%),
+    linear-gradient(90deg, rgb(4 8 11 / 0.22), transparent 50%, rgb(4 8 11 / 0.18));
 }
 
 /* A personal photo can contain a pure-white sky or label. This uniform base
@@ -139,8 +139,86 @@ body {
    metadata remains readable everywhere, not only at the hero edges. */
 .today-current-field[data-scene='photo'] .today-current-scrim {
   background:
-    linear-gradient(rgb(5 8 10 / 0.66), rgb(5 8 10 / 0.66)),
-    linear-gradient(180deg, rgb(5 8 10 / 0.34), transparent 38%, rgb(5 8 10 / 0.48));
+    linear-gradient(rgb(5 8 10 / 0.54), rgb(5 8 10 / 0.54)),
+    linear-gradient(180deg, rgb(5 8 10 / 0.38), transparent 38%, rgb(5 8 10 / 0.72));
+}
+
+.today-current-backdrop {
+  transform: scale(1.01);
+}
+
+/* This local backplate is intentionally independent of the selected image.
+   At 78% near-black, even a white custom-photo pixel remains dark enough for
+   the rail's smallest 86–90% white labels to clear AA contrast. Keeping it to
+   the information band preserves the photograph through the arc and lower
+   recommendation instead of flattening the whole field. */
+.today-hero-information-backplate {
+  background: rgb(4 8 11 / 0.78);
+  box-shadow: 0 20px 28px rgb(4 8 11 / 0.40);
+}
+
+/* The outcome copy needs the same image-independent guarantee as the upper
+   information band, including over an all-white personal photo. This soft
+   field begins below the rail and has no visible card edge: the Alpine
+   landscape remains present through the arc while the small outcome labels
+   sit over at least a 72% near-black layer, deepening toward the paper seam. */
+.today-hero-outcome-protection {
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgb(4 8 11 / 0.72) 0%,
+    rgb(4 8 11 / 0.72) 22%,
+    rgb(4 8 11 / 0.82) 45%,
+    rgb(4 8 11 / 0.91) 100%
+  );
+}
+
+.today-hero-control,
+.today-hero-action {
+  cursor: pointer;
+  background: rgb(4 8 11 / 0.16);
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.today-hero-control:hover,
+.today-hero-action:hover {
+  background: rgb(4 8 11 / 0.42);
+}
+
+.today-current-field :where(button, [tabindex]):focus-visible {
+  outline-color: #ffffff;
+  outline-offset: 2px;
+}
+
+.today-glance-rail {
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  scrollbar-color: rgb(255 255 255 / 0.72) rgb(255 255 255 / 0.14);
+}
+
+.today-glance-orb {
+  min-height: 126px;
+  scroll-snap-align: start;
+}
+
+button.today-glance-orb {
+  min-width: 112px;
+  min-height: 126px;
+  color: #ffffff;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+button.today-glance-orb:hover {
+  background: rgb(255 255 255 / 0.10);
+}
+
+button.today-glance-orb:active {
+  transform: translateY(1px);
+}
+
+.today-paper-sheet {
+  border-top: 1px solid rgb(18 18 16 / 0.16);
+  box-shadow: 0 -18px 34px rgb(4 8 11 / 0.18);
 }
 
 /* Standards-first, visible scrollbars for every app-owned scroll surface;

@@ -5,7 +5,7 @@ import TodayBackdropSheet from './TodayBackdropSheet.jsx'
 import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
 import { waterAmount } from '../lib/hydration.js'
 import { DEFAULT_TODAY_BACKDROP, loadTodayBackdrop } from '../lib/todayBackdrop.js'
-import { Disclosure, Meter, SegmentBar, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
+import { Disclosure, Meter, SegmentBar, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner } from './ui.jsx'
 
 // Manual re-fetch window for the Oura backfill button below — a small
 // trailing window is enough to catch anything the daily resync/connect-time
@@ -186,38 +186,52 @@ function contributorLine(rd) {
 // unbounded readings keep the circle as a stable visual slot without implying
 // a target. It becomes a button only when there is a useful destination
 // (Activity → Plan); nutrition/readiness/sleep remain plain readings.
+const GLANCE_MARKS = {
+  Fuel: '↗',
+  Protein: 'P',
+  Water: '◒',
+  Carbs: 'C',
+  Readiness: '◇',
+  Sleep: '☾',
+  Activity: '↟',
+}
+
 function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, progress, onClick, actionLabel }) {
   const Tag = onClick ? 'button' : 'div'
   const boundedProgress = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : null
-  const radius = 31
+  const radius = 38
   const circumference = 2 * Math.PI * radius
+  const accessibleValue = [label, value, detail, secondaryDetail].filter(Boolean).join('. ')
   return (
     <Tag
-      {...(onClick ? { type: 'button', onClick, 'aria-label': actionLabel } : {})}
-      className={`${detailWrap ? 'w-[108px]' : 'w-[88px]'} shrink-0 text-center ${onClick ? 'cursor-pointer hover:text-cobalt' : ''}`}
+      {...(onClick
+        ? { type: 'button', onClick, 'aria-label': actionLabel || accessibleValue }
+        : { role: 'group', 'aria-label': accessibleValue })}
+      className={`today-glance-orb ${detailWrap ? 'w-[112px]' : 'w-[98px]'} shrink-0 text-center ${onClick ? 'cursor-pointer' : ''}`}
     >
-      <div className="relative mx-auto h-[72px] w-[72px]">
-        <svg aria-hidden viewBox="0 0 72 72" className="absolute inset-0 h-full w-full -rotate-90">
-          <circle cx="36" cy="36" r={radius} fill="rgb(255 255 255 / 0.06)" stroke="rgb(18 18 16 / 0.16)" strokeWidth="1.5" />
+      <div className="relative mx-auto h-[88px] w-[88px]">
+        <svg aria-hidden viewBox="0 0 88 88" className="absolute inset-0 h-full w-full -rotate-90">
+          <circle cx="44" cy="44" r={radius} fill="rgb(255 255 255 / 0.09)" stroke="rgb(255 255 255 / 0.30)" strokeWidth="1.5" />
           {boundedProgress != null && boundedProgress > 0 && (
             <circle
-              cx="36"
-              cy="36"
+              cx="44"
+              cy="44"
               r={radius}
               fill="none"
-              stroke="var(--color-cobalt)"
-              strokeWidth="3"
+              stroke="var(--color-current-glow)"
+              strokeWidth="4"
               strokeLinecap="butt"
               strokeDasharray={`${circumference} ${circumference}`}
               strokeDashoffset={circumference * (1 - boundedProgress)}
             />
           )}
         </svg>
-        <span className="numeral absolute inset-0 flex items-center justify-center px-1 text-[18px] font-semibold leading-none text-ink">{value}</span>
+        <span aria-hidden className="absolute inset-x-0 top-[13px] text-[11px] font-bold leading-none tracking-[0.06em] text-white/90">{GLANCE_MARKS[label] || '·'}</span>
+        <span className="numeral absolute inset-x-0 bottom-[19px] flex items-center justify-center px-1 text-[21px] font-semibold leading-none text-white">{value}</span>
       </div>
-      <span className="mt-2 block text-[11px] font-bold leading-tight text-ink">{label}</span>
-      {detail && <span title={detail} className={`mt-0.5 block text-[9.5px] leading-tight text-muted ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{detail}</span>}
-      {secondaryDetail && <span title={secondaryDetail} className={`mt-0.5 block text-[9px] leading-tight text-muted ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{secondaryDetail}</span>}
+      <span className="mt-1.5 block text-[12px] font-bold leading-tight text-white">{label}</span>
+      {detail && <span title={detail} className={`mt-0.5 block text-[10px] leading-[1.25] text-white/90 ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{detail}</span>}
+      {secondaryDetail && <span title={secondaryDetail} className={`mt-0.5 block text-[9.5px] leading-[1.25] text-white/86 ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{secondaryDetail}</span>}
     </Tag>
   )
 }
@@ -225,11 +239,11 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
 function CurrentArc({ progress, hasTarget }) {
   const pct = hasTarget ? Math.max(0, Math.min(1, progress)) : 0
   return (
-    <svg aria-hidden viewBox="0 0 320 150" className="h-auto w-full overflow-visible">
-      <path d="M 18 132 Q 160 -18 302 132" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.30)" strokeWidth="7" />
+    <svg aria-hidden viewBox="0 0 360 152" className="h-auto w-full overflow-visible">
+      <path d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.34)" strokeWidth="7" />
       {hasTarget && pct > 0 && (
         <path
-          d="M 18 132 Q 160 -18 302 132"
+          d="M 14 137 Q 180 -20 346 137"
           pathLength="100"
           fill="none"
           stroke="var(--color-current-glow)"
@@ -238,8 +252,8 @@ function CurrentArc({ progress, hasTarget }) {
           strokeLinecap="butt"
         />
       )}
-      <circle cx="18" cy="132" r="3" fill="rgb(255 255 255 / 0.72)" />
-      <circle cx="302" cy="132" r="3" fill="rgb(255 255 255 / 0.72)" />
+      <circle cx="14" cy="137" r="3" fill="rgb(255 255 255 / 0.78)" />
+      <circle cx="346" cy="137" r="3" fill="rgb(255 255 255 / 0.78)" />
     </svg>
   )
 }
@@ -344,6 +358,7 @@ function useDaySwipe(onPrevDay, onNextDay, canGoNext) {
 
 export default function Today({ date, data, dataError, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onGoToPlan, onGoToConnections, onChanged, userId }) {
   const swipeHandlers = useDaySwipe(onPrevDay, onNextDay, !isToday(date))
+  const glanceRailRef = useRef(null)
   // A workout's own 'planned'/'completed' status never changes itself once a
   // day is over (see workoutClause's own comment) — this is what lets any
   // rendering of it stay honest about tense once the VIEWED day, not the
@@ -382,6 +397,15 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const secondary = NUTRIENTS.filter((n) => n.key !== 'calories')
   const proteinDone = num(totals.protein_g)
   const proteinTarget = num(targets.protein_g)
+  const carbsDone = num(totals.carbs_g)
+  const carbsTarget = num(targets.carbs_g)
+  const nutrientCoverage = (key) => {
+    if (entries.length === 0) return { complete: true, partial: false }
+    const known = entries.filter((entry) => entryNutrient(entry, key) !== null).length
+    return { complete: known === entries.length, partial: known > 0 && known < entries.length }
+  }
+  const proteinCoverage = nutrientCoverage('protein_g')
+  const carbsCoverage = nutrientCoverage('carbs_g')
   const hydration = data?.hydration || {}
   const hydrationPreferences = hydration.preferences || {}
   const hydrationTotal = hydration.total_ml == null
@@ -577,7 +601,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const hiddenEntryCount = Math.max(0, entries.length - recentEntries.length)
 
   const hasCalorieTarget = calTarget > 0
-  const calorieProgressText = hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)}`
+  const calorieProgressText = hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)} kcal logged`
   const heroTitle = rec?.title || (dataError && todayLoading
     ? 'Today needs a refresh'
     : todayLoading
@@ -595,151 +619,178 @@ export default function Today({ date, data, dataError, entries, loading, online,
         ? 'Complete Plan setup to measure intake against a personal target.'
         : 'Each food and water entry sharpens the next recommendation.')
   const backdropStyle = backdrop.kind === 'photo' ? { backgroundImage: `url(${backdrop.dataUrl})` } : undefined
+  const scrollGlanceRail = (direction) => {
+    glanceRailRef.current?.scrollBy?.({ left: direction * 118, behavior: 'smooth' })
+  }
 
   return (
-    <div className="space-y-6" {...swipeHandlers}>
-      <header className="border-b border-line pb-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 pt-1">
-            <h1 className="serif text-[31px] font-semibold leading-none tracking-[-0.02em] text-ink">{primaryDayLabel(date)}</h1>
-            <p className="tnum mt-1.5 text-[12px] font-medium text-muted">{dateDetail(date)}</p>
-          </div>
-          <nav aria-label="Choose day" className="flex shrink-0 items-center">
-            <button onClick={onPrevDay} aria-label="Previous day" className="flex h-11 w-11 items-center justify-center border border-line text-xl leading-none text-muted hover:bg-fill hover:text-ink">‹</button>
-            <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="-ml-px flex h-11 w-11 items-center justify-center border border-line text-xl leading-none text-muted hover:bg-fill hover:text-ink disabled:cursor-not-allowed disabled:opacity-30">›</button>
-          </nav>
-        </div>
-
-        <div className="mt-3 min-h-[20px]">
-          {dataError && todayLoading ? (
-            <>
-              <p className="text-[14px] font-semibold leading-snug text-ink">Today’s information couldn’t load.</p>
-              {onChanged && (
-                <TextButton chevron onClick={onChanged} className="-ml-2 text-[12px]">Try again</TextButton>
-              )}
-            </>
-          ) : todayLoading ? (
-            <div className="h-5 w-3/4 bg-fill" />
-          ) : syncLive ? (
-            daySentence.length > 0 && <p className="text-[15px] font-semibold leading-snug text-ink">{daySentence.join(' ')}</p>
-          ) : (
-            <p className="text-[13px] leading-relaxed text-muted">{altMessage}</p>
-          )}
-        </div>
-
-        <div className="mt-4 flex min-h-[54px] items-stretch border-y border-line bg-rail/70">
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2">
-            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : linkedHasError ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive || linkedNeedsAttention ? 'border border-alert bg-transparent' : connectedWithoutData ? 'border border-cobalt bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
-            <div className="min-w-0">
-              <div className="truncate text-[12px] font-bold text-ink">{connectionHeading}</div>
-              <div className="truncate text-[10.5px] leading-snug text-muted">{connectionDetail}</div>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center border-l border-line">
-            {!isHistoricalDay && (ouraLive || ouraConnected) && (
-              <button type="button" onClick={refreshOura} disabled={ouraBusy} aria-label="Refresh Oura data" className="flex min-h-11 min-w-14 items-center justify-center px-3 text-[11px] font-bold text-cobalt hover:bg-fill disabled:cursor-not-allowed disabled:opacity-50">
-                {ouraBusy ? <Spinner /> : 'Refresh'}
-              </button>
-            )}
-            {!todayLoading && (linkedHasError || (!isHistoricalDay && ((syncLive && staleSignal) || connectedWithoutData))) && onGoToConnections && (
-              <button type="button" onClick={onGoToConnections} className="flex min-h-11 items-center border-l border-line px-3 text-[11px] font-bold text-cobalt hover:bg-fill">Manage</button>
-            )}
-            {!todayLoading && !isHistoricalDay && !hasWearableConnection && onGoToConnections && (
-              <button type="button" onClick={onGoToConnections} className="flex min-h-11 items-center px-3 text-[11px] font-bold text-cobalt hover:bg-fill">Connect</button>
-            )}
-          </div>
-        </div>
-        {ouraError && <ErrorNote className="mt-2">{ouraError}</ErrorNote>}
-        {!isToday(date) && <TextButton onClick={onToday} className="-mb-3 -ml-2 mt-1 text-[11px]">Return to today</TextButton>}
-      </header>
-
-      {/* Offline / pending-sync strip — Sand, the same "pending, not yet
-          synced" tone as the log-row tag above, not the legacy amber warn. */}
-      {(pendingCount > 0 || !online) && (
-        <div className="flex items-center justify-between gap-3 border border-line-strong bg-sand/50 px-3 py-2 text-sm text-ink">
-          <span>{!online && '◐ Offline. '}{pendingCount > 0 ? `${pendingCount} log${pendingCount === 1 ? '' : 's'} waiting to sync` : 'Logs save locally and sync later.'}</span>
-          {pendingCount > 0 && online && (
-            <button onClick={onSync} disabled={syncing} className="shrink-0 border border-ink/30 px-2 py-1 text-xs font-semibold disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>
-          )}
-        </div>
-      )}
-
-      <section aria-labelledby="today-at-a-glance">
-        <div className="flex items-baseline justify-between px-1">
-          <h2 id="today-at-a-glance" className="text-[15px] font-bold leading-tight text-ink">At a glance</h2>
-          <span className="text-[10.5px] text-muted">Swipe for more</span>
-        </div>
-        {showWearableSignals && <h3 className="sr-only">Daily signals</h3>}
-        <div className="-mx-4 mt-3 flex gap-2.5 overflow-x-auto px-4 pb-2 [scrollbar-gutter:stable]" aria-label="Nutrition, hydration, and available wearable signals">
-          <SignalOrb
-            label="Fuel"
-            value={todayLoading ? '—' : hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)}`}
-            detail={todayLoading ? 'Updating' : hasCalorieTarget ? `${fmt(calDone, 0)} / ${fmt(calTarget, 0)} kcal` : 'kcal logged'}
-            progress={hasCalorieTarget ? calDone / calTarget : undefined}
-          />
-          <SignalOrb
-            label="Protein"
-            value={todayLoading ? '—' : proteinTarget > 0 ? `${Math.round((proteinDone / proteinTarget) * 100)}%` : `${fmt(proteinDone, 0)}g`}
-            detail={todayLoading ? 'Updating' : proteinTarget > 0 ? `${fmt(proteinDone, 0)} / ${fmt(proteinTarget, 0)} g` : 'Logged'}
-            progress={proteinTarget > 0 ? proteinDone / proteinTarget : undefined}
-          />
-          <SignalOrb
-            label="Water"
-            value={todayLoading ? '—' : hydrationGoal > 0 ? `${Math.round((hydrationTotal / hydrationGoal) * 100)}%` : waterAmount(hydrationTotal, hydrationPreferences.unit || 'ml')}
-            detail={todayLoading ? 'Updating' : hydrationGoal > 0 ? `${waterAmount(hydrationTotal, hydrationPreferences.unit || 'ml')} / ${waterAmount(hydrationGoal, hydrationPreferences.unit || 'ml')}` : 'Logged'}
-            progress={hydrationGoal > 0 ? hydrationTotal / hydrationGoal : undefined}
-          />
-          {!rdMissing && <SignalOrb label="Readiness" value={`${Math.round(num(rd.value))}`} detail={isHistoricalDay ? `${capFirst(rd.provider || 'wearable')} · recorded ${timeShort(rd.recorded_at) || primaryDayLabel(date)}` : `${capFirst(rd.provider || 'wearable')} · ${readinessBand(rd.value)}`} secondaryDetail={contribLine} progress={num(rd.value) / 100} />}
-          {!slMissing && <SignalOrb label="Sleep" value={`${hm.h}h ${hm.m}m`} detail={isHistoricalDay ? `${capFirst(sl.provider || 'wearable')} · recorded ${timeShort(sl.recorded_at) || primaryDayLabel(date)}` : `${capFirst(sl.provider || 'wearable')} · ${sl.score != null ? `Score ${Math.round(num(sl.score))}` : sleepBand(sl.value)}`} secondaryDetail={sl.score != null && isHistoricalDay ? `Score ${Math.round(num(sl.score))}` : null} />}
-          {wearableWorkout && (
-            <SignalOrb
-              label="Activity"
-              value={woLabel ? capFirst(wearableWorkout.value.shortLabel || wearableWorkout.value.kind || 'Done') : 'Rest'}
-              detail={`${capFirst(wearableWorkout.provider || 'wearable')} · ${wearableWorkout.value.status === 'completed' ? 'Completed' : isHistoricalDay ? 'Logged' : 'Planned'}${wearableWorkout.value.time ? ` · ${wearableWorkout.value.time}` : ''}`}
-              secondaryDetail={[workoutMeta(wearableWorkout), isHistoricalDay ? `Recorded ${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : null].filter(Boolean).join(' · ')}
-              detailWrap
-              onClick={workoutInteractive ? onGoToPlan : undefined}
-              actionLabel={`View ${workoutSubject(wearableWorkout) || 'activity'} details in Plan. ${capFirst(wearableWorkout.provider || 'wearable')}. ${wearableWorkout.value.status === 'completed' ? 'Completed' : isHistoricalDay ? 'Logged' : 'Planned'}${wearableWorkout.value.time ? ` at ${wearableWorkout.value.time}` : ''}${workoutMeta(wearableWorkout) ? `. ${workoutMeta(wearableWorkout)}` : ''}`}
-            />
-          )}
-        </div>
-      </section>
-
+    <div className="-mx-4 -mt-4" {...swipeHandlers}>
       <section
         aria-labelledby="today-recommendation"
-        className="today-current-field relative min-h-[470px] overflow-hidden border-y border-white/20 text-white shadow-[0_10px_28px_rgb(18_18_16/0.20)]"
+        className="today-current-field relative min-h-[710px] overflow-hidden text-white"
         data-scene={backdrop.kind === 'scene' ? backdrop.scene : 'photo'}
       >
         <div aria-hidden className="today-current-backdrop absolute inset-0 bg-cover bg-center" style={backdropStyle} />
         <div aria-hidden className="today-current-scrim absolute inset-0" />
-        <div className="relative z-[1] flex min-h-[470px] flex-col px-5 pb-6 pt-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/85">Body Current</div>
-              <div className="tnum mt-1 text-[10.5px] font-medium text-white/70">{primaryDayLabel(date)} · {dateDetail(date)}</div>
+        <div aria-hidden="true" className="today-hero-outcome-protection absolute inset-x-0 bottom-0 top-[40%]" />
+        <div className="relative z-[1] flex min-h-[710px] flex-col pb-16 pt-4">
+          <div className="today-hero-information-backplate pb-4">
+          <header className="px-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 pt-1">
+                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/90">Body Current</div>
+                <h1 className="serif mt-1 text-[31px] font-semibold leading-none tracking-[-0.02em] text-white">{primaryDayLabel(date)}</h1>
+                <p className="tnum mt-1 text-[11px] font-medium text-white/90">{dateDetail(date)}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <nav aria-label="Choose day" className="flex items-center">
+                  <button onClick={onPrevDay} aria-label="Previous day" className="today-hero-control flex h-11 w-11 items-center justify-center text-xl leading-none text-white">‹</button>
+                  <button onClick={onNextDay} disabled={isToday(date)} aria-label="Next day" className="today-hero-control flex h-11 w-11 items-center justify-center text-xl leading-none text-white disabled:cursor-not-allowed disabled:opacity-35">›</button>
+                </nav>
+                <button type="button" onClick={() => setBackdropOpen(true)} className="today-hero-control flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center text-white" aria-label="Change Today backdrop" title="Change backdrop">
+                  <svg aria-hidden viewBox="0 0 24 24" className="h-[19px] w-[19px]" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M4 16.5 9.2 11l3.2 3.1 2.1-2.2L20 17.5" />
+                    <rect x="3.5" y="4" width="17" height="16" />
+                    <circle cx="16.8" cy="8.2" r="1.4" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <button type="button" onClick={() => setBackdropOpen(true)} className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 border border-white/45 bg-black/20 px-3 text-[11px] font-bold text-white backdrop-blur-sm hover:bg-black/35" aria-label="Change Today backdrop">
-              <span aria-hidden>▧</span> Change backdrop
-            </button>
+
+            <div className="mt-3 flex min-h-[58px] items-stretch border-y border-white/28 bg-black/18 backdrop-blur-sm">
+              <div className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5">
+                <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-white bg-transparent' : linkedHasError ? 'border border-white bg-transparent' : syncLive && !staleSignal ? 'bg-white' : syncLive || linkedNeedsAttention ? 'border border-white bg-transparent' : connectedWithoutData ? 'border border-white bg-transparent' : 'border border-white/60 bg-transparent'}`} />
+                <div className="min-w-0">
+                  <div className="text-[12px] font-bold leading-snug text-white">{connectionHeading}</div>
+                  <div className="mt-0.5 text-[10.5px] leading-snug text-white/90">{connectionDetail}</div>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center border-l border-white/24">
+                {!isHistoricalDay && (ouraLive || ouraConnected) && (
+                  <button type="button" onClick={refreshOura} disabled={ouraBusy} aria-label="Refresh Oura data" className="today-hero-action flex min-h-11 min-w-14 items-center justify-center px-3 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                    {ouraBusy ? <Spinner /> : 'Refresh'}
+                  </button>
+                )}
+                {!todayLoading && (linkedHasError || (!isHistoricalDay && ((syncLive && staleSignal) || connectedWithoutData))) && onGoToConnections && (
+                  <button type="button" onClick={onGoToConnections} className="today-hero-action flex min-h-11 items-center border-l border-white/24 px-3 text-[11px] font-bold text-white">Manage</button>
+                )}
+                {!todayLoading && !isHistoricalDay && !hasWearableConnection && onGoToConnections && (
+                  <button type="button" onClick={onGoToConnections} className="today-hero-action flex min-h-11 items-center px-3 text-[11px] font-bold text-white">Connect</button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-2 min-h-[20px]">
+              {dataError && todayLoading ? (
+                <div className="border-l-2 border-white bg-black/28 px-3 py-2">
+                  <p className="text-[13px] font-semibold leading-snug text-white">Today’s information couldn’t load.</p>
+                  {onChanged && <button type="button" onClick={onChanged} className="mt-1 min-h-11 text-[12px] font-bold text-white underline underline-offset-4">Try again</button>}
+                </div>
+              ) : todayLoading ? (
+                <div className="h-5 w-3/4 bg-white/16" />
+              ) : syncLive ? (
+                daySentence.length > 0 && <p className="text-[13px] font-semibold leading-snug text-white">{daySentence.join(' ')}</p>
+              ) : (
+                <p className="text-[12px] leading-relaxed text-white/90">{altMessage}</p>
+              )}
+            </div>
+            {ouraError && <div role="alert" className="mt-2 border-l-2 border-white bg-black/35 px-3 py-2 text-[12px] font-semibold text-white">{ouraError}</div>}
+            {!isToday(date) && <button type="button" onClick={onToday} className="mt-1 min-h-11 text-[11px] font-bold text-white underline underline-offset-4">Return to today</button>}
+          </header>
+
+          <section aria-labelledby="today-at-a-glance" className="mt-3">
+            <div className="flex items-baseline justify-between gap-3 px-4">
+              <h2 id="today-at-a-glance" className="text-[15px] font-bold leading-tight text-white">At a glance</h2>
+              <span id="today-glance-instructions" className="text-[10px] text-white/90">Swipe or use arrow keys</span>
+            </div>
+            {showWearableSignals && <h3 className="sr-only">Daily signals</h3>}
+            <div
+              ref={glanceRailRef}
+              role="region"
+              tabIndex="0"
+              aria-label="Nutrition, hydration, and available wearable signals"
+              aria-describedby="today-glance-instructions"
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                scrollGlanceRail(event.key === 'ArrowRight' ? 1 : -1)
+              }}
+              onTouchStart={(event) => event.stopPropagation()}
+              onTouchEnd={(event) => event.stopPropagation()}
+              className="today-glance-rail mt-2 flex gap-2.5 overflow-x-auto px-4 pb-2 [scrollbar-gutter:stable]"
+            >
+              <SignalOrb
+                label="Fuel"
+                value={todayLoading ? '—' : hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)}`}
+                detail={todayLoading ? 'Updating' : hasCalorieTarget ? `${fmt(calDone, 0)} / ${fmt(calTarget, 0)} kcal` : 'kcal logged'}
+                progress={hasCalorieTarget ? calDone / calTarget : undefined}
+              />
+              <SignalOrb
+                label="Protein"
+                value={todayLoading || !proteinCoverage.complete && !proteinCoverage.partial ? '—' : proteinCoverage.partial ? `${fmt(proteinDone, 0)}g` : proteinTarget > 0 ? `${Math.round((proteinDone / proteinTarget) * 100)}%` : `${fmt(proteinDone, 0)}g`}
+                detail={todayLoading ? 'Updating' : !proteinCoverage.complete && !proteinCoverage.partial ? 'No protein data' : proteinCoverage.partial ? `${fmt(proteinDone, 0)} g known · partial` : proteinTarget > 0 ? `${fmt(proteinDone, 0)} / ${fmt(proteinTarget, 0)} g` : 'g logged'}
+                secondaryDetail={proteinCoverage.partial ? 'Some entries are missing protein' : null}
+                progress={proteinCoverage.complete && proteinTarget > 0 ? proteinDone / proteinTarget : undefined}
+              />
+              <SignalOrb
+                label="Water"
+                value={todayLoading ? '—' : hydrationGoal > 0 ? `${Math.round((hydrationTotal / hydrationGoal) * 100)}%` : waterAmount(hydrationTotal, hydrationPreferences.unit || 'ml')}
+                detail={todayLoading ? 'Updating' : hydrationGoal > 0 ? `${waterAmount(hydrationTotal, hydrationPreferences.unit || 'ml')} / ${waterAmount(hydrationGoal, hydrationPreferences.unit || 'ml')}` : 'Logged'}
+                progress={hydrationGoal > 0 ? hydrationTotal / hydrationGoal : undefined}
+              />
+              <SignalOrb
+                label="Carbs"
+                value={todayLoading || !carbsCoverage.complete && !carbsCoverage.partial ? '—' : carbsCoverage.partial ? `${fmt(carbsDone, 0)}g` : carbsTarget > 0 ? `${Math.round((carbsDone / carbsTarget) * 100)}%` : `${fmt(carbsDone, 0)}g`}
+                detail={todayLoading ? 'Updating' : !carbsCoverage.complete && !carbsCoverage.partial ? 'No carb data' : carbsCoverage.partial ? `${fmt(carbsDone, 0)} g known · partial` : carbsTarget > 0 ? `${fmt(carbsDone, 0)} / ${fmt(carbsTarget, 0)} g` : 'g logged'}
+                secondaryDetail={carbsCoverage.partial ? 'Some entries are missing carbs' : null}
+                progress={carbsCoverage.complete && carbsTarget > 0 ? carbsDone / carbsTarget : undefined}
+              />
+              {!rdMissing && <SignalOrb label="Readiness" value={`${Math.round(num(rd.value))}`} detail={isHistoricalDay ? `${capFirst(rd.provider || 'wearable')} · recorded ${timeShort(rd.recorded_at) || primaryDayLabel(date)}` : `${capFirst(rd.provider || 'wearable')} · ${readinessBand(rd.value)}`} secondaryDetail={contribLine} progress={num(rd.value) / 100} />}
+              {!slMissing && <SignalOrb label="Sleep" value={`${hm.h}h ${hm.m}m`} detail={isHistoricalDay ? `${capFirst(sl.provider || 'wearable')} · recorded ${timeShort(sl.recorded_at) || primaryDayLabel(date)}` : `${capFirst(sl.provider || 'wearable')} · ${sl.score != null ? `Score ${Math.round(num(sl.score))}` : sleepBand(sl.value)}`} secondaryDetail={sl.score != null && isHistoricalDay ? `Score ${Math.round(num(sl.score))}` : null} />}
+              {wearableWorkout && (
+                <SignalOrb
+                  label="Activity"
+                  value={woLabel ? capFirst(wearableWorkout.value.shortLabel || wearableWorkout.value.kind || 'Done') : 'Rest'}
+                  detail={`${capFirst(wearableWorkout.provider || 'wearable')} · ${wearableWorkout.value.status === 'completed' ? 'Completed' : isHistoricalDay ? 'Logged' : 'Planned'}${wearableWorkout.value.time ? ` · ${wearableWorkout.value.time}` : ''}`}
+                  secondaryDetail={[workoutMeta(wearableWorkout), isHistoricalDay ? `Recorded ${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : null].filter(Boolean).join(' · ')}
+                  detailWrap
+                  onClick={workoutInteractive ? onGoToPlan : undefined}
+                  actionLabel={`View ${workoutSubject(wearableWorkout) || 'activity'} details in Plan. ${capFirst(wearableWorkout.provider || 'wearable')}. ${wearableWorkout.value.status === 'completed' ? 'Completed' : isHistoricalDay ? 'Logged' : 'Planned'}${wearableWorkout.value.time ? ` at ${wearableWorkout.value.time}` : ''}${workoutMeta(wearableWorkout) ? `. ${workoutMeta(wearableWorkout)}` : ''}`}
+                />
+              )}
+            </div>
+          </section>
           </div>
 
-          <div className="mx-auto mt-7 w-full max-w-[360px]">
+          <div className="mx-auto mt-2 w-full max-w-[410px] px-3">
             <CurrentArc progress={calPct} hasTarget={hasCalorieTarget} />
-            <div className="-mt-6 text-center">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/75">{hasCalorieTarget ? 'Daily fuel completion' : 'Fuel logged'}</div>
-              <div className="numeral mt-1 text-[46px] font-semibold leading-none text-white">{todayLoading ? '—' : calorieProgressText}</div>
-              <div className="tnum mt-1 text-[11px] font-medium text-white/75">{todayLoading ? 'Reading your plan' : hasCalorieTarget ? `${fmt(calDone, 0)} of ${fmt(calTarget, 0)} kcal` : 'kcal today · no target set'}</div>
+            <div className="-mt-7 text-center">
+              <div className="text-[10px] font-bold uppercase tracking-[0.21em] text-white/90">{hasCalorieTarget ? 'Fuel today' : 'Fuel logged'}</div>
+              <div className="numeral mt-1 text-[56px] font-semibold leading-none text-white">{todayLoading ? '—' : fmt(calDone, 0)}</div>
+              <div className="tnum mt-1 text-[11px] font-medium text-white/90">{todayLoading ? 'Reading your plan' : hasCalorieTarget ? `${fmt(calDone, 0)} of ${fmt(calTarget, 0)} kcal · ${calorieProgressText}` : 'kcal today · no target set'}</div>
             </div>
           </div>
 
-          <div className="mt-auto text-center">
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/75">Today’s priority</div>
-            <h2 id="today-recommendation" className="serif mx-auto mt-2 max-w-[29rem] text-[34px] font-semibold leading-[1.02] tracking-[-0.02em] text-white">{heroTitle}</h2>
-            <p className="mx-auto mt-3 max-w-[30rem] text-[13px] leading-relaxed text-white/82">{heroDetail}</p>
-            {whyItems.length > 0 && <div className="mx-auto mt-3 max-w-[18rem]"><Why items={whyItems} label="Learn why" variant="hero" /></div>}
+          <div className="mt-auto px-5 text-center">
+            <div className="text-[10px] font-bold uppercase tracking-[0.21em] text-white/90">Today’s priority</div>
+            <h2 id="today-recommendation" className="serif mx-auto mt-2 max-w-[31rem] text-[38px] font-semibold leading-[0.98] tracking-[-0.025em] text-white">{heroTitle}</h2>
+            <p className="mx-auto mt-3 max-w-[31rem] text-[13px] leading-relaxed text-white/94">{heroDetail}</p>
+            {whyItems.length > 0 && <div className="mx-auto mt-3 max-w-[14rem]"><Why items={whyItems} label="Learn why" variant="hero" /></div>}
           </div>
         </div>
       </section>
+
+      <div className="today-paper-sheet relative z-[2] -mt-10 space-y-6 bg-paper px-4 pb-1 pt-7">
+        {/* Offline / pending-sync strip — Sand, the same "pending, not yet
+            synced" tone as the log-row tag above, not the legacy amber warn. */}
+        {(pendingCount > 0 || !online) && (
+          <div className="flex items-center justify-between gap-3 border border-line-strong bg-sand/50 px-3 py-2 text-sm text-ink">
+            <span>{!online && '◐ Offline. '}{pendingCount > 0 ? `${pendingCount} log${pendingCount === 1 ? '' : 's'} waiting to sync` : 'Logs save locally and sync later.'}</span>
+            {pendingCount > 0 && online && (
+              <button onClick={onSync} disabled={syncing} className="shrink-0 border border-ink/30 px-2 py-1 text-xs font-semibold disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>
+            )}
+          </div>
+        )}
 
       {/* Intake so far — the calorie headline, budget bar, and macro grid.
           The numeral here used to render at 38px, larger than the
@@ -870,6 +921,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
             <rect x="20" width="2" height="18" />
           </svg>
         </Button>
+      </div>
       </div>
       <TodayBackdropSheet
         open={backdropOpen}

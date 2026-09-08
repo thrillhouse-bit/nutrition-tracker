@@ -1,5 +1,38 @@
 # DESIGN.md — visual/UX design rationale
 
+## 8 Sep 2026 — immersive Today field and complete glance rail
+
+Today now opens directly onto the Current Field instead of placing a small
+abstract card below a separate paper header and metric strip. The composition
+uses the supplied Oura screen as an information and proportion reference—day
+context, circular signals, a broad outcome arc, strong editorial priority, and
+a lower surface rising into view—while retaining Body Current's global rail,
+type system, account accent, controls, and original imagery. The default
+**Alpine** field is an original portrait landscape bundled into the PWA cache;
+`tide` remains its stored scene ID so existing account preferences migrate
+without a reset. Ridge, Dawn, and account-local personal photos remain intact.
+
+At a glance is no longer a detached white section. It is a named, focusable
+horizontal region over the field with visible touch/keyboard instructions and
+larger translucent instruments. Fuel, Protein, Water, and Carbs make the row
+balanced and useful without a wearable. Real readiness, sleep, and activity
+append only when present. Macro coverage is checked entry-by-entry: all-unknown
+and mixed-partial totals are disclosed rather than displayed as a fabricated
+zero or target percentage. Rail touch events remain within the rail instead of
+invoking Today’s left/right day gesture.
+
+The warm-paper journal rises over the dark lower field without rounded SaaS
+card styling. A directional scrim preserves the photograph's atmosphere while
+maintaining white metadata and control contrast. A local 78% near-black
+information backplate guarantees the small provider and glance labels do not
+depend on the selected image, while ending before the arc preserves the center
+and lower landscape. A separate edge-free lower gradient begins at 72%
+near-black beneath the rail and deepens behind the arc and recommendation, so
+their small labels also remain legible over any personal photo.
+Information-band details use 86–90% white. The recommendation remains the
+largest type moment and every provider
+refresh/manage/connect recovery action retains its prior behavior.
+
 ## 7 Sep 2026 — the Current Field
 
 The Today page now uses the supplied Oura screen as a compositional reference,
@@ -7,13 +40,14 @@ not a visual template: compact circular signals lead into one immersive daily
 outcome, then the editorial paper journal resumes below. Body Current's own
 signature is the **Current Field**—an atmospheric cover whose app-authored arc
 is tied to actual calorie-plan completion and whose dominant sentence remains
-the evidence-aware Today recommendation. Fuel, protein, and water keep the rail
+the evidence-aware Today recommendation. Fuel, protein, water, and carbohydrates keep the rail
 useful without a wearable; real readiness, sleep, and activity join only when
 present. Activity retains source, tense, time, duration, and device-reported
 energy instead of collapsing to a decorative icon.
 
-Tide, Ridge, and Dawn are code-native scenes derived from the active account
-accent. A personal-photo path makes the visual genuinely user-owned without
+The later 8 Sep pass replaces the original Tide abstraction with the bundled
+Alpine photograph while preserving `tide` as the stored compatibility ID.
+Ridge and Dawn remain code-native. A personal-photo path makes the visual genuinely user-owned without
 creating a server-side photo store: the browser validates, downsizes,
 WebP-reencodes, strips embedded metadata, and saves the bounded result under the
 signed-in account's existing private-storage key pattern. A uniform dark photo

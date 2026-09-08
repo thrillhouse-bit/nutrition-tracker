@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -36,7 +38,7 @@ async function renderToday(props = {}) {
   await act(async () => {
     root.render(<Today
       date={new Date()}
-      data={{ baseline: { calories: 2000, protein_g: 120 }, signals: {}, hydration: { total_ml: 500, entries: [], preferences: { goal_ml: 2000, unit: 'ml', quick_add_ml: [250, 500, 750] } } }}
+      data={{ baseline: { calories: 2000, protein_g: 120, carbs_g: 250 }, signals: {}, hydration: { total_ml: 500, entries: [], preferences: { goal_ml: 2000, unit: 'ml', quick_add_ml: [250, 500, 750] } } }}
       entries={[]}
       loading={false}
       online
@@ -86,6 +88,7 @@ describe('Today backdrop preference', () => {
     const dialog = document.querySelector('[role="dialog"]')
     expect(dialog?.textContent).toMatch(/never uploaded/i)
     expect(dialog?.textContent).toMatch(/JPEG, PNG, or WebP · 10 MB maximum/i)
+    expect(dialog?.textContent).toMatch(/Alpine/)
     const ridge = [...dialog.querySelectorAll('button')].find((button) => button.textContent.includes('Ridge'))
     await act(async () => { ridge.click() })
     expect(ridge.getAttribute('aria-pressed')).toBe('true')
@@ -96,6 +99,106 @@ describe('Today backdrop preference', () => {
     const el = await renderToday()
     expect(el.textContent).toMatch(/Fuel0 \/ 2,000 kcal/)
     expect(el.textContent).toMatch(/25%Water500 mL \/ 2 L/)
+    expect(el.textContent).toMatch(/Carbs0 \/ 250 g/)
+    expect(el.querySelector('[role="group"][aria-label^="Carbs."]')?.getAttribute('aria-label')).toMatch(/Carbs\. 0%\. 0 \/ 250 g/)
     expect(el.textContent).not.toMatch(/Readiness|Sleep|Activity|No workout set/)
+  })
+
+  it('integrates At a glance into the photographic Current Field instead of a separate paper section', async () => {
+    const el = await renderToday()
+    const hero = el.querySelector('.today-current-field')
+    const glanceHeading = el.querySelector('#today-at-a-glance')
+    expect(hero?.dataset.scene).toBe('tide')
+    expect(hero?.contains(glanceHeading)).toBe(true)
+    expect(glanceHeading?.className).toContain('text-white')
+    expect(el.querySelector('.today-paper-sheet')).toBeTruthy()
+  })
+
+  it('protects small provider and glance text with an image-independent AA backplate', async () => {
+    const el = await renderToday()
+    const hero = el.querySelector('.today-current-field')
+    const backplate = hero?.querySelector('.today-hero-information-backplate')
+    const glanceHeading = el.querySelector('#today-at-a-glance')
+    expect(backplate).toBeTruthy()
+    expect(backplate?.contains(glanceHeading)).toBe(true)
+    expect(backplate?.textContent).toMatch(/Fuel \+ hydration mode/)
+    expect(el.querySelector('#today-glance-instructions')?.className).toContain('text-white/90')
+    const fuelDetail = el.querySelector('[role="group"][aria-label^="Fuel."] span[title]')
+    expect(fuelDetail?.className).toContain('text-white/90')
+    const underContrastText = [...backplate.querySelectorAll('[class*="text-white/"]')]
+      .filter((node) => /text-white\/(66|72|76|78|82|84)(?:\s|$)/.test(node.className))
+    expect(underContrastText).toEqual([])
+
+    const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
+    expect(css).toMatch(/\.today-hero-information-backplate\s*\{[^}]*background:\s*rgb\(4 8 11 \/ 0\.78\)/s)
+  })
+
+  it('protects lower outcome microcopy independently of curated or personal photos', async () => {
+    const el = await renderToday()
+    const hero = el.querySelector('.today-current-field')
+    const protection = hero?.querySelector('.today-hero-outcome-protection')
+    const fuelLabel = [...hero.querySelectorAll('div')].find((node) => node.textContent === 'Fuel today')
+    const priorityLabel = [...hero.querySelectorAll('div')].find((node) => node.textContent === 'Today’s priority')
+    expect(protection).toBeTruthy()
+    expect(protection?.getAttribute('aria-hidden')).toBe('true')
+    expect(fuelLabel?.className).toContain('text-white/90')
+    expect(priorityLabel?.className).toContain('text-white/90')
+
+    const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
+    expect(css).toMatch(/\.today-hero-outcome-protection\s*\{[^}]*linear-gradient\([^}]*rgb\(4 8 11 \/ 0\.72\) 0%[^}]*rgb\(4 8 11 \/ 0\.72\) 22%[^}]*rgb\(4 8 11 \/ 0\.82\) 45%[^}]*rgb\(4 8 11 \/ 0\.91\) 100%/s)
+  })
+
+  it('exposes the glance rail as a named keyboard-scrollable region', async () => {
+    const el = await renderToday()
+    const rail = el.querySelector('[role="region"][aria-label="Nutrition, hydration, and available wearable signals"]')
+    rail.scrollBy = vi.fn()
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+    expect(rail.tabIndex).toBe(0)
+    expect(rail.getAttribute('aria-describedby')).toBe('today-glance-instructions')
+    expect(rail.scrollBy).toHaveBeenCalledWith({ left: 118, behavior: 'smooth' })
+  })
+
+  it('does not let a horizontal glance-rail swipe navigate to another day', async () => {
+    const onPrevDay = vi.fn()
+    const onNextDay = vi.fn()
+    const el = await renderToday({ onPrevDay, onNextDay })
+    const rail = el.querySelector('[role="region"][aria-label="Nutrition, hydration, and available wearable signals"]')
+    const start = new Event('touchstart', { bubbles: true })
+    Object.defineProperty(start, 'touches', { value: [{ clientX: 260, clientY: 120 }] })
+    const end = new Event('touchend', { bubbles: true })
+    Object.defineProperty(end, 'changedTouches', { value: [{ clientX: 120, clientY: 124 }] })
+    rail.dispatchEvent(start)
+    rail.dispatchEvent(end)
+    expect(onPrevDay).not.toHaveBeenCalled()
+    expect(onNextDay).not.toHaveBeenCalled()
+  })
+
+  it('does not turn missing carbohydrate data into a false zero', async () => {
+    const entries = [{ id: 1, servings_consumed: 1, logged_at: new Date().toISOString(), food: { name: 'Unknown carbs', calories: 200, protein_g: 12, carbs_g: null } }]
+    const el = await renderToday({ entries })
+    const carbs = el.querySelector('[role="group"][aria-label^="Carbs."]')
+    expect(carbs?.textContent).toMatch(/CarbsNo carb data/)
+    expect(carbs?.getAttribute('aria-label')).toMatch(/Carbs\. —\. No carb data/)
+    expect(carbs?.textContent).not.toMatch(/0%|0 \/ 250 g/)
+  })
+
+  it('labels a mixed carbohydrate total as partial instead of showing a misleading target percentage', async () => {
+    const entries = [
+      { id: 1, servings_consumed: 1, logged_at: new Date().toISOString(), food: { name: 'Known', calories: 200, carbs_g: 30 } },
+      { id: 2, servings_consumed: 1, logged_at: new Date().toISOString(), food: { name: 'Unknown', calories: 150, carbs_g: null } },
+    ]
+    const el = await renderToday({ entries })
+    const carbs = el.querySelector('[role="group"][aria-label^="Carbs."]')
+    expect(carbs?.textContent).toMatch(/30gCarbs30 g known · partial/)
+    expect(carbs?.textContent).toMatch(/Some entries are missing carbs/)
+    expect(carbs?.textContent).not.toMatch(/12%/)
+  })
+
+  it('keeps a known zero distinct from unknown carbohydrate data', async () => {
+    const entries = [{ id: 1, servings_consumed: 1, logged_at: new Date().toISOString(), food: { name: 'Known zero', calories: 0, carbs_g: 0 } }]
+    const el = await renderToday({ entries })
+    const carbs = el.querySelector('[role="group"][aria-label^="Carbs."]')
+    expect(carbs?.getAttribute('aria-label')).toMatch(/Carbs\. 0%\. 0 \/ 250 g/)
+    expect(carbs?.textContent).not.toMatch(/No carb data|partial/)
   })
 })

@@ -86,10 +86,12 @@ but touch controls remain at least 44px. Layouts may widen progressively, but
 must remain complete at 320px and must not introduce page-level horizontal
 scrolling. A deliberately bounded signal rail may own horizontal overflow.
 Loading and empty states preserve the information hierarchy; an absent feature
-does not leave a decorative hole. Today leads with date and compact connection
-context, then a horizontally scrollable circle rail of real nutrition,
-hydration, and available wearable readings. One immersive Current Field joins
-the calorie-plan arc to the dominant daily priority before detailed intake.
+does not leave a decorative hole. Today opens directly into one full-bleed
+Current Field: day and connection context, then a horizontally scrollable
+circle rail of real fuel, protein, water, carbohydrates, and available wearable
+readings all sit over the landscape. A broad calorie-plan arc and the dominant
+daily priority complete the field before the warm-paper journal overlaps its
+lower edge and resumes detailed intake.
 Secondary arithmetic and entry-management detail use progressive disclosure;
 Today previews only the three most recent food entries and routes the complete
 history to Log.
@@ -134,12 +136,26 @@ exact accessible percentage per day; the neutral track means no log.
 
 ### Today Current Field
 
-The field is the product's one immersive visual surface. Tide, Ridge, and Dawn
-are code-native scenes shaped by the live account accent; a personal photo is
-also allowed. A strong full-field scrim protects white-text contrast over any
-photo. The app-authored arc always represents actual calorie-plan completion,
-caps visually at 100%, and shows exact intake and target in text. Missing and
-loading targets are named rather than illustrated as progress.
+The field is the product's one immersive visual surface. Alpine is an original,
+bundled photographic landscape and the backward-compatible `tide` scene ID;
+Ridge and Dawn remain code-native alternatives, and a personal photo is also
+allowed. The bundled image is part of the PWA precache, with a CSS color field
+as its failure fallback. A strong directional scrim protects white-text
+contrast over any photo. The app-authored arc always represents actual
+calorie-plan completion, caps visually at 100%, and shows exact intake and
+target in text. Missing and loading targets are named rather than illustrated
+as progress. Provider status and At a glance sit on a 78% near-black local
+backplate independent of the chosen image; their smallest text uses at least
+86% white. The solid backplate ends before the outcome arc. A separate
+image-independent lower gradient begins below the rail at 72% near-black and
+deepens behind the arc and recommendation, protecting their microcopy without
+a card edge or erasing the landscape's photographic atmosphere.
+
+The integrated At a glance rail always contains four useful account-owned
+readings—Fuel, Protein, Water, and Carbs—before appending only wearable readings
+that truly exist. Unknown or partially known macro data is named and never
+coerced into a false zero or percentage. The rail owns horizontal touch and
+keyboard scrolling so it cannot accidentally trigger day navigation.
 
 ### Forms and overlays
 
