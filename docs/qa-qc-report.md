@@ -1991,3 +1991,70 @@ anything previously tracked. No fixes made or attempted by this pass.
 
 `origin/main` unchanged. Release branch tip still `c9c6e71`, matching
 both live domains exactly. No fixes needed this pass.
+
+## 2026-09-08 — Check-in pass (recurring, consolidated 12:36/16:36 UTC)
+
+Two more scheduled firings queued while idle; consolidated as before.
+`origin/main` still unchanged. Release branch moved three commits
+past the last-reviewed tip: `c9c6e71` → `5059d51` ("make Today an
+immersive current field") → `5e85cbe` ("brighten the Today current
+field") → `7be5051` ("Add real Current Field photos and Today data
+cards"). Both `omnifuelapp.tech` and `bodycurrent.app` already serve
+`7be5051` (`GET /api/version` on both); `/api/health` unchanged. No
+`server/` files touched in this range — purely frontend, assets, and
+tests (18 files, +838/-199).
+
+**Read the full diff, not the commit titles.** This continues the
+customizable-backdrop feature from two passes ago: the single
+code-native "Tide" scene is replaced with five real, licensed location
+photographs (Laguna, Manhattan, Big Sur, Joshua Tree, Lake Tahoe) plus
+the original scene relabeled "Alpine" (same `id: 'tide'`, so existing
+saved preferences don't silently reset), and `Today.jsx`'s hero is
+restructured into a full-bleed immersive photo background with the
+date header, glance rail, and "Today's priority" copy overlaid
+directly on it, followed by a new `today-current-overview` section
+below with per-signal metric cards (fuel/water/movement/activity).
+
+- **Licensing checked, not assumed.** New `docs/PHOTO-CREDITS.md`
+  documents photographer, source URL, and license (Unsplash License,
+  free for commercial use, no attribution required) for each of the
+  five new photos; the in-app picker mirrors the same credit/source/
+  license links. Consistent between the two — no unlicensed stock
+  imagery.
+- **PWA offline caching verified end-to-end, not just read as code.**
+  `vite.config.js` adds all six `current-fields/*.jpg` paths to
+  `includeAssets` (they don't match the existing `globPatterns`, which
+  is JS/CSS/HTML/SVG/ico only) with a comment explaining why: a saved
+  backdrop choice shouldn't collapse to a blank hero when the installed
+  app opens offline. Ran a real `npm run build` in the isolated
+  worktree and inspected the generated `dist/sw.js` precache manifest
+  directly (not trusted from the config alone) — all six JPGs are
+  present with content-hash revisions, precache now 24 entries /
+  1,343.69 KiB (up from 18 / 1,331.61 KiB two passes ago).
+- **New coverage-aware nutrient orbs spot-checked.** `Today.jsx` adds
+  a `nutrientCoverage()` helper so the new Carbs orb (and Protein,
+  retrofitted the same way) distinguishes "no entries have this
+  nutrient at all" from "some entries are missing it" from "fully
+  known" — each state renders distinct copy (`No protein data` /
+  `g known · partial` / an actual percentage against target) instead
+  of silently showing a misleadingly-precise percentage computed from
+  incomplete data.
+- **Checked for a stale-import regression and ruled it out.** The
+  diff drops `ErrorNote` from `Today.jsx`'s import line; verified by
+  grepping the full post-change file that every previous `<ErrorNote>`
+  usage was replaced with an inline error `<div role="alert">`, not
+  orphaned — would otherwise have been a `ReferenceError` at runtime
+  on any Oura refresh failure.
+
+**Independently verified, not just trusted:** isolated git worktree
+(`origin/codex/body-current-weekend-release` at `7be5051`, session's
+own `main` checkout untouched), `npm install` (0 vulnerabilities),
+`npm test` — 146 files, **1954/1954** passing (up from 1944/1944 two
+passes ago, consistent with the new `today-backdrop.test.jsx` and
+`today-daily-signals.test.jsx` coverage in this range), and
+`npm run build` — clean, output inspected above. Worktree removed
+after verification.
+
+No Open Items table changes — another well-tested, self-contained
+feature/content pass with no defect found. No fixes made or attempted
+this pass.
