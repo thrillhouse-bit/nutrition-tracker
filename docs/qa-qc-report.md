@@ -2058,3 +2058,70 @@ after verification.
 No Open Items table changes — another well-tested, self-contained
 feature/content pass with no defect found. No fixes made or attempted
 this pass.
+
+## 2026-09-08 — Check-in pass (recurring, 20:36 UTC)
+
+`origin/main` unchanged. Release branch moved four more commits since
+the last pass: `7be5051` → `5dab942` ("Unify core screens with Current
+Field design") → `a1ff54b` ("Refine planning surfaces and expand
+account themes") → `e9b1efb` ("Polish Today chrome and accent
+materials") → `7f46b6d` ("Prioritize today's log over quick add").
+Both `omnifuelapp.tech` and `bodycurrent.app` already serve `7f46b6d`
+(`GET /api/version` on both); `/api/health` unchanged.
+
+**This range touches `schema.sql`, `server/db.js`, and `server/index.js`
+— read in full, not skimmed, since schema changes are normally
+report-only territory here.** The change renames the default account
+accent from `cobalt` to `sapphire` and expands the accent palette from
+3 to 8 options (adds silver, gold, crystal, diamond, pearl). The
+migration itself is correctly ordered for a database that already has
+existing rows: drop the old check constraint, `UPDATE ... SET accent =
+'sapphire' WHERE accent = 'cobalt'` to migrate existing data, *then*
+set the new default and add the new check constraint — so no existing
+row can violate the new constraint at the point it's added. Verified
+this 3-way consistency, not just read one file and assumed the others
+match:
+- `schema.sql`'s `profile_accent_check` constraint,
+- `server/index.js`'s `PROFILE_ENUMS.accent` (used for the `PUT
+  /api/appearance` 400-rejection allowlist), and
+- `src/lib/accentTheme.js`'s `ACCENT_PALETTES` (used for theming) —
+
+all three list the same 8 values, and both the server (`GET
+/appearance`) and client (`validAccent()`) independently map a
+still-stored legacy `'cobalt'` value to `'sapphire'` on read, so an
+account whose migration somehow didn't run yet still renders correctly
+rather than hitting an unstyled/unknown accent. This is a genuinely
+well-executed migration, not one to flag as risky-but-unreviewed.
+
+**Grepped for stragglers.** Searched the whole tree for remaining
+`'cobalt'` string literals outside CSS custom-property names (which
+intentionally keep the `--color-cobalt` token name as the CSS variable
+for whichever accent is active) — the only two hits are `Plan.jsx`'s
+unrelated `tone: 'cobalt'` notice-styling concept and the two
+intentional legacy-value fallbacks above. No orphaned references to
+the old accent value.
+
+**Visual/chrome polish reviewed for regressions, not just accepted as
+design.** The remaining diff (`Today.jsx`, `App.jsx`,
+`AdaptiveFuelPlan.jsx`, `LogView.jsx`, `Connections.jsx`,
+`Insights.jsx`, `src/index.css`) is UI refinement: the top nav goes
+transparent/white-on-photo specifically on the Today tab (matching the
+immersive hero from two passes ago), signal-orb numerals get a
+compact-width variant for longer values, and `AdaptiveFuelPlan.jsx`
+deduplicates what were two copies of the same target-grid markup into
+one `TargetGrid` component (a genuine simplification, not just a
+rename). Nothing here touches request/response handling or stored
+data shape.
+
+**Independently verified, not just trusted:** isolated git worktree
+(`origin/codex/body-current-weekend-release` at `7f46b6d`, session's
+own `main` checkout untouched), `npm install` (0 vulnerabilities),
+`npm test` — 146 files, **1956/1956** passing (up from 1954/1954,
+consistent with the new/expanded `accent-theme`,
+`schema-account-lifecycle`, and `api-routes` coverage for the 8-value
+accent set), and `npm run build` — clean. Worktree removed after
+verification.
+
+No Open Items table changes — a well-ordered schema migration plus UI
+polish, both independently verified, no defect found. No fixes made or
+attempted this pass.
