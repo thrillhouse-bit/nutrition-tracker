@@ -1986,3 +1986,8 @@ still present and unaffected.
 No Open Items table changes — this is a genuine bug fix plus a
 self-contained, well-validated feature, not a new defect or a fix to
 anything previously tracked. No fixes made or attempted by this pass.
+
+## 2026-09-08 — Check-in pass (recurring, 08:36 UTC)
+
+`origin/main` unchanged. Release branch tip still `c9c6e71`, matching
+both live domains exactly. No fixes needed this pass.
