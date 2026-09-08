@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { NUTRIENTS, fmt, num, ymd } from '../lib/nutrition.js'
+import { NUTRIENTS, dayBounds, fmt, num, ymd } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
 import { Button, EmptyState, ErrorNote, Field, TextButton, inputCls, Sheet, Spinner, Toggle, Why } from './ui.jsx'
 import SmartPlanForm from './SmartPlanForm.jsx'
@@ -253,9 +253,10 @@ export default function Plan({ date, refreshKey, onChanged }) {
   useEffect(() => {
     let alive = true
     setLoading(true)
+    const bounds = dayBounds(date)
     Promise.all([
-      api.planToday(ymd(date)).catch(() => null),
-      api.afpPlan(ymd(date)).catch(() => null),
+      api.planToday(ymd(date), bounds).catch(() => null),
+      api.afpPlan(ymd(date), bounds).catch(() => null),
     ])
       .then(([r, afp]) => {
         if (!alive) return

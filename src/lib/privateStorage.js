@@ -4,7 +4,7 @@
 
 const LEGACY_PRIVATE_KEYS = ['nt_outbox_v1', 'nt_recents_v1']
 const LEGACY_PRIVATE_CACHES = ['api-cache']
-const ACCOUNT_PRIVATE_NAMESPACES = ['outbox', 'recents']
+const ACCOUNT_PRIVATE_NAMESPACES = ['outbox', 'recents', 'today-backdrop']
 
 export function accountStorageKey(namespace, userId) {
   if (userId === null || userId === undefined || String(userId) === '') {
@@ -43,7 +43,8 @@ export function purgeUnownedLegacyStorage() {
 }
 
 // Permanent account deletion must also erase the device-local copies that
-// intentionally survive an ordinary logout (offline queue and recents). The
+// intentionally survive an ordinary logout (offline queue, recents, and
+// device-local visual preferences). The
 // namespaces live here so a new private cache cannot be forgotten by the
 // deletion flow later.
 export function purgeAccountStorage(userId) {

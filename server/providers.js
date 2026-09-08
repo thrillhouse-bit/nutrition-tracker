@@ -160,6 +160,22 @@ function sig(value, extra) {
   return { value, freshness: extra.freshness_at ? 'fresh' : freshnessOf(extra.recorded_at), ...extra }
 }
 
+// Freshness is an operational question only for the current day: "is this
+// reading recent enough to guide me now?" A valid reading on a day the user
+// is reviewing in history does not become stale merely because that calendar
+// day has ended. Mark those readings as `recorded` and carry the requested day
+// explicitly so clients can present historical provenance without pretending
+// the measurement is live. Missing signals remain null, and future/current
+// requests keep the ordinary freshness policy unchanged.
+export function normalizeSignalsForRequestedDay(signals = {}, requestedDay, { isRequestedCurrentDay = false, isRequestedPastDay, nowDate = new Date() } = {}) {
+  const isPast = isRequestedPastDay ?? (!isRequestedCurrentDay && /^\d{4}-\d{2}-\d{2}$/.test(String(requestedDay)) && requestedDay < ymd(nowDate))
+  if (!isPast) return signals
+  return Object.fromEntries(Object.entries(signals).map(([metric, signal]) => [
+    metric,
+    signal && signal.value != null ? { ...signal, freshness: 'recorded', day: requestedDay } : signal,
+  ]))
+}
+
 // --- provider status (Connections tab) ------------------------------------
 // status ∈ connected | syncing | stale | disconnected | not-configured |
 // error. `not-configured` is env-level (nobody on this server can connect),
@@ -399,7 +415,9 @@ async function realSignals(store, userId, id, queryDate, nowDate, isRequestedCur
 // "now" regardless of which day Today's prev/next arrows had navigated to).
 // `nowDate` governs every fetched_at stamp below; it is distinct from which
 // day the data itself is about.
-export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate, { isRequestedCurrentDay } = {}) {
+export async function composeSignals(store, nowDate = new Date(), userId, queryDate = nowDate, { isRequestedCurrentDay, isRequestedPastDay } = {}) {
+  const requestedDay = ymd(queryDate)
+  const requestedCurrentDay = isRequestedCurrentDay ?? requestedDay === ymd(nowDate)
   const settings = {}
   for (const id of Object.keys(PROVIDERS)) settings[id] = await store.getIntegration(userId, id)
 
@@ -407,7 +425,7 @@ export async function composeSignals(store, nowDate = new Date(), userId, queryD
   const perProvider = {}
   for (const id of Object.keys(PROVIDERS)) {
     if (settings[id]?.enabled === false) { perProvider[id] = {}; continue }
-    perProvider[id] = await realSignals(store, userId, id, queryDate, nowDate, isRequestedCurrentDay ?? ymd(queryDate) === ymd(nowDate))
+    perProvider[id] = await realSignals(store, userId, id, queryDate, nowDate, requestedCurrentDay)
   }
 
   // Merge one real signal per metric; preference only resolves conflicts
@@ -425,13 +443,13 @@ export async function composeSignals(store, nowDate = new Date(), userId, queryD
   // workout signal at all, and even for a connected wearable, the user
   // telling Plan directly "I'm running at 5:30" is more current than
   // whatever the device auto-detected or hasn't detected yet.
-  const manual = await store.getManualWorkout?.(userId, ymd(nowDate))
+  const manual = await store.getManualWorkout?.(userId, requestedDay)
   if (manual) {
     const { recorded_at, ...workoutValue } = manual
     out.workout = sig(workoutValue, { unit: null, provider: 'manual', recorded_at, fetched_at: recorded_at, demo: false })
   }
 
-  return out
+  return normalizeSignalsForRequestedDay(out, requestedDay, { isRequestedCurrentDay: requestedCurrentDay, isRequestedPastDay, nowDate })
 }
 
 // Local YYYY-MM-DD (server tz), matching the rest of the app's day grouping.

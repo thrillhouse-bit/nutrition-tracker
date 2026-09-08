@@ -2326,6 +2326,42 @@ describe('GET /api/today day bounds', () => {
     expect(body.baseline).toEqual(body.plan.computedTargets)
     expect(body.adjusted).toEqual(body.plan.targets)
     expect(body.signals.workout.value).toMatchObject({ kind: 'run', intensity: 'hard', status: 'planned', durationMin: 60 })
+    expect(body.signals.workout).toMatchObject({ freshness: 'recorded', day: '2026-08-24' })
+
+    // /plan/today builds the same signal set through a separate route. A
+    // canonical session injected while serving a past-day request must not be
+    // stamped fresh merely because the request happened now.
+    const planRes = await get(`/api/plan/today?${qs}`)
+    const planBody = await planRes.json()
+    expect(planBody.signals.workout).toMatchObject({ freshness: 'recorded', day: '2026-08-24', value: { kind: 'run' } })
+  })
+
+  it('returns historical provider readings as recorded while preserving missing signals as null', async () => {
+    fake.state.appleSignals['2026-08-24'] = [{
+      metric: 'sleep', value: 7.3, unit: 'h',
+      recorded_at: '2026-08-24T07:00:00.000Z', fetched_at: '2026-08-24T08:00:00.000Z',
+    }]
+    const qs = 'date=2026-08-24&from=2026-08-24T00:00:00.000Z&to=2026-08-25T00:00:00.000Z'
+    const body = await (await get(`/api/today?${qs}`)).json()
+
+    expect(body.signals.sleep).toMatchObject({ provider: 'apple', freshness: 'recorded', day: '2026-08-24', value: 7.3 })
+    expect(body.signals.workout).toBeNull()
+  })
+
+  it('uses client bounds—not the server calendar—to distinguish a current stale reading from a recorded historical one', async () => {
+    // At this instant Apia says Aug 25, but a UTC client is still within Aug
+    // 24. The date string alone looks historical to the server; the bounds
+    // prove it is the browser's current day and must retain normal freshness.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 7, 24, 12, 0, 0) })
+    fake.state.appleSignals['2026-08-24'] = [{
+      metric: 'sleep', value: 6.8, unit: 'h',
+      recorded_at: '2026-08-23T06:00:00.000Z', fetched_at: '2026-08-23T06:00:00.000Z',
+    }]
+    const qs = 'date=2026-08-24&from=2026-08-24T00:00:00.000Z&to=2026-08-25T00:00:00.000Z'
+    const body = await (await get(`/api/today?${qs}`)).json()
+
+    expect(body.signals.sleep).toMatchObject({ provider: 'apple', freshness: 'stale', value: 6.8 })
+    expect(body.signals.sleep.day).toBeUndefined()
   })
 })
 

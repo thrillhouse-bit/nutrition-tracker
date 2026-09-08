@@ -1,14 +1,41 @@
 # DESIGN.md — visual/UX design rationale
 
+## 7 Sep 2026 — the Current Field
+
+The Today page now uses the supplied Oura screen as a compositional reference,
+not a visual template: compact circular signals lead into one immersive daily
+outcome, then the editorial paper journal resumes below. Body Current's own
+signature is the **Current Field**—an atmospheric cover whose app-authored arc
+is tied to actual calorie-plan completion and whose dominant sentence remains
+the evidence-aware Today recommendation. Fuel, protein, and water keep the rail
+useful without a wearable; real readiness, sleep, and activity join only when
+present. Activity retains source, tense, time, duration, and device-reported
+energy instead of collapsing to a decorative icon.
+
+Tide, Ridge, and Dawn are code-native scenes derived from the active account
+accent. A personal-photo path makes the visual genuinely user-owned without
+creating a server-side photo store: the browser validates, downsizes,
+WebP-reencodes, strips embedded metadata, and saves the bounded result under the
+signed-in account's existing private-storage key pattern. A uniform dark photo
+scrim is intentionally stronger than the curated-scene treatment so even a
+pure-white source keeps the small white metadata readable. The Sheet explains
+limits and device-only behavior before the picker opens.
+
+This is the page's one deliberate aesthetic risk. The date/connection header,
+intake, hydration, log, and global navigation retain the warm-paper, sharp-rule,
+Bodoni/Archivo system so the product does not become a stack of glossy fitness
+cards or a copy of Oura's mountain treatment.
+
 ## 7 Sep 2026 — Today reading hierarchy
 
-Today now follows a relevance-first reading order inspired by the information
+This intermediate pass established a relevance-first reading order inspired by the information
 architecture of strong wearable apps, including Oura, without copying their
 visual language. One compact header carries the selected day and provider
 freshness. A single **Today's priority** panel becomes the page's strongest
 moment; real daily signals and intake follow as supporting evidence. Provider
 actions stay adjacent to provider status instead of competing with the main
-recommendation.
+recommendation. The Current Field revision above retains that hierarchy while
+moving the compact signal rail ahead of the immersive priority.
 
 The page uses progressive disclosure to reduce its initial scan length. Energy
 and movement arithmetic appears only when real expenditure or step data exists

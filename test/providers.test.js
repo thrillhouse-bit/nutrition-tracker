@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { freshnessOf, composeSignals, PROVIDERS, ymd } from '../server/providers.js'
+import { freshnessOf, composeSignals, normalizeSignalsForRequestedDay, PROVIDERS, ymd } from '../server/providers.js'
 
 describe('freshnessOf', () => {
   const now = Date.now()
@@ -28,6 +28,102 @@ describe('provider abstraction', () => {
     expect(PROVIDERS.oura.connect).toBe('oauth')
     expect(PROVIDERS.garmin.connect).toBe('oauth')
     expect(PROVIDERS.apple.connect).toBe('ingest') // no cloud API — push-in only
+  })
+})
+
+describe('historical signal semantics', () => {
+  const baseStore = {
+    getIntegration: async () => ({ enabled: true, demo: false, settings: {} }),
+    listOuraAccounts: async () => [],
+    updateOuraTokens: async () => {},
+  }
+
+  function dateDaysAgo(days) {
+    const date = new Date()
+    date.setHours(12, 0, 0, 0)
+    date.setDate(date.getDate() - days)
+    return date
+  }
+
+  it('honors caller-local past-day classification even when the requested date equals the server date', () => {
+    const now = new Date('2026-09-07T12:00:00.000Z')
+    const signal = { value: 72, provider: 'oura', freshness: 'fresh' }
+    expect(normalizeSignalsForRequestedDay({ readiness: signal }, '2026-09-07', {
+      isRequestedCurrentDay: false,
+      isRequestedPastDay: true,
+      nowDate: now,
+    }).readiness).toMatchObject({ freshness: 'recorded', day: '2026-09-07' })
+    expect(normalizeSignalsForRequestedDay({ readiness: signal }, '2026-09-08', {
+      isRequestedCurrentDay: false,
+      isRequestedPastDay: false,
+      nowDate: now,
+    }).readiness).toEqual(signal)
+  })
+
+  it.each([1, 5])('marks valid Garmin and Apple readings from %i day(s) ago as recorded, not stale/unavailable', async (daysAgo) => {
+    const now = new Date()
+    const queryDate = dateDaysAgo(daysAgo)
+    const day = ymd(queryDate)
+    const recordedAt = `${day}T07:00:00`
+    const store = {
+      ...baseStore,
+      listGarminAccounts: async () => [{ id: 7 }],
+      getGarminDaily: async (accountId, requestedDay) => requestedDay === day
+        ? { account_id: accountId, day, total_calories: 2300, active_calories: 500, steps: 8200 }
+        : null,
+      listAppleSignals: async (userId, requestedDay) => requestedDay === day ? [
+        { metric: 'workout', value: { label: 'Morning Run', kind: 'run', status: 'completed' }, unit: null, recorded_at: recordedAt, fetched_at: recordedAt },
+        { metric: 'sleep', value: 7.2, unit: 'h', recorded_at: recordedAt, fetched_at: recordedAt },
+      ] : [],
+    }
+
+    const signals = await composeSignals(store, now, 1, queryDate)
+    expect(signals.expenditure).toMatchObject({ provider: 'garmin', freshness: 'recorded', day })
+    expect(signals.steps).toMatchObject({ provider: 'garmin', freshness: 'recorded', day })
+    expect(signals.workout).toMatchObject({ provider: 'apple', freshness: 'recorded', day })
+    expect(signals.sleep).toMatchObject({ provider: 'apple', freshness: 'recorded', day })
+    expect(signals.readiness).toBeNull()
+  })
+
+  it('keeps current-day stale data stale and does not manufacture missing signals', async () => {
+    const now = new Date()
+    const day = ymd(now)
+    const old = new Date(now.getTime() - 30 * 3600000).toISOString()
+    const store = {
+      ...baseStore,
+      listGarminAccounts: async () => [],
+      getGarminDaily: async () => null,
+      listAppleSignals: async () => [{ metric: 'sleep', value: 6.8, unit: 'h', recorded_at: old, fetched_at: old }],
+    }
+
+    const signals = await composeSignals(store, now, 1, now, { isRequestedCurrentDay: true })
+    expect(signals.sleep).toMatchObject({ freshness: 'stale' })
+    expect(signals.sleep.day).toBeUndefined()
+    expect(signals.workout).toBeNull()
+    expect(normalizeSignalsForRequestedDay({ workout: null }, day, { isRequestedCurrentDay: true, nowDate: now })).toEqual({ workout: null })
+  })
+
+  it('looks up a manual workout by the requested day and marks a historical result recorded', async () => {
+    const now = new Date()
+    const queryDate = dateDaysAgo(3)
+    const day = ymd(queryDate)
+    const requested = []
+    const store = {
+      ...baseStore,
+      listGarminAccounts: async () => [],
+      getGarminDaily: async () => null,
+      listAppleSignals: async () => [],
+      getManualWorkout: async (userId, requestedDay) => {
+        requested.push(requestedDay)
+        return requestedDay === day
+          ? { label: 'Evening Strength', kind: 'strength', status: 'completed', recorded_at: `${day}T18:00:00` }
+          : null
+      },
+    }
+
+    const signals = await composeSignals(store, now, 1, queryDate)
+    expect(requested).toEqual([day])
+    expect(signals.workout).toMatchObject({ provider: 'manual', freshness: 'recorded', day, value: { kind: 'strength' } })
   })
 })
 
@@ -122,7 +218,7 @@ describe('Oura current-day sync freshness', () => {
     expect(signals.readiness.recorded_at).toBe('2026-09-01T07:00:00')
     expect(signals.readiness.fetched_at).toBe(now.toISOString())
     expect(signals.readiness.freshness_at).toBeNull()
-    expect(signals.readiness.freshness).toBe('unavailable')
+    expect(signals.readiness).toMatchObject({ freshness: 'recorded', day: '2026-09-01' })
   })
 })
 

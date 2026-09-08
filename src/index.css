@@ -48,6 +48,7 @@
   --color-progress-start: #e9ecf9;
   --color-progress-mid: #7185f6;
   --color-progress-end: #16289b;
+  --color-current-glow: color-mix(in srgb, var(--color-cobalt) 44%, white);
 
   /* Context swatches (pale, semantic only) — design v2 names in comments.
      Recovery = Mist (sleep/readiness), Training = Sand (workout/timing). The
@@ -86,6 +87,76 @@ body {
   text-rendering: optimizeLegibility;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Body Current's one immersive product surface. These are code-native fields,
+   not stock photography: the selected account accent supplies the living
+   current while a dark base keeps the hero's white type legible. */
+.today-current-field,
+.today-backdrop-preview {
+  --current-deep: color-mix(in srgb, var(--color-cobalt-ink) 22%, #081116);
+  --current-mid: color-mix(in srgb, var(--color-cobalt) 46%, #18242a);
+  background: var(--current-deep);
+}
+
+.today-current-field[data-scene='tide'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='tide'] {
+  background-image:
+    radial-gradient(ellipse at 78% 12%, color-mix(in srgb, var(--color-cobalt) 58%, transparent) 0%, transparent 38%),
+    repeating-radial-gradient(ellipse at -8% 104%, transparent 0 28px, color-mix(in srgb, var(--color-current-glow) 42%, transparent) 30px 32px, transparent 34px 48px),
+    linear-gradient(145deg, var(--current-mid), var(--current-deep) 66%);
+}
+
+.today-current-field[data-scene='ridge'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='ridge'] {
+  background-image:
+    linear-gradient(154deg, transparent 0 42%, color-mix(in srgb, var(--color-cobalt) 48%, #506168) 42.5% 56%, transparent 56.5%),
+    linear-gradient(24deg, transparent 0 51%, color-mix(in srgb, var(--color-cobalt-ink) 50%, #25343a) 51.5% 69%, transparent 69.5%),
+    radial-gradient(circle at 64% 20%, color-mix(in srgb, var(--color-current-glow) 38%, transparent), transparent 33%),
+    linear-gradient(165deg, #36454b, var(--current-deep) 72%);
+}
+
+.today-current-field[data-scene='dawn'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='dawn'] {
+  background-image:
+    radial-gradient(circle at 70% 24%, color-mix(in srgb, var(--color-current-glow) 58%, #f0b878) 0 7%, transparent 8%),
+    radial-gradient(ellipse at 70% 27%, color-mix(in srgb, var(--color-cobalt) 44%, #c88162) 0%, transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-cobalt-ink) 40%, #6f534d), #17171b 64%, #090e12);
+}
+
+.today-current-field[data-scene='photo'] .today-current-backdrop {
+  background-color: #172026;
+}
+
+.today-current-scrim {
+  background:
+    linear-gradient(180deg, rgb(5 8 10 / 0.52) 0%, rgb(5 8 10 / 0.15) 37%, rgb(5 8 10 / 0.78) 100%),
+    linear-gradient(90deg, rgb(5 8 10 / 0.18), transparent 50%, rgb(5 8 10 / 0.14));
+}
+
+/* A personal photo can contain a pure-white sky or label. This uniform base
+   is deliberately stronger than the directional scene scrim so small white
+   metadata remains readable everywhere, not only at the hero edges. */
+.today-current-field[data-scene='photo'] .today-current-scrim {
+  background:
+    linear-gradient(rgb(5 8 10 / 0.66), rgb(5 8 10 / 0.66)),
+    linear-gradient(180deg, rgb(5 8 10 / 0.34), transparent 38%, rgb(5 8 10 / 0.48));
+}
+
+/* Standards-first, visible scrollbars for every app-owned scroll surface;
+   WebKit rules below are a geometry fallback, not an opt-in class. */
+:root {
+  scrollbar-color: var(--color-line-heavy) var(--color-rail);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: var(--color-rail); }
+*::-webkit-scrollbar-thumb { background: var(--color-line-heavy); border: 2px solid var(--color-rail); }
+*::-webkit-scrollbar-thumb:hover { background: var(--color-ink); }
+
+@media (forced-colors: active) {
+  :root { scrollbar-color: auto; }
 }
 
 /* These helper classes live in the `components` layer so that Tailwind utility

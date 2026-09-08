@@ -518,6 +518,7 @@ export default function App() {
       <main className="flex-1 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4">
         {tab === 'today' && (
           <Today
+            key={`today-${user?.id || 'none'}`}
             {...shared}
             data={todayData}
             dataError={todayError}
@@ -534,6 +535,7 @@ export default function App() {
             onGoToPlan={() => setTab('plan')}
             onGoToConnections={() => setTab('connections')}
             onChanged={bump}
+            userId={user?.id}
           />
         )}
         {tab === 'log' && <LogView {...shared} onRelog={toConfirm} entries={dayEntries} recents={recents} loading={loadingEntries} online={online} pendingCount={pendingForDay.length} />}

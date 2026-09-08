@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import HydrationPanel from './HydrationPanel.jsx'
+import TodayBackdropSheet from './TodayBackdropSheet.jsx'
 import { NUTRIENTS, sumEntries, entryNutrient, entryIncomplete, fmt, num, ymd } from '../lib/nutrition.js'
-import { Card, Dial, Disclosure, Meter, SegmentBar, Swatch, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
+import { waterAmount } from '../lib/hydration.js'
+import { DEFAULT_TODAY_BACKDROP, loadTodayBackdrop } from '../lib/todayBackdrop.js'
+import { Disclosure, Meter, SegmentBar, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner, ErrorNote } from './ui.jsx'
 
 // Manual re-fetch window for the Oura backfill button below — a small
 // trailing window is enough to catch anything the daily resync/connect-time
@@ -179,54 +182,65 @@ function contributorLine(rd) {
   return parts.length ? parts.join(' · ') : null
 }
 
-// One column of the Daily Signals row: a semantic swatch + label, the
-// reading itself, and its source/freshness provenance beneath. A missing
-// reading shows an em-dash and an explicit "No data" mark, never a zero.
-// Renders as a real <button> (not a styled div) only when `onClick` is
-// given — "make each signal card interactive only if it leads somewhere
-// useful" (the Workout cell, which routes to Plan); Readiness/Sleep have no
-// dedicated detail view yet, so they stay plain, non-clickable-looking
-// panels rather than a link to nowhere. The global :focus-visible rule
-// (index.css) gives the button its outline for free.
-function ContextCell({ tone, label, signal, missing, compact, children, onClick, actionLabel }) {
+// One glance-rail instrument. Bounded readings get a real progress arc;
+// unbounded readings keep the circle as a stable visual slot without implying
+// a target. It becomes a button only when there is a useful destination
+// (Activity → Plan); nutrition/readiness/sleep remain plain readings.
+function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, progress, onClick, actionLabel }) {
   const Tag = onClick ? 'button' : 'div'
+  const boundedProgress = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : null
+  const radius = 31
+  const circumference = 2 * Math.PI * radius
   return (
     <Tag
       {...(onClick ? { type: 'button', onClick, 'aria-label': actionLabel } : {})}
-      className={`min-w-0 px-3 py-3 text-left ${onClick ? 'hover:bg-fill focus-visible:bg-fill' : ''}`}
+      className={`${detailWrap ? 'w-[108px]' : 'w-[88px]'} shrink-0 text-center ${onClick ? 'cursor-pointer hover:text-cobalt' : ''}`}
     >
-      <div className="flex items-center gap-1.5">
-        <Swatch tone={tone} size={9} />
-        {/* At 320px this row is ~71px wide; "Readiness" alone measured 77px
-            (10px eyebrow font + 0.15em tracking), overflowing ~14px past the
-            row's own content box and eating the column's right padding
-            almost entirely. text-[9px]/tighter tracking recovers that
-            width; break-words is a graceful fallback (not the primary
-            fix — a single all-caps word has no natural break point without
-            it) so a longer label degrades to two lines, at fix #2's now-
-            legible 1.3 line-height, instead of overflowing again. */}
-        <span className="eyebrow break-words text-[9px] tracking-[0.09em]">{label}</span>
+      <div className="relative mx-auto h-[72px] w-[72px]">
+        <svg aria-hidden viewBox="0 0 72 72" className="absolute inset-0 h-full w-full -rotate-90">
+          <circle cx="36" cy="36" r={radius} fill="rgb(255 255 255 / 0.06)" stroke="rgb(18 18 16 / 0.16)" strokeWidth="1.5" />
+          {boundedProgress != null && boundedProgress > 0 && (
+            <circle
+              cx="36"
+              cy="36"
+              r={radius}
+              fill="none"
+              stroke="var(--color-cobalt)"
+              strokeWidth="3"
+              strokeLinecap="butt"
+              strokeDasharray={`${circumference} ${circumference}`}
+              strokeDashoffset={circumference * (1 - boundedProgress)}
+            />
+          )}
+        </svg>
+        <span className="numeral absolute inset-0 flex items-center justify-center px-1 text-[18px] font-semibold leading-none text-ink">{value}</span>
       </div>
-      <div className="mt-2.5">{children}</div>
-      <div className="mt-2">
-        {missing ? <StatusTag status="unavailable" /> : <SourceLabel signal={signal} compact={compact} />}
-      </div>
+      <span className="mt-2 block text-[11px] font-bold leading-tight text-ink">{label}</span>
+      {detail && <span title={detail} className={`mt-0.5 block text-[9.5px] leading-tight text-muted ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{detail}</span>}
+      {secondaryDetail && <span title={secondaryDetail} className={`mt-0.5 block text-[9px] leading-tight text-muted ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{secondaryDetail}</span>}
     </Tag>
   )
 }
 
-// Stable-geometry placeholder for one Daily Signals cell while /api/today is
-// still in flight (`data == null`) — same padding/label row as ContextCell
-// so nothing shifts when the real content arrives, per the product ask's
-// "loading: stable geometry, no layout shift." Static bars, no animation —
-// the simplest way to respect reduced-motion is to never animate this at all.
-function SignalSkeleton({ label }) {
+function CurrentArc({ progress, hasTarget }) {
+  const pct = hasTarget ? Math.max(0, Math.min(1, progress)) : 0
   return (
-    <div className="min-w-0 px-3 py-3">
-      <div className="eyebrow text-[9px] tracking-[0.09em] text-faint">{label}</div>
-      <div className="mt-2.5 h-8 w-14 bg-fill" />
-      <div className="mt-2 h-2.5 w-16 bg-fill" />
-    </div>
+    <svg aria-hidden viewBox="0 0 320 150" className="h-auto w-full overflow-visible">
+      <path d="M 18 132 Q 160 -18 302 132" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.30)" strokeWidth="7" />
+      {hasTarget && pct > 0 && (
+        <path
+          d="M 18 132 Q 160 -18 302 132"
+          pathLength="100"
+          fill="none"
+          stroke="var(--color-current-glow)"
+          strokeWidth="8"
+          strokeDasharray={`${pct * 100} 100`}
+          strokeLinecap="butt"
+        />
+      )}
+      <circle cx="18" cy="132" r="3" fill="rgb(255 255 255 / 0.72)" />
+      <circle cx="302" cy="132" r="3" fill="rgb(255 255 255 / 0.72)" />
+    </svg>
   )
 }
 
@@ -328,7 +342,7 @@ function useDaySwipe(onPrevDay, onNextDay, canGoNext) {
   }
 }
 
-export default function Today({ date, data, dataError, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onGoToPlan, onGoToConnections, onChanged }) {
+export default function Today({ date, data, dataError, entries, loading, online, syncing, pendingCount, onSync, onEditEntry, onDeleteEntry, onPrevDay, onNextDay, onToday, openAdd, onViewLog, onGoToPlan, onGoToConnections, onChanged, userId }) {
   const swipeHandlers = useDaySwipe(onPrevDay, onNextDay, !isToday(date))
   // A workout's own 'planned'/'completed' status never changes itself once a
   // day is over (see workoutClause's own comment) — this is what lets any
@@ -337,6 +351,12 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const isHistoricalDay = !isToday(date)
   const [ouraBusy, setOuraBusy] = useState(false)
   const [ouraError, setOuraError] = useState('')
+  const [backdropOpen, setBackdropOpen] = useState(false)
+  const [backdrop, setBackdrop] = useState(() => userId ? loadTodayBackdrop(userId) : { ...DEFAULT_TODAY_BACKDROP })
+  useEffect(() => {
+    setBackdrop(userId ? loadTodayBackdrop(userId) : { ...DEFAULT_TODAY_BACKDROP })
+    setBackdropOpen(false)
+  }, [userId])
   const totals = useMemo(() => sumEntries(entries), [entries])
   // The composite hasn't arrived yet (App.jsx starts `todayData` at null and
   // only replaces it once /api/today resolves) — distinct from a resolved
@@ -360,6 +380,14 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const calLeft = calTarget - calDone
   const calPct = calTarget > 0 ? Math.min(1, calDone / calTarget) : 0
   const secondary = NUTRIENTS.filter((n) => n.key !== 'calories')
+  const proteinDone = num(totals.protein_g)
+  const proteinTarget = num(targets.protein_g)
+  const hydration = data?.hydration || {}
+  const hydrationPreferences = hydration.preferences || {}
+  const hydrationTotal = hydration.total_ml == null
+    ? (hydration.entries || []).reduce((sum, entry) => sum + num(entry.amount_ml), 0)
+    : num(hydration.total_ml)
+  const hydrationGoal = isToday(date) ? num(hydrationPreferences.goal_ml) : 0
 
   // Energy balance — calories logged (in) vs. wearable-reported expenditure
   // (out) = net deficit/surplus, plus steps. README has described this card
@@ -385,6 +413,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const rdMissing = !rd || rd.value == null
   const slMissing = !sl || sl.value == null
   const woLabel = wo?.value?.shortLabel || wo?.value?.label
+  const wearableWorkout = wo && ['oura', 'garmin', 'apple'].includes(wo.provider) ? wo : null
   const hm = slMissing ? null : hoursToHm(sl.value)
 
   // Sync line — honest about what actually reported. Manual workout input is
@@ -397,9 +426,10 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const linkedProviderDisplayNames = [...new Set(linkedProviders.map((p) => String(p.name || p.id || '')).filter(Boolean))]
   const linkedProviderNames = linkedProviderDisplayNames.map((name) => name.toUpperCase())
   const connectedWithoutData = liveProviders.length === 0 && linkedProviders.length > 0
-  const linkedNeedsAttention = linkedProviders.some((p) => p.status === 'stale' || p.sync_error)
+  const linkedHasError = providerStates.some((p) => p.status === 'error' || p.sync_error)
+  const linkedNeedsAttention = linkedHasError || (!isHistoricalDay && linkedProviders.some((p) => p.status === 'stale'))
   const hasWearableConnection = linkedProviders.length > 0 || wearablePresent.length > 0
-  const showDailySignals = !todayLoading && wearablePresent.length > 0
+  const showWearableSignals = !todayLoading && wearablePresent.length > 0
 
   // Wearable refresh / honest per-provider capability, for the header below.
   // Oura is the only one of the three with a real "ask for fresh data"
@@ -441,7 +471,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
   // genuine reading, not an outright missing one. Named here so the header
   // can say so plainly and offer a real next step, rather than silently
   // showing the same "SYNCED" copy for a signal that quietly stopped updating.
-  const staleSignal = present.find((s) => !s.demo && s.freshness === 'stale')
+  const staleSignal = isHistoricalDay ? null : present.find((s) => !s.demo && s.freshness === 'stale')
   // The header's one-sentence day summary, or an honest alternate message —
   // built from the same source classification as the connection row so the
   // two never disagree about live, linked-without-data, or food-only state.
@@ -449,6 +479,10 @@ export default function Today({ date, data, dataError, entries, loading, online,
   let altMessage = null
   if (syncLive) {
     daySentence = daySentenceParts({ rd, sl, wo, hm, isHistoricalDay })
+  } else if (connectedWithoutData && isHistoricalDay) {
+    const displayNames = linkedProviderDisplayNames.join(' + ')
+    const verb = linkedProviderNames.length === 1 ? 'is' : 'are'
+    altMessage = `${displayNames} ${verb} connected — no readings were recorded for this day.`
   } else if (connectedWithoutData) {
     const displayNames = linkedProviderDisplayNames.join(' + ')
     const verb = linkedProviderNames.length === 1 ? 'is' : 'are'
@@ -499,14 +533,14 @@ export default function Today({ date, data, dataError, entries, loading, online,
           {sigRows.map(([k, label, s]) => (
             <div key={k} className="flex items-center justify-between gap-3">
               <span className="text-xs">{label}</span>
-              <SourceLabel signal={s} />
+              <SourceLabel signal={s} historical={isHistoricalDay} />
             </div>
           ))}
         </div>,
       )
     }
     return items
-  }, [rec, rd, sl, wo, calDone, calTarget])
+  }, [rec, rd, sl, wo, calDone, calTarget, isHistoricalDay])
 
   const providerHeading = liveProviders.map((name) => name[0] + name.slice(1).toLowerCase()).join(' + ')
   const staleWhen = staleSignal ? timeShort(staleSignal.recorded_at) : ''
@@ -519,11 +553,18 @@ export default function Today({ date, data, dataError, entries, loading, online,
     connectionHeading = 'Updating today'
     connectionDetail = 'Reading your latest plan and signals'
   } else if (syncLive) {
-    connectionHeading = `${providerHeading} ${staleSignal ? 'needs attention' : 'synced'}`
-    if (staleSignal) connectionDetail = staleWhen ? `Last synced ${staleWhen}` : 'Recent readings may be out of date'
+    connectionHeading = isHistoricalDay ? `Recorded by ${providerHeading}` : `${providerHeading} ${staleSignal ? 'needs attention' : 'synced'}`
+    if (isHistoricalDay) {
+      const recordedSignal = wearablePresent.find((signal) => signal.recorded_at)
+      const recordedDetail = recordedSignal ? `Recorded ${timeShort(recordedSignal.recorded_at)}` : `Recorded for ${dateDetail(date)}`
+      connectionDetail = linkedHasError ? `${recordedDetail} · Connection needs attention` : recordedDetail
+    } else if (staleSignal) connectionDetail = staleWhen ? `Last synced ${staleWhen}` : 'Recent readings may be out of date'
     else if (garminLive && !ouraLive && !appleLive) connectionDetail = 'Garmin syncs automatically'
     else if (appleLive && !ouraLive && !garminLive) connectionDetail = 'Open the companion app to sync Apple Health'
     else connectionDetail = syncTime ? `Updated ${syncTime}` : 'Latest readings available'
+  } else if (connectedWithoutData && isHistoricalDay) {
+    connectionHeading = `${linkedProviderDisplayNames.join(' + ')} connected`
+    connectionDetail = `No readings recorded for ${dateDetail(date)}`
   } else if (connectedWithoutData) {
     connectionHeading = `${linkedProviderDisplayNames.join(' + ')} ${linkedNeedsAttention ? 'needs attention' : 'connected'}`
     connectionDetail = linkedNeedsAttention ? 'Recent readings have not arrived' : "Awaiting today's readings"
@@ -535,27 +576,25 @@ export default function Today({ date, data, dataError, entries, loading, online,
   const recentEntries = entries.slice(-3)
   const hiddenEntryCount = Math.max(0, entries.length - recentEntries.length)
 
-  const recommendationPanel = rec ? (
-    <section aria-labelledby="today-recommendation" className="border-[1.5px] border-line-strong bg-cobalt-soft px-4 pb-4 pt-4 shadow-[0_3px_10px_rgb(18_18_16/0.10)]">
-      <div className="flex items-center justify-between">
-        <span className="eyebrow text-cobalt">Today’s priority</span>
-        {syncLive && syncTime && <span className="tnum text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted">Updated {syncTime}</span>}
-      </div>
-      <h2 id="today-recommendation" className="serif mt-2.5 text-[30px] font-semibold leading-[1.04] tracking-[-0.015em] text-ink">{rec.title}</h2>
-      {rec.detail && <p className="mt-2 max-w-[32rem] text-[13px] leading-[1.5] text-ink/75">{rec.detail}</p>}
-      {whyItems.length > 0 && (
-        <div className="mt-3 border-t border-line">
-          <Why items={whyItems} />
-        </div>
-      )}
-    </section>
-  ) : (
-    <Card white as="section" className="px-4 py-4" aria-labelledby="today-recommendation-empty">
-      <div className="eyebrow mb-2 text-cobalt">Today’s priority</div>
-      <h2 id="today-recommendation-empty" className="text-[15px] font-bold text-ink">Build your next recommendation</h2>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{loading ? 'Reading your plan…' : 'Log food to get a clear next step against today’s plan.'}</p>
-    </Card>
-  )
+  const hasCalorieTarget = calTarget > 0
+  const calorieProgressText = hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)}`
+  const heroTitle = rec?.title || (dataError && todayLoading
+    ? 'Today needs a refresh'
+    : todayLoading
+      ? 'Building today’s current'
+      : !hasCalorieTarget
+        ? 'Finish your daily fuel plan'
+        : entries.length === 0
+          ? 'Log your first meal'
+          : 'Keep logging your day')
+  const heroDetail = rec?.detail || (dataError && todayLoading
+    ? 'Your saved logs are still here. Try the update again to rebuild the daily plan.'
+    : todayLoading
+      ? 'Reading your plan, intake, and connected signals.'
+      : !hasCalorieTarget
+        ? 'Complete Plan setup to measure intake against a personal target.'
+        : 'Each food and water entry sharpens the next recommendation.')
+  const backdropStyle = backdrop.kind === 'photo' ? { backgroundImage: `url(${backdrop.dataUrl})` } : undefined
 
   return (
     <div className="space-y-6" {...swipeHandlers}>
@@ -590,22 +629,22 @@ export default function Today({ date, data, dataError, entries, loading, online,
 
         <div className="mt-4 flex min-h-[54px] items-stretch border-y border-line bg-rail/70">
           <div className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2">
-            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive || linkedNeedsAttention ? 'border border-alert bg-transparent' : connectedWithoutData ? 'border border-cobalt bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
+            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-alert bg-transparent' : linkedHasError ? 'border border-alert bg-transparent' : syncLive && !staleSignal ? 'bg-cobalt' : syncLive || linkedNeedsAttention ? 'border border-alert bg-transparent' : connectedWithoutData ? 'border border-cobalt bg-transparent' : 'border border-line-heavy bg-transparent'}`} />
             <div className="min-w-0">
               <div className="truncate text-[12px] font-bold text-ink">{connectionHeading}</div>
               <div className="truncate text-[10.5px] leading-snug text-muted">{connectionDetail}</div>
             </div>
           </div>
           <div className="flex shrink-0 items-center border-l border-line">
-            {(ouraLive || ouraConnected) && (
+            {!isHistoricalDay && (ouraLive || ouraConnected) && (
               <button type="button" onClick={refreshOura} disabled={ouraBusy} aria-label="Refresh Oura data" className="flex min-h-11 min-w-14 items-center justify-center px-3 text-[11px] font-bold text-cobalt hover:bg-fill disabled:cursor-not-allowed disabled:opacity-50">
                 {ouraBusy ? <Spinner /> : 'Refresh'}
               </button>
             )}
-            {!todayLoading && ((syncLive && staleSignal) || connectedWithoutData) && onGoToConnections && (
+            {!todayLoading && (linkedHasError || (!isHistoricalDay && ((syncLive && staleSignal) || connectedWithoutData))) && onGoToConnections && (
               <button type="button" onClick={onGoToConnections} className="flex min-h-11 items-center border-l border-line px-3 text-[11px] font-bold text-cobalt hover:bg-fill">Manage</button>
             )}
-            {!todayLoading && !hasWearableConnection && onGoToConnections && (
+            {!todayLoading && !isHistoricalDay && !hasWearableConnection && onGoToConnections && (
               <button type="button" onClick={onGoToConnections} className="flex min-h-11 items-center px-3 text-[11px] font-bold text-cobalt hover:bg-fill">Connect</button>
             )}
           </div>
@@ -625,126 +664,82 @@ export default function Today({ date, data, dataError, entries, loading, online,
         </div>
       )}
 
-      {recommendationPanel}
-
-      {/* Daily signals — only shown once a real wearable is linked or has
-          supplied a real reading. Food-only accounts get a compact, useful
-          header state instead of three empty measurements and a fake workout
-          action.
-
-          Readiness, Sleep, and Workout read as ONE connected
-          system (a shared hairline-divided strip, the same swatch/eyebrow/
-          source-provenance scaffolding as before) rather than three
-          unrelated decorative cards: Readiness gets the row's one signature
-          visual (a compact dial — see ui.jsx's Dial, added for this), Sleep
-          reads its duration against the same fixed threshold the plan engine
-          already uses, and Workout is the one cell that's a real link
-          (routes to Plan, where the fuller pre/post-fuel timeline for this
-          exact session lives) because it's the one with somewhere useful to
-          go. min-[560px]:grid-cols-[1fr_1fr_1.3fr]: below that width (every
-          phone this app is tested at) the three stay mechanically equal —
-          there's no room to do otherwise — but once the row has space,
-          Workout (the one with the most to say: type, time, status,
-          duration/energy) gets it, per the product ask's own "if the
-          workout context needs more room." */}
-      {showDailySignals && <div>
+      <section aria-labelledby="today-at-a-glance">
         <div className="flex items-baseline justify-between px-1">
-          <h2 className="text-[15px] font-bold leading-tight text-ink">Daily signals</h2>
-          <span className="text-[10.5px] text-muted">At a glance</span>
+          <h2 id="today-at-a-glance" className="text-[15px] font-bold leading-tight text-ink">At a glance</h2>
+          <span className="text-[10.5px] text-muted">Swipe for more</span>
         </div>
-        <div className="mt-2 grid grid-cols-3 divide-x divide-line border-y border-line-strong bg-card/35 min-[560px]:grid-cols-[1fr_1fr_1.3fr]">
-          {todayLoading ? (
-            <>
-              <SignalSkeleton label="Readiness" />
-              <SignalSkeleton label="Sleep" />
-              <SignalSkeleton label="Workout" />
-            </>
-          ) : (
-            <>
-              <ContextCell tone="mist" label="Readiness" signal={rd} missing={rdMissing} compact={!syncLive}>
-                {rdMissing ? (
-                  <div className="numeral text-[30px] leading-none text-faint">—</div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="relative shrink-0">
-                      <Dial value={rd.value} max={100} size={48} thickness={5} />
-                      <div className="numeral absolute inset-0 flex items-center justify-center text-[14px] leading-none text-ink">
-                        {Math.round(num(rd.value))}
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[11.5px] font-semibold leading-tight text-ink">{readinessBand(rd.value)}</div>
-                      {contribLine && <div className="mt-0.5 text-[9px] leading-tight text-muted">{contribLine}</div>}
-                    </div>
-                  </div>
-                )}
-              </ContextCell>
-
-              <ContextCell tone="mist" label="Sleep" signal={sl} missing={slMissing} compact={!syncLive}>
-                {slMissing ? (
-                  <div className="numeral text-[30px] leading-none text-faint">—</div>
-                ) : (
-                  <>
-                    <div className="numeral text-[26px] leading-none text-ink">
-                      {hm.h}<span className="font-sans text-[13px] font-normal">h</span> {hm.m}<span className="font-sans text-[13px] font-normal">m</span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-[10.5px] font-medium text-muted">
-                      <span>{sleepBand(sl.value)}</span>
-                      {/* daily_sleep's own 0-100 quality score — a different
-                          Oura endpoint from the duration above, so it's
-                          genuinely absent (not just unfetched) whenever a
-                          provider only ever supplies duration. */}
-                      {sl.score != null && <span>· Score {Math.round(num(sl.score))}</span>}
-                    </div>
-                  </>
-                )}
-              </ContextCell>
-
-              <ContextCell
-                tone="sand"
-                label="Workout"
-                signal={wo}
-                missing={!wo}
-                compact={!syncLive}
-                onClick={workoutInteractive ? onGoToPlan : undefined}
-                actionLabel={wo ? `View ${workoutSubject(wo) || 'workout'} details in Plan` : 'Set a workout in Plan'}
-              >
-                {!wo ? (
-                  <div>
-                    <div className="numeral text-[16px] leading-[1.2] text-faint">No workout set</div>
-                    {workoutInteractive && (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-cobalt">
-                        Set workout <span aria-hidden>›</span>
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="min-w-0">
-                    <div className="numeral truncate text-[16px] leading-[1.2] text-ink">{woLabel ? workoutSubject(wo) : 'Rest'}</div>
-                    {woLabel && (
-                      <div className="mt-1 text-[10px] font-medium leading-snug text-muted tnum">
-                        <div className="truncate">
-                          {wo.value.status === 'completed' ? 'Completed' : (isHistoricalDay ? 'Logged' : 'Planned')}{wo.value.time ? ` · ${wo.value.time}` : ''}
-                        </div>
-                        {workoutMeta(wo) && <div className="truncate">{workoutMeta(wo)}</div>}
-                        {/* Honest "can't estimate" note — the same shape as
-                            Plan.jsx's noWeightForEstimate: a duration was
-                            given (so the server tried) but no body weight is
-                            on file to turn MET × duration into a number.
-                            Never a fabricated calorie guess. */}
-                        {wo.provider === 'manual' && wo.value.durationMin != null
-                          && (wo.value.estKcal ?? wo.value.est_kcal) == null && (
-                          <div className="truncate text-faint">Add your weight for a calorie estimate</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </ContextCell>
-            </>
+        {showWearableSignals && <h3 className="sr-only">Daily signals</h3>}
+        <div className="-mx-4 mt-3 flex gap-2.5 overflow-x-auto px-4 pb-2 [scrollbar-gutter:stable]" aria-label="Nutrition, hydration, and available wearable signals">
+          <SignalOrb
+            label="Fuel"
+            value={todayLoading ? '—' : hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)}`}
+            detail={todayLoading ? 'Updating' : hasCalorieTarget ? `${fmt(calDone, 0)} / ${fmt(calTarget, 0)} kcal` : 'kcal logged'}
+            progress={hasCalorieTarget ? calDone / calTarget : undefined}
+          />
+          <SignalOrb
+            label="Protein"
+            value={todayLoading ? '—' : proteinTarget > 0 ? `${Math.round((proteinDone / proteinTarget) * 100)}%` : `${fmt(proteinDone, 0)}g`}
+            detail={todayLoading ? 'Updating' : proteinTarget > 0 ? `${fmt(proteinDone, 0)} / ${fmt(proteinTarget, 0)} g` : 'Logged'}
+            progress={proteinTarget > 0 ? proteinDone / proteinTarget : undefined}
+          />
+          <SignalOrb
+            label="Water"
+            value={todayLoading ? '—' : hydrationGoal > 0 ? `${Math.round((hydrationTotal / hydrationGoal) * 100)}%` : waterAmount(hydrationTotal, hydrationPreferences.unit || 'ml')}
+            detail={todayLoading ? 'Updating' : hydrationGoal > 0 ? `${waterAmount(hydrationTotal, hydrationPreferences.unit || 'ml')} / ${waterAmount(hydrationGoal, hydrationPreferences.unit || 'ml')}` : 'Logged'}
+            progress={hydrationGoal > 0 ? hydrationTotal / hydrationGoal : undefined}
+          />
+          {!rdMissing && <SignalOrb label="Readiness" value={`${Math.round(num(rd.value))}`} detail={isHistoricalDay ? `${capFirst(rd.provider || 'wearable')} · recorded ${timeShort(rd.recorded_at) || primaryDayLabel(date)}` : `${capFirst(rd.provider || 'wearable')} · ${readinessBand(rd.value)}`} secondaryDetail={contribLine} progress={num(rd.value) / 100} />}
+          {!slMissing && <SignalOrb label="Sleep" value={`${hm.h}h ${hm.m}m`} detail={isHistoricalDay ? `${capFirst(sl.provider || 'wearable')} · recorded ${timeShort(sl.recorded_at) || primaryDayLabel(date)}` : `${capFirst(sl.provider || 'wearable')} · ${sl.score != null ? `Score ${Math.round(num(sl.score))}` : sleepBand(sl.value)}`} secondaryDetail={sl.score != null && isHistoricalDay ? `Score ${Math.round(num(sl.score))}` : null} />}
+          {wearableWorkout && (
+            <SignalOrb
+              label="Activity"
+              value={woLabel ? capFirst(wearableWorkout.value.shortLabel || wearableWorkout.value.kind || 'Done') : 'Rest'}
+              detail={`${capFirst(wearableWorkout.provider || 'wearable')} · ${wearableWorkout.value.status === 'completed' ? 'Completed' : isHistoricalDay ? 'Logged' : 'Planned'}${wearableWorkout.value.time ? ` · ${wearableWorkout.value.time}` : ''}`}
+              secondaryDetail={[workoutMeta(wearableWorkout), isHistoricalDay ? `Recorded ${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : null].filter(Boolean).join(' · ')}
+              detailWrap
+              onClick={workoutInteractive ? onGoToPlan : undefined}
+              actionLabel={`View ${workoutSubject(wearableWorkout) || 'activity'} details in Plan. ${capFirst(wearableWorkout.provider || 'wearable')}. ${wearableWorkout.value.status === 'completed' ? 'Completed' : isHistoricalDay ? 'Logged' : 'Planned'}${wearableWorkout.value.time ? ` at ${wearableWorkout.value.time}` : ''}${workoutMeta(wearableWorkout) ? `. ${workoutMeta(wearableWorkout)}` : ''}`}
+            />
           )}
         </div>
-      </div>}
+      </section>
+
+      <section
+        aria-labelledby="today-recommendation"
+        className="today-current-field relative min-h-[470px] overflow-hidden border-y border-white/20 text-white shadow-[0_10px_28px_rgb(18_18_16/0.20)]"
+        data-scene={backdrop.kind === 'scene' ? backdrop.scene : 'photo'}
+      >
+        <div aria-hidden className="today-current-backdrop absolute inset-0 bg-cover bg-center" style={backdropStyle} />
+        <div aria-hidden className="today-current-scrim absolute inset-0" />
+        <div className="relative z-[1] flex min-h-[470px] flex-col px-5 pb-6 pt-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/85">Body Current</div>
+              <div className="tnum mt-1 text-[10.5px] font-medium text-white/70">{primaryDayLabel(date)} · {dateDetail(date)}</div>
+            </div>
+            <button type="button" onClick={() => setBackdropOpen(true)} className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 border border-white/45 bg-black/20 px-3 text-[11px] font-bold text-white backdrop-blur-sm hover:bg-black/35" aria-label="Change Today backdrop">
+              <span aria-hidden>▧</span> Change backdrop
+            </button>
+          </div>
+
+          <div className="mx-auto mt-7 w-full max-w-[360px]">
+            <CurrentArc progress={calPct} hasTarget={hasCalorieTarget} />
+            <div className="-mt-6 text-center">
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/75">{hasCalorieTarget ? 'Daily fuel completion' : 'Fuel logged'}</div>
+              <div className="numeral mt-1 text-[46px] font-semibold leading-none text-white">{todayLoading ? '—' : calorieProgressText}</div>
+              <div className="tnum mt-1 text-[11px] font-medium text-white/75">{todayLoading ? 'Reading your plan' : hasCalorieTarget ? `${fmt(calDone, 0)} of ${fmt(calTarget, 0)} kcal` : 'kcal today · no target set'}</div>
+            </div>
+          </div>
+
+          <div className="mt-auto text-center">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/75">Today’s priority</div>
+            <h2 id="today-recommendation" className="serif mx-auto mt-2 max-w-[29rem] text-[34px] font-semibold leading-[1.02] tracking-[-0.02em] text-white">{heroTitle}</h2>
+            <p className="mx-auto mt-3 max-w-[30rem] text-[13px] leading-relaxed text-white/82">{heroDetail}</p>
+            {whyItems.length > 0 && <div className="mx-auto mt-3 max-w-[18rem]"><Why items={whyItems} label="Learn why" variant="hero" /></div>}
+          </div>
+        </div>
+      </section>
 
       {/* Intake so far — the calorie headline, budget bar, and macro grid.
           The numeral here used to render at 38px, larger than the
@@ -876,6 +871,13 @@ export default function Today({ date, data, dataError, entries, loading, online,
           </svg>
         </Button>
       </div>
+      <TodayBackdropSheet
+        open={backdropOpen}
+        onClose={() => setBackdropOpen(false)}
+        userId={userId}
+        backdrop={backdrop}
+        onChange={setBackdrop}
+      />
     </div>
   )
 }

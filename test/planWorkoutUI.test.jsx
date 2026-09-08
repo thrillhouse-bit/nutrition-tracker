@@ -132,6 +132,13 @@ async function renderPlan() {
 }
 
 describe('Plan: manual workout calorie estimate display', () => {
+  it('requests both plan surfaces with browser-local day bounds', async () => {
+    api.planToday.mockResolvedValue(planWithManualWorkout(null))
+    await renderPlan()
+    expect(api.planToday).toHaveBeenCalledWith('2026-08-25', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }))
+    expect(api.afpPlan).toHaveBeenCalledWith('2026-08-25', expect.objectContaining({ from: expect.any(String), to: expect.any(String) }))
+  })
+
   it('shows the computed estimate labeled as an ESTIMATE, not a measured value', async () => {
     api.planToday.mockResolvedValue(planWithManualWorkout({
       label: 'Evening Run', shortLabel: 'run', kind: 'run', intensity: 'hard', time: '5:30 PM', startHour: 17.5,
@@ -176,5 +183,21 @@ describe('Plan: manual workout calorie estimate display', () => {
     expect(el.textContent).toMatch(/410\s*KCAL/)
     expect(el.textContent).not.toMatch(/\(EST\.\)/)
     expect(el.textContent).not.toMatch(/No calorie estimate/) // the "no weight" note is manual-only, never shown for a synced workout
+  })
+
+  it('keeps a recorded historical wearable workout visible instead of filtering it as unavailable', async () => {
+    api.planToday.mockResolvedValue({
+      ...planWithManualWorkout(null),
+      signals: {
+        workout: {
+          value: { label: 'Morning Run', shortLabel: 'run', kind: 'run', time: '6:30 AM', startHour: 6.5, durationMin: 50, estKcal: 520, status: 'completed' },
+          provider: 'garmin', freshness: 'recorded', day: '2026-08-25', demo: false,
+        },
+      },
+    })
+    const el = await renderPlan()
+    expect(el.textContent).toMatch(/Morning Run/)
+    expect(el.textContent).toMatch(/520\s*KCAL/)
+    expect(el.textContent).not.toMatch(/No planned session today/)
   })
 })

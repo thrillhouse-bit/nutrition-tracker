@@ -341,7 +341,7 @@ const HATCH = 'repeating-linear-gradient(45deg,#121210 0 1.5px,transparent 1.5px
 // The connection/state marks from the design's STATE REFERENCE.
 function MarkGlyph({ status }) {
   const box = { width: 11, height: 11 }
-  if (status === 'connected' || status === 'fresh')
+  if (status === 'connected' || status === 'fresh' || status === 'recorded')
     return <span aria-hidden className="flex shrink-0 items-center justify-center bg-ink text-[8px] font-bold leading-none text-oncobalt" style={box}>✓</span>
   if (status === 'error')
     return <span aria-hidden className="flex shrink-0 items-center justify-center bg-alert text-[9px] font-bold leading-none text-white" style={box}>!</span>
@@ -359,7 +359,7 @@ function MarkGlyph({ status }) {
 
 const WORDS = {
   connected: 'Connected', syncing: 'Syncing', stale: 'Stale', disconnected: 'Not connected',
-  'not-configured': 'Not configured', error: 'Error', fresh: 'Fresh', unavailable: 'No data',
+  'not-configured': 'Not configured', error: 'Error', fresh: 'Fresh', recorded: 'Recorded', unavailable: 'No data',
 }
 
 // Shape + word status mark. Word carries the meaning so color is never the only
@@ -381,10 +381,13 @@ const SHORT_WORDS = { unavailable: 'No data' }
 
 // Provenance for a real wearable-derived value: source + freshness. A legacy
 // demo payload is treated as unavailable instead of being displayed.
-export function SourceLabel({ signal, compact = false, className = '' }) {
+export function SourceLabel({ signal, compact = false, historical = false, className = '' }) {
   if (!signal) return null
   const provider = signal.provider ? signal.provider[0].toUpperCase() + signal.provider.slice(1) : 'Signal'
-  const status = signal.demo ? 'unavailable' : signal.freshness || 'fresh'
+  const status = signal.demo ? 'unavailable' : historical ? 'recorded' : signal.freshness || 'fresh'
+  const historicalStamp = historical && signal.recorded_at && !Number.isNaN(new Date(signal.recorded_at).getTime())
+    ? new Date(signal.recorded_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : ''
 
   // A 3-column context strip leaves ~71px of inner width per cell at 320px
   // (measured) for the whole provider+status line — a provider beside the
@@ -400,13 +403,14 @@ export function SourceLabel({ signal, compact = false, className = '' }) {
     <span className={`text-[11px] text-muted ${className}`}>
       <span className="hidden flex-wrap items-center gap-x-1.5 gap-y-1 min-[360px]:flex">
         <span className="font-semibold uppercase tracking-[0.1em]">{provider}</span>
-        <StatusMark status={status} className="[&_.eyebrow]:text-muted" />
+        <StatusMark status={status} label={historical ? 'Recorded' : undefined} className="[&_.eyebrow]:text-muted" />
+        {historicalStamp && <span className="tnum text-[9.5px] text-muted">{historicalStamp}</span>}
       </span>
       <span className="flex items-center gap-1 whitespace-nowrap max-[359px]:flex min-[360px]:hidden">
         <span className="shrink-0 font-semibold uppercase tracking-[0.03em]">{provider}</span>
         <StatusMark
           status={status}
-          label={SHORT_WORDS[status] || WORDS[status]}
+          label={historical ? 'Recorded' : SHORT_WORDS[status] || WORDS[status]}
           className="shrink-0 [&_.eyebrow]:text-muted [&_.eyebrow]:text-[8.5px] [&_.eyebrow]:tracking-[0.02em]"
         />
       </span>
@@ -482,22 +486,23 @@ export function EmptyState({ title, children, className = '' }) {
 // `items` can be plain strings (Plan.jsx's "why did my target change") or
 // any React node (Today.jsx mixes in StatusMark/SourceLabel for signal
 // freshness) — a <li> renders either the same way.
-export function Why({ items = [], label = 'Why this?' }) {
+export function Why({ items = [], label = 'Why this?', variant = 'default' }) {
   const [open, setOpen] = useState(false)
   if (!items.length) return null
+  const hero = variant === 'hero'
   return (
     <>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-between py-3 text-left"
+        className={`flex min-h-11 w-full items-center justify-between px-3 py-2 text-left ${hero ? 'border border-white/45 bg-black/20 text-white backdrop-blur-sm hover:bg-black/35' : ''}`}
       >
         <span className="flex items-center gap-2.5">
-          <span aria-hidden className="flex h-[19px] w-[19px] items-center justify-center rounded-full border-[1.5px] border-cobalt text-[11px] font-bold text-cobalt">?</span>
-          <span className="text-sm font-semibold tracking-[0.02em] text-cobalt">{label}</span>
+          <span aria-hidden className={`flex h-[19px] w-[19px] items-center justify-center rounded-full border-[1.5px] text-[11px] font-bold ${hero ? 'border-white/70 text-white' : 'border-cobalt text-cobalt'}`}>?</span>
+          <span className={`text-sm font-semibold tracking-[0.02em] ${hero ? 'text-white' : 'text-cobalt'}`}>{label}</span>
         </span>
-        <span aria-hidden className="text-cobalt">›</span>
+        <span aria-hidden className={hero ? 'text-white' : 'text-cobalt'}>›</span>
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} title={label}>
         <ul className="space-y-2.5 border-l-2 border-line pl-3 text-sm text-muted">

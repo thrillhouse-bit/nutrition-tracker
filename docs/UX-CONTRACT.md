@@ -47,6 +47,8 @@ snapshot.
 - Server-side private rows remain keyed and queried by authenticated user ID.
 - Browser-private local state is namespaced as
   `nt_<namespace>_v2:user:<encoded user id>`.
+- The Today backdrop uses that same account-scoped storage boundary. Ordinary
+  logout preserves the device preference; permanent account deletion purges it.
 - Unattributable v1 recents/outbox data is deleted, not assigned to the next
   person who signs in.
 - Offline queue items carry their owner ID and are replayed only for that same
@@ -220,19 +222,40 @@ disconnected. A linked provider with no current-day signal is labelled
 "connected — awaiting today's readings," retains Oura's real refresh action,
 and routes connection management to Connections. Only an account with no linked
 provider and no live signal enters **Fuel + hydration mode**. Today keeps food,
-hydration, targets, recommendations, and the connection action functional, but
-omits the three-column Daily signals strip entirely. A linked account with no
-current-day readings also omits that strip rather than rendering three empty
-measurements. The compact header connection row owns provider name, freshness,
+hydration, targets, recommendations, the universal nutrition/hydration rail,
+and the connection action functional, but adds no wearable circles. A linked
+account with no current-day readings likewise adds no empty wearable readings.
+The compact header connection row owns provider name, freshness,
 last-sync context, and the real Refresh/Manage/Connect action. A manual workout
 remains valid Plan context; it does not impersonate a wearable connection.
 
 ### Today information hierarchy
 
 Today is a daily decision surface, not a complete dashboard. Date and connection
-state are compact context. The next recommendation is the dominant first card,
-followed by available wearable signals and current intake. Energy arithmetic is
-secondary and expands inline only when expenditure or step data exists.
+state are compact context. A horizontally scrollable **At a glance** rail leads
+with actual fuel, protein, and water progress, then adds only wearable readings
+that exist. It never inserts missing or demo readings. The immersive **Current
+Field** is the dominant next moment: its arc visualizes actual calorie-plan
+completion and its text owns the next recommendation. Detailed intake follows.
+Energy arithmetic is secondary and expands inline only when expenditure or step
+data exists.
+
+Historical wearable samples are records, not live-sync health checks. Past-day
+views label valid samples **Recorded**, show source and recorded time/date when
+available, and suppress age-derived Stale, Last synced, Refresh, Connect, and
+Manage prompts. Current-day stale/error behavior remains actionable. A genuine
+provider error may still route to Connections from a historical view.
+
+The Current Field offers Tide, Ridge, and Dawn code-native scenes plus **Use my
+photo**. Scene and photo preferences are stored only in account-scoped browser
+storage and are never uploaded. JPEG, PNG, and WebP sources are limited to 10 MB;
+the browser canvas-resizes to at most 1600px, WebP-reencodes to strip embedded
+metadata, retries smaller encodes, and refuses any resulting data URL above 2 MB.
+Failure retains the previous field. The canonical Sheet owns keyboard, Escape,
+focus trap, backdrop dismissal, and focus restoration. Closing during image
+preparation cancels the pending UI commit so a late decode cannot change a
+selection after dismissal. Choosing a curated field or removing a personal
+photo overwrites the local photo copy.
 
 Hydration keeps its total, goal progress, Customize action, and three quick-add
 amounts immediately available. Exact amount/time entry and water history expand

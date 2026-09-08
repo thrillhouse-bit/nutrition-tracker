@@ -42,10 +42,12 @@ describe('account-scoped private browser storage', () => {
   it('removes only the deleted account\'s current private storage', () => {
     writeAccountJson('outbox', 10, [{ clientId: 'a' }])
     writeAccountJson('recents', 10, [{ name: 'Private food' }])
+    writeAccountJson('today-backdrop', 10, { kind: 'scene', scene: 'ridge' })
     writeAccountJson('outbox', 11, [{ clientId: 'b' }])
     purgeAccountStorage(10)
     expect(readAccountJson('outbox', 10, [])).toEqual([])
     expect(readAccountJson('recents', 10, [])).toEqual([])
+    expect(readAccountJson('today-backdrop', 10, null)).toBeNull()
     expect(readAccountJson('outbox', 11, [])).toEqual([{ clientId: 'b' }])
   })
 

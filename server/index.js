@@ -54,7 +54,7 @@ import { computeBaseline } from './planCalc.js'
 import { computeTrend } from './weightTrend.js'
 import { computeNutritionRecoveryCorrelation } from './correlations.js'
 import { trainingHistory } from './trainingHistory.js'
-import { allProviderStatuses, composeSignals, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
+import { allProviderStatuses, composeSignals, normalizeSignalsForRequestedDay, recordOuraAttempt, classifyOuraRefreshError, markSyncing, clearSyncing } from './providers.js'
 import { computeProgress, estimateSessionEnergyKcal } from './afp/engine.js'
 import { getOrComputeAfpPlan, addDaysToYmd, withCanonicalPlannedWorkout } from './afp/plan.js'
 import { automaticPlanEligibility, ensureCanonicalAfpProfile, isAfpProfileReady, normalizeAfpGoal } from './afp/migration.js'
@@ -1328,6 +1328,11 @@ function requestedDayIsCurrent(date, bounds, nowDate) {
   return now >= Date.parse(bounds.from) && now < Date.parse(bounds.to)
 }
 
+function requestedDayIsPast(date, bounds, nowDate) {
+  if (!bounds) return date < localYmd(nowDate)
+  return Date.parse(bounds.to) <= nowDate.getTime()
+}
+
 function localHourForRequest(nowDate, bounds) {
   if (!bounds) return nowDate.getHours() + nowDate.getMinutes() / 60
   const elapsedHours = (nowDate.getTime() - Date.parse(bounds.from)) / 3600000
@@ -1453,14 +1458,20 @@ function adaptiveRationale(plan) {
 
 async function buildPlan(userId, date, nowDate, bounds = null) {
   const canonicalProfile = await ensureCanonicalAfpProfile(store, userId)
-  const today = requestedDayIsCurrent(date, bounds, nowDate) ? date : localYmd(nowDate)
+  const isRequestedCurrentDay = requestedDayIsCurrent(date, bounds, nowDate)
+  const isRequestedPastDay = requestedDayIsPast(date, bounds, nowDate)
+  const today = isRequestedCurrentDay ? date : localYmd(nowDate)
   const { row, recomputed } = await getOrComputeAfpPlan(store, userId, date, { today })
   const adaptive = row.plan
   const plannedRows = await store.getPlannedWorkoutsForDay(userId, date)
   // Real Oura/Garmin/Apple data reflects the viewed day. The canonical planned
   // session is then layered in only when no real completed workout exists.
-  let signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay: requestedDayIsCurrent(date, bounds, nowDate) })
+  let signals = await composeSignals(store, nowDate, userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay, isRequestedPastDay })
   signals = withCanonicalPlannedWorkout(signals, plannedRows, nowDate)
+  // Canonical planned sessions are injected after provider composition, so
+  // apply the same historical semantics again. Otherwise a past planned
+  // workout would be stamped `fresh` simply because this request built it now.
+  signals = normalizeSignalsForRequestedDay(signals, date, { isRequestedCurrentDay, isRequestedPastDay, nowDate })
   const influence = await planInfluence(userId)
   return {
     date,
@@ -1763,7 +1774,8 @@ requireAuthRouter.get('/signals', asyncH(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd(now)
   const bounds = requestBounds(req.query)
   const isRequestedCurrentDay = requestedDayIsCurrent(date, bounds, now)
-  res.json({ date, signals: await composeSignals(store, now, req.userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay }) })
+  const isRequestedPastDay = requestedDayIsPast(date, bounds, now)
+  res.json({ date, signals: await composeSignals(store, now, req.userId, new Date(`${date}T12:00:00`), { isRequestedCurrentDay, isRequestedPastDay }) })
 }))
 
 // Connections: real provider statuses + the plan-influence toggles.

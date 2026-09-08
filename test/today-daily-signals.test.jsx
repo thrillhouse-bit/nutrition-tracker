@@ -117,7 +117,7 @@ describe('Today header: day-context sentence — live signals', () => {
 })
 
 describe('Today information hierarchy', () => {
-  it('leads with a strong date and places the daily priority before supporting signals and intake', async () => {
+  it('leads with a strong date, then glance rail, immersive priority, and detailed intake', async () => {
     const el = await renderToday({
       ...BASE,
       recommendation: { title: 'Build a balanced lunch', detail: 'Start with protein and produce.', kind: 'on_track', why: [] },
@@ -125,12 +125,12 @@ describe('Today information hierarchy', () => {
     })
     const title = [...el.querySelectorAll('h1')].find((node) => node.textContent === 'Today')
     const priority = el.querySelector('#today-recommendation')
-    const signals = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'Daily signals')
+    const signals = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'At a glance')
     const intake = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'Intake so far')
     expect(title?.className).toContain('font-semibold')
     expect(priority).toBeTruthy()
-    expect(priority.compareDocumentPosition(signals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(signals.compareDocumentPosition(intake) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(signals.compareDocumentPosition(priority) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(priority.compareDocumentPosition(intake) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('keeps hydration details closed by default and limits Today to the three most recent foods', async () => {
@@ -399,12 +399,17 @@ describe('Workout card: real link when a destination exists, plain panel otherwi
   })
 
   it('CONTROL: a synced (non-manual) workout\'s energy is never marked "est." — it is the device\'s own reading', async () => {
+    const onGoToPlan = vi.fn()
     const el = await renderToday({
       ...BASE,
       signals: { workout: { value: { label: 'Morning Ride', durationMin: 40, estKcal: 380, status: 'completed', time: '6:30 AM' }, provider: 'garmin', freshness: 'fresh', demo: false } },
-    })
+    }, { onGoToPlan })
     expect(el.textContent).toMatch(/~380 kcal/)
     expect(el.textContent).not.toMatch(/est\./)
+    const activity = [...el.querySelectorAll('button')].find((button) => /Morning Ride/.test(button.getAttribute('aria-label') || ''))
+    expect(activity.getAttribute('aria-label')).toMatch(/Garmin.*Completed at 6:30 AM.*40 min.*~380 kcal/)
+    const visibleMetadata = [...activity.querySelectorAll('span')].find((node) => node.textContent.includes('40 min'))
+    expect(visibleMetadata?.className).not.toContain('truncate')
   })
 
   it('manual-only missing estimates stay off the wearable strip', async () => {
@@ -485,6 +490,38 @@ describe('Historical-day workout tense — never claims a past day is still "pla
       signals: { workout: { value: { label: 'Evening Run', shortLabel: 'run', status: 'planned', time: '5:30 PM' }, provider: 'garmin', freshness: 'fresh', demo: false } },
     }, { date: new Date() })
     expect(el.textContent).toMatch(/Planned · 5:30 PM/)
+  })
+
+  it('treats a yesterday reading as a recorded historical sample, not a stale live-sync failure', async () => {
+    const recordedAt = new Date(YESTERDAY); recordedAt.setHours(7, 15, 0, 0)
+    const el = await renderToday({
+      ...BASE,
+      recommendation: { title: 'Keep lunch steady', detail: 'Use the plan as your guide.', kind: 'on_track', why: [] },
+      providers: [{ id: 'oura', name: 'Oura', status: 'stale' }],
+      signals: { readiness: { value: 74, provider: 'oura', freshness: 'stale', recorded_at: recordedAt.toISOString(), demo: false } },
+    }, { date: YESTERDAY, onGoToConnections: vi.fn() })
+    expect(el.textContent).toMatch(/Recorded by Oura/)
+    expect(el.textContent).toMatch(/Oura · recorded/)
+    expect(el.textContent).not.toMatch(/needs attention|Last synced|Refresh|Manage/)
+
+    const learnWhy = [...el.querySelectorAll('button')].find((button) => button.textContent.includes('Learn why'))
+    await act(async () => { learnWhy.click() })
+    expect(document.querySelector('[role="dialog"]')?.textContent).toMatch(/Oura.*Recorded/s)
+    expect(document.querySelector('[role="dialog"]')?.textContent).not.toMatch(/Stale/)
+  })
+
+  it('keeps an older cached unavailable reading visible as a historical Garmin record', async () => {
+    const older = new Date(); older.setDate(older.getDate() - 6); older.setHours(0, 0, 0, 0)
+    const recordedAt = new Date(older); recordedAt.setHours(6, 40, 0, 0)
+    const el = await renderToday({
+      ...BASE,
+      providers: [{ id: 'garmin', name: 'Garmin', status: 'connected' }],
+      signals: { sleep: { value: 7.2, score: 81, provider: 'garmin', freshness: 'unavailable', recorded_at: recordedAt.toISOString(), demo: false } },
+    }, { date: older, onGoToConnections: vi.fn() })
+    expect(el.textContent).toMatch(/Recorded by Garmin/)
+    expect(el.textContent).toMatch(/7h 12m/)
+    expect(el.textContent).toMatch(/Garmin · recorded/)
+    expect(el.textContent).not.toMatch(/Stale|No data|Last synced|Refresh|Manage|Connect/)
   })
 })
 

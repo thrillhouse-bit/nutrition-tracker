@@ -32,6 +32,7 @@ components:
   input: { }
   status-mark: { }
   chart: { }
+  current-field: { }
 ---
 
 # Body Current design system
@@ -51,7 +52,7 @@ current state legible without making the product feel like a generic dashboard.
 - **Locale and language policy:** English UI; dates and native controls follow browser locale. No translated locale is claimed until native review exists.
 - **Usage scene:** Frequent, one-handed phone use around meals and training. Primary actions and form controls keep a 44px minimum touch target.
 - **Register:** Product/editorial. Serif display type carries the journal voice; sans-serif controls remain familiar and direct.
-- **Memorable signature:** The account-selected current color flows through primary actions, progress gradients, dials, and confident chart data.
+- **Memorable signature:** Today's user-selected Current Field turns the real daily fuel arc into a personal, atmospheric cover; the account accent continues through primary actions, progress marks, and confident chart data.
 - **Restraint:** Authentication, data entry, settings, destructive actions, and error recovery favor platform conventions and explicit labels.
 - **Anti-references:** Avoid rounded-card SaaS dashboards, neon fitness gamification, decorative wellness gradients, and unlabeled color-only status.
 - **Token ownership/runtime mapping:** This file mirrors the canonical Tailwind v4 theme in `src/index.css`. Account accent overrides are owned by `src/lib/accentTheme.js`. Drift is checked by the strict frontend audit and build.
@@ -66,6 +67,8 @@ Berry is destructive/error meaning. Those semantic colors never change with
 account preference. White is reserved for consequential sheets and confirmed
 moments. Focus uses a 2px account-accent outline. Completion charts use ordered
 alpha strengths of the same accent plus the neutral track for missing data.
+The Today field derives `--color-current-glow` from the live account accent;
+it is a runtime adapter rather than a second independently editable palette.
 
 ## Typography
 
@@ -80,10 +83,13 @@ bitmaps.
 The application is a single 36rem-wide mobile column with fixed top navigation,
 safe-area padding, and hairline-separated sections. Content density is compact
 but touch controls remain at least 44px. Layouts may widen progressively, but
-must remain complete at 320px and must not introduce horizontal scrolling.
+must remain complete at 320px and must not introduce page-level horizontal
+scrolling. A deliberately bounded signal rail may own horizontal overflow.
 Loading and empty states preserve the information hierarchy; an absent feature
 does not leave a decorative hole. Today leads with date and compact connection
-context, then one dominant daily priority before supporting signals and intake.
+context, then a horizontally scrollable circle rail of real nutrition,
+hydration, and available wearable readings. One immersive Current Field joins
+the calorie-plan arc to the dominant daily priority before detailed intake.
 Secondary arithmetic and entry-management detail use progressive disclosure;
 Today previews only the three most recent food entries and routes the complete
 history to Log.
@@ -91,13 +97,13 @@ history to Log.
 ## Elevation & Depth
 
 Hierarchy comes from paper tones, rules, type scale, and sparse shadows. Most
-surfaces stay flat. Sheets and the focal Today recommendation may lift; ordinary
+surfaces stay flat. Sheets and the focal Today Current Field may lift; ordinary
 metrics and settings do not become floating cards.
 
 ## Shapes
 
 Rectangles are square. Circles are allowed only for intrinsically circular
-information such as the readiness dial and status dot. Dividers are one-pixel
+information such as bounded daily progress, wearable readings, and status dots. Dividers are one-pixel
 ink-alpha rules. Do not introduce pill containers for ordinary labels or data.
 
 ## Components
@@ -125,6 +131,15 @@ Top navigation is fixed and bounded to the content column. Lists use rules rathe
 than card stacks. Charts label their metric, period, endpoints, and reference
 lines. Daily completion is represented by 25/50/75/100 accent strengths with an
 exact accessible percentage per day; the neutral track means no log.
+
+### Today Current Field
+
+The field is the product's one immersive visual surface. Tide, Ridge, and Dawn
+are code-native scenes shaped by the live account accent; a personal photo is
+also allowed. A strong full-field scrim protects white-text contrast over any
+photo. The app-authored arc always represents actual calorie-plan completion,
+caps visually at 100%, and shows exact intake and target in text. Missing and
+loading targets are named rather than illustrated as progress.
 
 ### Forms and overlays
 
