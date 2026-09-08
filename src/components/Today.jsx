@@ -602,6 +602,19 @@ export default function Today({ date, data, dataError, entries, loading, online,
 
   const hasCalorieTarget = calTarget > 0
   const calorieProgressText = hasCalorieTarget ? `${Math.round((calDone / calTarget) * 100)}%` : `${fmt(calDone, 0)} kcal logged`
+  const fuelState = todayLoading
+    ? 'Updating'
+    : !hasCalorieTarget
+      ? 'Plan needed'
+      : calDone > calTarget
+        ? 'Above target'
+        : calDone >= calTarget
+          ? 'Target met'
+          : entries.length === 0
+            ? 'Ready to log'
+            : calDone / calTarget >= 0.75
+              ? 'Closing in'
+              : 'In progress'
   const heroTitle = rec?.title || (dataError && todayLoading
     ? 'Today needs a refresh'
     : todayLoading
@@ -794,16 +807,29 @@ export default function Today({ date, data, dataError, entries, loading, online,
           </div>
         )}
 
+      <section aria-labelledby="daily-current-heading" className="today-current-overview -mx-4 space-y-3 px-4 py-6">
+        <header className="px-1 pb-1">
+          <div className="eyebrow">Daily current</div>
+          <h2 id="daily-current-heading" className="serif mt-1 text-[29px] font-semibold leading-[1.02] tracking-[-0.02em] text-ink">Fuel, water, and movement</h2>
+          <p className="mt-2 max-w-[34rem] text-[12.5px] leading-relaxed text-muted">Built from today’s food log, your chosen hydration goal, and real connected-device records when available.</p>
+        </header>
+
       {/* Intake so far — the calorie headline, budget bar, and macro grid.
           The numeral here used to render at 38px, larger than the
           recommendation card's own 29px title above — the single largest,
           boldest thing on the screen was the calorie count, not the "single
           focal recommendation" README describes. Sized down to 27px so the
           recommendation stays the visual anchor. */}
-      <section>
+      <section className="today-metric-card today-metric-card--fuel p-4">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-[15px] font-bold leading-tight text-ink">Intake so far</h2>
+            <div className="flex items-center gap-2">
+              <span aria-hidden className="today-metric-glyph">↗</span>
+              <div>
+                <h3 className="text-[15px] font-bold leading-tight text-ink">Intake so far</h3>
+                <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.13em] text-cobalt">{fuelState}</div>
+              </div>
+            </div>
             <div className="mt-2.5 flex items-baseline gap-2">
               <span className="numeral text-[30px] font-semibold leading-[0.9] text-ink">{fmt(calDone, 0)}</span>
               <span className="tnum text-[12.5px] text-muted">/ {fmt(calTarget, 0)} kcal</span>
@@ -845,7 +871,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
         <Disclosure
           label="Energy & movement"
           meta={!stepsMissing ? `${fmt(steps.value, 0)} steps` : netBalance == null ? 'Wearable context' : `${fmt(Math.abs(netBalance), 0)} kcal ${netBalance > 0 ? 'surplus' : netBalance < 0 ? 'deficit' : 'balanced'}`}
-          className="bg-rail/70 px-3"
+          className="today-metric-card today-metric-card--movement px-4"
           contentClassName="pb-3 pt-3"
         >
           <div className="flex items-end gap-2.5">
@@ -876,8 +902,28 @@ export default function Today({ date, data, dataError, entries, loading, online,
         </Disclosure>
       )}
 
-      {/* Today's log — chronological, on the paper ground */}
-      <HydrationPanel date={date} hydration={data?.hydration} onChanged={onChanged} />
+      {wearableWorkout && (
+        <section className="today-metric-card today-metric-card--activity p-4" aria-labelledby="today-activity-card-heading">
+          <div className="flex items-start gap-3">
+            <span aria-hidden className="today-metric-glyph">↟</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 id="today-activity-card-heading" className="text-[15px] font-bold leading-tight text-ink">Latest activity</h3>
+                  <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.13em] text-cobalt">{wearableWorkout.value.status === 'completed' ? 'Recorded' : isHistoricalDay ? 'Logged' : 'Planned'}</div>
+                </div>
+                {workoutInteractive && <TextButton chevron onClick={onGoToPlan} className="shrink-0 text-[11px]">Plan</TextButton>}
+              </div>
+              <div className="serif mt-4 text-[30px] font-semibold leading-none text-ink">{workoutSubject(wearableWorkout)}</div>
+              {workoutMeta(wearableWorkout) && <p className="mt-2 text-[12px] text-muted">{workoutMeta(wearableWorkout)}</p>}
+              <SourceLabel signal={wearableWorkout} historical={isHistoricalDay} className="mt-3 block" />
+            </div>
+          </div>
+        </section>
+      )}
+
+      <HydrationPanel className="today-metric-card today-metric-card--water p-4" date={date} hydration={data?.hydration} onChanged={onChanged} />
+      </section>
 
       {/* Today's log — chronological, on the paper ground */}
       <section>

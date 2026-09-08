@@ -23,6 +23,9 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
   const operationRef = useRef(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const selectedScene = backdrop.kind === 'scene'
+    ? TODAY_BACKDROP_SCENES.find((scene) => scene.id === backdrop.scene)
+    : null
   useEffect(() => () => { operationRef.current += 1 }, [])
 
   const dismiss = () => {
@@ -67,11 +70,11 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
 
   return (
     <Sheet open={open} onClose={dismiss} title="Change backdrop">
-      <p className="text-sm leading-relaxed text-muted">Choose a Body Current scene or keep a personal photo on this device. Your backdrop is never uploaded.</p>
+      <p className="text-sm leading-relaxed text-muted">Choose a real-world landscape or keep a personal photo on this device. Your personal backdrop is never uploaded.</p>
 
       <fieldset className="mt-5">
         <legend className="eyebrow mb-2">Current fields</legend>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {TODAY_BACKDROP_SCENES.map((scene) => {
             const selected = backdrop.kind === 'scene' && backdrop.scene === scene.id
             return (
@@ -84,11 +87,20 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
                 className={`min-h-11 cursor-pointer border p-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong hover:border-ink'}`}
               >
                 <ScenePreview scene={scene.id} />
-                <span className="mt-1.5 block text-[11px] font-bold text-ink">{scene.label}</span>
+                <span className="mt-1.5 block text-xs font-bold text-ink">{scene.label}</span>
+                <span className="mt-0.5 block text-[10px] leading-tight text-muted">{scene.credit ? `Photo · ${scene.credit}` : scene.description}</span>
               </button>
             )
           })}
         </div>
+        {selectedScene?.credit && (
+          <p className="mt-2 text-[11px] leading-relaxed text-muted" aria-live="polite">
+            Selected photo by{' '}
+            <a className="underline underline-offset-2 hover:text-ink" href={selectedScene.sourceUrl} target="_blank" rel="noreferrer">{selectedScene.credit}</a>
+            {' '}on{' '}
+            <a className="underline underline-offset-2 hover:text-ink" href={selectedScene.licenseUrl} target="_blank" rel="noreferrer">{selectedScene.sourceName}</a>.
+          </p>
+        )}
       </fieldset>
 
       <div className="mt-5 border-t border-line pt-4">

@@ -137,10 +137,12 @@ exact accessible percentage per day; the neutral track means no log.
 ### Today Current Field
 
 The field is the product's one immersive visual surface. Alpine is an original,
-bundled photographic landscape and the backward-compatible `tide` scene ID;
-Ridge and Dawn remain code-native alternatives, and a personal photo is also
-allowed. The bundled image is part of the PWA precache, with a CSS color field
-as its failure fallback. Curated fields use a light directional wash and tight
+bundled photographic landscape and the backward-compatible `tide` scene ID.
+Five credited, licensed photographs add Laguna Beach, Manhattan at night, Big
+Sur, Joshua Tree, and Lake Tahoe; Ridge and Dawn remain code-native
+alternatives, and a personal photo is also allowed. Every selectable photograph
+is part of the PWA precache, with a CSS color field as its failure fallback.
+Curated fields use a light directional wash and tight
 text shadow so the landscape remains luminous; a personal photo receives a
 stronger protective treatment because its luminance is unknown. The
 app-authored arc always represents actual calorie-plan completion, caps
@@ -153,6 +155,14 @@ A separate edge-free lower gradient stays nearly transparent around the arc
 and deepens only behind the recommendation and paper seam. This preserves
 terrain detail through the focal gauge instead of turning the field into a
 dark panel.
+
+Below the field, **Daily current** applies the reference app's calmer
+one-subject-per-surface hierarchy to Body Current's own records: intake and
+macros, connected-device energy/movement, the latest real wearable activity,
+and the user's hydration log and goal. It never substitutes Oura-specific
+constructs such as cardiovascular age, sleep debt, or cumulative stress. A
+card is omitted when its underlying wearable signal is missing, while food and
+hydration remain useful without a wearable.
 
 The integrated At a glance rail always contains four useful account-owned
 readings—Fuel, Protein, Water, and Carbs—before appending only wearable readings

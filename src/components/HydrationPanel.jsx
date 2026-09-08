@@ -24,7 +24,7 @@ function dateTimeForViewedDay(date) {
 // a plan target. Native select/date-time controls are intentional here: their
 // platform keyboards and localized pickers are useful for a compact personal
 // log, and labels/error copy remain app-owned (UX-CONTRACT hydration section).
-export default function HydrationPanel({ date, hydration, onChanged }) {
+export default function HydrationPanel({ date, hydration, onChanged, className = '' }) {
   const [preferences, setPreferences] = useState(hydration?.preferences || DEFAULT_HYDRATION)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [amount, setAmount] = useState(() => quantityDraft(250, hydration?.preferences?.unit || 'ml'))
@@ -75,7 +75,7 @@ export default function HydrationPanel({ date, hydration, onChanged }) {
     catch (err) { if (alive.current && currentDay.current === requestDay) setError(err.message || 'Could not delete water. Try again.') } finally { if (alive.current && currentDay.current === requestDay) setBusy(false) }
   }
   return (
-    <section aria-labelledby="hydration-heading" className="border-y border-line py-4">
+    <section aria-labelledby="hydration-heading" className={`border-y border-line py-4 ${className}`}>
       <div className="flex items-end justify-between gap-3">
         <div><h2 id="hydration-heading" className="text-[15px] font-bold leading-tight text-ink">Hydration</h2><p className="mt-1 text-[11px] text-muted">{preferences.goal_ml ? 'Your water goal' : 'Manual water tracking'}</p></div>
         <div className="text-right"><div className="numeral text-[26px] font-semibold leading-none text-ink">{waterAmount(total, preferences.unit)}</div><div className="eyebrow mt-1">Logged</div></div>

@@ -126,11 +126,37 @@ describe('Today information hierarchy', () => {
     const title = [...el.querySelectorAll('h1')].find((node) => node.textContent === 'Today')
     const priority = el.querySelector('#today-recommendation')
     const signals = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'At a glance')
-    const intake = [...el.querySelectorAll('h2')].find((node) => node.textContent === 'Intake so far')
+    const overview = el.querySelector('#daily-current-heading')
+    const intake = [...el.querySelectorAll('h3')].find((node) => node.textContent === 'Intake so far')
     expect(title?.className).toContain('font-semibold')
     expect(priority).toBeTruthy()
     expect(signals.compareDocumentPosition(priority) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(priority.compareDocumentPosition(intake) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(priority.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(overview.compareDocumentPosition(intake) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('maps the reference hierarchy to real Body Current records instead of borrowed health scores', async () => {
+    const onGoToPlan = vi.fn()
+    const entries = [{
+      id: 1,
+      logged_at: new Date().toISOString(),
+      servings_consumed: 1,
+      food: { name: 'Lunch', calories: 660, protein_g: 38, carbs_g: 74, fat_g: 22 },
+    }]
+    const el = await renderToday({
+      baseline: { calories: 2200, protein_g: 130, carbs_g: 260, fat_g: 75 },
+      hydration: { total_ml: 900, entries: [], preferences: { goal_ml: 2400, unit: 'ml', quick_add_ml: [250, 500, 750] } },
+      signals: {
+        workout: { value: { label: 'Morning Run', shortLabel: 'run', status: 'completed', durationMin: 42, estKcal: 510 }, provider: 'garmin', freshness: 'fresh', demo: false },
+      },
+    }, { entries, onGoToPlan })
+
+    const overview = el.querySelector('[aria-labelledby="daily-current-heading"]')
+    expect(overview?.textContent).toMatch(/Fuel, water, and movement/)
+    expect(overview?.querySelector('.today-metric-card--fuel')?.textContent).toMatch(/660.*2,200 kcal/s)
+    expect(overview?.querySelector('.today-metric-card--water')?.textContent).toMatch(/900 mL.*Goal 2\.4 L/s)
+    expect(overview?.querySelector('.today-metric-card--activity')?.textContent).toMatch(/Morning Run.*42 min.*~510 kcal.*Garmin/s)
+    expect(overview?.textContent).not.toMatch(/Cardiovascular Age|Sleep debt|Body Clock|Cumulative Stress/)
   })
 
   it('keeps hydration details closed by default and limits Today to the three most recent foods', async () => {

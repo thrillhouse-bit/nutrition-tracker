@@ -262,9 +262,12 @@ Manage prompts. Current-day stale/error behavior remains actionable. A genuine
 provider error may still route to Connections from a historical view.
 
 The Current Field offers the original bundled **Alpine** photograph (stored as
-the backward-compatible `tide` scene ID), code-native Ridge and Dawn scenes,
-plus **Use my photo**. Alpine is part of the PWA precache and retains a CSS
-fallback; no generic runtime image or API caching is introduced. Scene and photo preferences are stored only in account-scoped browser
+the backward-compatible `tide` scene ID); real, credited photographs of Laguna
+Beach, Manhattan at night, Big Sur, Joshua Tree, and Lake Tahoe; code-native
+Ridge and Dawn scenes; plus **Use my photo**. Every curated photograph is part
+of the PWA precache and retains a CSS fallback; no generic runtime image or API
+caching is introduced. The selected sourced photograph exposes its photographer
+and license links, with complete provenance in `PHOTO-CREDITS.md`. Scene and photo preferences are stored only in account-scoped browser
 storage and are never uploaded. JPEG, PNG, and WebP sources are limited to 10 MB;
 the browser canvas-resizes to at most 1600px, WebP-reencodes to strip embedded
 metadata, retries smaller encodes, and refuses any resulting data URL above 2 MB.
@@ -273,6 +276,13 @@ focus trap, backdrop dismissal, and focus restoration. Closing during image
 preparation cancels the pending UI commit so a late decode cannot change a
 selection after dismissal. Choosing a curated field or removing a personal
 photo overwrites the local photo copy.
+
+Below the hero, **Daily current** uses distinct surfaces for actual Body Current
+records: intake/macros, wearable-reported energy and movement when present, the
+latest real wearable activity when present, and hydration. Oura-only metrics
+shown in visual references are not reproduced or inferred. Optional wearable
+surfaces are omitted when no real signal exists; food and hydration surfaces
+remain functional for users without a wearable.
 
 Hydration keeps its total, goal progress, Customize action, and three quick-add
 amounts immediately available. Exact amount/time entry and water history expand

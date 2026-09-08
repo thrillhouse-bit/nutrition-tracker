@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import React from 'react'
 import { act } from 'react'
@@ -9,6 +9,7 @@ import Today from '../src/components/Today.jsx'
 import {
   TODAY_BACKDROP_MAX_SOURCE_BYTES,
   TODAY_BACKDROP_MAX_STORED_BYTES,
+  TODAY_BACKDROP_SCENES,
   loadTodayBackdrop,
   normalizeTodayBackdrop,
   saveTodayBackdrop,
@@ -93,6 +94,41 @@ describe('Today backdrop preference', () => {
     await act(async () => { ridge.click() })
     expect(ridge.getAttribute('aria-pressed')).toBe('true')
     expect(loadTodayBackdrop(77)).toEqual({ kind: 'scene', scene: 'ridge' })
+  })
+
+  it('offers source-verified real photographs with visible credit and bundled assets', async () => {
+    const expected = [
+      ['laguna', 'Laguna', 'laguna-beach-v1.jpg'],
+      ['manhattan', 'Manhattan', 'manhattan-night-v1.jpg'],
+      ['big-sur', 'Big Sur', 'big-sur-v1.jpg'],
+      ['joshua-tree', 'Joshua Tree', 'joshua-tree-v1.jpg'],
+      ['lake-tahoe', 'Lake Tahoe', 'lake-tahoe-v1.jpg'],
+    ]
+    for (const [id, label, asset] of expected) {
+      const scene = TODAY_BACKDROP_SCENES.find((candidate) => candidate.id === id)
+      expect(scene).toMatchObject({ id, label, sourceName: 'Unsplash' })
+      expect(scene.credit).toBeTruthy()
+      expect(scene.sourceUrl).toMatch(/^https:\/\/unsplash\.com\/photos\//)
+      expect(scene.licenseUrl).toBe('https://unsplash.com/license')
+      expect(existsSync(path.resolve(process.cwd(), 'public/current-fields', asset))).toBe(true)
+    }
+
+    const el = await renderToday()
+    await act(async () => { el.querySelector('[aria-label="Change Today backdrop"]').click() })
+    const dialog = document.querySelector('[role="dialog"]')
+    const laguna = [...dialog.querySelectorAll('button')].find((button) => button.textContent.includes('Laguna'))
+    await act(async () => { laguna.click() })
+    expect(loadTodayBackdrop(77)).toEqual({ kind: 'scene', scene: 'laguna' })
+    expect(dialog.textContent).toMatch(/Selected photo by Dan Begel on Unsplash/i)
+    expect(dialog.querySelector('a[href*="3WWZItF7GBU"]')).toBeTruthy()
+
+    const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
+    for (const [id, , asset] of expected) {
+      expect(css).toContain(`[data-scene='${id}']`)
+      expect(css).toContain(`url('/current-fields/${asset}')`)
+    }
+    const vite = readFileSync(path.resolve(process.cwd(), 'vite.config.js'), 'utf8')
+    for (const [, , asset] of expected) expect(vite).toContain(`current-fields/${asset}`)
   })
 
   it('renders honest universal rail values without inventing wearable signals', async () => {

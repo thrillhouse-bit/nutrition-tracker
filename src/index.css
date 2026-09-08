@@ -89,11 +89,10 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Body Current's one immersive product surface. The default Alpine field is
-   an original bundled image (and works offline); the other curated fields are
-   app-authored gradients. Curated fields stay photographic and luminous. The
-   interface protects copy locally instead of laying one dark sheet over the
-   whole image. */
+/* Body Current's one immersive product surface. The default Alpine field and
+   five licensed, credited location photographs are bundled for reliable and
+   offline use. Ridge and Dawn remain code-native alternatives. The interface
+   protects copy locally instead of laying one dark sheet over the whole image. */
 .today-current-field,
 .today-backdrop-preview {
   --current-deep: color-mix(in srgb, var(--color-cobalt-ink) 22%, #081116);
@@ -110,6 +109,45 @@ body {
 
 .today-current-field[data-scene='tide'] .today-current-backdrop {
   filter: brightness(1.12) saturate(1.12) contrast(0.98);
+}
+
+.today-current-field[data-scene='laguna'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='laguna'] {
+  background-image: url('/current-fields/laguna-beach-v1.jpg');
+  background-position: center 44%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='manhattan'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='manhattan'] {
+  background-image: url('/current-fields/manhattan-night-v1.jpg');
+  background-position: center 46%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='manhattan'] .today-current-backdrop {
+  filter: brightness(1.08) saturate(1.12);
+}
+
+.today-current-field[data-scene='big-sur'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='big-sur'] {
+  background-image: url('/current-fields/big-sur-v1.jpg');
+  background-position: center 43%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='joshua-tree'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='joshua-tree'] {
+  background-image: url('/current-fields/joshua-tree-v1.jpg');
+  background-position: center 47%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='lake-tahoe'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='lake-tahoe'] {
+  background-image: url('/current-fields/lake-tahoe-v1.jpg');
+  background-position: center 45%;
+  background-size: cover;
 }
 
 .today-current-field[data-scene='ridge'] .today-current-backdrop,
@@ -227,6 +265,63 @@ button.today-glance-orb:active {
 .today-paper-sheet {
   border-top: 1px solid rgb(18 18 16 / 0.16);
   box-shadow: 0 -18px 34px rgb(4 8 11 / 0.18);
+}
+
+/* The detailed Today current borrows the reference app's calm, one-signal-per-
+   surface hierarchy without borrowing its metrics. Every value below comes
+   from Body Current's food, hydration, or connected-wearable data. Rounded,
+   atmospheric panels are deliberately scoped to this journal sequence; the
+   rest of the product keeps the sharp editorial system. */
+.today-current-overview {
+  border-block: 1px solid var(--color-line);
+  background:
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--color-cobalt) 8%, transparent), transparent 34%),
+    #efede7;
+}
+
+.today-metric-card {
+  overflow: hidden;
+  border: 1px solid rgb(18 18 16 / 0.14);
+  border-radius: 24px;
+  box-shadow: 0 12px 28px rgb(18 18 16 / 0.07), inset 0 1px rgb(255 255 255 / 0.52);
+}
+
+.today-metric-card--fuel {
+  background:
+    radial-gradient(circle at 95% 8%, color-mix(in srgb, var(--color-cobalt) 20%, transparent), transparent 40%),
+    color-mix(in srgb, var(--color-cobalt-soft) 58%, var(--color-paper));
+}
+
+.today-metric-card--water {
+  background:
+    radial-gradient(circle at 8% 8%, color-mix(in srgb, var(--color-cobalt) 13%, transparent), transparent 40%),
+    color-mix(in srgb, var(--color-mist) 68%, var(--color-paper));
+}
+
+.today-metric-card--movement {
+  background:
+    radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--color-sand) 52%, transparent), transparent 45%),
+    color-mix(in srgb, var(--color-sand) 30%, var(--color-paper));
+}
+
+.today-metric-card--activity {
+  background:
+    radial-gradient(circle at 90% 12%, color-mix(in srgb, var(--color-cobalt) 14%, transparent), transparent 42%),
+    color-mix(in srgb, var(--color-rail) 76%, var(--color-mist));
+}
+
+.today-metric-glyph {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.36);
+  color: var(--color-cobalt-ink);
+  font-weight: 700;
 }
 
 /* Standards-first, visible scrollbars for every app-owned scroll surface;

@@ -10,7 +10,11 @@ a lower surface rising into view—while retaining Body Current's global rail,
 type system, account accent, controls, and original imagery. The default
 **Alpine** field is an original portrait landscape bundled into the PWA cache;
 `tide` remains its stored scene ID so existing account preferences migrate
-without a reset. Ridge, Dawn, and account-local personal photos remain intact.
+without a reset. Five real, source-verified photographs—Laguna Beach, Manhattan
+at night, Big Sur, Joshua Tree, and Lake Tahoe—join it as user-selectable
+fields. Their source and license are visible for the selected field, and full
+provenance lives in `docs/PHOTO-CREDITS.md`. Ridge, Dawn, and account-local
+personal photos remain intact.
 
 At a glance is no longer a detached white section. It is a named, focusable
 horizontal region over the field with visible touch/keyboard instructions and
@@ -33,6 +37,17 @@ Information-band details use 86–90% white. The recommendation remains the
 largest type moment and every provider
 refresh/manage/connect recovery action retains its prior behavior.
 
+The additional supplied Oura screens clarify the continuation beneath the
+field: generous separation, one primary subject per surface, a short state
+label, and detail only where it advances a decision. Body Current maps that
+hierarchy to its own actual information rather than copying Oura's metrics.
+The resulting **Daily current** sequence presents intake/macros, optional
+wearable-reported energy and movement, the latest real wearable activity, and
+interactive hydration. It uses softly atmospheric, rounded panels as a scoped
+Today-page exception; the food journal and the rest of the app keep the sharp
+editorial system. Missing wearable data removes its card instead of producing
+a placeholder score.
+
 ## 7 Sep 2026 — the Current Field
 
 The Today page now uses the supplied Oura screen as a compositional reference,
@@ -46,8 +61,9 @@ present. Activity retains source, tense, time, duration, and device-reported
 energy instead of collapsing to a decorative icon.
 
 The later 8 Sep pass replaces the original Tide abstraction with the bundled
-Alpine photograph while preserving `tide` as the stored compatibility ID.
-Ridge and Dawn remain code-native. A personal-photo path makes the visual genuinely user-owned without
+Alpine photograph while preserving `tide` as the stored compatibility ID, then
+adds five locally hosted, licensed location photographs so selection remains
+reliable offline. Ridge and Dawn remain code-native. A personal-photo path makes the visual genuinely user-owned without
 creating a server-side photo store: the browser validates, downsizes,
 WebP-reencodes, strips embedded metadata, and saves the bounded result under the
 signed-in account's existing private-storage key pattern. A uniform dark photo
