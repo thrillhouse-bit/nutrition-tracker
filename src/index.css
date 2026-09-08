@@ -89,6 +89,19 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
+/* Today is allowed to flow beneath the fixed tab rail. Its field is pulled up
+   by the rail's measured 3.25rem height, while the field's own content adds
+   that space back. The result is a real glass overlay on the selected photo,
+   not a second, unrelated color strip. Other pages retain the quiet paper
+   rail so their controls never lose contrast. */
+.app-top-nav--today {
+  background: linear-gradient(180deg, rgb(4 8 11 / 0.60), rgb(4 8 11 / 0.28));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  backdrop-filter: blur(12px) saturate(1.08);
+  text-shadow: 0 1px 5px rgb(0 0 0 / 0.72);
+}
+
 /* Body Current's one immersive product surface. The default Alpine field and
    five licensed, credited location photographs are bundled for reliable and
    offline use. Ridge and Dawn remain code-native alternatives. The interface
@@ -247,6 +260,11 @@ body {
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.94), 0 3px 12px rgb(0 0 0 / 0.62);
 }
 
+.today-glance-orb-value {
+  font-variant-numeric: tabular-nums lining-nums;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.98), 0 3px 10px rgb(0 0 0 / 0.78);
+}
+
 button.today-glance-orb {
   min-width: 112px;
   min-height: 126px;
@@ -322,6 +340,110 @@ button.today-glance-orb:active {
   background: rgb(255 255 255 / 0.36);
   color: var(--color-cobalt-ink);
   font-weight: 700;
+}
+
+/* Secondary screens use Today's hierarchy without pretending to be another
+   photo page: an atmospheric lead-in establishes the screen and its scope,
+   then account-owned information sits on calm, rounded journal surfaces.
+   This shared treatment makes Insights, Plan, and Connect feel like one
+   product while preserving their distinct jobs. */
+.current-page-intro {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin: -1rem -1rem 0;
+  padding: 1.65rem 1rem 1.85rem;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--color-current-glow) 52%, transparent), transparent 34%),
+    radial-gradient(circle at 8% 110%, color-mix(in srgb, var(--color-cobalt) 46%, transparent), transparent 48%),
+    linear-gradient(154deg, #102b3d 0%, color-mix(in srgb, var(--color-cobalt-ink) 42%, #111b22) 54%, #091116 100%);
+  box-shadow: 0 16px 34px rgb(4 8 11 / 0.16);
+}
+
+.current-page-intro::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: auto -8% -68% 32%;
+  height: 150px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 50%;
+  transform: rotate(-8deg);
+}
+
+.current-page-intro-copy {
+  text-wrap: pretty;
+}
+
+.current-page-window {
+  background: rgb(4 8 11 / 0.16);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.current-page-date {
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  text-wrap: balance;
+}
+
+.insights-current-layout > section,
+.connections-current-layout > section,
+.connections-current-layout > footer,
+.plan-current-stack > section {
+  overflow: hidden;
+  border: 1px solid rgb(18 18 16 / 0.13);
+  border-radius: 22px;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 96% 4%, color-mix(in srgb, var(--color-cobalt) 7%, transparent), transparent 38%),
+    color-mix(in srgb, var(--color-card) 58%, var(--color-paper));
+  box-shadow: 0 12px 26px rgb(18 18 16 / 0.06), inset 0 1px rgb(255 255 255 / 0.58);
+}
+
+.insights-current-layout > section > :first-child,
+.plan-current-stack > section > :first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.connections-current-layout > section,
+.connections-current-layout > footer {
+  margin-top: 1rem;
+}
+
+.connections-current-layout > section:nth-of-type(2n),
+.plan-current-stack > section:nth-of-type(2n) {
+  background:
+    radial-gradient(circle at 2% 2%, color-mix(in srgb, var(--color-mist) 62%, transparent), transparent 42%),
+    color-mix(in srgb, var(--color-card) 52%, var(--color-paper));
+}
+
+.plan-current-stack > header {
+  padding-inline: 0.15rem;
+}
+
+@media (max-width: 479px) {
+  .provider-row-summary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .provider-row-actions {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .provider-row-actions > :where(a, button, span) {
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 480px) {
+  .current-page-intro {
+    padding-inline: 1.4rem;
+  }
 }
 
 /* Standards-first, visible scrollbars for every app-owned scroll surface;

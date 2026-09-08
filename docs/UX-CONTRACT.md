@@ -298,6 +298,22 @@ Regenerable legacy `daily_plans` snapshots that explicitly contain demo
 provenance are deleted during schema initialization; source food, hydration,
 profile, account, and real wearable rows are not part of that cleanup.
 
+### Cross-screen visual hierarchy
+
+Today's fixed tab rail overlays the Current Field itself. It uses white labels,
+a white active rule, and a translucent dark glass treatment; Today content
+reserves the rail's measured height so no date, connection, or glance control
+is obscured. The other tabs retain the warm-paper rail. At-a-glance instrument
+values use heavy tabular sans typography and compact only when their content is
+long; decorative serif typography is not used inside the small circles.
+
+Insights, Plan, and Connect share an atmospheric lead-in and rounded journal
+surfaces so hierarchy, depth, and spacing remain coherent with Today. The
+screen-specific primary context stays in the lead-in: range on Insights, the
+full date on Plan, and provider scope on Connect. This visual parity must not
+merge those screens' jobs, invent new metrics, or hide existing provenance,
+empty states, provider actions, or accessible chart labels.
+
 ### Insights daily completion
 
 Insights receives one entry for every calendar day in its selected window. For

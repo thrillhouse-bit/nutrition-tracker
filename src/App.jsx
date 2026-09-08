@@ -449,8 +449,10 @@ export default function App() {
     return <Onboarding onDone={() => { setPlanReady(true); bump() }} />
   }
 
+  const todayTab = tab === 'today'
+
   return (
-    <div className="mx-auto flex min-h-full max-w-xl flex-col pt-[3.25rem]">
+    <div className={`app-shell mx-auto flex min-h-full max-w-xl flex-col pt-[3.25rem] ${todayTab ? 'app-shell--today' : ''}`}>
       {/* Top nav — rail bar, active tab drawn with a cobalt bottom rule (moved
           from the page bottom 25 Aug 2026, owner: it read as page furniture
           down there and was easy to miss; the top keeps it the first thing
@@ -475,7 +477,7 @@ export default function App() {
           the labels was chosen so the longest ones ("Insights", "Connect")
           clear the next column's text at that width — a wider
           tracking-[0.09em] measured only ~1.6-2px of margin each side. */}
-      <nav className="fixed inset-x-0 top-0 z-20 mx-auto flex max-w-xl border-b border-line-strong bg-rail pt-[env(safe-area-inset-top)]">
+      <nav className={`app-top-nav fixed inset-x-0 top-0 z-20 mx-auto flex max-w-xl border-b pt-[env(safe-area-inset-top)] ${todayTab ? 'app-top-nav--today border-white/25' : 'border-line-strong bg-rail'}`}>
         {TABS.map((t) => {
           const active = tab === t.key
           return (
@@ -483,9 +485,13 @@ export default function App() {
               key={t.key}
               onClick={() => setTab(t.key)}
               aria-current={active ? 'page' : undefined}
-              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] ${active ? 'text-cobalt' : 'text-muted hover:text-ink'}`}
+              className={`relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] transition-colors ${
+                todayTab
+                  ? active ? 'text-white' : 'text-white/80 hover:text-white'
+                  : active ? 'text-cobalt' : 'text-muted hover:text-ink'
+              }`}
             >
-              {active && <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-cobalt" />}
+              {active && <span aria-hidden className={`absolute inset-x-0 bottom-0 h-0.5 ${todayTab ? 'bg-white' : 'bg-cobalt'}`} />}
               {TAB_SHORT[t.key] || t.label}
             </button>
           )

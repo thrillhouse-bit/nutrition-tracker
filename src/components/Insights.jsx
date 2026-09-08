@@ -329,18 +329,20 @@ export default function Insights({ refreshKey, onGoToConnections }) {
       : 'No recorded workouts in this date range. Sync a workout from your wearable or choose a longer range. Daily steps and calories are not counted as training.'
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h2 className="serif text-[2rem] leading-none text-ink">Insights</h2>
+    <div className="insights-current-layout space-y-6">
+      <header className="current-page-intro">
+        <p className="eyebrow text-white/70">Patterns over time</p>
+        <h2 className="serif mt-1.5 text-[2.15rem] leading-none text-white">Insights</h2>
+        <p className="current-page-intro-copy mt-2 max-w-[330px] text-[13px] leading-relaxed text-white/78">See how logged fuel, body trends, and connected training move together.</p>
         {/* Window selector — sharp, bordered, active cell in cobalt. */}
-        <div className="mt-3.5 flex border border-line-strong">
+        <div className="current-page-window mt-4 flex overflow-hidden border border-white/28">
           {WINDOWS.map((w, i) => (
             <button
               key={w}
               type="button"
               onClick={() => setWindow(w)}
               aria-pressed={window === w}
-              className={`flex-1 py-4 text-center text-[10.5px] font-semibold uppercase tracking-[0.12em] transition ${i > 0 ? 'border-l border-line' : ''} ${window === w ? 'bg-cobalt text-oncobalt' : 'text-muted hover:text-ink'}`}
+              className={`flex-1 py-3.5 text-center text-[10.5px] font-semibold uppercase tracking-[0.12em] transition ${i > 0 ? 'border-l border-white/20' : ''} ${window === w ? 'bg-white text-ink' : 'text-white/76 hover:bg-white/10 hover:text-white'}`}
             >
               {w} Days
             </button>

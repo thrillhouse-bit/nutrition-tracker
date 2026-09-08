@@ -574,7 +574,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   // target cannot accidentally dereference automatic-only reasoning.
   if (p.source === 'manual') {
     return (
-      <div className="mt-6 space-y-6">
+      <div className="plan-current-stack mt-6 space-y-6">
         <header className="flex flex-wrap items-baseline justify-between gap-3">
           <h3 className="serif text-[26px] leading-tight text-ink">Daily Fuel Plan</h3>
           <TextButton onClick={() => setEditingProfile(true)} chevron>Edit targets</TextButton>
@@ -601,7 +601,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   }
 
   return (
-    <div className="mt-6 space-y-6">
+    <div className="plan-current-stack mt-6 space-y-6">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <h3 className="serif text-[26px] leading-tight text-ink">Daily Fuel Plan</h3>
         <TextButton onClick={() => setEditingProfile(true)} chevron>Edit profile</TextButton>

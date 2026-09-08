@@ -129,10 +129,24 @@ geometry.
 
 ### Navigation and data display
 
-Top navigation is fixed and bounded to the content column. Lists use rules rather
-than card stacks. Charts label their metric, period, endpoints, and reference
-lines. Daily completion is represented by 25/50/75/100 accent strengths with an
-exact accessible percentage per day; the neutral track means no log.
+Top navigation is fixed and bounded to the content column. Detailed row lists
+use rules inside their owning journal surface rather than nesting smaller cards.
+Charts label their metric, period, endpoints, and reference lines. Daily
+completion is represented by 25/50/75/100 accent strengths with an exact
+accessible percentage per day; the neutral track means no log.
+
+On Today, the fixed rail is a translucent overlay on the actual Current Field,
+with white labels and a white selected rule; the field reserves the rail's
+3.25rem content height so no hero control sits underneath it. All other screens
+keep the warm-paper rail. At-a-glance instrument values use a heavy tabular sans
+face with an adaptive compact size, reserving Bodoni for editorial headings and
+large values on quiet paper surfaces.
+
+Insights, Plan, and Connect share an atmospheric deep-blue lead-in followed by
+rounded, low-contrast journal surfaces. This is a hierarchy system rather than a
+decorative clone of Today: Insights leads with range selection, Plan gives its
+human-readable date prominent glass treatment, and Connect leads with provider
+scope. Their underlying data, empty states, and actions remain unchanged.
 
 ### Today Current Field
 

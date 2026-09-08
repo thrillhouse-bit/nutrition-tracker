@@ -202,6 +202,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
   const radius = 38
   const circumference = 2 * Math.PI * radius
   const accessibleValue = [label, value, detail, secondaryDetail].filter(Boolean).join('. ')
+  const compactValue = String(value ?? '').length > 5
   return (
     <Tag
       {...(onClick
@@ -211,7 +212,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
     >
       <div className="relative mx-auto h-[88px] w-[88px]">
         <svg aria-hidden viewBox="0 0 88 88" className="absolute inset-0 h-full w-full -rotate-90">
-          <circle cx="44" cy="44" r={radius} fill="rgb(255 255 255 / 0.09)" stroke="rgb(255 255 255 / 0.30)" strokeWidth="1.5" />
+          <circle cx="44" cy="44" r={radius} fill="rgb(4 8 11 / 0.18)" stroke="rgb(255 255 255 / 0.52)" strokeWidth="1.75" />
           {boundedProgress != null && boundedProgress > 0 && (
             <circle
               cx="44"
@@ -219,7 +220,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
               r={radius}
               fill="none"
               stroke="var(--color-current-glow)"
-              strokeWidth="4"
+              strokeWidth="4.5"
               strokeLinecap="butt"
               strokeDasharray={`${circumference} ${circumference}`}
               strokeDashoffset={circumference * (1 - boundedProgress)}
@@ -227,7 +228,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
           )}
         </svg>
         <span aria-hidden className="absolute inset-x-0 top-[13px] text-[11px] font-bold leading-none tracking-[0.06em] text-white/90">{GLANCE_MARKS[label] || '·'}</span>
-        <span className="numeral absolute inset-x-0 bottom-[19px] flex items-center justify-center px-1 text-[21px] font-semibold leading-none text-white">{value}</span>
+        <span className={`today-glance-orb-value tnum absolute inset-x-0 bottom-[18px] flex items-center justify-center px-1 font-sans font-extrabold leading-none tracking-[-0.04em] text-white ${compactValue ? 'text-[17px]' : 'text-[23px]'}`}>{value}</span>
       </div>
       <span className="mt-1.5 block text-[12px] font-bold leading-tight text-white">{label}</span>
       {detail && <span title={detail} className={`mt-0.5 block text-[10px] leading-[1.25] text-white/90 ${detailWrap ? 'whitespace-normal' : 'truncate'}`}>{detail}</span>}
@@ -637,16 +638,16 @@ export default function Today({ date, data, dataError, entries, loading, online,
   }
 
   return (
-    <div className="-mx-4 -mt-4" {...swipeHandlers}>
+    <div className="-mx-4 -mt-[calc(1rem+3.25rem)]" {...swipeHandlers}>
       <section
         aria-labelledby="today-recommendation"
-        className="today-current-field relative min-h-[710px] overflow-hidden text-white"
+        className="today-current-field relative min-h-[762px] overflow-hidden text-white"
         data-scene={backdrop.kind === 'scene' ? backdrop.scene : 'photo'}
       >
         <div aria-hidden className="today-current-backdrop absolute inset-0 bg-cover bg-center" style={backdropStyle} />
         <div aria-hidden className="today-current-scrim absolute inset-0" />
         <div aria-hidden="true" className="today-hero-outcome-protection absolute inset-x-0 bottom-0 top-[43%]" />
-        <div className="relative z-[1] flex min-h-[710px] flex-col pb-16 pt-4">
+        <div className="relative z-[1] flex min-h-[762px] flex-col pb-16 pt-[calc(1rem+3.25rem)]">
           <div className="today-hero-information-backplate pb-4">
           <header className="px-4">
             <div className="flex items-start justify-between gap-3">

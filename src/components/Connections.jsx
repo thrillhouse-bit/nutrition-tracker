@@ -326,7 +326,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
 
   return (
     <div className="border-b border-line px-1 py-2.5" data-provider={id}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="provider-row-summary flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="serif text-[21px] leading-none text-ink">{DISPLAY_NAME[id] || name}</div>
 
@@ -374,7 +374,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="provider-row-actions flex shrink-0 flex-col items-end gap-1.5">
           {action}
           {/* Non-connected OAuth still needs a way to reach enable options. */}
           {oauth && !connectedish && (
@@ -588,11 +588,12 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
   }
 
   return (
-    <div>
+    <div className="connections-current-layout">
       {/* Header */}
-      <header className="pb-3.5">
-        <h2 className="serif text-3xl leading-none text-ink">Connections</h2>
-        <p className="mt-2.5 max-w-[320px] text-[12.5px] leading-relaxed text-muted">
+      <header className="current-page-intro">
+        <p className="eyebrow text-white/70">Your device ecosystem</p>
+        <h2 className="serif mt-1.5 text-[34px] leading-none text-white">Connect</h2>
+        <p className="current-page-intro-copy mt-2.5 max-w-[350px] text-[12.5px] leading-relaxed text-white/78">
           Three read-only sources. You control which signals inform recommendations. Manage or delete synced data at any
           time.
         </p>
