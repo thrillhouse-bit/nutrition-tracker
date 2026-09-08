@@ -47,3 +47,27 @@ it('does not reapply a completed accent save after its account session unmounts'
   await act(async () => resolveAppearance({ accent: 'ruby' }))
   expect(onAccentChange).not.toHaveBeenCalledWith('ruby')
 })
+
+it('finishes an accent save after the Strict Mode setup-cleanup-setup cycle', async () => {
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  root = createRoot(container)
+  const onAccentChange = vi.fn()
+  await act(async () => {
+    root.render(
+      <React.StrictMode>
+        <Connections refreshKey={0} user={{ email: 'a@example.test' }} sessionKey="account-a" onChanged={() => {}} onLogout={() => {}} accent="sapphire" onAccentChange={onAccentChange} />
+      </React.StrictMode>,
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+
+  const emerald = [...container.querySelectorAll('input[type="radio"]')].find((input) => input.parentElement.textContent.includes('Emerald'))
+  await act(async () => emerald.click())
+  await act(async () => resolveAppearance({ accent: 'emerald' }))
+
+  expect(onAccentChange).toHaveBeenLastCalledWith('emerald')
+  expect(container.textContent).not.toContain('Saving color…')
+  expect([...container.querySelectorAll('input[type="radio"]')].every((input) => !input.disabled)).toBe(true)
+})

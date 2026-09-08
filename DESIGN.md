@@ -79,6 +79,10 @@ moments. Focus uses a 2px account-accent outline. Completion charts use ordered
 alpha strengths of the same accent plus the neutral track for missing data.
 The Today field derives `--color-current-glow` from the live account accent;
 it is a runtime adapter rather than a second independently editable palette.
+Progress drawn over photography uses the darker `--color-progress-mid` accent
+with an ink keyline and a luminous edge. The keyline is required: light
+palettes such as Silver and Pearl must remain distinct from the white remainder
+track on bright personal or curated photographs.
 
 Signed-out Body Current screens reuse the default real alpine Current Field as
 a full-viewport photographic ground. Authentication controls sit on one warm,

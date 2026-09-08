@@ -185,6 +185,21 @@ describe('Today backdrop preference', () => {
     expect(css).toMatch(/\.today-hero-outcome-protection\s*\{[^}]*linear-gradient\([^}]*transparent 0%[^}]*rgb\(4 8 11 \/ 0\.04\) 24%[^}]*rgb\(4 8 11 \/ 0\.24\) 54%[^}]*rgb\(4 8 11 \/ 0\.58\) 78%[^}]*rgb\(4 8 11 \/ 0\.80\) 100%/s)
   })
 
+  it('keeps photographic progress readable for every accent with a dark keyline and distinct fill', async () => {
+    const el = await renderToday({
+      entries: [{ id: 1, servings_consumed: 1, logged_at: new Date().toISOString(), food: { name: 'Meal', calories: 500, protein_g: 30, carbs_g: 50 } }],
+    })
+    const heroArc = el.querySelector('.today-fuel-arc')
+    expect(heroArc?.querySelector('.today-fuel-arc-track')?.getAttribute('stroke')).toBe('rgb(255 255 255 / 0.58)')
+    expect(heroArc?.querySelector('.today-fuel-arc-keyline')?.getAttribute('stroke')).toBe('rgb(4 8 11 / 0.76)')
+    expect(heroArc?.querySelector('.today-fuel-arc-fill')?.getAttribute('stroke')).toBe('var(--color-progress-mid)')
+    expect(heroArc?.querySelector('.today-fuel-arc-marker')).toBeTruthy()
+
+    const fuelOrb = el.querySelector('[role="group"][aria-label^="Fuel."]')
+    expect(fuelOrb?.querySelector('.today-progress-keyline')).toBeTruthy()
+    expect(fuelOrb?.querySelector('.today-progress-fill')?.getAttribute('stroke')).toBe('var(--color-progress-mid)')
+  })
+
   it('exposes the glance rail as a named keyboard-scrollable region', async () => {
     const el = await renderToday()
     const rail = el.querySelector('[role="region"][aria-label="Nutrition, hydration, and available wearable signals"]')

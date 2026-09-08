@@ -373,9 +373,17 @@ body {
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.98), 0 3px 10px rgb(0 0 0 / 0.78);
 }
 
-.today-glance-orb svg circle[stroke='var(--color-current-glow)'],
-.today-current-field svg path[stroke='var(--color-current-glow)'] {
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-current-glow) 58%, transparent));
+.today-progress-keyline,
+.today-fuel-arc-keyline {
+  filter: drop-shadow(0 1px 2px rgb(4 8 11 / 0.72));
+}
+
+.today-progress-fill,
+.today-fuel-arc-fill,
+.today-fuel-arc-marker {
+  filter:
+    drop-shadow(0 0 2px rgb(255 255 255 / 0.74))
+    drop-shadow(0 0 7px color-mix(in srgb, var(--color-progress-mid) 76%, transparent));
 }
 
 button.today-glance-orb {

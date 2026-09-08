@@ -212,19 +212,34 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
     >
       <div className="relative mx-auto h-[88px] w-[88px]">
         <svg aria-hidden viewBox="0 0 88 88" className="absolute inset-0 h-full w-full -rotate-90">
-          <circle cx="44" cy="44" r={radius} fill="rgb(4 8 11 / 0.18)" stroke="rgb(255 255 255 / 0.52)" strokeWidth="1.75" />
+          <circle className="today-progress-track" cx="44" cy="44" r={radius} fill="rgb(4 8 11 / 0.18)" stroke="rgb(255 255 255 / 0.52)" strokeWidth="1.75" />
           {boundedProgress != null && boundedProgress > 0 && (
-            <circle
-              cx="44"
-              cy="44"
-              r={radius}
-              fill="none"
-              stroke="var(--color-current-glow)"
-              strokeWidth="4.5"
-              strokeLinecap="butt"
-              strokeDasharray={`${circumference} ${circumference}`}
-              strokeDashoffset={circumference * (1 - boundedProgress)}
-            />
+            <>
+              <circle
+                className="today-progress-keyline"
+                cx="44"
+                cy="44"
+                r={radius}
+                fill="none"
+                stroke="rgb(4 8 11 / 0.76)"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={`${circumference} ${circumference}`}
+                strokeDashoffset={circumference * (1 - boundedProgress)}
+              />
+              <circle
+                className="today-progress-fill"
+                cx="44"
+                cy="44"
+                r={radius}
+                fill="none"
+                stroke="var(--color-progress-mid)"
+                strokeWidth="4.5"
+                strokeLinecap="round"
+                strokeDasharray={`${circumference} ${circumference}`}
+                strokeDashoffset={circumference * (1 - boundedProgress)}
+              />
+            </>
           )}
         </svg>
         <span aria-hidden className="absolute inset-x-0 top-[13px] text-[11px] font-bold leading-none tracking-[0.06em] text-white/90">{GLANCE_MARKS[label] || '·'}</span>
@@ -239,19 +254,35 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
 
 function CurrentArc({ progress, hasTarget }) {
   const pct = hasTarget ? Math.max(0, Math.min(1, progress)) : 0
+  const markerX = 14 + (332 * pct)
+  const markerY = ((1 - pct) ** 2 * 137) + (2 * (1 - pct) * pct * -20) + (pct ** 2 * 137)
   return (
-    <svg aria-hidden viewBox="0 0 360 152" className="h-auto w-full overflow-visible">
-      <path d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.72)" strokeWidth="6.5" />
+    <svg aria-hidden viewBox="0 0 360 152" className="today-fuel-arc h-auto w-full overflow-visible">
+      <path className="today-fuel-arc-track" d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.58)" strokeWidth="5.5" />
       {hasTarget && pct > 0 && (
-        <path
-          d="M 14 137 Q 180 -20 346 137"
-          pathLength="100"
-          fill="none"
-          stroke="var(--color-current-glow)"
-          strokeWidth="8"
-          strokeDasharray={`${pct * 100} 100`}
-          strokeLinecap="butt"
-        />
+        <>
+          <path
+            className="today-fuel-arc-keyline"
+            d="M 14 137 Q 180 -20 346 137"
+            pathLength="100"
+            fill="none"
+            stroke="rgb(4 8 11 / 0.76)"
+            strokeWidth="13"
+            strokeDasharray={`${pct * 100} 100`}
+            strokeLinecap="round"
+          />
+          <path
+            className="today-fuel-arc-fill"
+            d="M 14 137 Q 180 -20 346 137"
+            pathLength="100"
+            fill="none"
+            stroke="var(--color-progress-mid)"
+            strokeWidth="8"
+            strokeDasharray={`${pct * 100} 100`}
+            strokeLinecap="round"
+          />
+          <circle className="today-fuel-arc-marker" cx={markerX} cy={markerY} r="5.5" fill="var(--color-progress-mid)" stroke="rgb(4 8 11 / 0.82)" strokeWidth="3" />
+        </>
       )}
       <circle cx="14" cy="137" r="3" fill="rgb(255 255 255 / 0.78)" />
       <circle cx="346" cy="137" r="3" fill="rgb(255 255 255 / 0.78)" />

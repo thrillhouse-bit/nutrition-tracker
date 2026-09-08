@@ -508,7 +508,13 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
     activeSession.current = sessionKey
   }, [sessionKey])
 
-  useEffect(() => () => { mounted.current = false }, [])
+  // React Strict Mode intentionally runs an effect setup/cleanup/setup cycle
+  // in development. Reset the guard in setup so a successful appearance save
+  // cannot leave every swatch disabled at “Saving color…”.
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   const load = useCallback(async () => {
     const [c, o, g] = await Promise.all([

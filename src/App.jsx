@@ -165,6 +165,20 @@ export default function App() {
   const [editingEntry, setEditingEntry] = useState(null)
   const [savingEntry, setSavingEntry] = useState(false)
 
+  // Each top-level destination owns its own reading position. This also
+  // catches the first transition out of the long onboarding form: without a
+  // reset, a person who saved near the bottom landed halfway down Today and
+  // missed the Current Field entirely.
+  useEffect(() => {
+    if (authState !== 'in' || planReady !== true) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      const scroller = document.scrollingElement
+      if (scroller?.scrollTo) scroller.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      else window.scrollTo?.(0, 0)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [authState, planReady, tab])
+
   const loadEntries = useCallback(async (forDate) => {
     if (authState !== 'in' || !user?.id) {
       setEntries([])
