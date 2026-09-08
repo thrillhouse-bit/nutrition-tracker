@@ -114,7 +114,7 @@ describe('Today backdrop preference', () => {
     expect(el.querySelector('.today-paper-sheet')).toBeTruthy()
   })
 
-  it('protects small provider and glance text with an image-independent AA backplate', async () => {
+  it('keeps the curated image luminous while locally protecting provider and glance text', async () => {
     const el = await renderToday()
     const hero = el.querySelector('.today-current-field')
     const backplate = hero?.querySelector('.today-hero-information-backplate')
@@ -130,7 +130,8 @@ describe('Today backdrop preference', () => {
     expect(underContrastText).toEqual([])
 
     const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
-    expect(css).toMatch(/\.today-hero-information-backplate\s*\{[^}]*background:\s*rgb\(4 8 11 \/ 0\.78\)/s)
+    expect(css).toMatch(/\.today-hero-information-backplate\s*\{[^}]*linear-gradient\(180deg, rgb\(4 8 11 \/ 0\.30\)[^}]*transparent 100%/s)
+    expect(css).toMatch(/\[data-scene='tide'\] \.today-current-backdrop\s*\{[^}]*brightness\(1\.12\)[^}]*saturate\(1\.12\)/s)
   })
 
   it('protects lower outcome microcopy independently of curated or personal photos', async () => {
@@ -145,7 +146,7 @@ describe('Today backdrop preference', () => {
     expect(priorityLabel?.className).toContain('text-white/90')
 
     const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
-    expect(css).toMatch(/\.today-hero-outcome-protection\s*\{[^}]*linear-gradient\([^}]*rgb\(4 8 11 \/ 0\.72\) 0%[^}]*rgb\(4 8 11 \/ 0\.72\) 22%[^}]*rgb\(4 8 11 \/ 0\.82\) 45%[^}]*rgb\(4 8 11 \/ 0\.91\) 100%/s)
+    expect(css).toMatch(/\.today-hero-outcome-protection\s*\{[^}]*linear-gradient\([^}]*transparent 0%[^}]*rgb\(4 8 11 \/ 0\.04\) 24%[^}]*rgb\(4 8 11 \/ 0\.24\) 54%[^}]*rgb\(4 8 11 \/ 0\.58\) 78%[^}]*rgb\(4 8 11 \/ 0\.80\) 100%/s)
   })
 
   it('exposes the glance rail as a named keyboard-scrollable region', async () => {

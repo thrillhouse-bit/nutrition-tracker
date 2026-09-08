@@ -140,16 +140,19 @@ The field is the product's one immersive visual surface. Alpine is an original,
 bundled photographic landscape and the backward-compatible `tide` scene ID;
 Ridge and Dawn remain code-native alternatives, and a personal photo is also
 allowed. The bundled image is part of the PWA precache, with a CSS color field
-as its failure fallback. A strong directional scrim protects white-text
-contrast over any photo. The app-authored arc always represents actual
-calorie-plan completion, caps visually at 100%, and shows exact intake and
-target in text. Missing and loading targets are named rather than illustrated
-as progress. Provider status and At a glance sit on a 78% near-black local
-backplate independent of the chosen image; their smallest text uses at least
-86% white. The solid backplate ends before the outcome arc. A separate
-image-independent lower gradient begins below the rail at 72% near-black and
-deepens behind the arc and recommendation, protecting their microcopy without
-a card edge or erasing the landscape's photographic atmosphere.
+as its failure fallback. Curated fields use a light directional wash and tight
+text shadow so the landscape remains luminous; a personal photo receives a
+stronger protective treatment because its luminance is unknown. The
+app-authored arc always represents actual calorie-plan completion, caps
+visually at 100%, and shows exact intake and target in text. Missing and
+loading targets are named rather than illustrated as progress. Provider status
+uses its own translucent glass row, while the date and At a glance rail sit
+over an atmospheric top wash rather than an opaque backplate. Their smallest
+text uses at least 86% white plus a compact shadow.
+A separate edge-free lower gradient stays nearly transparent around the arc
+and deepens only behind the recommendation and paper seam. This preserves
+terrain detail through the focal gauge instead of turning the field into a
+dark panel.
 
 The integrated At a glance rail always contains four useful account-owned
 readings—Fuel, Protein, Water, and Carbs—before appending only wearable readings

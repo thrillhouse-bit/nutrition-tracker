@@ -240,7 +240,7 @@ function CurrentArc({ progress, hasTarget }) {
   const pct = hasTarget ? Math.max(0, Math.min(1, progress)) : 0
   return (
     <svg aria-hidden viewBox="0 0 360 152" className="h-auto w-full overflow-visible">
-      <path d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.34)" strokeWidth="7" />
+      <path d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.72)" strokeWidth="6.5" />
       {hasTarget && pct > 0 && (
         <path
           d="M 14 137 Q 180 -20 346 137"
@@ -632,7 +632,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
       >
         <div aria-hidden className="today-current-backdrop absolute inset-0 bg-cover bg-center" style={backdropStyle} />
         <div aria-hidden className="today-current-scrim absolute inset-0" />
-        <div aria-hidden="true" className="today-hero-outcome-protection absolute inset-x-0 bottom-0 top-[40%]" />
+        <div aria-hidden="true" className="today-hero-outcome-protection absolute inset-x-0 bottom-0 top-[43%]" />
         <div className="relative z-[1] flex min-h-[710px] flex-col pb-16 pt-4">
           <div className="today-hero-information-backplate pb-4">
           <header className="px-4">
@@ -657,7 +657,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
               </div>
             </div>
 
-            <div className="mt-3 flex min-h-[58px] items-stretch border-y border-white/28 bg-black/18 backdrop-blur-sm">
+            <div className="mt-3 flex min-h-[52px] items-stretch border-b border-white/32 bg-white/[0.035] backdrop-blur-[1px]">
               <div className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5">
                 <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dataError && todayLoading ? 'border border-white bg-transparent' : linkedHasError ? 'border border-white bg-transparent' : syncLive && !staleSignal ? 'bg-white' : syncLive || linkedNeedsAttention ? 'border border-white bg-transparent' : connectedWithoutData ? 'border border-white bg-transparent' : 'border border-white/60 bg-transparent'}`} />
                 <div className="min-w-0">
@@ -680,28 +680,30 @@ export default function Today({ date, data, dataError, entries, loading, online,
               </div>
             </div>
 
-            <div className="mt-2 min-h-[20px]">
-              {dataError && todayLoading ? (
-                <div className="border-l-2 border-white bg-black/28 px-3 py-2">
-                  <p className="text-[13px] font-semibold leading-snug text-white">Today’s information couldn’t load.</p>
-                  {onChanged && <button type="button" onClick={onChanged} className="mt-1 min-h-11 text-[12px] font-bold text-white underline underline-offset-4">Try again</button>}
-                </div>
-              ) : todayLoading ? (
-                <div className="h-5 w-3/4 bg-white/16" />
-              ) : syncLive ? (
-                daySentence.length > 0 && <p className="text-[13px] font-semibold leading-snug text-white">{daySentence.join(' ')}</p>
-              ) : (
-                <p className="text-[12px] leading-relaxed text-white/90">{altMessage}</p>
-              )}
-            </div>
+            {altMessage && <p className="sr-only">{altMessage}</p>}
+            {(todayLoading || (syncLive && daySentence.length > 0)) && (
+              <div className="mt-2 min-h-[20px]">
+                {dataError && todayLoading ? (
+                  <div className="border-l-2 border-white bg-black/28 px-3 py-2">
+                    <p className="text-[13px] font-semibold leading-snug text-white">Today’s information couldn’t load.</p>
+                    {onChanged && <button type="button" onClick={onChanged} className="mt-1 min-h-11 text-[12px] font-bold text-white underline underline-offset-4">Try again</button>}
+                  </div>
+                ) : todayLoading ? (
+                  <div className="h-5 w-3/4 bg-white/16" />
+                ) : (
+                  <p className="text-[13px] font-semibold leading-snug text-white">{daySentence.join(' ')}</p>
+                )}
+              </div>
+            )}
             {ouraError && <div role="alert" className="mt-2 border-l-2 border-white bg-black/35 px-3 py-2 text-[12px] font-semibold text-white">{ouraError}</div>}
             {!isToday(date) && <button type="button" onClick={onToday} className="mt-1 min-h-11 text-[11px] font-bold text-white underline underline-offset-4">Return to today</button>}
           </header>
 
-          <section aria-labelledby="today-at-a-glance" className="mt-3">
+          <section aria-labelledby="today-at-a-glance" className="mt-2">
             <div className="flex items-baseline justify-between gap-3 px-4">
               <h2 id="today-at-a-glance" className="text-[15px] font-bold leading-tight text-white">At a glance</h2>
-              <span id="today-glance-instructions" className="text-[10px] text-white/90">Swipe or use arrow keys</span>
+              <span aria-hidden className="text-[10px] text-white/90">Swipe</span>
+              <span id="today-glance-instructions" className="sr-only text-white/90">Swipe or use arrow keys</span>
             </div>
             {showWearableSignals && <h3 className="sr-only">Daily signals</h3>}
             <div

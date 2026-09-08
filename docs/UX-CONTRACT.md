@@ -245,13 +245,13 @@ The At a glance region is keyboard-focusable, names its contents and arrow-key
 scroll behavior, and retains a visible overflow cue. Its horizontal touch
 gesture is isolated from the parent day-swipe gesture. Static instruments expose
 an exact accessible label; Activity is a native button only when Plan is a real
-destination. Provider status and the complete rail are backed by a local 78%
-near-black information layer regardless of curated or personal image choice;
-small details use at least 86% white. This contrast guarantee does not rely on
-the photo scrim or sampled image pixels. An image-independent lower gradient
-begins at 72% near-black without a card edge behind the calorie arc and
-recommendation, giving their microcopy the same guarantee over bright or
-personal images while leaving the field visibly photographic.
+destination. On curated fields, provider status owns a translucent local row
+while the complete rail sits over a shallow atmospheric wash with compact text
+shadow; the sky and terrain remain visibly photographic rather than becoming a
+dark panel. Arbitrary personal photos receive a stronger top wash because their
+luminance is unknown. An edge-free lower gradient stays nearly transparent
+around the calorie arc and deepens only behind the recommendation and paper
+seam, preserving terrain while protecting small outcome labels.
 Energy arithmetic is secondary and expands inline only when expenditure or step
 data exists.
 

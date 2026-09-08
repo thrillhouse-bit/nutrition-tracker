@@ -91,8 +91,9 @@ body {
 
 /* Body Current's one immersive product surface. The default Alpine field is
    an original bundled image (and works offline); the other curated fields are
-   app-authored gradients. A dark directional scrim keeps the real daily data
-   legible without flattening the landscape into an abstract color panel. */
+   app-authored gradients. Curated fields stay photographic and luminous. The
+   interface protects copy locally instead of laying one dark sheet over the
+   whole image. */
 .today-current-field,
 .today-backdrop-preview {
   --current-deep: color-mix(in srgb, var(--color-cobalt-ink) 22%, #081116);
@@ -103,8 +104,12 @@ body {
 .today-current-field[data-scene='tide'] .today-current-backdrop,
 .today-backdrop-preview[data-scene='tide'] {
   background-image: url('/current-fields/alpine-current-v1.jpg'), linear-gradient(165deg, #496f91, var(--current-deep) 72%);
-  background-position: center 48%;
+  background-position: center 38%;
   background-size: cover;
+}
+
+.today-current-field[data-scene='tide'] .today-current-backdrop {
+  filter: brightness(1.12) saturate(1.12) contrast(0.98);
 }
 
 .today-current-field[data-scene='ridge'] .today-current-backdrop,
@@ -130,8 +135,8 @@ body {
 
 .today-current-scrim {
   background:
-    linear-gradient(180deg, rgb(4 8 11 / 0.62) 0%, rgb(4 8 11 / 0.22) 42%, rgb(4 8 11 / 0.84) 86%, rgb(4 8 11 / 0.96) 100%),
-    linear-gradient(90deg, rgb(4 8 11 / 0.22), transparent 50%, rgb(4 8 11 / 0.18));
+    linear-gradient(180deg, rgb(4 8 11 / 0.18) 0%, rgb(4 8 11 / 0.04) 39%, rgb(4 8 11 / 0.12) 62%, rgb(4 8 11 / 0.56) 100%),
+    linear-gradient(90deg, rgb(4 8 11 / 0.10), transparent 50%, rgb(4 8 11 / 0.08));
 }
 
 /* A personal photo can contain a pure-white sky or label. This uniform base
@@ -139,44 +144,46 @@ body {
    metadata remains readable everywhere, not only at the hero edges. */
 .today-current-field[data-scene='photo'] .today-current-scrim {
   background:
-    linear-gradient(rgb(5 8 10 / 0.54), rgb(5 8 10 / 0.54)),
-    linear-gradient(180deg, rgb(5 8 10 / 0.38), transparent 38%, rgb(5 8 10 / 0.72));
+    linear-gradient(rgb(5 8 10 / 0.30), rgb(5 8 10 / 0.30)),
+    linear-gradient(180deg, rgb(5 8 10 / 0.22), transparent 38%, rgb(5 8 10 / 0.58));
 }
 
 .today-current-backdrop {
   transform: scale(1.01);
 }
 
-/* This local backplate is intentionally independent of the selected image.
-   At 78% near-black, even a white custom-photo pixel remains dark enough for
-   the rail's smallest 86–90% white labels to clear AA contrast. Keeping it to
-   the information band preserves the photograph through the arc and lower
-   recommendation instead of flattening the whole field. */
+/* The upper field follows the image instead of reading as a black card. A
+   shallow atmospheric wash and tight text shadow keep the date and glance
+   rail legible while leaving the sky, ridge line, and sunlight visible. A
+   personal photo gets a stronger version because its luminance is unknown. */
 .today-hero-information-backplate {
-  background: rgb(4 8 11 / 0.78);
-  box-shadow: 0 20px 28px rgb(4 8 11 / 0.40);
+  background: linear-gradient(180deg, rgb(4 8 11 / 0.30) 0%, rgb(4 8 11 / 0.16) 56%, transparent 100%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.92), 0 3px 14px rgb(0 0 0 / 0.58);
 }
 
-/* The outcome copy needs the same image-independent guarantee as the upper
-   information band, including over an all-white personal photo. This soft
-   field begins below the rail and has no visible card edge: the Alpine
-   landscape remains present through the arc while the small outcome labels
-   sit over at least a 72% near-black layer, deepening toward the paper seam. */
+.today-current-field[data-scene='photo'] .today-hero-information-backplate {
+  background: linear-gradient(180deg, rgb(4 8 11 / 0.52) 0%, rgb(4 8 11 / 0.36) 60%, rgb(4 8 11 / 0.12) 100%);
+}
+
+/* The lower veil is nearly absent around the arc and deepens only behind the
+   recommendation and paper seam. This keeps terrain visible through the focal
+   gauge without sacrificing the small outcome copy. */
 .today-hero-outcome-protection {
   pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgb(4 8 11 / 0.72) 0%,
-    rgb(4 8 11 / 0.72) 22%,
-    rgb(4 8 11 / 0.82) 45%,
-    rgb(4 8 11 / 0.91) 100%
+    transparent 0%,
+    rgb(4 8 11 / 0.04) 24%,
+    rgb(4 8 11 / 0.24) 54%,
+    rgb(4 8 11 / 0.58) 78%,
+    rgb(4 8 11 / 0.80) 100%
   );
 }
 
 .today-hero-control,
 .today-hero-action {
   cursor: pointer;
-  background: rgb(4 8 11 / 0.16);
+  background: rgb(4 8 11 / 0.06);
   transition: background-color 150ms ease, opacity 150ms ease;
 }
 
@@ -199,6 +206,7 @@ body {
 .today-glance-orb {
   min-height: 126px;
   scroll-snap-align: start;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.94), 0 3px 12px rgb(0 0 0 / 0.62);
 }
 
 button.today-glance-orb {

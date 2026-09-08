@@ -21,14 +21,14 @@ and mixed-partial totals are disclosed rather than displayed as a fabricated
 zero or target percentage. Rail touch events remain within the rail instead of
 invoking Today’s left/right day gesture.
 
-The warm-paper journal rises over the dark lower field without rounded SaaS
-card styling. A directional scrim preserves the photograph's atmosphere while
-maintaining white metadata and control contrast. A local 78% near-black
-information backplate guarantees the small provider and glance labels do not
-depend on the selected image, while ending before the arc preserves the center
-and lower landscape. A separate edge-free lower gradient begins at 72%
-near-black beneath the rail and deepens behind the arc and recommendation, so
-their small labels also remain legible over any personal photo.
+The warm-paper journal rises over the lower field without rounded SaaS card
+styling. The first implementation over-protected contrast with a 78% near-black
+information slab and a lower veil beginning at 72%; together they suppressed
+the photograph. The revised treatment keeps curated fields luminous: a shallow
+atmospheric top wash, compact text shadow, and translucent provider row protect
+small metadata without hiding the sky or ridge. The lower veil is nearly
+transparent around the arc and deepens only behind the recommendation and paper
+seam. Personal photos retain a stronger wash because their luminance is unknown.
 Information-band details use 86–90% white. The recommendation remains the
 largest type moment and every provider
 refresh/manage/connect recovery action retains its prior behavior.
