@@ -1935,3 +1935,54 @@ this pass.
 `origin/main` unchanged (still `a784fda`). Release branch tip still
 `0adafee`, still matching both live domains exactly — third
 consecutive quiet pass on that branch. No fixes needed this pass.
+
+## 2026-09-08 — Check-in pass (recurring, consolidated 00:36/04:36 UTC)
+
+Two more scheduled firings queued while idle; consolidated as before.
+`origin/main` still unchanged. The release branch moved for the first
+time since the Body Current verification pass: two new commits
+("refine Today information hierarchy", "add customizable Today current
+field"), already deployed live on both domains (`GET /api/version`
+confirms `c9c6e71` on `omnifuelapp.tech` and `bodycurrent.app` alike).
+
+**Server-side change reviewed directly, not just the commit title.**
+The bulk of the backend diff (`server/index.js`, `server/providers.js`)
+fixes a real semantics bug rather than adding a feature: a past day's
+wearable reading was marked `stale`/aged-out purely because the
+*calendar day* had ended, even though the reading itself was perfectly
+valid provenance for that historical day. `normalizeSignalsForRequestedDay`
+(new, `server/providers.js`) now distinguishes "is this reading recent
+enough to act on right now" (only meaningful for the current day) from
+"is this a legitimate historical record" (relabeled `recorded`, not
+discarded or hidden) — read the full diff rather than trusting the
+inline comment's own description, and it does what the comment claims.
+`server/validation.js`'s `activity_level` enum only widened
+(`inactive`/`low` added as new accepted values, `sedentary`/`light`/
+etc. still accepted) — additive, not a narrowing that could reject
+previously-valid profiles.
+
+**New client-side feature spot-checked for injection risk.** The
+"customizable Today current field" adds a background-image picker
+(`src/lib/todayBackdrop.js`, new). Read it directly rather than
+assuming a file-upload feature is safe by default: photo uploads are
+re-encoded client-side to a strict `data:image/webp;base64,`-prefixed
+data URL before storage (rejects anything else outright), capped at
+2MB stored / 10MB source, and persisted through the same per-account
+`privateStorage.js` namespacing this report already verified for the
+outbox/recents cross-account-leak fix — no server round-trip, no HTML
+injection surface (rendered as an image `src`, never as markup), no
+new attack surface added.
+
+**Independently verified, not just trusted:** checked out the release
+branch into a separate git worktree (not touching this session's own
+`main` checkout, consistent with the practice from the account-save
+pass), ran `npm install` (0 vulnerabilities), `npm test` — 146 files,
+**1944/1944** passing (up from the 1922/1922 recorded two passes ago,
+consistent with these two new commits' own test additions), and `npm
+run build` — clean, PWA precache 1,331.61 KiB / 18 entries, all three
+game chunks (`ControlTowerRPG`, `ControlTowerShift`, `RPGAccountGate`)
+still present and unaffected.
+
+No Open Items table changes — this is a genuine bug fix plus a
+self-contained, well-validated feature, not a new defect or a fix to
+anything previously tracked. No fixes made or attempted by this pass.
