@@ -111,38 +111,7 @@ export default function LogView({
         )}
       </section>
 
-      {/* QUICK ADD · RECENT — one-tap re-log of recent foods */}
-      {recents.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between pb-1.5">
-            <h2 className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted">Quick add · Recent</h2>
-            <TextButton className="-my-2 py-2.5 text-[9.5px] uppercase" onClick={() => openAdd('menu')}>
-              Add another food
-            </TextButton>
-          </div>
-          <div>
-            {recents.slice(0, 6).map((f) => (
-              <div key={f.id} className="flex items-center gap-3 border-t border-line py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14.5px] leading-[1.2] text-ink">{f.name}</div>
-                  <div className="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted tnum">
-                    {recentMeta(f)}
-                  </div>
-                </div>
-                <button
-                  onClick={() => (onRelog ? onRelog(f, 'recent') : openAdd('menu'))}
-                  aria-label={`Re-log ${f.name}`}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center border-[1.5px] border-cobalt text-[21px] leading-none text-cobalt transition hover:bg-cobalt hover:text-oncobalt"
-                >
-                  +
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* TODAY'S LOG — the meal-grouped record, kept as a secondary section */}
+      {/* TODAY'S LOG — the day record stays ahead of repeat-entry shortcuts. */}
       <section>
         <div className="mb-3 flex items-baseline justify-between border-b border-line-strong pb-2">
           <h2 className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted">Today's log</h2>
@@ -179,6 +148,37 @@ export default function LogView({
           </div>
         )}
       </section>
+
+      {/* QUICK ADD · RECENT — one-tap re-log after the current day record */}
+      {recents.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between pb-1.5">
+            <h2 className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted">Quick add · Recent</h2>
+            <TextButton className="-my-2 py-2.5 text-[9.5px] uppercase" onClick={() => openAdd('menu')}>
+              Add another food
+            </TextButton>
+          </div>
+          <div>
+            {recents.slice(0, 6).map((f) => (
+              <div key={f.id} className="flex items-center gap-3 border-t border-line py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[14.5px] leading-[1.2] text-ink">{f.name}</div>
+                  <div className="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted tnum">
+                    {recentMeta(f)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => (onRelog ? onRelog(f, 'recent') : openAdd('menu'))}
+                  aria-label={`Re-log ${f.name}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center border-[1.5px] border-cobalt text-[21px] leading-none text-cobalt transition hover:bg-cobalt hover:text-oncobalt"
+                >
+                  +
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

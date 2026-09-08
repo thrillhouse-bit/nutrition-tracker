@@ -25,6 +25,7 @@ describe('Consolidated food entry', () => {
     expect(el.textContent).toContain("Today's log")
     expect(el.textContent).toContain('Snack')
     expect(el.textContent).toMatch(/Protein.*20/s)
+    expect(el.textContent.indexOf("Today's log")).toBeLessThan(el.textContent.indexOf('Quick add · Recent'))
     expect(el.textContent).not.toMatch(/Photograph the label|Enter it manually|Camera ready/)
     await act(async () => { el.querySelector('[aria-label="Re-log Yogurt"]').click(); el.querySelector('[aria-label="Delete entry"]').click() })
     expect(relog).toHaveBeenCalledWith(food,'recent')
