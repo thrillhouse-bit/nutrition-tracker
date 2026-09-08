@@ -24,6 +24,13 @@ describe('Postgres account lifecycle schema', () => {
     expect(schema).toMatch(/unique index if not exists garmin_accounts_garmin_user_id_idx/i)
   })
 
+  it('migrates the legacy cobalt preference and constrains all supported account accents', async () => {
+    const schema = await readFile(new URL('../schema.sql', import.meta.url), 'utf8')
+    expect(schema).toMatch(/update profile set accent = 'sapphire' where accent = 'cobalt'/i)
+    expect(schema).toMatch(/alter table profile alter column accent set default 'sapphire'/i)
+    expect(schema).toMatch(/profile_accent_check check \(accent in \('sapphire', 'emerald', 'ruby', 'silver', 'gold', 'crystal', 'diamond', 'pearl'\)\)/i)
+  })
+
   it('keeps an invite redemption ledger after account deletion and enforces digest uniqueness', async () => {
     const schema = await readFile(new URL('../schema.sql', import.meta.url), 'utf8')
     expect(schema).toMatch(/invite_code_digest\s+text\s+unique/i)

@@ -70,6 +70,35 @@ function Notice({ children, tone = 'sand' }) {
   return <div className={`border-[1.5px] p-3.5 text-sm leading-snug text-ink ${cls}`}>{children}</div>
 }
 
+const TARGET_FIELDS = [['calories', 'Energy', 'kcal'], ['protein_g', 'Protein', 'g'], ['carbs_g', 'Carbs', 'g'], ['fat_g', 'Fat', 'g']]
+
+function TargetGrid({ targets, progress, meters = false }) {
+  return (
+    <div className="grid grid-cols-2 gap-x-5 gap-y-5 sm:grid-cols-4">
+      {TARGET_FIELDS.map(([key, label, unit]) => {
+        const item = progress?.[key]
+        const decimals = unit === 'kcal' ? 0 : 1
+        return (
+          <div key={key} className="min-w-0">
+            <div className="eyebrow text-ink/58">{label}</div>
+            <div className="tnum mt-1 whitespace-nowrap text-[25px] font-extrabold leading-none tracking-[-0.035em] text-ink">
+              {fmt(targets[key])}<span className="ml-1 text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{unit}</span>
+            </div>
+            {item && (
+              <>
+                {meters && <Meter value={item.actual} target={item.target} className="mt-2.5" />}
+                <div className="tnum mt-2 text-[11px] font-medium leading-snug text-muted">
+                  {fmt(item.actual, decimals)} logged · {fmt(Math.max(0, item.remaining), decimals)} left
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /* ---------------------------------------------------------------------- */
 /* Profile form                                                            */
 /* ---------------------------------------------------------------------- */
@@ -574,26 +603,17 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   // target cannot accidentally dereference automatic-only reasoning.
   if (p.source === 'manual') {
     return (
-      <div className="plan-current-stack mt-6 space-y-6">
+      <div className="plan-current-stack mt-4 space-y-4">
         <header className="flex flex-wrap items-baseline justify-between gap-3">
-          <h3 className="serif text-[26px] leading-tight text-ink">Daily Fuel Plan</h3>
+          <div><p className="eyebrow">Today’s brief</p><h3 className="mt-1 text-[18px] font-extrabold tracking-tight text-ink">Manual daily targets</h3></div>
           <TextButton onClick={() => setEditingProfile(true)} chevron>Edit targets</TextButton>
         </header>
         <Notice>
           <strong>Manual or clinician-configured targets.</strong> Body Current will not calculate or adjust targets automatically for this profile.
         </Notice>
-        <section aria-label="Your daily targets" className="border-y border-line bg-cobalt-soft p-4">
-          <h4 className="mb-4 text-base font-semibold text-ink">Your daily targets</h4>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-            {[['calories', 'Energy', 'kcal'], ['protein_g', 'Protein', 'g'], ['carbs_g', 'Carbs', 'g'], ['fat_g', 'Fat', 'g']].map(([k, label, unit]) => {
-              const progress = plan.progress?.[k]
-              return <div key={k}>
-                <div className="numeral text-[32px] leading-tight text-ink">{fmt(p.targets[k])}<span className="ml-1 text-sm font-medium text-muted">{unit}</span></div>
-                <div className="mt-1 text-sm font-semibold text-ink">{label}</div>
-                {progress && <div className="mt-2 text-sm leading-relaxed text-muted">{fmt(progress.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, progress.remaining), unit === 'kcal' ? 0 : 1)} left</div>}
-              </div>
-            })}
-          </div>
+        <section aria-label="Your daily targets" className="plan-target-card">
+          <h4 className="sr-only">Your daily targets</h4>
+          <TargetGrid targets={p.targets} progress={plan.progress} />
         </section>
         <OverrideControl date={day} targets={p.targets} currentOverrides={plan.overrides} onChanged={refresh} />
       </div>
@@ -601,9 +621,9 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
   }
 
   return (
-    <div className="plan-current-stack mt-6 space-y-6">
+    <div className="plan-current-stack mt-4 space-y-4">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <h3 className="serif text-[26px] leading-tight text-ink">Daily Fuel Plan</h3>
+        <div><p className="eyebrow">Today’s brief</p><h3 className="mt-1 text-[18px] font-extrabold tracking-tight text-ink">Daily fuel targets</h3></div>
         <TextButton onClick={() => setEditingProfile(true)} chevron>Edit profile</TextButton>
       </header>
 
@@ -628,35 +648,19 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       )}
 
       {/* Targets + progress */}
-      <section aria-label="Your daily targets" className="border-y border-line bg-cobalt-soft p-4">
-        <h4 className="mb-4 text-base font-semibold text-ink">Your daily targets</h4>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-          {[['calories', 'Energy', 'kcal'], ['protein_g', 'Protein', 'g'], ['carbs_g', 'Carbs', 'g'], ['fat_g', 'Fat', 'g']].map(([k, label, unit]) => {
-            const prog = plan.progress?.[k]
-            return (
-              <div key={k}>
-                <div className="numeral text-[32px] leading-tight text-ink">{fmt(p.targets[k])}<span className="ml-1 text-sm font-medium text-muted">{unit}</span></div>
-                <div className="mt-1 text-sm font-semibold text-ink">{label}</div>
-                {prog && (
-                  <>
-                    <Meter value={prog.actual} target={prog.target} className="mt-2" />
-                    <div className="mt-2 text-sm leading-relaxed text-muted">{fmt(prog.actual, unit === 'kcal' ? 0 : 1)} logged · {fmt(Math.max(0, prog.remaining), unit === 'kcal' ? 0 : 1)} left</div>
-                  </>
-                )}
-              </div>
-            )
-          })}
-        </div>
+      <section aria-label="Your daily targets" className="plan-target-card">
+        <h4 className="sr-only">Your daily targets</h4>
+        <TargetGrid targets={p.targets} progress={plan.progress} meters />
         {p.overridesApplied && (
           <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-cobalt">Manual override applied</p>
         )}
-        <p className="mt-4 border-t border-line pt-3 text-sm leading-relaxed text-muted">Estimated starting target · not yet calibrated to your observed response.</p>
+        <p className="mt-4 border-t border-line pt-3 text-[11px] font-medium leading-relaxed text-muted">Starting estimate · not yet calibrated to your observed response.</p>
       </section>
 
       <OverrideControl date={day} targets={p.targets} currentOverrides={plan.overrides} onChanged={refresh} />
 
       <section aria-label="Why these targets" className="border-t border-line pt-5">
-      <h4 className="text-lg font-semibold text-ink">Why these targets</h4>
+      <h4 className="text-[16px] font-extrabold tracking-tight text-ink">Why these targets</h4>
       <Why
         label="Why this changed"
         items={[
@@ -677,7 +681,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
 
       {/* BMI — optional context only */}
       {p.bmi && (
-        <p className="text-sm leading-relaxed text-muted">
+        <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
           BMI {p.bmi.value} — shown as optional context only. It is not used to set your fueling
           targets and is not a health diagnosis.
         </p>
@@ -686,13 +690,20 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
 
       {/* Carb periodization */}
       <section className="border-t border-line pt-5">
-        <h4 className="mb-3 text-lg font-semibold text-ink">Training &amp; carbohydrate plan</h4>
-        <p className="mb-2 text-sm font-semibold text-cobalt">Carbohydrate plan — {p.trainingLoad.tier.replace(/_/g, ' ')}</p>
-        <p className="text-sm text-ink">This daily carbohydrate range reflects the logged and planned training context for today.</p>
-        <p className="mt-2 text-sm leading-relaxed text-muted">{p.carbPlan.perKg ?? p.carbPlan.gPerKgChosen} g/kg · band {p.carbPlan.band[0]}–{p.carbPlan.band[1]} g/kg · included in today's carbohydrate target, not added on top.</p>
-        {(p.carbPlan.guidance?.preworkout || p.carbPlan.preworkout) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.preworkout ? <>Pre-session: {p.carbPlan.guidance.preworkout.gPerKg[0]}–{p.carbPlan.guidance.preworkout.gPerKg[1]} g/kg, {p.carbPlan.guidance.preworkout.timingHours[0]}–{p.carbPlan.guidance.preworkout.timingHours[1]} hours before.</> : <>Pre-session: ~{p.carbPlan.preworkout.grams} g, {p.carbPlan.preworkout.timing}.</>}</p>}
-        {(p.carbPlan.guidance?.duringWorkout || p.carbPlan.duringWorkout) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.duringWorkout ? <>During the session: {p.carbPlan.guidance.duringWorkout.gramsPerHour[0]}–{p.carbPlan.guidance.duringWorkout.gramsPerHour[1]} g/hour. Amounts near 90 g/hour require a hard, tolerated long session, multi-transportable carbohydrate, and gut training.</> : <>During the session: ~{p.carbPlan.duringWorkout.gramsPerHour} g/hour.</>}</p>}
-        {(p.carbPlan.guidance?.recovery || p.carbPlan.recovery) && <p className="mt-2 text-sm text-ink">{p.carbPlan.guidance?.recovery?.message || p.carbPlan.recovery?.note}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-[16px] font-extrabold tracking-tight text-ink">Training &amp; carbohydrate plan</h4>
+          <span className="rounded-full bg-cobalt-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-cobalt">{p.trainingLoad.tier.replace(/_/g, ' ')}</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-y border-line py-3.5">
+          <div><div className="eyebrow">Today</div><div className="tnum mt-1 text-[20px] font-extrabold tracking-tight text-ink">{p.carbPlan.perKg ?? p.carbPlan.gPerKgChosen} <span className="text-[10px] font-bold text-muted">g/kg</span></div></div>
+          <div><div className="eyebrow">Evidence band</div><div className="tnum mt-1 text-[20px] font-extrabold tracking-tight text-ink">{p.carbPlan.band[0]}–{p.carbPlan.band[1]} <span className="text-[10px] font-bold text-muted">g/kg</span></div></div>
+        </div>
+        <p className="mt-3 text-[12px] leading-relaxed text-muted">Already included in today’s carbohydrate target—not added on top.</p>
+        <Why label="Fuel timing guidance" items={[
+          (p.carbPlan.guidance?.preworkout || p.carbPlan.preworkout) ? (p.carbPlan.guidance?.preworkout ? `Pre-session: ${p.carbPlan.guidance.preworkout.gPerKg[0]}–${p.carbPlan.guidance.preworkout.gPerKg[1]} g/kg, ${p.carbPlan.guidance.preworkout.timingHours[0]}–${p.carbPlan.guidance.preworkout.timingHours[1]} hours before.` : `Pre-session: ~${p.carbPlan.preworkout.grams} g, ${p.carbPlan.preworkout.timing}.`) : null,
+          (p.carbPlan.guidance?.duringWorkout || p.carbPlan.duringWorkout) ? (p.carbPlan.guidance?.duringWorkout ? `During the session: ${p.carbPlan.guidance.duringWorkout.gramsPerHour[0]}–${p.carbPlan.guidance.duringWorkout.gramsPerHour[1]} g/hour. Amounts near 90 g/hour require a hard, tolerated long session, multi-transportable carbohydrate, and gut training.` : `During the session: ~${p.carbPlan.duringWorkout.gramsPerHour} g/hour.`) : null,
+          (p.carbPlan.guidance?.recovery || p.carbPlan.recovery) ? (p.carbPlan.guidance?.recovery?.message || p.carbPlan.recovery?.note) : null,
+        ].filter(Boolean)} />
       </section>
 
       {p.carbLoading && (
@@ -706,11 +717,11 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
       {/* Planned sessions */}
       <section className="border-t border-line pt-3.5">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h4 className="text-lg font-semibold text-ink">Planned sessions today</h4>
+          <h4 className="text-[16px] font-extrabold tracking-tight text-ink">Planned sessions today</h4>
           <TextButton onClick={() => setEditingWorkout(null)} chevron>Add session</TextButton>
         </div>
         {workouts.length === 0 ? (
-          <p className="text-sm leading-relaxed text-muted">No sessions added here yet. Synced workouts may still contribute to the training context above.</p>
+          <p className="text-[12px] leading-relaxed text-muted">No sessions added here yet. Synced workouts may still contribute to the training context above.</p>
         ) : (
           <ul className="space-y-2">
             {workouts.map((w) => (
@@ -739,7 +750,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         )}
       </Sheet>
 
-      <p className="border-t border-line pt-4 text-sm leading-relaxed text-muted">
+      <p className="border-t border-line pt-4 text-[10.5px] leading-relaxed text-faint">
         Educational nutritional-planning guidance based on population estimates — not medical advice, a diagnosis,
         real-time metabolic adaptation, or a guaranteed outcome. Talk with a doctor or registered dietitian before
         making significant changes, especially if automatic planning is unavailable for your profile.

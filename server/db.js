@@ -56,7 +56,7 @@ export const DEFAULT_PROFILE = {
   units_pref: 'imperial',
   activity_level: null,
   goal: null,
-  accent: 'cobalt',
+  accent: 'sapphire',
   updated_at: null,
 }
 
@@ -546,7 +546,7 @@ export class PgStore {
     const has = (key) => Object.prototype.hasOwnProperty.call(patch, key)
     const rows = await sql`
       insert into profile (user_id, height_cm, weight_kg, sex, age_years, units_pref, activity_level, goal, accent, updated_at)
-      values (${userId}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.age_years}, ${m.units_pref}, ${m.activity_level}, ${m.goal}, ${m.accent || 'cobalt'}, now())
+      values (${userId}, ${m.height_cm}, ${m.weight_kg}, ${m.sex}, ${m.age_years}, ${m.units_pref}, ${m.activity_level}, ${m.goal}, ${m.accent || 'sapphire'}, now())
       on conflict (user_id) do update set
         height_cm = case when ${has('height_cm')} then excluded.height_cm else profile.height_cm end,
         weight_kg = case when ${has('weight_kg')} then excluded.weight_kg else profile.weight_kg end,

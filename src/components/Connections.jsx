@@ -486,7 +486,7 @@ function ProviderRow({ provider, accounts, onRefetch, busy, setBusy, appleSetupR
   )
 }
 
-export default function Connections({ refreshKey, onChanged, user, onLogout, onAccountDeleted, accent = 'cobalt', onAccentChange, sessionKey }) {
+export default function Connections({ refreshKey, onChanged, user, onLogout, onAccountDeleted, accent = 'sapphire', onAccentChange, sessionKey }) {
   const [appleSetupRequest, setAppleSetupRequest] = useState(0)
   const [conn, setConn] = useState(null)
   const [ouraAccts, setOuraAccts] = useState([])
@@ -601,13 +601,15 @@ export default function Connections({ refreshKey, onChanged, user, onLogout, onA
       <section className="border-t border-line pt-4">
         <fieldset disabled={accentBusy} className="m-0 mt-3 border-0 p-0">
           <legend className="eyebrow">Accent color</legend>
-          <div className="mt-2 grid grid-cols-3 gap-2">
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(ACCENT_PALETTES).map(([id, p]) => (
-              <label key={id} className={`cursor-pointer border p-2 ${accent === id ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong'}`}>
+              <label key={id} className={`min-h-16 cursor-pointer border p-2.5 transition ${accent === id ? 'border-cobalt bg-cobalt-soft' : 'border-line-strong hover:bg-fill'}`}>
                 <input className="sr-only" type="radio" name="accent" checked={accent === id} onChange={() => changeAccent(id)} />
-                <span aria-hidden className="mb-2 block h-2 w-full" style={{ backgroundColor: p.color }} />
-                <span className="text-xs font-semibold">{p.label}</span>
-                <span className="block text-[9px] uppercase text-muted">{accent === id ? 'Selected' : 'Choose'}</span>
+                <span className="flex items-center gap-2">
+                  <span aria-hidden className="block h-4 w-4 shrink-0 rounded-full border border-black/10" style={{ backgroundColor: p.color }} />
+                  <span className="text-[12px] font-bold text-ink">{p.label}</span>
+                </span>
+                <span className="mt-1 block pl-6 text-[9px] font-medium uppercase tracking-[0.08em] text-muted">{accent === id ? 'Selected' : 'Choose'}</span>
               </label>
             ))}
           </div>

@@ -1,7 +1,7 @@
 // Shared primitives for the Fueling Intelligence visual system.
 //
 // Rules from the design: sharp rectangles (no rounded corners except true
-// circles), hairline rules in ink, cobalt as the single accent, status shown by
+// circles), hairline rules in ink, one account accent, status shown by
 // SHAPE + WORD (never color alone), Bodoni numerals, Archivo labels. White is a
 // moment that matters. Every control has a visible focus ring and a real label.
 import { useEffect, useId, useRef, useState } from 'react'

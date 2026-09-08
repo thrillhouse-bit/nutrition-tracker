@@ -222,7 +222,7 @@ describe('AdaptiveFuelPlan: a rest day', () => {
     })
     const el = await renderAfp()
     expect(el.textContent).toMatch(/Manual or clinician-configured targets/)
-    expect(el.textContent).toMatch(/70.*Fat/)
+    expect(el.textContent).toMatch(/Fat.*70/)
     expect(el.textContent).not.toMatch(/NASEM 2023 maintenance estimate/)
   })
 
@@ -281,8 +281,11 @@ describe('AdaptiveFuelPlan: a high-carbohydrate training day', () => {
     const el = await renderAfp()
     expect(el.textContent).toMatch(/endurance high/)
     expect(el.textContent).toMatch(/6–10 g\/kg/)
-    expect(el.textContent).toMatch(/Pre-session: ~60 g/)
-    expect(el.textContent).toMatch(/During the session: ~60 g\/hour/)
+    const timing = Array.from(el.querySelectorAll('button')).find((button) => /Fuel timing guidance/.test(button.textContent))
+    expect(timing).toBeTruthy()
+    await act(async () => { timing.click() })
+    expect(document.body.textContent).toMatch(/Pre-session: ~60 g/)
+    expect(document.body.textContent).toMatch(/During the session: ~60 g\/hour/)
   })
 
   it('renders a carb-loading suggestion only when eligible, with its safety caveat', async () => {

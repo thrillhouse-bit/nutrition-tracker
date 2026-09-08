@@ -34,7 +34,7 @@ const fake = vi.hoisted(() => {
     garminDailies: {}, // `${accountId}:${day}` -> row
     targets: { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 },
     targetsEverSet: false, // real stores start false; getLatestTargets's default look identical either way
-    profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, accent: 'cobalt', updated_at: null },
+    profile: { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, accent: 'sapphire', updated_at: null },
     setTargetsCalls: [], // every store.setTargets(...) call, in order — lets a test prove a gate did NOT fire
     afpProfile: {
       units_pref: 'imperial', age_years: null, height_cm: null, weight_kg: null, sex: null, body_fat_pct: null,
@@ -475,7 +475,7 @@ afterEach(() => {
   fake.state.integrations = {}
   fake.state.targets = { calories: 2000, protein_g: 150, carbs_g: 200, fat_g: 65, fiber_g: 30, sugar_g: null, sodium_mg: 2300 }
   fake.state.targetsEverSet = false
-  fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, accent: 'cobalt', updated_at: null }
+  fake.state.profile = { height_cm: null, weight_kg: null, sex: null, age_years: null, units_pref: 'imperial', activity_level: null, goal: null, accent: 'sapphire', updated_at: null }
   fake.state.setTargetsCalls = []
   fake.state.ouraHistory = []
   fake.state.weightEntries = []
@@ -2376,12 +2376,14 @@ describe('GET /api/profile', () => {
 
 describe('account appearance', () => {
   it('persists an allowed accent and preserves it through ordinary profile updates', async () => {
-    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'cobalt' })
-    const saved = await put('/api/appearance', { accent: 'emerald' })
-    expect(saved.status).toBe(200)
-    expect(await saved.json()).toEqual({ accent: 'emerald' })
+    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'sapphire' })
+    for (const accent of ['sapphire', 'emerald', 'ruby', 'silver', 'gold', 'crystal', 'diamond', 'pearl']) {
+      const saved = await put('/api/appearance', { accent })
+      expect(saved.status).toBe(200)
+      expect(await saved.json()).toEqual({ accent })
+    }
     await put('/api/profile', { height_cm: 180 })
-    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'emerald' })
+    expect(await (await get('/api/appearance')).json()).toEqual({ accent: 'pearl' })
   })
 
   it('rejects null and invalid accent writes without resetting the saved choice', async () => {

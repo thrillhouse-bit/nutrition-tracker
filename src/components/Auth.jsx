@@ -130,13 +130,14 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16">
-      <header className="mb-8">
-        <div className="eyebrow mb-2 text-cobalt">{oathbearer ? 'Oathbearer' : 'Body Current'}</div>
-        <h1 className="serif text-4xl leading-none text-ink">
+    <div className={oathbearer ? 'mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-16' : 'auth-current-shell relative flex min-h-full flex-col justify-center overflow-hidden px-4 py-10 sm:px-6'}>
+      <div className={oathbearer ? '' : 'auth-current-content relative z-10 mx-auto w-full max-w-xl'}>
+      <header className={oathbearer ? 'mb-8' : 'mb-5 px-2 text-white'}>
+        <div className={`eyebrow mb-2 ${oathbearer ? 'text-cobalt' : 'text-white/72'}`}>{oathbearer ? 'Oathbearer' : 'Body Current'}</div>
+        <h1 className={`serif text-4xl leading-none ${oathbearer ? 'text-ink' : 'text-white'}`}>
           {mode === 'signup' ? 'Create your account' : mode === 'recovery-start' ? 'Recover your account' : mode === 'recovery-reset' ? 'Choose a new password' : 'Sign in'}
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted">
+        <p className={`mt-3 max-w-[390px] text-sm leading-relaxed ${oathbearer ? 'text-muted' : 'text-white/82'}`}>
           {mode === 'recovery-start'
             ? 'Verify with the Oura account already linked to Body Current.'
             : mode === 'recovery-reset'
@@ -151,6 +152,7 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
         </p>
       </header>
 
+      <div className={oathbearer ? '' : 'auth-current-card rounded-[26px] border border-white/38 p-5 shadow-[0_22px_55px_rgb(4_8_11/0.28)] sm:p-6'}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         <div ref={errorRef} tabIndex={error ? -1 : undefined}><ErrorNote>{error}</ErrorNote></div>
         {mode !== 'recovery-reset' && <Field label="Email">
@@ -280,6 +282,8 @@ export default function Auth({ onAuthed, surface = 'body-current' }) {
         Review {oathbearer ? "Oathbearer's" : "Body Current's"} <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/privacy">Privacy Policy</a>
         {' '}and <a className="font-semibold text-cobalt hover:text-cobalt-ink" href="/terms">Terms of Service</a>.
       </p>
+      </div>
+      </div>
     </div>
   )
 }

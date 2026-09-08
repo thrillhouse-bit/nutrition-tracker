@@ -6,7 +6,7 @@
 
    Ground is warm ivory paper; type is near-black ink. Structure is drawn with
    hairline rules and sharp rectangles — NO rounded corners except true circles
-   (status dots, the "?" badge). Cobalt is the single accent for primary action,
+   (status dots, the "?" badge). The account accent is the single color for primary action,
    the selected state, and confident data. Pale sage and lavender are used ONLY
    as recovery / training context swatches and bands, never as macro colors.
    Bodoni Moda (high-contrast serif) for titles and large numerals; Archivo for
@@ -40,7 +40,7 @@
   --color-fill: rgb(18 18 16 / 0.06);    /* faintest panel wash */
   --color-track: rgb(18 18 16 / 0.16);   /* meter track */
 
-  /* Cobalt — the one accent */
+  /* Account accent — historical cobalt token names are compatibility aliases. */
   --color-cobalt: #1f35c4;
   --color-cobalt-ink: #16289b;   /* hover / pressed */
   --color-oncobalt: #ffffff;
@@ -285,6 +285,51 @@ button.today-glance-orb:active {
   box-shadow: 0 -18px 34px rgb(4 8 11 / 0.18);
 }
 
+/* Authentication is the first Current Field: the same real alpine photograph
+   as Today's default scene, with a quiet journal sheet for conventional,
+   high-contrast account controls. This remains scoped to Body Current so the
+   shared Oathbearer auth surface keeps its own identity. */
+.auth-current-shell {
+  isolation: isolate;
+  background: #102b3d;
+}
+
+.auth-current-shell::before,
+.auth-current-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.auth-current-shell::before {
+  z-index: -2;
+  background-image: url('/current-fields/alpine-current-v1.jpg');
+  background-position: center 44%;
+  background-size: cover;
+  filter: saturate(1.08) contrast(0.98);
+  transform: scale(1.01);
+}
+
+.auth-current-shell::after {
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgb(4 8 11 / 0.24), rgb(4 8 11 / 0.12) 28%, rgb(4 8 11 / 0.48) 100%),
+    linear-gradient(90deg, rgb(4 8 11 / 0.12), transparent 56%, rgb(4 8 11 / 0.12));
+}
+
+.auth-current-content > header {
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.86), 0 4px 18px rgb(0 0 0 / 0.46);
+}
+
+.auth-current-card {
+  background:
+    radial-gradient(circle at 94% 4%, color-mix(in srgb, var(--color-cobalt) 9%, transparent), transparent 36%),
+    rgb(247 244 236 / 0.94);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
 /* The detailed Today current borrows the reference app's calm, one-signal-per-
    surface hierarchy without borrowing its metrics. Every value below comes
    from Body Current's food, hydration, or connected-wearable data. Rounded,
@@ -391,7 +436,8 @@ button.today-glance-orb:active {
 .insights-current-layout > section,
 .connections-current-layout > section,
 .connections-current-layout > footer,
-.plan-current-stack > section {
+.plan-current-stack > section,
+.insights-current-card {
   overflow: hidden;
   border: 1px solid rgb(18 18 16 / 0.13);
   border-radius: 22px;
@@ -414,7 +460,8 @@ button.today-glance-orb:active {
 }
 
 .connections-current-layout > section:nth-of-type(2n),
-.plan-current-stack > section:nth-of-type(2n) {
+.plan-current-stack > section:nth-of-type(2n),
+.insights-current-card:nth-of-type(2n) {
   background:
     radial-gradient(circle at 2% 2%, color-mix(in srgb, var(--color-mist) 62%, transparent), transparent 42%),
     color-mix(in srgb, var(--color-card) 52%, var(--color-paper));
@@ -422,6 +469,12 @@ button.today-glance-orb:active {
 
 .plan-current-stack > header {
   padding-inline: 0.15rem;
+}
+
+.plan-current-stack > section.plan-target-card {
+  background:
+    radial-gradient(circle at 94% 8%, color-mix(in srgb, var(--color-cobalt) 18%, transparent), transparent 42%),
+    color-mix(in srgb, var(--color-cobalt-soft) 64%, var(--color-paper));
 }
 
 @media (max-width: 479px) {

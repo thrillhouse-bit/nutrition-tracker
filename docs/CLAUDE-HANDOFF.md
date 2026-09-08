@@ -12,7 +12,7 @@
 ## Identity and UI
 
 - `public/body-current-master.png` is the approved icon master; PWA/iOS/Connect IQ sizes derive from it through `scripts/gen-icons.mjs`.
-- `src/lib/accentTheme.js` owns Cobalt (default), Emerald, and Ruby. It changes only brand/progress variables; semantic alert/good/warn and mist/sand stay fixed. `SegmentBar`, `Dial`, and Insights SVG consume runtime variables.
+- `src/lib/accentTheme.js` owns Sapphire (default), Emerald, Ruby, Silver, Gold, Crystal, Diamond, and Pearl. It changes only brand/progress variables; semantic alert/good/warn and mist/sand stay fixed. Historical `--color-cobalt*` CSS names remain internal aliases. `SegmentBar`, `Dial`, and Insights SVG consume runtime variables.
 - `docs/DESIGN.md` owns visual rationale; `docs/UX-CONTRACT.md` owns interaction behavior. Preserve the sharp, high-contrast, accessible Body Current system.
 
 ## Daily Fuel Plan and Oura

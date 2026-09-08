@@ -329,7 +329,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
       : 'No recorded workouts in this date range. Sync a workout from your wearable or choose a longer range. Daily steps and calories are not counted as training.'
 
   return (
-    <div className="insights-current-layout space-y-6">
+    <div className="insights-current-layout space-y-4">
       <header className="current-page-intro">
         <p className="eyebrow text-white/70">Patterns over time</p>
         <h2 className="serif mt-1.5 text-[2.15rem] leading-none text-white">Insights</h2>
@@ -408,7 +408,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
       {loading && !data ? (
         <Spinner label="Reading your history…" />
       ) : !data ? (
-        <EmptyState title="Insights unavailable">
+        <EmptyState title="Insights unavailable" className="insights-current-card">
           We couldn’t load your history just now. Refresh, or try again in a moment.
         </EmptyState>
       ) : (
@@ -420,13 +420,13 @@ export default function Insights({ refreshKey, onGoToConnections }) {
               own honest per-section empty state that never got a chance to
               render while this was one coarse top-level gate. */}
           {data.insufficientData ? (
-            <EmptyState title="Not enough data yet">
+            <EmptyState title="Not enough data yet" className="insights-current-card">
               {`You’ve logged ${tracked} of the last ${window} days. Trends appear once at least 3 days are logged — keep going.`}
             </EmptyState>
           ) : (
             <>
               {/* Real nutrition averages — the data we actually have. */}
-              <Card className="grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
+              <Card className="insights-current-card grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
                 <Stat label="Avg calories" value={avgCal} unit="kcal" />
                 <Stat label="Avg protein" value={num(nutrition?.avgProtein)} unit="g" />
                 <Stat label="Days tracked" value={`${tracked}/${window}`} />
@@ -567,7 +567,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
               </>
             ) : (
               <>
-                <div className="relative mt-2.5 h-[62px] border-t border-b border-dashed border-line-strong">
+                <div className="relative mt-3 h-[62px] overflow-hidden rounded-[14px] bg-mist/55">
                   <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-mist/60" />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
@@ -611,11 +611,11 @@ export default function Insights({ refreshKey, onGoToConnections }) {
 
           {/* WHAT WE NOTICE — an observation only when correlations are available;
               otherwise the insufficient-data card, in the same white-moment style. */}
-          <Card white className="p-4">
+          <Card white className="insights-current-card p-4">
             <div className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-cobalt">What we notice</div>
             {correlations?.available ? (
               <>
-                <p className="serif mt-2.5 text-xl leading-snug text-ink">{correlations.note}</p>
+                <p className="serif mt-2.5 text-[18px] leading-snug text-ink">{correlations.note}</p>
                 {/* No Details control until a details view exists — a chevron
                     wired to nothing ships a dead affordance. */}
                 <div className="mt-2 border-t border-line pt-3.5">
@@ -624,7 +624,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
               </>
             ) : (
               <>
-                <p className="mt-2.5 text-sm leading-relaxed text-muted">
+                <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted">
                   Observations comparing your fueling with recovery and training open once enough connected history is
                   retained. Nothing here implies cause and effect.
                 </p>
@@ -639,7 +639,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
           {/* SLEEP × FIBER — a dashed "not enough data" card with a real progress
               dot-bar bound to logged days. American spelling, like the Plan
               tab's "Fiber" row and every other surface. */}
-          <div className="border border-dashed border-line-heavy px-4 py-3.5">
+          <div className="insights-current-card border border-dashed border-line-heavy px-4 py-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Sleep × Fiber</span>
               <span className="border border-line-strong px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">Not enough data</span>

@@ -34,7 +34,7 @@ it('does not reapply a completed accent save after its account session unmounts'
   root = createRoot(container)
   const onAccentChange = vi.fn()
   await act(async () => {
-    root.render(<Connections refreshKey={0} user={{ email: 'a@example.test' }} sessionKey="account-a" onChanged={() => {}} onLogout={() => {}} accent="cobalt" onAccentChange={onAccentChange} />)
+    root.render(<Connections refreshKey={0} user={{ email: 'a@example.test' }} sessionKey="account-a" onChanged={() => {}} onLogout={() => {}} accent="sapphire" onAccentChange={onAccentChange} />)
     await Promise.resolve()
     await Promise.resolve()
   })

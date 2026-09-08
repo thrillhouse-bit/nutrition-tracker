@@ -7,14 +7,16 @@ import { ACCENT_PALETTES, applyAccentTheme } from '../src/lib/accentTheme.js'
 const root = path.resolve(import.meta.dirname, '..')
 
 describe('account accent theme adapter', () => {
-  it('changes only the established accent token family and resolves cobalt without aliases', () => {
-    expect(Object.keys(ACCENT_PALETTES)).toEqual(['cobalt', 'emerald', 'ruby'])
+  it('offers the complete named palette and migrates legacy cobalt to sapphire', () => {
+    expect(Object.keys(ACCENT_PALETTES)).toEqual(['sapphire', 'emerald', 'ruby', 'silver', 'gold', 'crystal', 'diamond', 'pearl'])
     expect(applyAccentTheme('emerald')).toBe('emerald')
     expect(document.documentElement.dataset.accent).toBe('emerald')
     expect(document.documentElement.style.getPropertyValue('--color-cobalt')).toBe('#087a5a')
     expect(document.documentElement.style.getPropertyValue('--color-progress-end')).toBe('#056247')
     expect(document.documentElement.style.getPropertyValue('--color-alert')).toBe('')
-    expect(applyAccentTheme('not-a-palette')).toBe('cobalt')
+    expect(applyAccentTheme('cobalt')).toBe('sapphire')
+    expect(document.documentElement.dataset.accent).toBe('sapphire')
+    expect(applyAccentTheme('not-a-palette')).toBe('sapphire')
     expect(document.documentElement.style.getPropertyValue('--color-cobalt')).toBe('#1f35c4')
     expect(document.documentElement.style.getPropertyValue('--color-progress-start')).toBe('#e9ecf9')
     expect(document.documentElement.style.getPropertyValue('--color-cobalt')).not.toContain('var(--accent-')

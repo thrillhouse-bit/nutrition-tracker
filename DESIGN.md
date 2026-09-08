@@ -8,9 +8,16 @@ colors:
   scrim: "#e3dfd4"
   card: "#ffffff"
   ink: "#121210"
-  cobalt: "#1f35c4"
-  cobalt-ink: "#16289b"
-  cobalt-soft: "#e9ecf9"
+  sapphire: "#1f35c4"
+  sapphire-ink: "#16289b"
+  sapphire-soft: "#e9ecf9"
+  emerald: "#087a5a"
+  ruby: "#a82945"
+  silver: "#66717d"
+  gold: "#8a6200"
+  crystal: "#0a7180"
+  diamond: "#526d91"
+  pearl: "#756579"
   progress-mid: "#7185f6"
   mist: "#dce6d7"
   sand: "#eacd91"
@@ -60,15 +67,24 @@ current state legible without making the product feel like a generic dashboard.
 ## Colors
 
 Warm paper and rail are the persistent ground. Near-black ink and its alpha
-variants establish type and hairline hierarchy. Cobalt is the default account
-accent; Emerald and Ruby replace only the account-accent family through the
-runtime theme adapter. Mist is recovery context, Sand is training context, and
+variants establish type and hairline hierarchy. Sapphire is the default account
+accent; Emerald, Ruby, Silver, Gold, Crystal, Diamond, and Pearl replace only
+the account-accent family through the runtime theme adapter. The adapter keeps
+writing the historical `--color-cobalt*` CSS aliases while consumer utilities
+are migrated; those token names describe the accent role, not a fixed blue.
+Mist is recovery context, Sand is training context, and
 Berry is destructive/error meaning. Those semantic colors never change with
 account preference. White is reserved for consequential sheets and confirmed
 moments. Focus uses a 2px account-accent outline. Completion charts use ordered
 alpha strengths of the same accent plus the neutral track for missing data.
 The Today field derives `--color-current-glow` from the live account accent;
 it is a runtime adapter rather than a second independently editable palette.
+
+Signed-out Body Current screens reuse the default real alpine Current Field as
+a full-viewport photographic ground. Authentication controls sit on one warm,
+blurred journal surface with conventional high-contrast labels and fields;
+photography never enters the form itself. The shared Oathbearer auth variant is
+intentionally excluded so its separate product identity is preserved.
 
 ## Typography
 

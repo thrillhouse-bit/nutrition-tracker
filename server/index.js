@@ -742,7 +742,7 @@ const PROFILE_ENUMS = {
   activity_level: ['inactive', 'low', 'active', 'very_active', 'sedentary', 'light', 'moderate'],
   goal: ['maintenance', 'fat_loss', 'muscle_gain', 'endurance_performance', 'maintain', 'lose_fat', 'build_muscle', 'endurance'],
   units_pref: ['imperial', 'metric'],
-  accent: ['cobalt', 'emerald', 'ruby'],
+  accent: ['sapphire', 'emerald', 'ruby', 'silver', 'gold', 'crystal', 'diamond', 'pearl'],
 }
 // height_cm/weight_kg/age_years — canonical storage is always metric; the
 // client converts imperial input before it reaches this endpoint.
@@ -791,8 +791,8 @@ requireAuthRouter.put('/profile', asyncH(async (req, res) => {
   if (computedBaseline) await store.setTargets(req.userId, computedBaseline)
   res.json({ profile, computedBaseline })
 }))
-requireAuthRouter.get('/appearance', asyncH(async (req, res) => { const { accent } = await store.getProfile(req.userId); res.json({ accent: PROFILE_ENUMS.accent.includes(accent) ? accent : 'cobalt' }) }))
-requireAuthRouter.put('/appearance', asyncH(async (req, res) => { const accent = req.body?.accent; if (!PROFILE_ENUMS.accent.includes(accent)) return res.status(400).json({ error: 'accent must be one of: cobalt, emerald, ruby.' }); const profile = await store.setProfile(req.userId, { accent }); res.json({ accent: profile.accent }) }))
+requireAuthRouter.get('/appearance', asyncH(async (req, res) => { const { accent } = await store.getProfile(req.userId); res.json({ accent: accent === 'cobalt' ? 'sapphire' : PROFILE_ENUMS.accent.includes(accent) ? accent : 'sapphire' }) }))
+requireAuthRouter.put('/appearance', asyncH(async (req, res) => { const accent = req.body?.accent; if (!PROFILE_ENUMS.accent.includes(accent)) return res.status(400).json({ error: `accent must be one of: ${PROFILE_ENUMS.accent.join(', ')}.` }); const profile = await store.setProfile(req.userId, { accent }); res.json({ accent: profile.accent }) }))
 
 // Suggests an activity_level from recent step history — a SUGGESTION only,
 // never written to the profile itself; the client decides whether to apply

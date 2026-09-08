@@ -297,15 +297,17 @@ create table if not exists profile (
   units_pref    text not null default 'imperial' check (units_pref in ('imperial', 'metric')),
   activity_level text check (activity_level in ('sedentary', 'light', 'moderate', 'active', 'very_active')),
   goal          text check (goal in ('maintain', 'lose_fat', 'build_muscle', 'endurance')),
-  accent        text not null default 'cobalt' check (accent in ('cobalt', 'emerald', 'ruby')),
+  accent        text not null default 'sapphire' check (accent in ('sapphire', 'emerald', 'ruby', 'silver', 'gold', 'crystal', 'diamond', 'pearl')),
   updated_at    timestamptz not null default now()
 );
-alter table profile add column if not exists accent text not null default 'cobalt';
+alter table profile add column if not exists accent text not null default 'sapphire';
 -- Keep this compatible with the deliberately small statement runner in
 -- server/scripts/init-db.js, which executes one semicolon-delimited statement
 -- at a time and therefore cannot safely parse a PostgreSQL DO $$ block.
 alter table profile drop constraint if exists profile_accent_check;
-alter table profile add constraint profile_accent_check check (accent in ('cobalt', 'emerald', 'ruby'));
+update profile set accent = 'sapphire' where accent = 'cobalt';
+alter table profile alter column accent set default 'sapphire';
+alter table profile add constraint profile_accent_check check (accent in ('sapphire', 'emerald', 'ruby', 'silver', 'gold', 'crystal', 'diamond', 'pearl'));
 
 -- Snapshot of a day's plan, per user: baseline vs. adjusted targets, the
 -- rationale for each adjustment, and the signals it was based on (so "why?"

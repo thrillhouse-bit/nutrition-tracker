@@ -78,7 +78,7 @@ export default function App() {
   // rely on the cookie, not on `user`, so they don't need to be re-wired.
   const [authState, setAuthState] = useState('loading')
   const [user, setUser] = useState(null)
-  const [accent, setAccent] = useState('cobalt')
+  const [accent, setAccent] = useState('sapphire')
   // null = not yet checked, true = canonical profile ready, false = first-run
   // gate. AFP is the only profile that can unlock daily targets.
   const [planReady, setPlanReady] = useState(null)
@@ -110,7 +110,7 @@ export default function App() {
     return () => { alive = false }
   }, [authState, planCheckKey])
 
-  useEffect(() => { if (authState !== 'in') return; let alive = true; api.appearance().then(({ accent: saved }) => { if (alive) setAccent(applyAccentTheme(saved)) }).catch(() => { if (alive) setAccent(applyAccentTheme('cobalt')) }); return () => { alive = false } }, [authState, user?.id])
+  useEffect(() => { if (authState !== 'in') return; let alive = true; api.appearance().then(({ accent: saved }) => { if (alive) setAccent(applyAccentTheme(saved)) }).catch(() => { if (alive) setAccent(applyAccentTheme('sapphire')) }); return () => { alive = false } }, [authState, user?.id])
 
   const clearSignedInState = async ({ deleteLocal = false } = {}) => {
     if (deleteLocal && user?.id) purgeAccountStorage(user.id)
@@ -118,7 +118,7 @@ export default function App() {
     setUser(null)
     setAuthState('out')
     setPlanReady(null)
-    setAccent(applyAccentTheme('cobalt'))
+    setAccent(applyAccentTheme('sapphire'))
     setEntries([])
     setTodayData(null)
     setPending([])

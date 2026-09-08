@@ -153,9 +153,9 @@ descriptions that get harder to find over time.
 
 The existing visual system (`src/index.css`'s own comment block, and the
 "Rules from the design" comment at the top of `src/components/ui.jsx`) is
-unchanged by this pass: sharp rectangles, hairline rules in ink, cobalt as
+unchanged by this pass: sharp rectangles, hairline rules in ink, the account accent as
 the single accent, status conveyed by shape + word (never color alone),
-Bodoni numerals / Archivo labels, white (or cobalt-soft, since 25 Aug 2026)
+Bodoni numerals / Archivo labels, white (or the soft account-accent wash, since 25 Aug 2026)
 reserved for a moment that matters. This redesign works inside that system,
 not around it — no new colors, no new type scale, no rounded corners.
 
@@ -262,16 +262,25 @@ the PWA, iOS, and Connect IQ icon sizes. The mark carries the product's quiet
 through-line—body signals becoming a readable current—without introducing a
 second decorative system.
 
-An authenticated account may choose Cobalt (default), Emerald, or Ruby. The
+An authenticated account may choose Sapphire (default), Emerald, Ruby,
+Silver, Gold, Crystal, Diamond, or Pearl. The
 canonical palette map is `src/lib/accentTheme.js`; it applies only the brand
 family (`--color-cobalt`, ink, soft wash, on-accent) plus the three progress
-gradient stops. Shared components consume those runtime variables, including
+gradient stops. The `--color-cobalt*` names are retained as internal
+compatibility aliases while Sapphire is the user-facing and persisted name.
+Shared components consume those runtime variables, including
 the SegmentBar, Dial, and Insights SVG highlights. Mist, Sand, Berry, Good,
 Warn, and Alert remain fixed semantic/context tokens: changing an account
 accent must never reclassify recovery, training, warning, or destructive
 meaning.
 
-The dial's own color never encodes good/bad — it's the same cobalt at any
+The signed-out Body Current gate uses the same real alpine Current Field as
+Today's default scene, with its conventional account form placed on a warm,
+blurred journal surface. The image and scrim are atmosphere only; labels,
+errors, inputs, recovery, and account creation remain high-contrast and fully
+keyboard accessible. The shared Oathbearer auth surface keeps its own styling.
+
+The dial's own color never encodes good/bad — it's the same account accent at any
 score. All of the "is this good" meaning rides on the band WORD next to it
 ("Strong recovery" / "Solid recovery" / "Moderate recovery" / "Low
 recovery"), so color is never the sole channel (the accessibility ask's own
