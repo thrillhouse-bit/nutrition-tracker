@@ -96,6 +96,28 @@ describe('searchFoods: deduplication', () => {
   })
 })
 
+describe('searchFoods: grocery-first presentation groups', () => {
+  it('keeps the six highest-ranked answers together before additional packaged matches', async () => {
+    const products = Array.from({ length: 8 }, (_, index) => ({
+      name: `Milk product ${index + 1}`,
+      brand: `Brand ${index + 1}`,
+      barcode: String(100000 + index),
+      calories: 100 + index,
+      protein_g: 8,
+      carbs_g: 12,
+      fat_g: 4,
+      source: 'openfoodfacts',
+      datasetTier: 'branded',
+    }))
+    queryOFF.mockImplementation((q) => Promise.resolve(withItems('openfoodfacts', 'branded', q, products)))
+
+    const r = await searchFoods('milk')
+    expect(r.results).toHaveLength(8)
+    expect(r.results.slice(0, 6).every((food) => food.result_group === 'common_grocery')).toBe(true)
+    expect(r.results.slice(6).every((food) => food.result_group === 'exact_branded')).toBe(true)
+  })
+})
+
 describe('searchFoods: distinguishing a real provider failure from a real empty result', () => {
   it('degraded:true when every attempted source genuinely failed', async () => {
     queryUsdaFoundation.mockImplementation((q) => Promise.resolve(failed('usda', 'generic', q)))

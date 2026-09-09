@@ -1,0 +1,10 @@
+{
+  "review_id": "body-current-food-entry-icon-20260908",
+  "workflow_version": "0.3.0",
+  "runtime": "codex",
+  "project_id": "body-current-release",
+  "graph_assistance": {
+    "active": true,
+    "provenance": "0.3.0 default"
+  }
+}

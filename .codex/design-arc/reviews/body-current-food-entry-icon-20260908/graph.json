@@ -1,0 +1,42 @@
+{
+  "schema": "design-arc.graph/v1",
+  "project_id": "body-current-release",
+  "review_id": "body-current-food-entry-icon-20260908",
+  "nodes": [
+    { "id": "objective", "type": "confirmed_objective", "label": "Unify grocery-first food entry, atmospheric Insights, reliable iPhone backdrop upload, and a simpler icon" },
+    { "id": "apple-hig", "type": "platform_requirement", "label": "Apple hierarchy, readability, alignment, and 44-point touch-target guidance" },
+    { "id": "wcag", "type": "platform_requirement", "label": "WCAG labeled inputs plus programmatic status and descriptive error feedback" },
+    { "id": "direction-a", "type": "design_decision", "label": "Direction A: one intelligent food-entry flow" },
+    { "id": "journey", "type": "journey", "label": "Log home to search or scan, confirm food, inspect Insights, customize backdrop" },
+    { "id": "log-home", "type": "screen", "label": "Log home with Today's Log first and unified entry control" },
+    { "id": "food-search", "type": "screen", "label": "Food search grouped by common grocery, exact branded, and more results" },
+    { "id": "barcode", "type": "screen", "label": "Barcode scan with bounded startup and manual fallback" },
+    { "id": "insights", "type": "screen", "label": "Insights with atmospheric hierarchy and analytical chart clarity" },
+    { "id": "backdrop", "type": "screen", "label": "Personal backdrop preview, apply, persistence, and recovery" },
+    { "id": "icon", "type": "screen", "label": "Flat flowing-current icon exploration at small iOS sizes" },
+    { "id": "complete-states", "type": "state", "label": "Loading, success, empty, partial, permission-denied, unsupported-format, and storage-error states" },
+    { "id": "stitch-first", "type": "stitch_render", "label": "Stitch first exploratory six-screen render" },
+    { "id": "truth-drift", "type": "observed_mismatch", "label": "First render fabricated live sourcing, medical claims, storage guarantees, and unsupported settings actions" },
+    { "id": "truth-correction", "type": "correction", "label": "Second Stitch pass removes unsupported claims and adds honest state language" },
+    { "id": "stitch-revised", "type": "stitch_render", "label": "Revised six-screen approval candidate in Stitch project 7071516077649364826" },
+    { "id": "visual-gate", "type": "approval", "label": "Visual Proposal Gate approved by user on 2026-09-08" }
+  ],
+  "edges": [
+    { "id": "e1", "type": "supports", "from": "objective", "to": "direction-a", "active": true, "provenance_kind": "user_confirmed_objective", "source_ref": "User selected A", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e2", "type": "requires", "from": "apple-hig", "to": "journey", "active": true, "provenance_kind": "official_guidance", "source_ref": "https://developer.apple.com/design/tips/", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e3", "type": "requires", "from": "wcag", "to": "complete-states", "active": true, "provenance_kind": "official_guidance", "source_ref": "https://www.w3.org/TR/WCAG22/", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e4", "type": "applies_to", "from": "direction-a", "to": "journey", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Direction Gate selection", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e5", "type": "applies_to", "from": "journey", "to": "log-home", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Confirmed journey map", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e6", "type": "applies_to", "from": "journey", "to": "food-search", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Confirmed journey map", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e7", "type": "applies_to", "from": "journey", "to": "barcode", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Confirmed journey map", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e8", "type": "applies_to", "from": "journey", "to": "insights", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Confirmed journey map", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e9", "type": "applies_to", "from": "journey", "to": "backdrop", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Confirmed journey map", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e10", "type": "applies_to", "from": "journey", "to": "icon", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Confirmed journey map", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e11", "type": "rendered_as", "from": "direction-a", "to": "stitch-first", "active": false, "provenance_kind": "design_arc_judgment", "source_ref": "Stitch project 7071516077649364826 first pass", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e12", "type": "conflicts_with", "from": "truth-drift", "to": "objective", "active": false, "provenance_kind": "inspected_evidence", "source_ref": "Stitch first-pass screen copy", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e13", "type": "corrected_by", "from": "truth-drift", "to": "truth-correction", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Stitch refinement prompt", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e14", "type": "supersedes", "from": "stitch-revised", "to": "stitch-first", "active": true, "provenance_kind": "inspected_evidence", "source_ref": "Stitch revised six-screen render", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e15", "type": "rendered_as", "from": "direction-a", "to": "stitch-revised", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "https://stitch.withgoogle.com/projects/7071516077649364826", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" },
+    { "id": "e16", "type": "depends_on", "from": "stitch-revised", "to": "visual-gate", "active": true, "provenance_kind": "design_arc_judgment", "source_ref": "Guided approval mode", "observed_at": "2026-09-09T01:31:16Z", "support_status": "supported" }
+  ]
+}

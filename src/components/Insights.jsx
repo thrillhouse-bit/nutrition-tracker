@@ -354,7 +354,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
           below: someone logging weight daily but not food for a few days
           should still see their trend, not a "not enough data" wall that
           exists for food-logging consistency, not this. */}
-      <section>
+      <section className="insights-tier-key">
         <SectionHead
           label="Weight"
           strong
@@ -426,7 +426,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
           ) : (
             <>
               {/* Real nutrition averages — the data we actually have. */}
-              <Card className="insights-current-card grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
+              <Card className="insights-current-card insights-tier-summary grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
                 <Stat label="Avg calories" value={avgCal} unit="kcal" />
                 <Stat label="Avg protein" value={num(nutrition?.avgProtein)} unit="g" />
                 <Stat label="Days tracked" value={`${tracked}/${window}`} />
@@ -439,7 +439,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
                   percentages remain available through labels/tooltips, so
                   color is never the only carrier of meaning. */}
               {onTargetDetail.length > 0 && (
-                <section>
+                <section className="insights-tier-support">
                   <SectionHead
                     label={`Intake completion · last ${window} days`}
                     right={<span className="tnum text-[13px] text-muted">{tracked}/{window} logged</span>}
@@ -469,7 +469,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
                   Since 25 Aug 2026 a real calorie target line can join it (see
                   EnergyChart's own comment) — still titled by what's plotted,
                   now honestly including a real second line when one exists. */}
-              <section>
+              <section className="insights-tier-key">
                 <SectionHead
                   label={`Energy · last ${window} days`}
                   strong
@@ -503,7 +503,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
                   never set one, so proteinTarget > 0 alone can't tell "real"
                   from "silent default" — hasTargets can, and is the same
                   field src/App.jsx's onboarding gate itself relies on. */}
-              <section>
+              <section className="insights-tier-key">
                 <SectionHead
                   label={`Protein · last ${window} days`}
                   strong
@@ -545,14 +545,14 @@ export default function Insights({ refreshKey, onGoToConnections }) {
               placeholder (no invented numbers) otherwise. Labeled by whichever
               provider is actually supplying readiness today, not a fixed
               brand — see QA report "Insights hardcodes provider names." */}
-          <section>
+          <section className="insights-tier-key">
             <SectionHead
               label={readinessProviderLabel ? `Readiness · ${readinessProviderLabel}` : 'Readiness'}
               right={
                 readiness.length >= 2 ? (
                   <span className="tnum text-[13px] text-muted">avg {avgReadiness}</span>
                 ) : (
-                  <StatusMark status="unavailable" label="Awaiting history" />
+                    <StatusMark status="unavailable" label={readinessProviderLabel ? 'Needs 2 days' : 'No source'} />
                 )
               }
             />
@@ -567,19 +567,19 @@ export default function Insights({ refreshKey, onGoToConnections }) {
               </>
             ) : (
               <>
-                <div className="relative mt-3 h-[62px] overflow-hidden rounded-[14px] bg-mist/55">
+                <div className="relative mt-3 min-h-[76px] overflow-hidden rounded-[14px] bg-mist/55 px-4 py-5 text-center">
                   <div aria-hidden className="absolute inset-x-0 top-1/2 h-5 -translate-y-1/2 bg-mist/60" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-faint">Awaiting connected history</span>
+                  <div className="relative flex items-center justify-center">
+                    <span className="text-[11px] font-semibold leading-relaxed text-muted">{readinessProviderLabel ? `Sync at least two ${readinessProviderLabel} days to draw this trend.` : 'Connect a wearable to add readiness trends.'}</span>
                   </div>
                 </div>
-                <ChartCaption left="Mist band · readiness" right={readinessProviderLabel || 'No source connected'} />
+                {onGoToConnections && !readinessProviderLabel && <TextButton className="mt-2" onClick={onGoToConnections}>Connect a wearable</TextButton>}
               </>
             )}
           </section>
 
           {/* Actual retained workouts, with per-point provider provenance. */}
-          <section>
+          <section className="insights-tier-key">
             <SectionHead
               label={workoutProviderLabel ? `Training load · ${workoutProviderLabel}` : 'Training load'}
               right={
@@ -611,7 +611,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
 
           {/* WHAT WE NOTICE — an observation only when correlations are available;
               otherwise the insufficient-data card, in the same white-moment style. */}
-          <Card white className="insights-current-card p-4">
+          <Card white className="insights-current-card insights-tier-observation p-4">
             <div className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-cobalt">What we notice</div>
             {correlations?.available ? (
               <>
@@ -639,7 +639,7 @@ export default function Insights({ refreshKey, onGoToConnections }) {
           {/* SLEEP × FIBER — a dashed "not enough data" card with a real progress
               dot-bar bound to logged days. American spelling, like the Plan
               tab's "Fiber" row and every other surface. */}
-          <div className="insights-current-card border border-dashed border-line-heavy px-4 py-3.5">
+          <div className="insights-current-card insights-tier-support border border-dashed border-line-heavy px-4 py-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Sleep × Fiber</span>
               <span className="border border-line-strong px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">Not enough data</span>

@@ -13,6 +13,7 @@ const RETAIL_FORMATS = [
   BarcodeFormat.CODE_128,
   BarcodeFormat.ITF,
 ]
+const CAMERA_START_TIMEOUT_MS = 8000
 
 function makeReader() {
   const hints = new Map()
@@ -26,6 +27,8 @@ export default function Scanner({ onDetected }) {
   const [error, setError] = useState('')
   const [starting, setStarting] = useState(true)
   const [manual, setManual] = useState('')
+  const [cameraAttempt, setCameraAttempt] = useState(0)
+  const manualRef = useRef(null)
 
   // App.jsx passes an inline handler, so `onDetected` gets a new identity on
   // every App re-render — including one that lands *after* the camera is
@@ -41,6 +44,11 @@ export default function Scanner({ onDetected }) {
   useEffect(() => {
     let cancelled = false
     const reader = makeReader()
+    const startupTimer = setTimeout(() => {
+      if (cancelled) return
+      setStarting(false)
+      setError('The camera is taking longer than expected. Check browser permission, try again, or type the barcode below.')
+    }, CAMERA_START_TIMEOUT_MS)
 
     async function start() {
       try {
@@ -61,9 +69,12 @@ export default function Scanner({ onDetected }) {
           return
         }
         controlsRef.current = controls
+        clearTimeout(startupTimer)
         setStarting(false)
+        setError('')
       } catch (err) {
         if (cancelled) return
+        clearTimeout(startupTimer)
         setStarting(false)
         setError(
           err?.name === 'NotAllowedError'
@@ -76,6 +87,7 @@ export default function Scanner({ onDetected }) {
 
     return () => {
       cancelled = true
+      clearTimeout(startupTimer)
       controlsRef.current?.stop()
     }
     // Mount/unmount only — see onDetectedRef above for why `onDetected` is
@@ -88,7 +100,15 @@ export default function Scanner({ onDetected }) {
     // the restart itself was 100% reproducible, only the corruption's exact
     // timing was a race.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [cameraAttempt])
+
+  const retryCamera = () => {
+    controlsRef.current?.stop()
+    controlsRef.current = null
+    setError('')
+    setStarting(true)
+    setCameraAttempt((attempt) => attempt + 1)
+  }
 
   const submitManual = (e) => {
     e.preventDefault()
@@ -115,18 +135,32 @@ export default function Scanner({ onDetected }) {
       <p className="text-center text-xs text-faint">Point the camera at a product barcode.</p>
 
       <ErrorNote>{error}</ErrorNote>
+      {error && (
+        <div className="grid grid-cols-2 gap-2">
+          <Button type="button" variant="outline" onClick={retryCamera}>Try camera again</Button>
+          <Button type="button" variant="subtle" onClick={() => manualRef.current?.focus()}>Type barcode</Button>
+        </div>
+      )}
 
-      <form noValidate onSubmit={submitManual} className="flex gap-2">
+      <form noValidate onSubmit={submitManual} className="space-y-1.5">
+        <label htmlFor="manual-barcode" className="eyebrow text-ink">Barcode digits</label>
+        <div className="flex gap-2">
         <input
+          ref={manualRef}
+          id="manual-barcode"
+          aria-describedby="manual-barcode-help"
           value={manual}
           onChange={(e) => setManual(e.target.value)}
           inputMode="numeric"
-          placeholder="…or enter barcode digits"
+          autoComplete="off"
+          placeholder="6–14 digits"
           className={inputCls}
         />
         <Button type="submit" variant="outline">
           Look up
         </Button>
+        </div>
+        <p id="manual-barcode-help" className="text-[11px] text-muted">Use the number printed directly below the barcode.</p>
       </form>
     </div>
   )

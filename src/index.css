@@ -588,6 +588,40 @@ button.today-glance-orb:active {
     color-mix(in srgb, var(--color-card) 52%, var(--color-paper));
 }
 
+/* Insights uses three material tiers so a trend, an observation, and a setup
+   note no longer look equally important. These stay inside the content layer
+   (opaque materials, not navigation glass) and preserve chart contrast. */
+.insights-current-layout .insights-tier-summary {
+  border-color: color-mix(in srgb, var(--color-cobalt) 24%, var(--color-line));
+  background:
+    radial-gradient(circle at 92% 12%, color-mix(in srgb, var(--color-current-glow) 24%, transparent), transparent 42%),
+    color-mix(in srgb, var(--color-cobalt-soft) 50%, var(--color-paper));
+  box-shadow: 0 16px 34px rgb(18 18 16 / 0.09), inset 0 1px rgb(255 255 255 / 0.72);
+}
+
+.insights-current-layout .insights-tier-key {
+  border-color: color-mix(in srgb, var(--color-cobalt) 16%, var(--color-line));
+  box-shadow: 0 14px 30px rgb(18 18 16 / 0.075), inset 0 1px rgb(255 255 255 / 0.7);
+}
+
+.insights-current-layout .insights-tier-observation {
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.16);
+  background:
+    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--color-current-glow) 46%, transparent), transparent 38%),
+    linear-gradient(150deg, #102b3d, color-mix(in srgb, var(--color-cobalt-ink) 48%, #10181e) 58%, #091116);
+  box-shadow: 0 18px 38px rgb(4 8 11 / 0.18);
+}
+
+.insights-current-layout .insights-tier-observation :where(.text-ink, .text-muted, .text-faint) { color: rgb(255 255 255 / 0.86); }
+.insights-current-layout .insights-tier-observation .text-cobalt { color: rgb(255 255 255 / 0.72); }
+.insights-current-layout .insights-tier-observation .border-line { border-color: rgb(255 255 255 / 0.2); }
+
+.insights-current-layout .insights-tier-support {
+  background: color-mix(in srgb, var(--color-paper) 88%, var(--color-mist));
+  box-shadow: 0 8px 20px rgb(18 18 16 / 0.04), inset 0 1px rgb(255 255 255 / 0.54);
+}
+
 .plan-current-stack > header {
   padding-inline: 0.15rem;
 }

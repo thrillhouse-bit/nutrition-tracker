@@ -147,26 +147,43 @@ export default function SearchFood({ onPick }) {
   const bound = view.query === trimmed && trimmed.length >= MIN_QUERY
   const status = trimmed.length < MIN_QUERY ? 'idle' : bound ? view.status : 'pending'
   const showResults = bound && status === 'ready' ? view.results : []
+  const sections = [
+    { id: 'common_grocery', label: 'Common grocery choices', rows: showResults.filter((food) => food.result_group === 'common_grocery') },
+    { id: 'exact_branded', label: 'Packaged grocery matches', rows: showResults.filter((food) => food.result_group === 'exact_branded') },
+    { id: 'more', label: 'More results', rows: showResults.filter((food) => !['common_grocery', 'exact_branded'].includes(food.result_group)) },
+  ].filter((section) => section.rows.length)
   const note = bound && status === 'ready' && (view.partial || view.canonicalCoverage === 'missing')
     ? partialNote(view)
     : null
 
   return (
     <div className="space-y-3">
-      <input
-        autoFocus
-        aria-label="Search foods"
-        aria-describedby="search-status"
-        role="combobox"
-        aria-expanded={showResults.length > 0}
-        aria-controls="search-results"
-        aria-autocomplete="list"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder="Search foods (e.g. banana, cheddar)"
-        className={inputCls}
-      />
+      <div className="relative">
+        <input
+          autoFocus
+          aria-label="Search foods"
+          aria-describedby="search-status"
+          role="combobox"
+          aria-expanded={showResults.length > 0}
+          aria-controls="search-results"
+          aria-autocomplete="list"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Search foods, groceries, or brands"
+          className={`${inputCls} pr-12`}
+        />
+        {q && (
+          <button
+            type="button"
+            aria-label="Clear food search"
+            onClick={() => setQ('')}
+            className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-muted hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-cobalt"
+          >
+            ✕
+          </button>
+        )}
+      </div>
       {/*
         The Sheet this lives in (ui.jsx) is vertically centered on desktop
         (`sm:items-center`), so its height drives its position: a result count
@@ -249,8 +266,17 @@ export default function SearchFood({ onPick }) {
           </EmptyState>
         )}
 
-        <ul id="search-results" role="listbox" aria-label="Search results" className="space-y-2">
-          {showResults.map((food, i) => (
+        <div id="search-results">
+          {sections.map((section) => (
+            <section key={section.id} className="mb-5" aria-labelledby={`search-group-${section.id}`}>
+              <div className="mb-2 flex items-baseline justify-between border-b border-line pb-1.5">
+                <h3 id={`search-group-${section.id}`} className="eyebrow text-ink">{section.label}</h3>
+                {section.id === 'common_grocery' && <span className="text-[10px] text-muted">Ranked for everyday usefulness</span>}
+              </div>
+              <ul role="listbox" aria-label={section.label} className="space-y-2">
+          {section.rows.map((food) => {
+            const i = showResults.indexOf(food)
+            return (
             <li key={`${food.source || 'x'}:${food.barcode || food.name}:${i}`}>
               <button
                 ref={(el) => { resultRefs.current[i] = el }}
@@ -288,8 +314,11 @@ export default function SearchFood({ onPick }) {
                 </div>
               </button>
             </li>
+          )})}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       </div>
     </div>
   )

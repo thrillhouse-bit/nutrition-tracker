@@ -52,7 +52,7 @@ export const TODAY_BACKDROP_SCENES = Object.freeze([
   { id: 'ridge', label: 'Ridge', description: 'Layered contours with a quieter horizon' },
   { id: 'dawn', label: 'Dawn', description: 'A warmer field for the start of the day' },
 ])
-export const TODAY_BACKDROP_ACCEPT = 'image/jpeg,image/png,image/webp'
+export const TODAY_BACKDROP_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif'
 export const TODAY_BACKDROP_MAX_SOURCE_BYTES = 10 * 1024 * 1024
 export const TODAY_BACKDROP_MAX_STORED_BYTES = 2 * 1024 * 1024
 
@@ -64,7 +64,7 @@ export function normalizeTodayBackdrop(value) {
   if (
     value?.kind === 'photo'
     && typeof value.dataUrl === 'string'
-    && value.dataUrl.startsWith('data:image/webp;base64,')
+    && /^data:image\/(?:webp|jpeg);base64,/.test(value.dataUrl)
     && value.dataUrl.length <= TODAY_BACKDROP_MAX_STORED_BYTES
   ) {
     return {
@@ -88,8 +88,15 @@ export function saveTodayBackdrop(userId, value) {
 }
 
 export function validateTodayBackdropFile(file) {
-  if (!file || Number(file.size) === 0) return 'Choose a JPEG, PNG, or WebP image that is not empty.'
-  if (!PHOTO_TYPES.has(String(file.type || '').toLowerCase())) return 'That file type is not supported. Choose a JPEG, PNG, or WebP image.'
+  if (!file || Number(file.size) === 0) return 'Choose a JPEG, PNG, WebP, HEIC, or HEIF image that is not empty.'
+  const type = String(file.type || '').toLowerCase()
+  const extension = String(file.name || '').toLowerCase().match(/\.(?:jpe?g|png|webp|heic|heif)$/)?.[0] || ''
+  // iOS can omit MIME metadata when a photo comes from the library,
+  // especially for HEIC/HEIF. Let a recognized extension reach the decoder;
+  // decoding below remains the final authority for the actual file contents.
+  if (!PHOTO_TYPES.has(type) && !PHOTO_TYPES.has(extension) && !['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+    return 'That file type is not supported. Choose a JPEG, PNG, WebP, HEIC, or HEIF image.'
+  }
   if (Number(file.size) > TODAY_BACKDROP_MAX_SOURCE_BYTES) return 'That image is larger than 10 MB. Choose a smaller image.'
   return ''
 }
@@ -126,15 +133,15 @@ async function decodePhoto(file) {
   return loadImageElement(file)
 }
 
-function canvasWebp(canvas, quality) {
+function canvasBlob(canvas, type, quality) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
-      if (!blob || blob.type !== 'image/webp') {
-        reject(new Error('This browser cannot prepare a private WebP backdrop. Try a curated scene instead.'))
+      if (!blob || blob.type !== type) {
+        reject(new Error(`This browser could not encode ${type === 'image/webp' ? 'WebP' : 'JPEG'}.`))
         return
       }
       resolve(blob)
-    }, 'image/webp', quality)
+    }, type, quality)
   })
 }
 
@@ -171,16 +178,26 @@ export async function prepareTodayBackdropPhoto(file) {
       const context = canvas.getContext('2d', { alpha: false })
       if (!context) throw new Error('This browser cannot prepare that image. Try a curated scene instead.')
       context.drawImage(decoded, 0, 0, width, height)
-      const blob = await canvasWebp(canvas, candidate.quality)
-      const dataUrl = await blobToDataUrl(blob)
-      if (dataUrl.startsWith('data:image/webp;base64,') && dataUrl.length <= TODAY_BACKDROP_MAX_STORED_BYTES) {
-        return {
-          kind: 'photo',
-          dataUrl,
-          name: String(file.name || 'Personal photo').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160) || 'Personal photo',
-          originalBytes: Number(file.size) || 0,
-          encodedBytes: Number(blob.size) || 0,
-          updatedAt: new Date().toISOString(),
+      // WebP is preferred for storage efficiency, but Safari/WebKit support
+      // has varied across devices and embedded browser versions. JPEG is the
+      // truthful recovery path; the chosen image remains local either way.
+      for (const type of ['image/webp', 'image/jpeg']) {
+        try {
+          const blob = await canvasBlob(canvas, type, type === 'image/webp' ? candidate.quality : Math.max(0.58, candidate.quality - 0.08))
+          const dataUrl = await blobToDataUrl(blob)
+          if (dataUrl.startsWith(`data:${type};base64,`) && dataUrl.length <= TODAY_BACKDROP_MAX_STORED_BYTES) {
+            return {
+              kind: 'photo',
+              dataUrl,
+              format: type,
+              name: String(file.name || 'Personal photo').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160) || 'Personal photo',
+              originalBytes: Number(file.size) || 0,
+              encodedBytes: Number(blob.size) || 0,
+              updatedAt: new Date().toISOString(),
+            }
+          }
+        } catch {
+          // Try the next encoding, then the next smaller candidate.
         }
       }
     }

@@ -23,6 +23,7 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
   const operationRef = useRef(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [pendingPhoto, setPendingPhoto] = useState(null)
   const selectedScene = backdrop.kind === 'scene'
     ? TODAY_BACKDROP_SCENES.find((scene) => scene.id === backdrop.scene)
     : null
@@ -32,6 +33,7 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
     operationRef.current += 1
     setBusy(false)
     setError('')
+    setPendingPhoto(null)
     onClose()
   }
 
@@ -59,7 +61,7 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
     try {
       const prepared = await prepareTodayBackdropPhoto(file)
       if (operationRef.current !== operation) return
-      commit(prepared)
+      setPendingPhoto(prepared)
     } catch (err) {
       if (operationRef.current !== operation) return
       setError(err.message || 'Body Current could not prepare that image. Your current backdrop is unchanged.')
@@ -105,7 +107,7 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
 
       <div className="mt-5 border-t border-line pt-4">
         <div className="eyebrow">Use my photo</div>
-        <p id="today-backdrop-file-help" className="mt-1 text-xs leading-relaxed text-muted">JPEG, PNG, or WebP · 10 MB maximum. Body Current resizes it, removes embedded metadata, and stores at most 2 MB locally.</p>
+        <p id="today-backdrop-file-help" className="mt-1 text-xs leading-relaxed text-muted">JPEG, PNG, WebP, HEIC, or HEIF · 10 MB maximum. Support for iPhone formats depends on the browser. Processing stays on this device.</p>
         <input
           ref={inputRef}
           type="file"
@@ -117,8 +119,19 @@ export default function TodayBackdropSheet({ open, onClose, userId, backdrop, on
           disabled={busy}
         />
         <Button variant="outline" className="mt-3 w-full" onClick={() => inputRef.current?.click()} disabled={busy}>
-          {busy ? 'Preparing photo…' : backdrop.kind === 'photo' ? 'Choose a different photo' : 'Choose photo'}
+          {busy ? 'Preparing photo…' : pendingPhoto || backdrop.kind === 'photo' ? 'Choose a different photo' : 'Choose photo'}
         </Button>
+        {pendingPhoto && (
+          <div className="mt-3 border border-line-strong bg-fill p-3" role="group" aria-label="Personal backdrop preview">
+            <img src={pendingPhoto.dataUrl} alt="Personal backdrop preview" className="h-36 w-full object-cover" />
+            <div className="mt-2 truncate text-sm font-bold text-ink">{pendingPhoto.name}</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">{formatBytes(pendingPhoto.encodedBytes)} · Preview only. Apply to save it on this device.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button type="button" onClick={() => { if (commit(pendingPhoto)) setPendingPhoto(null) }}>Apply backdrop</Button>
+              <Button type="button" variant="subtle" onClick={() => setPendingPhoto(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
         {backdrop.kind === 'photo' && (
           <div className="mt-3 border-l-2 border-cobalt pl-3">
             <div className="truncate text-sm font-bold text-ink">{backdrop.name}</div>

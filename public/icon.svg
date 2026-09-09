@@ -1,10 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Body Current">
-  <!-- v2 editorial identity: the app's own ▣ status-mark motif in Ivory/Ink/
-       Sapphire (the pre-v2 emerald leaf belonged to a different visual system).
-       Frame inset 112 keeps the corners (203.6 from center) inside the
-       maskable safe zone (radius 204.8), so the same file serves the
-       circle-cropped Android maskable icon without clipping. -->
-  <rect width="512" height="512" fill="#f7f4ec"/>
-  <rect x="112" y="112" width="288" height="288" fill="none" stroke="#121210" stroke-width="24"/>
-  <rect x="192" y="192" width="128" height="128" fill="#1f35c4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Body Current">
+  <!-- Flat Current mark. The broad ivory field and 136px safe margin keep the
+       silhouette legible under iOS, Android maskable, and watchOS crops. -->
+  <rect width="1024" height="1024" fill="#f7f4ec"/>
+  <path d="M142 535c122-196 286-292 473-258 111 20 199 84 267 192-96-69-191-95-285-76-92 18-165 73-219 163-39 66-89 111-150 137-36 15-69 20-99 17 62-35 106-93 133-173 31-89 86-154 164-194-116 21-211 85-284 192z" fill="#1f35c4"/>
+  <path d="M245 677c91-20 157-72 198-155 39-79 95-128 169-148 77-21 157-8 240 39-71-14-133-9-187 15-60 27-108 75-144 144-42 82-102 139-180 171-73 30-144 31-211 4 43-7 81-31 115-70z" fill="#10266f"/>
+  <path d="M346 681c59-31 103-76 133-137 29-59 66-99 111-119 48-21 98-23 151-7-48 13-88 37-119 72-28 31-52 72-73 121-28 66-72 112-132 137-55 23-110 22-165-4 36-12 67-33 94-63z" fill="#4fb9ad"/>
 </svg>

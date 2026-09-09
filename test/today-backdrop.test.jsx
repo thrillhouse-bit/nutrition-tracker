@@ -74,6 +74,8 @@ describe('Today backdrop preference', () => {
     expect(validateTodayBackdropFile(new File(['text'], 'notes.txt', { type: 'text/plain' }))).toMatch(/not supported/i)
     expect(validateTodayBackdropFile({ name: 'huge.jpg', type: 'image/jpeg', size: TODAY_BACKDROP_MAX_SOURCE_BYTES + 1 })).toMatch(/larger than 10 MB/i)
     expect(validateTodayBackdropFile(new File(['ok'], 'photo.webp', { type: 'image/webp' }))).toBe('')
+    expect(validateTodayBackdropFile(new File(['ok'], 'photo.heic', { type: 'image/heic' }))).toBe('')
+    expect(validateTodayBackdropFile(new File(['ok'], 'iphone-photo.HEIC', { type: '' }))).toBe('')
   })
 
   it('rejects a prepared photo that would exceed the 2 MB device-storage cap', () => {
@@ -88,7 +90,7 @@ describe('Today backdrop preference', () => {
     await act(async () => { trigger.click() })
     const dialog = document.querySelector('[role="dialog"]')
     expect(dialog?.textContent).toMatch(/never uploaded/i)
-    expect(dialog?.textContent).toMatch(/JPEG, PNG, or WebP · 10 MB maximum/i)
+    expect(dialog?.textContent).toMatch(/JPEG, PNG, WebP, HEIC, or HEIF · 10 MB maximum/i)
     expect(dialog?.textContent).toMatch(/Alpine/)
     const ridge = [...dialog.querySelectorAll('button')].find((button) => button.textContent.includes('Ridge'))
     await act(async () => { ridge.click() })

@@ -190,7 +190,21 @@ export async function searchFoods(rawQuery, { deadlineMs = DEFAULT_DEADLINE_MS }
   // say how the food was FOUND instead of inferring it from whether a barcode
   // happens to be present, which is how a typed search came to read
   // "Scanned · USDA" in production.
-  const results = ranked.map((food) => ({ ...food, per100: comparablePer100(food), search_method: 'text_search' }))
+  let brandedCount = 0
+  const results = ranked.map((food, index) => {
+    let result_group = 'more'
+    // Keep the ranker's intent intact: its first six answers are the useful
+    // shortlist whether the query is a whole food (banana) or a named grocery
+    // product (Chobani). Grouping by dataset first would visually reorder a
+    // brand query and undo the relevance work above.
+    if (index < 6) {
+      result_group = 'common_grocery'
+    } else if (food.datasetTier === 'branded' && brandedCount < 12) {
+      result_group = 'exact_branded'
+      brandedCount += 1
+    }
+    return { ...food, per100: comparablePer100(food), search_method: 'text_search', result_group }
+  })
 
   // "Attempted" excludes calls skipped for being unconfigured — a missing
   // optional USDA key is a normal, expected state, never a fault.
