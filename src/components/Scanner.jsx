@@ -28,6 +28,7 @@ export default function Scanner({ onDetected }) {
   const [starting, setStarting] = useState(true)
   const [manual, setManual] = useState('')
   const [cameraAttempt, setCameraAttempt] = useState(0)
+  const [permissionState, setPermissionState] = useState('unknown')
   const manualRef = useRef(null)
 
   // App.jsx passes an inline handler, so `onDetected` gets a new identity on
@@ -52,6 +53,23 @@ export default function Scanner({ onDetected }) {
 
     async function start() {
       try {
+        // The browser owns the durable grant for this origin. Read it before
+        // opening the stream so a known denial gets a useful recovery path and
+        // a previously granted camera is presented as ready instead of as a
+        // new consent flow. Unsupported browsers simply fall through to the
+        // normal getUserMedia path.
+        let permission = null
+        if (typeof navigator !== 'undefined' && typeof navigator.permissions?.query === 'function') {
+          try { permission = await navigator.permissions.query({ name: 'camera' }) } catch { permission = null }
+        }
+        if (cancelled) return
+        if (permission?.state) setPermissionState(permission.state)
+        if (permission?.state === 'denied') {
+          clearTimeout(startupTimer)
+          setStarting(false)
+          setError('Camera access is blocked for this site. Allow it in your browser settings, or type the barcode below.')
+          return
+        }
         // Prefer the rear camera on phones.
         const controls = await reader.decodeFromConstraints(
           { video: { facingMode: { ideal: 'environment' } } },
@@ -71,6 +89,7 @@ export default function Scanner({ onDetected }) {
         controlsRef.current = controls
         clearTimeout(startupTimer)
         setStarting(false)
+        setPermissionState('granted')
         setError('')
       } catch (err) {
         if (cancelled) return
@@ -133,6 +152,7 @@ export default function Scanner({ onDetected }) {
       </div>
 
       <p className="text-center text-xs text-faint">Point the camera at a product barcode.</p>
+      {permissionState === 'granted' && !error && <p className="text-center text-[11px] text-muted">Camera access is saved by your browser for this site.</p>}
 
       <ErrorNote>{error}</ErrorNote>
       {error && (

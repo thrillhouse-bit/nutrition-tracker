@@ -168,9 +168,11 @@ it must never read as a separate gray website header. The field reserves the
 rail's 3.25rem content height so no hero control sits underneath it. The day
 arrows and backdrop action form one divided optical control cluster, and
 connection state uses a second glass group with a labeled accent status bead.
-All other screens keep the warm-paper rail. At-a-glance instrument values use a heavy tabular sans
-face with an adaptive compact size, reserving Bodoni for editorial headings and
-large values on quiet paper surfaces.
+All other screens keep a warm-paper mineral-glass rail: translucent enough to
+let their atmospheric lead-in show through, but lighter than Today's photo
+glass. At-a-glance instrument values use a heavy tabular sans face with an
+adaptive compact size, reserving Bodoni for editorial headings and large values
+on quiet paper surfaces.
 
 Insights, Plan, and Connect share an atmospheric deep-blue lead-in followed by
 rounded, low-contrast journal surfaces. This is a hierarchy system rather than a

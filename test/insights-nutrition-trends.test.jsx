@@ -167,7 +167,7 @@ describe('Insights: real target line on the Energy chart', () => {
     expect(section.textContent).toContain('AVG 2,100 — DASHED')
     expect(section.textContent).toContain('TARGET 2,200 — DOTTED')
     // Two distinct reference <line> elements (target + average), not one.
-    const lines = section.querySelectorAll('svg line')
+    const lines = section.querySelectorAll('svg line:not(.insights-chart-grid)')
     expect(lines.length).toBe(2)
   })
 
@@ -183,7 +183,7 @@ describe('Insights: real target line on the Energy chart', () => {
     expect(section.textContent).toContain('AVG 2,100 — DASHED')
     expect(section.textContent).not.toContain('TARGET')
     expect(section.textContent).not.toContain('DOTTED')
-    const lines = section.querySelectorAll('svg line')
+    const lines = section.querySelectorAll('svg line:not(.insights-chart-grid)')
     expect(lines.length).toBe(1)
   })
 })

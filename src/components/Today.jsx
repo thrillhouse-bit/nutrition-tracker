@@ -212,7 +212,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
     >
       <div className="relative mx-auto h-[88px] w-[88px]">
         <svg aria-hidden viewBox="0 0 88 88" className="absolute inset-0 h-full w-full -rotate-90">
-          <circle className="today-progress-track" cx="44" cy="44" r={radius} fill="rgb(4 8 11 / 0.18)" stroke="rgb(255 255 255 / 0.52)" strokeWidth="1.75" />
+          <circle className="today-progress-track" cx="44" cy="44" r={radius} fill="rgb(4 8 11 / 0.18)" stroke="rgb(255 255 255 / 0.52)" strokeWidth="1.2" />
           {boundedProgress != null && boundedProgress > 0 && (
             <>
               <circle
@@ -222,7 +222,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
                 r={radius}
                 fill="none"
                 stroke="rgb(4 8 11 / 0.76)"
-                strokeWidth="8"
+                strokeWidth="6"
                 strokeLinecap="round"
                 strokeDasharray={`${circumference} ${circumference}`}
                 strokeDashoffset={circumference * (1 - boundedProgress)}
@@ -234,7 +234,7 @@ function SignalOrb({ label, value, detail, secondaryDetail, detailWrap = false, 
                 r={radius}
                 fill="none"
                 stroke="var(--color-progress-mid)"
-                strokeWidth="4.5"
+                strokeWidth="3.5"
                 strokeLinecap="round"
                 strokeDasharray={`${circumference} ${circumference}`}
                 strokeDashoffset={circumference * (1 - boundedProgress)}
@@ -258,7 +258,7 @@ function CurrentArc({ progress, hasTarget }) {
   const markerY = ((1 - pct) ** 2 * 137) + (2 * (1 - pct) * pct * -20) + (pct ** 2 * 137)
   return (
     <svg aria-hidden viewBox="0 0 360 152" className="today-fuel-arc h-auto w-full overflow-visible">
-      <path className="today-fuel-arc-track" d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.58)" strokeWidth="5.5" />
+      <path className="today-fuel-arc-track" d="M 14 137 Q 180 -20 346 137" pathLength="100" fill="none" stroke="rgb(255 255 255 / 0.58)" strokeWidth="4.5" />
       {hasTarget && pct > 0 && (
         <>
           <path
@@ -267,7 +267,7 @@ function CurrentArc({ progress, hasTarget }) {
             pathLength="100"
             fill="none"
             stroke="rgb(4 8 11 / 0.76)"
-            strokeWidth="13"
+            strokeWidth="10"
             strokeDasharray={`${pct * 100} 100`}
             strokeLinecap="round"
           />
@@ -277,11 +277,11 @@ function CurrentArc({ progress, hasTarget }) {
             pathLength="100"
             fill="none"
             stroke="var(--color-progress-mid)"
-            strokeWidth="8"
+            strokeWidth="6"
             strokeDasharray={`${pct * 100} 100`}
             strokeLinecap="round"
           />
-          <circle className="today-fuel-arc-marker" cx={markerX} cy={markerY} r="5.5" fill="var(--color-progress-mid)" stroke="rgb(4 8 11 / 0.82)" strokeWidth="3" />
+          <circle className="today-fuel-arc-marker" cx={markerX} cy={markerY} r="5" fill="var(--color-progress-mid)" stroke="rgb(4 8 11 / 0.82)" strokeWidth="2.5" />
         </>
       )}
       <circle cx="14" cy="137" r="3" fill="rgb(255 255 255 / 0.78)" />

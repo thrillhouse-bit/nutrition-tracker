@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fmt, num, kgToLb, lbToKg, ymd, dayBounds } from '../lib/nutrition.js'
 import { api } from '../api/client.js'
-import { Button, Card, EmptyState, ErrorNote, Spinner, Stat, StatusMark, TextButton, inputCls } from './ui.jsx'
+import { Button, Card, Disclosure, EmptyState, ErrorNote, Spinner, Stat, StatusMark, TextButton, inputCls } from './ui.jsx'
 
 const WINDOWS = [7, 14, 30]
 
@@ -72,15 +72,18 @@ function EnergyChart({ days, avg, showAvg, target }) {
   const avgY = y(avg).toFixed(1)
   const targetY = target > 0 ? y(target).toFixed(1) : null
   return (
-    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+    <svg role="img" aria-label="Energy logged by day with average and target reference lines" viewBox="0 0 320 88" width="100%" height="108" preserveAspectRatio="none" className="insights-chart mt-3 block">
+      <line x1="0" y1="30" x2="320" y2="30" className="insights-chart-grid" />
+      <line x1="0" y1="52" x2="320" y2="52" className="insights-chart-grid" />
+      <line x1="0" y1="72" x2="320" y2="72" className="insights-chart-grid" />
       {targetY != null && (
         <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="var(--color-cobalt)" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
       )}
       {showAvg && (
         <line x1="0" y1={avgY} x2="320" y2={avgY} stroke="#121210" strokeOpacity="0.28" strokeWidth="1" strokeDasharray="3 4" />
       )}
-      <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
+      <polyline points={pts.join(' ')} className="insights-chart-line" fill="none" />
+      <circle cx="320" cy={lastY} r="3.8" className="insights-chart-endpoint" />
     </svg>
   )
 }
@@ -109,10 +112,13 @@ function ProteinChart({ days, target }) {
   const lastY = y(vals[n - 1]).toFixed(1)
   const targetY = y(target).toFixed(1)
   return (
-    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+    <svg role="img" aria-label="Protein logged by day against the current target" viewBox="0 0 320 88" width="100%" height="108" preserveAspectRatio="none" className="insights-chart mt-3 block">
+      <line x1="0" y1="30" x2="320" y2="30" className="insights-chart-grid" />
+      <line x1="0" y1="52" x2="320" y2="52" className="insights-chart-grid" />
+      <line x1="0" y1="72" x2="320" y2="72" className="insights-chart-grid" />
       <line x1="0" y1={targetY} x2="320" y2={targetY} stroke="var(--color-cobalt)" strokeOpacity="0.55" strokeWidth="1.3" strokeDasharray="1 3" />
-      <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
+      <polyline points={pts.join(' ')} className="insights-chart-line" fill="none" />
+      <circle cx="320" cy={lastY} r="3.8" className="insights-chart-endpoint" />
     </svg>
   )
 }
@@ -130,9 +136,12 @@ function ReadinessChart({ points }) {
   const pts = points.map((p, i) => `${((i / (n - 1)) * 320).toFixed(1)},${y(p.score).toFixed(1)}`)
   const lastY = y(points[n - 1].score).toFixed(1)
   return (
-    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
-      <polyline points={pts.join(' ')} fill="none" stroke="#121210" strokeWidth="1.6" />
-      <circle cx="320" cy={lastY} r="3.4" fill="var(--color-cobalt)" />
+    <svg role="img" aria-label="Readiness score by day" viewBox="0 0 320 88" width="100%" height="108" preserveAspectRatio="none" className="insights-chart mt-3 block">
+      <line x1="0" y1="30" x2="320" y2="30" className="insights-chart-grid" />
+      <line x1="0" y1="52" x2="320" y2="52" className="insights-chart-grid" />
+      <line x1="0" y1="72" x2="320" y2="72" className="insights-chart-grid" />
+      <polyline points={pts.join(' ')} className="insights-chart-line" fill="none" />
+      <circle cx="320" cy={lastY} r="3.8" className="insights-chart-endpoint" />
     </svg>
   )
 }
@@ -188,7 +197,10 @@ function TrainingLoadChart({ points }) {
   const slot = 320 / n
   const barW = slot * 0.6
   return (
-    <svg viewBox="0 0 320 88" width="100%" height="74" preserveAspectRatio="none" className="mt-2.5 block">
+    <svg role="img" aria-label="Training minutes recorded by day" viewBox="0 0 320 88" width="100%" height="108" preserveAspectRatio="none" className="insights-chart mt-3 block">
+      <line x1="0" y1="30" x2="320" y2="30" className="insights-chart-grid" />
+      <line x1="0" y1="52" x2="320" y2="52" className="insights-chart-grid" />
+      <line x1="0" y1="72" x2="320" y2="72" className="insights-chart-grid" />
       {vals.map((v, i) => {
         const h = (v / max) * (BOT - TOP)
         return (
@@ -198,7 +210,7 @@ function TrainingLoadChart({ points }) {
             y={(BOT - h).toFixed(1)}
             width={barW.toFixed(1)}
             height={h.toFixed(1)}
-            fill={i === n - 1 ? 'var(--color-cobalt)' : '#EACD91'}
+            className={i === n - 1 ? 'insights-chart-bar insights-chart-bar--current' : 'insights-chart-bar'}
           />
         )
       })}
@@ -636,22 +648,29 @@ export default function Insights({ refreshKey, onGoToConnections }) {
             )}
           </Card>
 
-          {/* SLEEP × FIBER — a dashed "not enough data" card with a real progress
-              dot-bar bound to logged days. American spelling, like the Plan
-              tab's "Fiber" row and every other surface. */}
+          {/* SLEEP × FIBER — an exploratory pairing, never a causal score. The
+              current API does not retain sleep history in this route, so the
+              inactive state explains exactly what is missing instead of
+              implying that food logging alone proves a relationship. */}
           <div className="insights-current-card insights-tier-support border border-dashed border-line-heavy px-4 py-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted">Sleep × Fiber</span>
               <span className="border border-line-strong px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">Not enough data</span>
             </div>
             <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted">
-              {`${tracked} of ${window} days have a complete food log. Pairing intake with sleep opens once a recovery source is connected — keep logging.`}
+              {`${tracked} of ${window} days have a complete food log. This exploratory view needs matching sleep history and fiber totals; it never treats correlation as cause.`}
             </p>
             <div className="mt-3 flex gap-0.5">
               {Array.from({ length: window }).map((_, i) => (
                 <div key={i} aria-hidden className={`h-[5px] flex-1 ${i < Math.min(window, tracked) ? 'bg-ink' : 'bg-track'}`} />
               ))}
             </div>
+            <Disclosure label="Why show this pairing?" meta="Exploratory only">
+              <p className="px-0 py-3 text-[12px] leading-relaxed text-muted">
+                Fiber is a logged nutrition signal; sleep duration is a recovery signal from a connected wearable. Keeping them side by side can help users notice patterns worth discussing with a clinician, but this app does not score sleep quality from fiber, claim that one causes the other, or fill missing days as zero.
+              </p>
+              <p className="border-t border-line px-0 py-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-faint">Observation only · not medical advice</p>
+            </Disclosure>
           </div>
         </>
       )}

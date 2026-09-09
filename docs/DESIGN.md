@@ -1,5 +1,18 @@
 # DESIGN.md — visual/UX design rationale
 
+## 9 Sep 2026 — shared glass rail and clearer Insights instruments
+
+The polished top control now carries across Today, Plan, Insights, and
+Connect. Today retains dark photo-glass; journal routes use a lighter mineral
+glass so the atmospheric lead-in remains visible without introducing an opaque
+second header. Insights' Energy, Protein, Readiness, and Training Load charts
+now share a larger 108px visual field, quiet guide lines, explicit labels, and a
+single current endpoint so they read with the same confidence as Today's
+instruments. Today progress keylines were reduced to keep color from becoming
+the dominant outline. The Sleep × Fiber surface is explicitly exploratory: it
+explains its purpose, missing-data rule, and non-causal limitation instead of
+presenting a vague readiness state.
+
 ## 8 Sep 2026 — Current optics refinement
 
 The Today header no longer uses a visually separate gray tab slab or independent
