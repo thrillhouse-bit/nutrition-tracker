@@ -89,6 +89,15 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
+/* The selected Today field owns the full safe-area ground as well as the
+   content below it. This keeps the strip behind the fixed rail—and the space
+   around a phone's camera island—from flashing warm paper. `:has` is scoped to
+   our own root so journal routes retain their paper ground. */
+body:has(.app-shell--today),
+#root:has(.app-shell--today) {
+  background: #102b3d;
+}
+
 /* Today is allowed to flow beneath the fixed tab rail. Its field is pulled up
    by the rail's measured 3.25rem height, while the field's own content adds
    that space back. The result is a real glass overlay on the selected photo,
@@ -508,10 +517,42 @@ button.today-glance-orb:active {
    atmospheric panels are deliberately scoped to this journal sequence; the
    rest of the product keeps the sharp editorial system. */
 .today-current-overview {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border-block: 1px solid var(--color-line);
   background:
-    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--color-cobalt) 8%, transparent), transparent 34%),
+    linear-gradient(180deg, rgb(247 244 236 / 0.76), rgb(247 244 236 / 0.92)),
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--color-cobalt) 11%, transparent), transparent 34%),
     #efede7;
+}
+
+/* Continue the chosen field behind Daily current, but make it atmospheric:
+   the image is enlarged and blurred, then veiled by a warm translucent wash.
+   The same custom property is set for curated scenes and personal photos in
+   Today.jsx, so the treatment never falls back to an unrelated stock image. */
+.today-current-overview::before {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  inset: -18px;
+  background-image: var(--today-overview-image);
+  background-position: center 58%;
+  background-size: cover;
+  filter: blur(18px) saturate(0.72) contrast(0.92);
+  opacity: 0.72;
+  transform: scale(1.06);
+}
+
+.today-current-overview::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgb(247 244 236 / 0.46), rgb(247 244 236 / 0.82)),
+    radial-gradient(circle at 10% 12%, rgb(255 255 255 / 0.28), transparent 42%);
 }
 
 .today-metric-card {
@@ -603,6 +644,12 @@ button.today-glance-orb:active {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   text-wrap: balance;
+}
+
+.current-page-date--inline {
+  border-left: 1px solid rgb(255 255 255 / 0.34);
+  padding-left: 0.75rem;
+  text-shadow: 0 1px 4px rgb(4 8 11 / 0.32);
 }
 
 .insights-current-layout > section,

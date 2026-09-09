@@ -152,6 +152,18 @@ describe('Today backdrop preference', () => {
     expect(el.querySelector('.today-paper-sheet')).toBeTruthy()
   })
 
+  it('keeps the day date beside Today and carries the selected field into a softened Daily current ground', async () => {
+    const el = await renderToday()
+    const title = el.querySelector('.today-current-field h1')
+    const date = title?.parentElement?.querySelector('time')
+    const overview = el.querySelector('.today-current-overview')
+    expect(title?.textContent).toBe('Today')
+    expect(date?.textContent).toMatch(/[A-Z][a-z]+ \d+/)
+    expect(date?.getAttribute('dateTime')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(overview?.dataset.scene).toBe('tide')
+    expect(overview?.style.getPropertyValue('--today-overview-image')).toContain('alpine-current-v1.jpg')
+  })
+
   it('keeps the curated image luminous while locally protecting provider and glance text', async () => {
     const el = await renderToday()
     const hero = el.querySelector('.today-current-field')

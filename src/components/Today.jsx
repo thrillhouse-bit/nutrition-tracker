@@ -7,6 +7,18 @@ import { waterAmount } from '../lib/hydration.js'
 import { DEFAULT_TODAY_BACKDROP, loadTodayBackdrop } from '../lib/todayBackdrop.js'
 import { Disclosure, Meter, SegmentBar, SourceLabel, StatusTag, Why, Button, TextButton, EmptyState, Spinner } from './ui.jsx'
 
+// The lower Daily current surface is a softened continuation of the selected
+// Current Field. Keeping the image choice in one map means curated scenes and
+// personal photos use the same treatment without duplicating the hero markup.
+const TODAY_OVERVIEW_BACKDROPS = {
+  tide: "url('/current-fields/alpine-current-v1.jpg')",
+  laguna: "url('/current-fields/laguna-beach-v1.jpg')",
+  manhattan: "url('/current-fields/manhattan-night-v1.jpg')",
+  'big-sur': "url('/current-fields/big-sur-v1.jpg')",
+  'joshua-tree': "url('/current-fields/joshua-tree-v1.jpg')",
+  'lake-tahoe': "url('/current-fields/lake-tahoe-v1.jpg')",
+}
+
 // Manual re-fetch window for the Oura backfill button below — a small
 // trailing window is enough to catch anything the daily resync/connect-time
 // pull missed; the endpoint itself accepts up to 90 but that's a connect-time
@@ -664,6 +676,11 @@ export default function Today({ date, data, dataError, entries, loading, online,
         ? 'Complete Plan setup to measure intake against a personal target.'
         : 'Each food and water entry sharpens the next recommendation.')
   const backdropStyle = backdrop.kind === 'photo' ? { backgroundImage: `url(${backdrop.dataUrl})` } : undefined
+  const overviewBackdropStyle = {
+    '--today-overview-image': backdrop.kind === 'photo'
+      ? `url(${backdrop.dataUrl})`
+      : TODAY_OVERVIEW_BACKDROPS[backdrop.scene] || TODAY_OVERVIEW_BACKDROPS.tide,
+  }
   const scrollGlanceRail = (direction) => {
     glanceRailRef.current?.scrollBy?.({ left: direction * 118, behavior: 'smooth' })
   }
@@ -684,8 +701,10 @@ export default function Today({ date, data, dataError, entries, loading, online,
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 pt-1">
                 <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/90">Body Current</div>
-                <h1 className="serif mt-1 text-[31px] font-semibold leading-none tracking-[-0.02em] text-white">{primaryDayLabel(date)}</h1>
-                <p className="tnum mt-1 text-[11px] font-medium text-white/90">{dateDetail(date)}</p>
+                <div className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                  <h1 className="serif text-[31px] font-semibold leading-none tracking-[-0.02em] text-white">{primaryDayLabel(date)}</h1>
+                  <time dateTime={ymd(date)} className="tnum text-[12px] font-medium tracking-[0.02em] text-white/90">{dateDetail(date)}</time>
+                </div>
               </div>
               <div className="today-hero-control-cluster flex shrink-0 items-center">
                 <nav aria-label="Choose day" className="flex items-center">
@@ -839,7 +858,7 @@ export default function Today({ date, data, dataError, entries, loading, online,
           </div>
         )}
 
-      <section aria-labelledby="daily-current-heading" className="today-current-overview -mx-4 space-y-3 px-4 py-6">
+      <section aria-labelledby="daily-current-heading" data-scene={backdrop.kind === 'scene' ? backdrop.scene : 'photo'} style={overviewBackdropStyle} className="today-current-overview -mx-4 space-y-3 px-4 py-6">
         <header className="px-1 pb-1">
           <div className="eyebrow">Daily current</div>
           <h2 id="daily-current-heading" className="serif mt-1 text-[29px] font-semibold leading-[1.02] tracking-[-0.02em] text-ink">Fuel, water, and movement</h2>

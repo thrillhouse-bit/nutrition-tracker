@@ -12,13 +12,15 @@ function dateStamp(date) {
 export default function CanonicalPlan({ date, refreshKey, onChanged }) {
   return (
     <div className="plan-current-layout">
-      <header className="current-page-intro flex flex-wrap items-end justify-between gap-x-5 gap-y-4">
-        <div>
+      <header className="current-page-intro">
+        <div className="min-w-0">
           <p className="eyebrow text-white/70">Daily strategy</p>
-          <h2 className="serif mt-1.5 text-[34px] leading-tight text-white">Plan</h2>
+          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="serif text-[34px] leading-tight text-white">Plan</h2>
+            <time dateTime={ymd(date)} className="current-page-date current-page-date--inline tnum text-[11px] font-semibold uppercase tracking-[0.12em] text-white/82">{dateStamp(date)}</time>
+          </div>
           <p className="current-page-intro-copy mt-2 max-w-[290px] text-[13px] leading-relaxed text-white/78">Your evidence-based targets, training context, and next adjustments in one place.</p>
         </div>
-        <time dateTime={ymd(date)} className="current-page-date tnum max-w-[170px] border border-white/28 bg-black/15 px-3 py-2.5 text-right text-[15px] font-semibold leading-snug text-white">{dateStamp(date)}</time>
       </header>
       <AdaptiveFuelPlan date={date} refreshKey={refreshKey} onChanged={onChanged} />
     </div>

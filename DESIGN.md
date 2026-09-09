@@ -202,6 +202,13 @@ and deepens only behind the recommendation and paper seam. This preserves
 terrain detail through the focal gauge instead of turning the field into a
 dark panel.
 
+The Today field also owns the safe-area ground behind the fixed rail, including
+the camera-island region on supported browsers. Its day label and date share a
+single masthead line. Daily current carries the selected field image forward as
+a blurred, warm-veiled texture behind the cards, keeping the atmosphere
+continuous without making the data hard to read. Plan places its date inline
+with the title as context rather than leaving a decorative square control.
+
 Below the field, **Daily current** applies the reference app's calmer
 one-subject-per-surface hierarchy to Body Current's own records: intake and
 macros, connected-device energy/movement, the latest real wearable activity,

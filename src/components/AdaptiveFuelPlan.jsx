@@ -661,13 +661,17 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
 
       <section aria-label="Why these targets" className="border-t border-line pt-5">
       <h4 className="text-[16px] font-extrabold tracking-tight text-ink">Why these targets</h4>
+      <p className="mt-2 max-w-[38rem] text-[13px] leading-relaxed text-muted">
+        Think of these as a practical starting point, not a score you have to hit perfectly. We estimate your everyday energy needs, then shape the balance of protein, fat, and carbohydrate around your goal and today’s training.
+      </p>
       <Why
         label="Why this changed"
         items={[
-          `NASEM 2023 maintenance estimate: ${fmt(p.energy.baseline)} kcal.`,
-          'Training modality, duration, timing, and intensity inform carbohydrate planning; wearable calories are not added to this estimate.',
-          `Energy stays at ${fmt(p.targets.calories)} kcal: protein is allocated first, fat is ${fmt(p.carbPlan.fatEnergyPct, 1)}% of energy, and carbohydrate uses the remainder.`,
-          p.energy.goalAdjustment !== 0 ? `Goal adjustment: ${p.energy.goalAdjustment > 0 ? '+' : ''}${fmt(p.energy.goalAdjustment)} kcal.` : 'No goal-driven adjustment (maintaining).',
+          `Your maintenance starting point is about ${fmt(p.energy.baseline)} kcal—the amount we estimate would keep your weight broadly steady.`,
+          'Protein is set first to give muscles a consistent repair and recovery building block.',
+          'Fat gets a dependable share of energy, and carbohydrate uses what remains so the plan stays internally consistent.',
+          'Training type, duration, timing, and intensity can change the carbohydrate emphasis; wearable calories are context, not extra calories added on top.',
+          p.energy.goalAdjustment !== 0 ? `Your goal shifts the starting point by ${p.energy.goalAdjustment > 0 ? '+' : ''}${fmt(p.energy.goalAdjustment)} kcal.` : 'Because your goal is maintenance, no automatic calorie change is applied.',
           p.energy.goalAdjustmentCapped ? 'A conservative strategy guardrail limited the automatic adjustment.' : null,
           p.overridesApplied ? 'Your manual override is applied on top of all of the above.' : null,
         ].filter(Boolean)}

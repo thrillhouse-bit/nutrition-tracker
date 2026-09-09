@@ -1,5 +1,16 @@
 # DESIGN.md — visual/UX design rationale
 
+## 9 Sep 2026 — Today field continuity and clearer planning context
+
+Today now owns the full safe-area ground behind the fixed rail, so the camera
+island area does not flash paper while the immersive field is active. The day
+label and date share one masthead line to reclaim vertical space. Daily current
+keeps the selected field image as a deliberately blurred, warm-veiled texture
+behind its information cards; it is atmospheric support, never a second hero.
+Plan treats its date as inline context beside the title rather than a stranded
+non-interactive square. “Why these targets” leads with plain-language guidance
+before the technical evidence disclosures.
+
 ## 9 Sep 2026 — shared glass rail and clearer Insights instruments
 
 The polished top control now carries across Today, Plan, Insights, and

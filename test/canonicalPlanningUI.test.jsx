@@ -45,6 +45,8 @@ describe('one credible daily planning loop', () => {
     expect(el.textContent).not.toContain('Quick targets')
     expect(el.querySelector('time').getAttribute('dateTime')).toBe('2026-08-31')
     expect(el.querySelector('time').textContent).toContain('August')
+    expect(el.querySelector('time').className).toContain('current-page-date--inline')
+    expect(el.querySelector('time').closest('header').textContent).toContain('August 31')
   })
 
   it('onboarding goes directly to the canonical profile with no calculator/manual fork', async () => {
