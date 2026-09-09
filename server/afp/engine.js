@@ -2,11 +2,11 @@
 // provide every input and persist the returned snapshot.
 import { AFP_SCIENCE, SCIENCE_VERSION } from './science.js'
 
-export const ENGINE_VERSION = 2
+export const ENGINE_VERSION = 3
 export { SCIENCE_VERSION }
 
 const number = (value) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null }
-const round = (value, step = 1) => Math.round(value / step) * step
+const round = (value, step = 1) => Number((Math.round(value / step) * step).toFixed(10))
 const clamp = (value, lower, upper) => Math.min(upper, Math.max(lower, value))
 
 // Historical aliases keep old snapshots readable. Unknown values are never
@@ -80,18 +80,50 @@ export function reconcileSessions(planned = [], synced = []) {
 }
 
 export const TRAINING_LOAD_TIERS = AFP_SCIENCE.carbohydrate.constants.dailyBands
+const MODALITY_DEMAND = Object.freeze({
+  run: 1, ride: 1, swim: 1, row: 1, hike: 0.8,
+  hiit: 0.85, cardio: 0.8, workout: 0.65, strength: 0.55,
+  walk: 0.35, mobility: 0.2,
+})
+const INTENSITY_DEMAND = Object.freeze({ easy: 0.65, moderate: 1, hard: 1.2 })
+
+function interpolateDemand(minutes) {
+  const anchors = [[0, 3.5], [30, 4], [60, 5], [90, 6], [180, 8], [300, 10]]
+  const value = Math.max(0, minutes)
+  for (let i = 1; i < anchors.length; i += 1) {
+    const [rightMinutes, rightValue] = anchors[i]
+    const [leftMinutes, leftValue] = anchors[i - 1]
+    if (value <= rightMinutes) {
+      const fraction = (value - leftMinutes) / (rightMinutes - leftMinutes)
+      return round(leftValue + (rightValue - leftValue) * fraction, 0.1)
+    }
+  }
+  return 10
+}
+
 export function classifyTrainingLoad(sessions = []) {
   const totalMinutes = sessions.reduce((sum, session) => sum + Math.max(0, number(session.durationMin) || 0), 0)
   const hard = sessions.some((session) => session.intensity === 'hard' && (number(session.durationMin) || 0) >= 20)
-  let tier = totalMinutes <= 20 ? TRAINING_LOAD_TIERS[0] : totalMinutes <= 75 ? TRAINING_LOAD_TIERS[1] : totalMinutes <= 240 ? TRAINING_LOAD_TIERS[2] : TRAINING_LOAD_TIERS[3]
-  // Daily carbohydrate bands are duration bands. A hard interval is useful
-  // context for the plan, but must not promote a 76-minute session into the
-  // over-four-hour very-high band.
-  return { tier: tier.id, totalMinutes, hasHardSession: hard, carbBand: tier.gPerKg }
+  const effectiveEnduranceMinutes = sessions.reduce((sum, session) => {
+    const minutes = Math.max(0, number(session.durationMin) || 0)
+    const modality = MODALITY_DEMAND[session.sport] ?? MODALITY_DEMAND.workout
+    const intensity = INTENSITY_DEMAND[session.intensity] ?? INTENSITY_DEMAND.moderate
+    return sum + minutes * modality * intensity
+  }, 0)
+  const tier = effectiveEnduranceMinutes <= 45 ? TRAINING_LOAD_TIERS[0] : effectiveEnduranceMinutes <= 90 ? TRAINING_LOAD_TIERS[1] : effectiveEnduranceMinutes <= 240 ? TRAINING_LOAD_TIERS[2] : TRAINING_LOAD_TIERS[3]
+  return {
+    tier: tier.id,
+    totalMinutes,
+    effectiveEnduranceMinutes: round(effectiveEnduranceMinutes, 0.1),
+    demandPerKg: interpolateDemand(effectiveEnduranceMinutes),
+    hasHardSession: hard,
+    carbBand: tier.gPerKg,
+  }
 }
 export function carbohydrateTarget(weightKg, load) {
   const weight = number(weightKg); if (weight == null || weight <= 0) return null
-  const [low, high] = load.carbBand, perKg = (low + high) / 2
+  const [low, high] = load.carbBand
+  const perKg = clamp(number(load.demandPerKg) ?? (low + high) / 2, low, high)
   return { grams: round(weight * perKg), perKg, band: [low, high], citationId: AFP_SCIENCE.carbohydrate.id }
 }
 export const carbTargetFromBand = (weightKg, band) => carbohydrateTarget(weightKg, { carbBand: band })
@@ -167,6 +199,40 @@ export function reconcileMacroTargets({ calories, protein_g, carbs_g, fat_g, fat
     fat_g: round(fat, 0.1),
   }
 }
+
+// Automatic targets are an allocation of a fixed energy budget. Protein is
+// selected first from its evidence band; carbohydrate expresses training
+// demand only as far as the energy budget permits while fat remains within the
+// adult AMDR. This deliberately cannot increase calories to satisfy a sports
+// carbohydrate range.
+export function allocateAutomaticMacros({ calories, protein_g, desiredCarbs_g }) {
+  const energy = Math.max(0, number(calories) || 0)
+  const protein = Math.max(0, number(protein_g) || 0)
+  const desiredCarbs = Math.max(0, number(desiredCarbs_g) || 0)
+  const proteinCalories = protein * 4
+  const { minFatEnergyFraction, maxFatEnergyFraction } = AFP_SCIENCE.macroReconciliation
+  const minimumFatCalories = energy * minFatEnergyFraction
+  const maximumFatCalories = energy * maxFatEnergyFraction
+  const availableAfterProtein = Math.max(0, energy - proteinCalories)
+  const lowerFatCalories = Math.min(minimumFatCalories, availableAfterProtein)
+  const upperFatCalories = Math.max(lowerFatCalories, Math.min(maximumFatCalories, availableAfterProtein))
+  const fatCaloriesNeededForDemand = energy - proteinCalories - desiredCarbs * 4
+  const fatCalories = clamp(fatCaloriesNeededForDemand, lowerFatCalories, upperFatCalories)
+  const carbs = Math.max(0, (energy - proteinCalories - fatCalories) / 4)
+  const fat = Math.max(0, (energy - proteinCalories - carbs * 4) / 9)
+  return {
+    calories: round(energy, 0.1),
+    protein_g: round(protein, 0.1),
+    carbs_g: round(carbs, 0.1),
+    fat_g: round(fat, 0.1),
+    allocation: {
+      desiredCarbs_g: round(desiredCarbs, 0.1),
+      energyLimited: carbs + 0.05 < desiredCarbs,
+      fatEnergyPct: energy > 0 ? round((fatCalories / energy) * 100, 0.1) : 0,
+      citationId: AFP_SCIENCE.macroReconciliation.citationId,
+    },
+  }
+}
 export function computeProgress(targets, actualIntake = {}) {
   return Object.fromEntries(['calories', 'protein_g', 'carbs_g', 'fat_g'].map((key) => { const target = number(targets?.[key]); if (target == null) return [key, null]; const actual = number(actualIntake?.[key]) || 0; return [key, { target, actual, remaining: round(target - actual, 0.1), pct: target > 0 ? Math.round(actual / target * 100) : 0 }] }))
 }
@@ -189,13 +255,14 @@ export function computeAdaptivePlan({ profile = {}, plannedSessions = [], synced
   // long training days to prioritize availability for the session.
   if (goal.strategy === 'fat_loss' && (load.hasHardSession || load.totalMinutes > 75)) goal.adjustmentKcal = 0
   const carb = carbohydrateTarget(profile.weightKg, load), protein = proteinTarget(profile.weightKg, strategy)
-  // A positive floor keeps a plan nutritionally coherent even on very-high
-  // carbohydrate days where protein + carbohydrate otherwise consume all
-  // calories. It is a floor only; calories rise rather than silently cutting
-  // a selected protein or carbohydrate target.
-  const fatFloorG = Number(profile.weightKg) * AFP_SCIENCE.macroReconciliation.fatFloorGPerKg
-  const computedTargets = reconcileMacroTargets({ calories: round(eer.value + goal.adjustmentKcal), protein_g: protein.grams, carbs_g: carb.grams, fatFloorG })
+  const automatic = allocateAutomaticMacros({ calories: round(eer.value + goal.adjustmentKcal), protein_g: protein.grams, desiredCarbs_g: carb.grams })
+  const { allocation, ...computedTargets } = automatic
+  // A deliberate day override owns its requested macro mix. Reconcile it for
+  // physical consistency, but do not impose the automatic-plan AMDR policy.
+  const fatFloorG = 0
   const acceptedOverrides = Object.fromEntries(Object.entries(overrides || {}).filter(([key, value]) => ['calories', 'protein_g', 'carbs_g', 'fat_g'].includes(key) && number(value) != null).map(([key, value]) => [key, number(value)]))
   const targets = Object.keys(acceptedOverrides).length ? reconcileMacroTargets({ ...computedTargets, ...acceptedOverrides, fatFloorG }) : computedTargets
-  return { ok: true, engineVersion: ENGINE_VERSION, scienceVersion: SCIENCE_VERSION, science: AFP_SCIENCE, eligibility, bmi: computeBMI(profile.weightKg, profile.heightCm), eer, energy: { baseline: eer.value, exercise: 0, goalAdjustment: goal.adjustmentKcal, total: computedTargets.calories, goalStrategy: goal.strategy, goalAdjustmentCapped: goal.capped, citationId: goal.citationId }, targets, computedTargets, overridesApplied: Object.keys(acceptedOverrides).length ? acceptedOverrides : null, trainingLoad: { ...load, sessions }, carbPlan: { ...carb, guidance: buildCarbGuidance({ sessions, nextDayHasDemandingSession: nextDaySessions.some((session) => (number(session.durationMin) || 0) >= 60 || session.intensity === 'hard') }) }, carbLoading: evaluateCarbLoading(nextDaySessions) }
+  const displayedCarbGrams = targets.carbs_g
+  const displayedCarbPerKg = round(displayedCarbGrams / Number(profile.weightKg), 0.1)
+  return { ok: true, engineVersion: ENGINE_VERSION, scienceVersion: SCIENCE_VERSION, science: AFP_SCIENCE, eligibility, bmi: computeBMI(profile.weightKg, profile.heightCm), eer, energy: { baseline: eer.value, exercise: 0, goalAdjustment: goal.adjustmentKcal, total: computedTargets.calories, goalStrategy: goal.strategy, goalAdjustmentCapped: goal.capped, citationId: goal.citationId }, targets, computedTargets, overridesApplied: Object.keys(acceptedOverrides).length ? acceptedOverrides : null, trainingLoad: { ...load, sessions }, carbPlan: { ...carb, grams: displayedCarbGrams, perKg: displayedCarbPerKg, demandGrams: carb.grams, demandPerKg: carb.perKg, energyLimited: allocation.energyLimited, fatEnergyPct: allocation.fatEnergyPct, allocationCitationId: allocation.citationId, guidance: buildCarbGuidance({ sessions, nextDayHasDemandingSession: nextDaySessions.some((session) => (number(session.durationMin) || 0) >= 60 || session.intensity === 'hard') }) }, carbLoading: evaluateCarbLoading(nextDaySessions) }
 }

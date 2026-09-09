@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AFP_SCIENCE, SCIENCE_VERSION } from '../server/afp/science.js'
-import { ENGINE_VERSION, NASEM_2023_EER, computeAdaptivePlan, estimateEER, evaluateEligibility, normalizeGoal, proteinTarget, reconcileMacroTargets } from '../server/afp/engine.js'
+import { ENGINE_VERSION, NASEM_2023_EER, allocateAutomaticMacros, computeAdaptivePlan, estimateEER, evaluateEligibility, normalizeGoal, proteinTarget, reconcileMacroTargets } from '../server/afp/engine.js'
 
 const adultMale = { ageYears: 30, heightCm: 180, weightKg: 80, eerSex: 'male', activityLevel: 'active', goal: 'maintenance', eligibilityAttested: true }
 
@@ -15,7 +15,7 @@ describe('AFP v1 science registry', () => {
   })
   it('indexes the cited evidence base with stable IDs and official URLs', () => {
     expect(AFP_SCIENCE.sources.map((source) => source.id)).toEqual(expect.arrayContaining([
-      'nasem-2023-eer', 'burke-2011-carbohydrate', 'wearable-validation-2024',
+      'nasem-2023-eer', 'nasem-2005-amdr', 'burke-2011-carbohydrate', 'wearable-validation-2024',
     ]))
     for (const source of AFP_SCIENCE.sources) {
       expect(source.doi || source.url).toMatch(/^https:\/\//)
@@ -58,10 +58,10 @@ describe('AFP v1 plan golden vectors', () => {
   it('uses EER as target basis and never adds a synced calorie value 1:1', () => {
     const rest = computeAdaptivePlan({ profile: adultMale })
     const synced = computeAdaptivePlan({ profile: adultMale, syncedSessions: [{ sport: 'run', durationMin: 60, calories: 900, intensity: 'hard' }] })
-    expect(rest).toMatchObject({ ok: true, scienceVersion: SCIENCE_VERSION, targets: { calories: 3126, protein_g: 112, carbs_g: 320 } })
+    expect(rest).toMatchObject({ ok: true, scienceVersion: SCIENCE_VERSION, targets: { calories: 3126, protein_g: 112, carbs_g: 396 } })
     expect(synced.energy.exercise).toBe(0)
     expect(synced.energy.baseline).toBe(rest.energy.baseline)
-    expect(synced.targets.calories - rest.targets.calories).toBeLessThan(900)
+    expect(synced.targets.calories).toBe(rest.targets.calories)
     expect(synced.targets.carbs_g).toBeGreaterThan(rest.targets.carbs_g)
   })
   it('normalizes strategy aliases and applies a bounded EER-relative strategy', () => {
@@ -71,7 +71,7 @@ describe('AFP v1 plan golden vectors', () => {
   })
   it('returns the pre/during/loading carbohydrate contract only when applicable', () => {
     const plan = computeAdaptivePlan({ profile: adultMale, plannedSessions: [{ sport: 'run', intensity: 'hard', durationMin: 180 }], nextDaySessions: [{ sport: 'run', isRace: true, carbLoadingOptIn: true, durationMin: 240 }] })
-    expect(plan.carbPlan).toMatchObject({ band: [6, 10], grams: 640 })
+    expect(plan.carbPlan).toMatchObject({ band: [6, 10], grams: 513.2, demandGrams: 688, energyLimited: true })
     expect(plan.carbPlan.guidance.preworkout).toMatchObject({ gPerKg: [1, 4], timingHours: [1, 4] })
     expect(plan.carbPlan.guidance.duringWorkout).toMatchObject({ gramsPerHour: [60, 90], multiTransportCarbohydrate: true })
     expect(plan.carbLoading).toMatchObject({ eligible: true, gPerKgPerDay: [10, 12], durationHours: [36, 48] })
@@ -93,15 +93,37 @@ describe('AFP v1 plan golden vectors', () => {
     expect(Object.values(plan.targets).every((value) => value >= 0)).toBe(true)
     expect(plan.targets.calories).toBeCloseTo(plan.targets.protein_g * 4 + plan.targets.carbs_g * 4 + plan.targets.fat_g * 9, 0)
   })
-  it('keeps a positive fat floor and raises energy on a very-high-load day', () => {
+  it('keeps fat within the adult AMDR without raising energy on a very-high-load day', () => {
     const plan = computeAdaptivePlan({ profile: adultMale, plannedSessions: [{ sport: 'ride', intensity: 'moderate', durationMin: 300 }] })
     expect(plan.trainingLoad.tier).toBe('very_high')
-    expect(plan.targets.fat_g).toBeGreaterThanOrEqual(40)
+    expect(plan.targets.calories).toBe(3126)
+    expect(plan.carbPlan).toMatchObject({ demandGrams: 800, energyLimited: true, fatEnergyPct: 20 })
     expect(plan.targets.calories).toBeCloseTo(plan.targets.protein_g * 4 + plan.targets.carbs_g * 4 + plan.targets.fat_g * 9, 0)
   })
-  it('does not classify a 76-minute hard session as very high load', () => {
+  it('scales continuously by modality and intensity instead of a raw 75-minute cliff', () => {
     const plan = computeAdaptivePlan({ profile: adultMale, plannedSessions: [{ sport: 'run', intensity: 'hard', durationMin: 76 }] })
-    expect(plan.trainingLoad).toMatchObject({ tier: 'endurance_high', totalMinutes: 76, hasHardSession: true, carbBand: [6, 10] })
+    const easy = computeAdaptivePlan({ profile: adultMale, plannedSessions: [{ sport: 'run', intensity: 'easy', durationMin: 76 }] })
+    expect(plan.trainingLoad).toMatchObject({ tier: 'endurance_high', totalMinutes: 76, effectiveEnduranceMinutes: 91.2, hasHardSession: true, carbBand: [6, 10] })
+    expect(easy.trainingLoad).toMatchObject({ tier: 'moderate', totalMinutes: 76, effectiveEnduranceMinutes: 49.4, carbBand: [5, 7] })
+    expect(plan.carbPlan.demandPerKg).toBe(6)
+    expect(easy.carbPlan.demandPerKg).toBe(5)
+  })
+  it('regresses the reported 700 g failure and never lets automatic carbs expand energy', () => {
+    const profile = { ...adultMale, weightKg: 88 }
+    const baseline = computeAdaptivePlan({ profile })
+    const plan = computeAdaptivePlan({ profile, plannedSessions: [{ sport: 'workout', intensity: 'easy', durationMin: 76 }] })
+    expect(plan.targets.calories).toBe(baseline.targets.calories)
+    expect(plan.targets.carbs_g).toBeLessThan(500)
+    expect(plan.targets.carbs_g).toBeLessThan(700)
+    expect(plan.carbPlan.demandPerKg).toBe(4.1)
+  })
+  it('allocates protein first, keeps fat at 20–35% of energy, and gives carbs the remainder', () => {
+    for (const desiredCarbs_g of [200, 432, 900]) {
+      const result = allocateAutomaticMacros({ calories: 3126, protein_g: 112, desiredCarbs_g })
+      expect(result.fat_g * 9 / result.calories).toBeGreaterThanOrEqual(0.199)
+      expect(result.fat_g * 9 / result.calories).toBeLessThanOrEqual(0.351)
+      expect(result.calories).toBeCloseTo(result.protein_g * 4 + result.carbs_g * 4 + result.fat_g * 9, 0)
+    }
   })
   it('attaches the reviewed evidence citation to the bounded goal policy', () => {
     expect(computeAdaptivePlan({ profile: adultMale }).energy.citationId).toBe(AFP_SCIENCE.goal.id)

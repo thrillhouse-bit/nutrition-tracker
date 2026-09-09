@@ -1,6 +1,6 @@
 // Stable evidence registry for AFP v1. Values are independently versioned so
 // a saved plan identifies its exact scientific basis.
-export const SCIENCE_VERSION = 'afp-science-2026.1'
+export const SCIENCE_VERSION = 'afp-science-2026.2'
 // Confidence is an editorial applicability assessment, not a formal GRADE
 // rating. Source design must always be explicit; a review is not a guideline.
 const source = (id, title, url, doi, population, limits, type, confidence = 'moderate') => Object.freeze({ id, title, url, doi, population, limits, type, confidence, confidenceMethod: 'editorial_applicability_not_GRADE', reviewedOn: '2026-09-04', reviewDueOn: '2027-09-04' })
@@ -12,6 +12,7 @@ export const AFP_SCIENCE = Object.freeze({
   // by an invented calculation.
   sources: Object.freeze([
     source('nasem-2023-eer', 'Dietary Reference Intakes for Energy', 'https://nap.nationalacademies.org/catalog/26818/dietary-reference-intakes-for-energy', 'https://doi.org/10.17226/26818', 'Adults 19+ in sex-stratified source data.', 'Population maintenance estimate; not a clinical or under-19 equation.', 'national_academies_report', 'high'),
+    source('nasem-2005-amdr', 'Dietary Reference Intakes for Macronutrients', 'https://nap.nationalacademies.org/catalog/10490/dietary-reference-intakes-for-energy-carbohydrate-fiber-fat-fatty-acids-cholesterol-protein-and-amino-acids', 'https://doi.org/10.17226/10490', 'Generally healthy adults.', 'AMDRs are population planning ranges, not individualized treatment or sport-performance targets.', 'national_academies_report', 'high'),
     source('mifflin-1990-legacy', 'A new predictive equation for resting energy expenditure', 'https://academic.oup.com/ajcn/article/51/2/241/4695104', 'https://doi.org/10.1093/ajcn/51.2.241', 'Adults in the original RMR study.', 'Legacy fallback only; not used by AFP v1 targets.', 'cross_sectional_validation', 'moderate'),
     source('acsm-and-dc-2016', 'Nutrition and Athletic Performance', 'https://journals.lww.com/acsm-msse/fulltext/2016/03000/nutrition_and_athletic_performance.25.aspx', 'https://doi.org/10.1249/MSS.0000000000000852', 'Healthy exercising adults.', 'Planning ranges, not individualized treatment.', 'position_stand', 'high'),
     source('burke-2011-carbohydrate', 'Carbohydrates for training and competition', 'https://doi.org/10.1080/02640414.2011.585473', 'https://doi.org/10.1080/02640414.2011.585473', 'Athletes.', 'Requires individual gastrointestinal tolerance.', 'review', 'moderate'),
@@ -43,9 +44,8 @@ export const AFP_SCIENCE = Object.freeze({
     ...source('acsm-and-dc-2016', 'Nutrition and Athletic Performance', 'https://journals.lww.com/acsm-msse/fulltext/2016/03000/nutrition_and_athletic_performance.25.aspx', 'https://doi.org/10.1249/MSS.0000000000000852', 'Healthy exercising adults.', 'Ranges are not individualized treatment for kidney disease, pregnancy, minors, or eating-disorder risk.', 'position_stand', 'high'),
     constants: Object.freeze({ bands: Object.freeze({ maintenance: Object.freeze([1.2, 1.6]), fat_loss: Object.freeze([1.2, 1.6]), muscle_gain: Object.freeze([1.6, 1.6]), endurance_performance: Object.freeze([1.4, 1.8]) }) }),
   }),
-  // This is transparent product arithmetic, not an evidence-derived clinical
-  // minimum: it keeps an otherwise energy-coherent high-carbohydrate plan
-  // from displaying 0 g fat. The engine raises total energy rather than
-  // silently reducing selected protein or carbohydrate targets.
-  macroReconciliation: Object.freeze({ fatFloorGPerKg: 0.5, citationId: null, policy: 'Product safety arithmetic; not a clinical nutrition prescription.' }),
+  // Automatic plans keep energy fixed and fit carbohydrate around protein and
+  // the adult fat AMDR. Sport-carbohydrate ranges remain demand context; they
+  // do not silently create a larger energy prescription.
+  macroReconciliation: Object.freeze({ minFatEnergyFraction: 0.20, maxFatEnergyFraction: 0.35, citationId: 'nasem-2005-amdr', policy: 'Energy-constrained automatic macro allocation using the adult fat AMDR; not a clinical nutrition prescription.' }),
 })

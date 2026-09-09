@@ -259,7 +259,17 @@ async function computeAndSave(store, userId, date) {
   const plan = (profileRow.plan_mode || 'automatic') === 'automatic'
     ? computeAdaptivePlan({ profile, plannedSessions: planned, syncedSessions: synced, nextDaySessions, overrides })
     : manualPlan(profileRow, overrides)
-  const inputSnapshot = { profile, planned: plannedRows, synced, nextDaySessions: nextPlannedRows, overrides }
+  // Calculation versions are part of identity. A production engine/science
+  // update must recompute today's otherwise-identical inputs instead of
+  // returning a stale snapshot from the prior formula.
+  const inputSnapshot = {
+    calculationVersion: { engine: ENGINE_VERSION, science: plan.scienceVersion || 'manual' },
+    profile,
+    planned: plannedRows,
+    synced,
+    nextDaySessions: nextPlannedRows,
+    overrides,
+  }
   const inputSnapshotHash = afpInputSnapshotHash(inputSnapshot)
   // A recomputation with identical canonical inputs is a read-equivalent
   // operation. Returning the existing row prevents needless revision churn.

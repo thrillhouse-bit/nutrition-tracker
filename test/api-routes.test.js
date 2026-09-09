@@ -2735,6 +2735,7 @@ describe('GET/PUT /api/afp/profile', () => {
     const first = await (await get('/api/afp/plan?date=2026-08-25')).json()
     const second = (await (await post('/api/afp/plan/2026-08-25/recompute', {})).json()).plan
     expect(first.input_snapshot_hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(first.input_snapshot.calculationVersion).toEqual({ engine: 3, science: 'afp-science-2026.2' })
     expect(second.input_snapshot_hash).toBe(first.input_snapshot_hash)
     expect(second.plan.targets).toEqual(first.plan.targets)
     // Recomputing unchanged inputs is idempotent across devices; it must not

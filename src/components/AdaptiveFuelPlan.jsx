@@ -666,6 +666,7 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         items={[
           `NASEM 2023 maintenance estimate: ${fmt(p.energy.baseline)} kcal.`,
           'Training modality, duration, timing, and intensity inform carbohydrate planning; wearable calories are not added to this estimate.',
+          `Energy stays at ${fmt(p.targets.calories)} kcal: protein is allocated first, fat is ${fmt(p.carbPlan.fatEnergyPct, 1)}% of energy, and carbohydrate uses the remainder.`,
           p.energy.goalAdjustment !== 0 ? `Goal adjustment: ${p.energy.goalAdjustment > 0 ? '+' : ''}${fmt(p.energy.goalAdjustment)} kcal.` : 'No goal-driven adjustment (maintaining).',
           p.energy.goalAdjustmentCapped ? 'A conservative strategy guardrail limited the automatic adjustment.' : null,
           p.overridesApplied ? 'Your manual override is applied on top of all of the above.' : null,
@@ -696,9 +697,13 @@ export default function AdaptiveFuelPlan({ date, refreshKey, onChanged }) {
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 border-y border-line py-3.5">
           <div><div className="eyebrow">Today</div><div className="tnum mt-1 text-[20px] font-extrabold tracking-tight text-ink">{p.carbPlan.perKg ?? p.carbPlan.gPerKgChosen} <span className="text-[10px] font-bold text-muted">g/kg</span></div></div>
-          <div><div className="eyebrow">Evidence band</div><div className="tnum mt-1 text-[20px] font-extrabold tracking-tight text-ink">{p.carbPlan.band[0]}–{p.carbPlan.band[1]} <span className="text-[10px] font-bold text-muted">g/kg</span></div></div>
+          <div><div className="eyebrow">Training-demand band</div><div className="tnum mt-1 text-[20px] font-extrabold tracking-tight text-ink">{p.carbPlan.band[0]}–{p.carbPlan.band[1]} <span className="text-[10px] font-bold text-muted">g/kg</span></div></div>
         </div>
-        <p className="mt-3 text-[12px] leading-relaxed text-muted">Already included in today’s carbohydrate target—not added on top.</p>
+        <p className="mt-3 text-[12px] leading-relaxed text-muted">
+          {p.carbPlan.energyLimited
+            ? `Training demand points toward ${fmt(p.carbPlan.demandPerKg, 1)} g/kg, but today’s ${fmt(p.targets.calories)} kcal budget limits the target while retaining at least 20% of energy from fat.`
+            : 'Already included in today’s fixed energy budget—not added on top.'}
+        </p>
         <Why label="Fuel timing guidance" items={[
           (p.carbPlan.guidance?.preworkout || p.carbPlan.preworkout) ? (p.carbPlan.guidance?.preworkout ? `Pre-session: ${p.carbPlan.guidance.preworkout.gPerKg[0]}–${p.carbPlan.guidance.preworkout.gPerKg[1]} g/kg, ${p.carbPlan.guidance.preworkout.timingHours[0]}–${p.carbPlan.guidance.preworkout.timingHours[1]} hours before.` : `Pre-session: ~${p.carbPlan.preworkout.grams} g, ${p.carbPlan.preworkout.timing}.`) : null,
           (p.carbPlan.guidance?.duringWorkout || p.carbPlan.duringWorkout) ? (p.carbPlan.guidance?.duringWorkout ? `During the session: ${p.carbPlan.guidance.duringWorkout.gramsPerHour[0]}–${p.carbPlan.guidance.duringWorkout.gramsPerHour[1]} g/hour. Amounts near 90 g/hour require a hard, tolerated long session, multi-transportable carbohydrate, and gut training.` : `During the session: ~${p.carbPlan.duringWorkout.gramsPerHour} g/hour.`) : null,

@@ -38,10 +38,20 @@ The server, rather than the browser, enforces automatic-plan eligibility. Pregna
 
 Wearables provide modality, duration, timing, and intensity as planning inputs. Their calorie fields remain low-confidence provenance and are never a direct calorie target override. Missing or stale wearable data is labelled unknown, not rest or zero. The reconciler deduplicates overlapping multi-provider sessions; Garmin is included when activity data is available.
 
-When selected protein and carbohydrate targets would otherwise leave zero fat,
-AFP raises the displayed energy target to retain a 0.5 g/kg fat floor. This is
-transparent product safety arithmetic for a physically reconcilable plan, not
-an evidence-derived clinical minimum or a medical nutrition prescription.
+Automatic targets are allocated inside the NASEM/goal energy budget; a sports
+carbohydrate range can never silently increase that budget. The engine assigns
+protein first, keeps fat within the adult 20–35% Acceptable Macronutrient
+Distribution Range, and gives carbohydrate the remaining energy. If a high
+training demand cannot fit, the UI shows both the demand estimate and the
+energy-constrained target. This is transparent planning arithmetic, not a
+clinical prescription.
+
+Training demand changes continuously rather than jumping at a raw minute
+threshold. Duration is weighted by broad modality and user/sensor-supplied
+intensity, then interpolated within the published daily carbohydrate bands.
+Those weights and interpolation anchors are explicit product policy used to
+avoid treating 76 easy minutes like 76 hard endurance minutes; they are not
+claimed as constants validated by any wearable vendor or position stand.
 
 Daily carbohydrate bands are part of the single daily carbohydrate target, not extra carbohydrate added on top of it:
 
@@ -72,5 +82,6 @@ Protein is shown as an evidence-bound range, not a false exact personal need: ge
 8. `HELMS-ENERGY-SURPLUS-2023` — *Effect of Small and Large Energy Surpluses on Strength, Muscle, and Skinfold Thickness in Resistance-Trained Individuals: A Parallel Groups Design* (parallel-groups trial; surplus evidence, not weight-loss evidence). DOI: [10.1186/s40798-023-00651-y](https://doi.org/10.1186/s40798-023-00651-y).
 9. `IOC-REDS-2023` — DOI: [10.1136/bjsports-2023-106994](https://doi.org/10.1136/bjsports-2023-106994).
 10. `WEARABLE-VALIDATION-2024` — DOI: [10.1007/s40279-024-02077-2](https://doi.org/10.1007/s40279-024-02077-2).
+11. `NASEM-MACRONUTRIENTS-2005` — National Academies. *Dietary Reference Intakes for Energy, Carbohydrate, Fiber, Fat, Fatty Acids, Cholesterol, Protein, and Amino Acids*. Adult AMDR: carbohydrate 45–65%, fat 20–35%, protein 10–35%. DOI: [10.17226/10490](https://doi.org/10.17226/10490).
 
 Mifflin–St Jeor (DOI [10.1093/ajcn/51.2.241](https://doi.org/10.1093/ajcn/51.2.241)) is noted solely for legacy compatibility. Body Current does not implement the Hall body-weight model or claim metabolic calibration until reference validation and licensing questions are resolved.
