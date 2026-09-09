@@ -502,7 +502,7 @@ export default function App() {
               className={`app-top-nav-item relative flex-1 py-[18px] text-center text-[10px] font-semibold uppercase tracking-[0.05em] transition-colors ${
                 todayTab
                   ? active ? 'app-top-nav-item--active text-white' : 'text-white/72 hover:text-white'
-                  : active ? 'text-cobalt' : 'text-muted hover:text-ink'
+                  : active ? 'app-top-nav-item--active text-white' : 'text-white/72 hover:text-white'
               }`}
             >
               {active && <span aria-hidden className={`app-top-nav-indicator absolute bottom-0 ${todayTab ? 'app-top-nav-indicator--current' : 'app-top-nav-indicator--paper'}`} />}

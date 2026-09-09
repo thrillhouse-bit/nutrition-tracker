@@ -52,6 +52,14 @@ export default defineConfig({
         'current-fields/big-sur-v1.jpg',
         'current-fields/joshua-tree-v1.jpg',
         'current-fields/lake-tahoe-v1.jpg',
+        'current-fields/manhattan-central-park-south-v1.jpg',
+        'current-fields/webb-deep-field-v1.jpg',
+        'current-fields/webb-southern-ring-v1.jpg',
+        'current-fields/webb-cosmic-cliffs-v1.jpg',
+        'current-fields/webb-stephans-quintet-v1.jpg',
+        'current-fields/washington-lincoln-v1.jpg',
+        'current-fields/washington-capitol-v1.jpg',
+        'current-fields/washington-monument-bw-v1.jpg',
       ],
       // Installed identity matches the in-app v2 system: the app titles itself
       // "Body Current" (index.html) and paints ivory (#f7f4ec theme-color meta)

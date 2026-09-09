@@ -168,9 +168,9 @@ it must never read as a separate gray website header. The field reserves the
 rail's 3.25rem content height so no hero control sits underneath it. The day
 arrows and backdrop action form one divided optical control cluster, and
 connection state uses a second glass group with a labeled accent status bead.
-All other screens keep a warm-paper mineral-glass rail: translucent enough to
-let their atmospheric lead-in show through, but lighter than Today's photo
-glass. At-a-glance instrument values use a heavy tabular sans face with an
+All other screens keep the same deep atmospheric ground as their lead-in under
+the fixed rail, with a restrained glass veil for legibility. Accent palettes
+stay in active states and data marks rather than recoloring the rail. At-a-glance instrument values use a heavy tabular sans face with an
 adaptive compact size, reserving Bodoni for editorial headings and large values
 on quiet paper surfaces.
 
@@ -184,9 +184,11 @@ scope. Their underlying data, empty states, and actions remain unchanged.
 
 The field is the product's one immersive visual surface. Alpine is an original,
 bundled photographic landscape and the backward-compatible `tide` scene ID.
-Five credited, licensed photographs add Laguna Beach, Manhattan at night, Big
-Sur, Joshua Tree, and Lake Tahoe; Ridge and Dawn remain code-native
-alternatives, and a personal photo is also allowed. Every selectable photograph
+Credited, licensed photographs add Laguna Beach, a hazy Central Park South
+bird’s-eye view, Big Sur, Joshua Tree, Lake Tahoe, three subdued Washington DC
+views (including a grayscale Monument), and four NASA/ESA/CSA/STScI James Webb
+images; Ridge and Dawn remain code-native alternatives, and a personal photo is
+also allowed. Every selectable photograph
 is part of the PWA precache, with a CSS color field as its failure fallback.
 Curated fields use a light directional wash and tight
 text shadow so the landscape remains luminous; a personal photo receives a

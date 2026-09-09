@@ -11,6 +11,16 @@ Plan treats its date as inline context beside the title rather than a stranded
 non-interactive square. “Why these targets” leads with plain-language guidance
 before the technical evidence disclosures.
 
+The top rail now uses the same deep atmospheric ground on every journal route
+(Plan, Insights, and Connect) that it sits over on entry. Accent palettes stay
+in the active label, indicator, and data marks; they do not recolor the rail or
+create a route-change flash.
+
+The Today backdrop library now includes a hazy Central Park South aerial view,
+four NASA/ESA/CSA/STScI James Webb images, and three subdued Washington DC
+photographs, including a grayscale Washington Monument treatment. Each choice
+is bundled for offline use and retains visible source/credit links.
+
 ## 9 Sep 2026 — shared glass rail and clearer Insights instruments
 
 The polished top control now carries across Today, Plan, Insights, and

@@ -100,18 +100,31 @@ describe('Today backdrop preference', () => {
 
   it('offers source-verified real photographs with visible credit and bundled assets', async () => {
     const expected = [
+      ['manhattan', 'Central Park South', 'manhattan-central-park-south-v1.jpg'],
       ['laguna', 'Laguna', 'laguna-beach-v1.jpg'],
-      ['manhattan', 'Manhattan', 'manhattan-night-v1.jpg'],
       ['big-sur', 'Big Sur', 'big-sur-v1.jpg'],
       ['joshua-tree', 'Joshua Tree', 'joshua-tree-v1.jpg'],
       ['lake-tahoe', 'Lake Tahoe', 'lake-tahoe-v1.jpg'],
+      ['webb-deep-field', 'Webb · Deep Field', 'webb-deep-field-v1.jpg'],
+      ['webb-southern-ring', 'Webb · Southern Ring', 'webb-southern-ring-v1.jpg'],
+      ['webb-cosmic-cliffs', 'Webb · Cosmic Cliffs', 'webb-cosmic-cliffs-v1.jpg'],
+      ['webb-stephans-quintet', 'Webb · Stephan’s Quintet', 'webb-stephans-quintet-v1.jpg'],
+      ['washington-lincoln', 'Washington · Lincoln', 'washington-lincoln-v1.jpg'],
+      ['washington-capitol', 'Washington · Capitol', 'washington-capitol-v1.jpg'],
+      ['washington-monument-bw', 'Washington · Monument (B&W)', 'washington-monument-bw-v1.jpg'],
     ]
     for (const [id, label, asset] of expected) {
       const scene = TODAY_BACKDROP_SCENES.find((candidate) => candidate.id === id)
-      expect(scene).toMatchObject({ id, label, sourceName: 'Unsplash' })
+      expect(scene).toMatchObject({ id, label })
       expect(scene.credit).toBeTruthy()
-      expect(scene.sourceUrl).toMatch(/^https:\/\/unsplash\.com\/photos\//)
-      expect(scene.licenseUrl).toBe('https://unsplash.com/license')
+      if (scene.sourceName === 'Unsplash') {
+        expect(scene.sourceUrl).toMatch(/^https:\/\/unsplash\.com\/photos\//)
+        expect(scene.licenseUrl).toBe('https://unsplash.com/license')
+      } else {
+        expect(scene.sourceName).toBe('NASA Webb')
+        expect(scene.sourceUrl).toMatch(/^https:\/\/science\.nasa\.gov\/mission\/webb\//)
+        expect(scene.licenseUrl).toMatch(/^https:\/\/science\.nasa\.gov\/mission\/webb\//)
+      }
       expect(existsSync(path.resolve(process.cwd(), 'public/current-fields', asset))).toBe(true)
     }
 

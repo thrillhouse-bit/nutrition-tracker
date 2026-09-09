@@ -114,19 +114,20 @@ body:has(.app-shell--today),
 }
 
 /* Every route keeps the same polished control surface. Today uses dark
-   photo-glass; journal routes use lighter mineral glass that lets their
-   atmospheric lead-in remain visible without becoming an opaque header. */
+   photo-glass; journal routes use the same deep atmospheric ground as their
+   lead-in. The accent remains reserved for the active indicator and data, so
+   switching Sapphire/Gold/etc. never makes the rail jump to a new background. */
 .app-top-nav--journal {
   background:
-    linear-gradient(180deg, rgb(247 244 236 / 0.88), rgb(247 244 236 / 0.68)),
-    linear-gradient(90deg, color-mix(in srgb, var(--color-cobalt) 9%, transparent), transparent 46%);
-  box-shadow: inset 0 1px rgb(255 255 255 / 0.74), 0 8px 22px rgb(18 18 16 / 0.08);
-  -webkit-backdrop-filter: blur(14px) saturate(1.12);
-  backdrop-filter: blur(14px) saturate(1.12);
+    linear-gradient(180deg, rgb(16 43 61 / 0.94), rgb(16 43 61 / 0.78) 72%, rgb(16 43 61 / 0.58));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.12), 0 8px 22px rgb(4 8 11 / 0.16);
+  -webkit-backdrop-filter: blur(9px) saturate(1.08);
+  backdrop-filter: blur(9px) saturate(1.08);
+  text-shadow: 0 1px 5px rgb(4 8 11 / 0.70);
 }
 
 .app-top-nav--journal .app-top-nav-item--active {
-  text-shadow: 0 1px 0 rgb(255 255 255 / 0.72);
+  text-shadow: 0 1px 3px rgb(4 8 11 / 0.86), 0 0 14px color-mix(in srgb, var(--color-current-glow) 44%, transparent);
 }
 
 .app-top-nav-item {
@@ -236,13 +237,13 @@ body:has(.app-shell--today),
 
 .today-current-field[data-scene='manhattan'] .today-current-backdrop,
 .today-backdrop-preview[data-scene='manhattan'] {
-  background-image: url('/current-fields/manhattan-night-v1.jpg');
-  background-position: center 46%;
+  background-image: url('/current-fields/manhattan-central-park-south-v1.jpg');
+  background-position: center 52%;
   background-size: cover;
 }
 
 .today-current-field[data-scene='manhattan'] .today-current-backdrop {
-  filter: brightness(1.08) saturate(1.12);
+  filter: brightness(1.02) saturate(0.86) contrast(0.96);
 }
 
 .today-current-field[data-scene='big-sur'] .today-current-backdrop,
@@ -264,6 +265,58 @@ body:has(.app-shell--today),
   background-image: url('/current-fields/lake-tahoe-v1.jpg');
   background-position: center 45%;
   background-size: cover;
+}
+
+.today-current-field[data-scene='webb-deep-field'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='webb-deep-field'] {
+  background-image: url('/current-fields/webb-deep-field-v1.jpg');
+  background-position: center 46%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='webb-southern-ring'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='webb-southern-ring'] {
+  background-image: url('/current-fields/webb-southern-ring-v1.jpg');
+  background-position: center 45%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='webb-cosmic-cliffs'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='webb-cosmic-cliffs'] {
+  background-image: url('/current-fields/webb-cosmic-cliffs-v1.jpg');
+  background-position: center 48%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='webb-stephans-quintet'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='webb-stephans-quintet'] {
+  background-image: url('/current-fields/webb-stephans-quintet-v1.jpg');
+  background-position: center 46%;
+  background-size: cover;
+}
+
+.today-current-field[data-scene='washington-lincoln'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='washington-lincoln'] {
+  background-image: url('/current-fields/washington-lincoln-v1.jpg');
+  background-position: center 48%;
+  background-size: cover;
+  filter: saturate(0.78) contrast(0.96);
+}
+
+.today-current-field[data-scene='washington-capitol'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='washington-capitol'] {
+  background-image: url('/current-fields/washington-capitol-v1.jpg');
+  background-position: center 46%;
+  background-size: cover;
+  filter: saturate(0.72) contrast(0.98);
+}
+
+.today-current-field[data-scene='washington-monument-bw'] .today-current-backdrop,
+.today-backdrop-preview[data-scene='washington-monument-bw'] {
+  background-image: url('/current-fields/washington-monument-bw-v1.jpg');
+  background-position: center 48%;
+  background-size: cover;
+  filter: grayscale(1) contrast(0.94) brightness(1.04);
 }
 
 .today-current-field[data-scene='ridge'] .today-current-backdrop,

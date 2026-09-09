@@ -13,10 +13,17 @@ import { Disclosure, Meter, SegmentBar, SourceLabel, StatusTag, Why, Button, Tex
 const TODAY_OVERVIEW_BACKDROPS = {
   tide: "url('/current-fields/alpine-current-v1.jpg')",
   laguna: "url('/current-fields/laguna-beach-v1.jpg')",
-  manhattan: "url('/current-fields/manhattan-night-v1.jpg')",
+  manhattan: "url('/current-fields/manhattan-central-park-south-v1.jpg')",
   'big-sur': "url('/current-fields/big-sur-v1.jpg')",
   'joshua-tree': "url('/current-fields/joshua-tree-v1.jpg')",
   'lake-tahoe': "url('/current-fields/lake-tahoe-v1.jpg')",
+  'webb-deep-field': "url('/current-fields/webb-deep-field-v1.jpg')",
+  'webb-southern-ring': "url('/current-fields/webb-southern-ring-v1.jpg')",
+  'webb-cosmic-cliffs': "url('/current-fields/webb-cosmic-cliffs-v1.jpg')",
+  'webb-stephans-quintet': "url('/current-fields/webb-stephans-quintet-v1.jpg')",
+  'washington-lincoln': "url('/current-fields/washington-lincoln-v1.jpg')",
+  'washington-capitol': "url('/current-fields/washington-capitol-v1.jpg')",
+  'washington-monument-bw': "url('/current-fields/washington-monument-bw-v1.jpg')",
 }
 
 // Manual re-fetch window for the Oura backfill button below — a small
