@@ -16,10 +16,10 @@ export const TODAY_BACKDROP_SCENES = Object.freeze([
   {
     id: 'manhattan',
     label: 'Central Park South',
-    description: 'A hazy, bird’s-eye view of Midtown Manhattan from Central Park South',
-    credit: 'Martti Salmi',
+    description: 'A hazy, bird’s-eye view across Midtown toward Central Park South',
+    credit: 'Freddie Marriage',
     sourceName: 'Unsplash',
-    sourceUrl: 'https://unsplash.com/photos/a-view-of-a-city-from-the-top-of-a-building-lwNDCGPN9OY?utm_source=body_current&utm_medium=referral',
+    sourceUrl: 'https://unsplash.com/photos/aerial-photo-of-central-park-new-york-utwYoEu9SU8?utm_source=body_current&utm_medium=referral',
     licenseUrl: 'https://unsplash.com/license',
   },
   {
