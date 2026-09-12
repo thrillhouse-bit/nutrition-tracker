@@ -128,24 +128,6 @@ app.use((err, req, res, next) => {
 app.use(cors({ origin: process.env.NODE_ENV === 'production' ? false : true, credentials: true }))
 app.use(attachUser) // sets req.userId (or null) on every request; does not itself reject anything
 
-// The native iOS/watch companion has no interactive login, so it can never
-// carry a session cookie — it only ever has the per-user Apple ingest token
-// (generated from the signed-in web app via POST /api/apple/token, pasted
-// into the companion's settings). Before this existed, /api/today and
-// friends were reachable with no auth at all; requireAuth below would now
-// 401 every companion request outright, silently breaking the watch glance
-// and background sync. Falling back to the SAME token here (via the
-// already-defined resolveAppleIngestUser, hoisted below) means the token
-// authenticates the companion for reads generally, not just the ingest POST
-// — a reasonable extension of the trust it already carries (it already
-// attributes ALL of that user's synced HealthKit data).
-app.use((req, res, next) => {
-  if (req.userId != null) return next()
-  resolveAppleIngestUser(req)
-    .then((uid) => { if (uid != null) req.userId = uid; next() })
-    .catch(next)
-})
-
 const asyncH = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch((err) => {
     const status = err.status || 500
@@ -442,12 +424,14 @@ const requireAuthRouter = express.Router()
 requireAuthRouter.use((req, res, next) => {
   const isCallback = req.method === 'GET' && (req.path === '/oura/callback' || req.path === '/garmin/callback')
   const isGarminWebhook = req.method === 'POST' && req.path === '/garmin/webhook'
+  const isAppleDeviceRead = req.method === 'GET' && (req.path === '/apple/today' || req.path === '/apple/entries')
+  const isAppleIngest = req.method === 'POST' && (req.path === '/apple/ingest' || req.path === '/apple/health-auto-export')
   // These handlers are registered on `app` below and authenticate with a
   // signed one-time OAuth state or Garmin's pushed user mapping, not a browser
   // session. Exit this router entirely so its blanket session gate does not
-  // preempt those handlers. Apple ingest already resolves its per-account
-  // token into req.userId before this point and intentionally stays inside.
-  if (isCallback || isGarminWebhook) return next('router')
+  // preempt those handlers. Apple device reads authenticate with a separate,
+  // read-only token at their own routes below.
+  if (isCallback || isGarminWebhook || isAppleDeviceRead || isAppleIngest) return next('router')
   requireAuth(req, res, next)
 })
 // A valid stateless cookie is not enough: an account deleted from this or any
@@ -1844,24 +1828,31 @@ function normalizeApplePermissions(p, rows) {
   return { requested, available, updated_at: new Date().toISOString() }
 }
 
-// A per-user Apple ingest token, generated on demand — the iOS companion has
-// no interactive login (it's a background sync, not a browser), so it can't
-// carry a session cookie the way the SPA does. The legacy single global
-// APPLE_INGEST_TOKEN env var still works too (checked first) for a
-// single-owner deploy that hasn't generated a per-user token — but it's
-// necessarily shared across every user on the box, same tradeoff as the
-// legacy Oura PAT above.
+// Apple credentials are capability-specific: an ingest token may only submit
+// Health data, while a separate read token may only retrieve the two payloads
+// the native companion needs. Neither is promoted to req.userId for the
+// general account API. SHA-256 is sufficient here because these are generated
+// 192-bit random credentials, never user-chosen passwords.
+const digestAppleToken = (token) => crypto.createHash('sha256').update(`body-current/apple-token/v1\u0000${String(token || '')}`).digest('hex')
+
 requireAuthRouter.post('/apple/token', asyncH(async (req, res) => {
-  const token = crypto.randomBytes(24).toString('hex')
-  await store.setIntegration(req.userId, 'apple', { settings: { ingest_token: token } })
-  res.json({ token })
+  const ingestToken = crypto.randomBytes(24).toString('hex')
+  const readToken = crypto.randomBytes(24).toString('hex')
+  await store.setIntegration(req.userId, 'apple', {
+    settings: {
+      ingest_token_digest: digestAppleToken(ingestToken),
+      read_token_digest: digestAppleToken(readToken),
+    },
+  })
+  // `token` remains a response alias for existing Health Auto Export clients.
+  res.json({ token: ingestToken, ingestToken, readToken })
 }))
 
 // Apple Health ingest: a native HealthKit companion / Health export POSTs
 // normalized samples here (there is no Apple cloud API). No session — the
-// companion authenticates with its own per-user token (see POST
-// /api/apple/token above) instead, checked against every user's stored
-// integrations.apple.settings.ingest_token to find whose data this is. The
+// companion authenticates with its own per-user ingest token (see POST
+// /api/apple/token above), checked against each stored digest to find whose
+// data this is. The
 // legacy global APPLE_INGEST_TOKEN, if set, is checked first and — being a
 // single shared secret — can't identify a user on its own; it's accepted
 // only when exactly one user account exists on the box, so it still can't be
@@ -1899,7 +1890,22 @@ async function resolveAppleIngestUser(req) {
     // won't match, since it was never stored as anyone's ingest_token).
     return store.getSoleUserId()
   }
-  return store.findUserIdByAppleIngestToken(presented)
+  return store.findUserIdByAppleIngestTokenDigest(digestAppleToken(presented))
+}
+
+async function resolveAppleReadUser(req) {
+  const presented = presentedIngestToken(req)
+  if (!presented) return null
+  return store.findUserIdByAppleReadTokenDigest(digestAppleToken(presented))
+}
+
+async function requireAppleReadUser(req, res) {
+  const userId = await resolveAppleReadUser(req)
+  if (userId == null) {
+    res.status(401).json({ error: 'Invalid device read token.' })
+    return null
+  }
+  return userId
 }
 
 // Shared by both ingest entry points below (the native companion's own
@@ -1976,6 +1982,26 @@ app.post('/api/apple/health-auto-export', asyncH(async (req, res) => {
     console.log('[apple-health-auto-export]', JSON.stringify({ userId, unmapped }))
   }
   res.json({ ingested, day: date, days: [...groups.keys()], unmapped })
+}))
+
+// The native companion reads only these two narrow representations. They use
+// the read token generated alongside the ingest token and deliberately sit
+// outside the general authenticated router above.
+app.get('/api/apple/today', asyncH(async (req, res) => {
+  const userId = await requireAppleReadUser(req, res)
+  if (userId == null) return
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? req.query.date : localYmd()
+  res.json(await todayComposite(userId, date, new Date()))
+}))
+
+app.get('/api/apple/entries', asyncH(async (req, res) => {
+  const userId = await requireAppleReadUser(req, res)
+  if (userId == null) return
+  const { from, to } = req.query
+  if (!from || !to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to)) || Date.parse(from) >= Date.parse(to)) {
+    return res.status(400).json({ error: 'Provide valid ascending from and to timestamps.' })
+  }
+  res.json({ entries: await store.listEntries(userId, { from, to }) })
 }))
 
 // Insights: nutrition trends over a window; signal correlations flagged as

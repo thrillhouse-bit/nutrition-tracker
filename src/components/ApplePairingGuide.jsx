@@ -10,7 +10,8 @@ export function appleExportEndpoint(origin) {
 }
 
 export default function ApplePairingGuide({ onRefetch, enabled, lastSyncedAt }) {
-  const [token, setToken] = useState('')
+  const [ingestToken, setIngestToken] = useState('')
+  const [readToken, setReadToken] = useState('')
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -23,8 +24,8 @@ export default function ApplePairingGuide({ onRefetch, enabled, lastSyncedAt }) 
     setBusy(true); setError(''); setNote('')
     try {
       const result = await api.appleToken()
-      setToken(result.token); setVisible(false); setConfirmReplace(false)
-      setNote('Token created. Complete both exports below, then check for received data.')
+      setIngestToken(result.ingestToken || result.token); setReadToken(result.readToken || ''); setVisible(false); setConfirmReplace(false)
+      setNote('Tokens created. Use the ingest token for exports and the read token only in the native companion.')
     } catch { setError('Could not create a token. Check your connection and try again.') }
     finally { setBusy(false) }
   }
@@ -44,15 +45,16 @@ export default function ApplePairingGuide({ onRefetch, enabled, lastSyncedAt }) 
       <li><strong>Install Health Auto Export.</strong> Allow it to read the workouts and health categories you want to share.</li>
       <li><strong>Create an account pairing token.</strong>
         <p className="mt-1 text-muted">Creating a token replaces any existing Apple pairing token. Existing exporters or the native companion will need the new value. Opening this guide does not replace it.</p>
-        {!confirmReplace && !token && <Button variant="outline" className="mt-2" disabled={busy || !endpoint} onClick={() => setConfirmReplace(true)}>Generate pairing token</Button>}
+        {!confirmReplace && !ingestToken && <Button variant="outline" className="mt-2" disabled={busy || !endpoint} onClick={() => setConfirmReplace(true)}>Generate pairing token</Button>}
         {confirmReplace && <div className="mt-2 border border-line p-3" role="group" aria-label="Confirm pairing token replacement">
           <p>Replace any existing token for this account?</p>
           <div className="mt-2 flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={generate}>{busy ? 'Creating…' : 'Create token and replace existing'}</Button><Button variant="subtle" disabled={busy} onClick={() => setConfirmReplace(false)}>Cancel</Button></div>
         </div>}
-        {token && <div className="mt-2 space-y-2">
-          <Field label="Authorization header value"><input className={inputCls} type={visible ? 'text' : 'password'} autoComplete="off" readOnly value={`Bearer ${token}`} onFocus={e => e.target.select()} /></Field>
-          <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => copy(`Bearer ${token}`, 'Authorization header')}>Copy header value</Button><Button variant="subtle" aria-pressed={visible} aria-label={visible ? 'Hide pairing token' : 'Show pairing token'} onClick={() => setVisible(v => !v)}>{visible ? 'Hide' : 'Show'}</Button></div>
-          <p className="text-xs text-muted">Copy this into both automations before closing the guide. It is not saved in your browser. Keep it private.</p>
+        {ingestToken && <div className="mt-2 space-y-2">
+          <Field label="Export authorization header"><input className={inputCls} type={visible ? 'text' : 'password'} autoComplete="off" readOnly value={`Bearer ${ingestToken}`} onFocus={e => e.target.select()} /></Field>
+          {readToken && <Field label="Native companion read token"><input className={inputCls} type={visible ? 'text' : 'password'} autoComplete="off" readOnly value={readToken} onFocus={e => e.target.select()} /></Field>}
+          <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => copy(`Bearer ${ingestToken}`, 'Export authorization header')}>Copy export header</Button>{readToken && <Button variant="outline" onClick={() => copy(readToken, 'Native read token')}>Copy read token</Button>}<Button variant="subtle" aria-pressed={visible} aria-label={visible ? 'Hide pairing tokens' : 'Show pairing tokens'} onClick={() => setVisible(v => !v)}>{visible ? 'Hide' : 'Show'}</Button></div>
+          <p className="text-xs text-muted">The export token can only submit Apple Health data. The native read token can only refresh its Today summary and nutrition write-back. Neither is saved in your browser.</p>
         </div>}
       </li>
       <li><strong>Create two REST API automations.</strong> In Health Auto Export, open Automations → New Automation → REST API.
@@ -61,7 +63,7 @@ export default function ApplePairingGuide({ onRefetch, enabled, lastSyncedAt }) 
         <Field label="Export URL"><input className={inputCls} readOnly value={endpoint || ''} onFocus={e => e.target.select()} /></Field>
         <Button variant="outline" className="mt-2" disabled={!endpoint} onClick={() => copy(endpoint, 'Export URL')}>Copy export URL</Button>
         {!endpoint && <p className="mt-2 text-alert">Open your deployed Body Current app over HTTPS to get a reachable export URL.</p>}
-        <p className="mt-2 text-muted">Add a header named <code>Authorization</code>. Its value is <code>Bearer</code>, a space, then your token. “Copy header value” includes the prefix. Never put the token in the URL.</p>
+        <p className="mt-2 text-muted">Add a header named <code>Authorization</code>. Its value is <code>Bearer</code>, a space, then your export token. “Copy export header” includes the prefix. Never put either token in the URL.</p>
       </li>
       <li><strong>Run both automations, then check here.</strong> Keep your iPhone unlocked. In Health Auto Export, run each automation manually and inspect its activity log.
         <p className="mt-1 text-muted">A 401 means the token needs correcting; a 403 means Apple Health is disabled here. A successful export with no records can mean there is no selected data today.</p>

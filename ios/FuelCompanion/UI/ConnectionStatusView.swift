@@ -24,7 +24,8 @@ struct ConnectionStatusView: View {
     @EnvironmentObject private var config: AppConfig
 
     @State private var baseURLField: String = ""
-    @State private var tokenField: String = ""
+    @State private var ingestTokenField: String = ""
+    @State private var readTokenField: String = ""
     @State private var showTokenSaved = false
 
     // MARK: - Derived status
@@ -206,33 +207,44 @@ struct ConnectionStatusView: View {
                 .keyboardType(.URL)
                 .onSubmit { config.setBaseURL(baseURLField) }
 
-            SecureField(config.hasToken ? "•••••• (token set)" : "Ingest token (optional)",
-                        text: $tokenField)
+            SecureField(config.hasIngestToken ? "•••••• (ingest token set)" : "Ingest token",
+                        text: $ingestTokenField)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+
+            SecureField(config.hasReadToken ? "•••••• (read token set)" : "Read token",
+                        text: $readTokenField)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
             Button("Save") {
                 config.setBaseURL(baseURLField)
-                if !tokenField.isEmpty {
-                    config.setIngestToken(tokenField)
-                    tokenField = ""
+                if !ingestTokenField.isEmpty {
+                    config.setIngestToken(ingestTokenField)
+                    ingestTokenField = ""
+                    showTokenSaved = true
+                }
+                if !readTokenField.isEmpty {
+                    config.setReadToken(readTokenField)
+                    readTokenField = ""
                     showTokenSaved = true
                 }
             }
 
-            if config.hasToken {
+            if config.hasIngestToken || config.hasReadToken {
                 Button(role: .destructive) {
                     config.setIngestToken(nil)
+                    config.setReadToken(nil)
                 } label: {
-                    Text("Clear token")
+                    Text("Clear tokens")
                 }
             }
         } header: {
             Text("Server")
         } footer: {
-            Text(config.hasToken
-                 ? "A token is stored securely in the keychain and sent only as the x-ingest-token header."
-                 : "Leave the token empty if your server runs without APPLE_INGEST_TOKEN.")
+            Text(config.hasIngestToken || config.hasReadToken
+                 ? "Tokens are stored securely in the keychain. The ingest token only uploads Health data; the read token only refreshes the companion's Today summary and nutrition write-back."
+                 : "Paste both tokens from Body Current's Apple Health setup. They are required for scoped syncing.")
         }
     }
 

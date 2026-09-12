@@ -9,14 +9,14 @@ describe('partial Apple export merge', () => {
     const store = new JsonStore('unused')
     store.data = { integrations: {} }
     store.persist = async () => {}
-    await store.setIntegration(1, 'apple', { settings: { ingest_token: 'revoked' } })
+    await store.setIntegration(1, 'apple', { settings: { ingest_token_digest: 'revoked' } })
     await Promise.all([
-      store.setIntegration(1, 'apple', { settings: { ingest_token: 'current' } }),
+      store.setIntegration(1, 'apple', { settings: { ingest_token_digest: 'current' } }),
       store.setIntegration(1, 'apple', { last_synced_at: '2026-09-05T17:00:00Z', settings: { permissions: { available: ['workouts'] } } }),
       store.setIntegration(1, 'apple', { enabled: false }),
     ])
     const saved = await store.getIntegration(1, 'apple')
-    expect(saved.settings.ingest_token).toBe('current')
+    expect(saved.settings.ingest_token_digest).toBe('current')
     expect(saved.settings.permissions.available).toEqual(['workouts'])
     expect(saved.enabled).toBe(false)
     expect(saved.last_synced_at).toBe('2026-09-05T17:00:00Z')

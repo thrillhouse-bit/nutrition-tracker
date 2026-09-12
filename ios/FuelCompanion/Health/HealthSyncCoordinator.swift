@@ -148,7 +148,7 @@ final class HealthSyncCoordinator: ObservableObject {
         // A failure here does NOT fail the ingest that already succeeded; it is
         // surfaced separately without clobbering `lastSyncAt`.
         do {
-            try await today.refresh(baseURL: baseURL, token: config.ingestToken)
+            try await today.refresh(baseURL: baseURL, token: config.readToken)
         } catch {
             lastError = "Synced, but the watch summary could not refresh: "
                 + ((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
@@ -166,7 +166,7 @@ final class HealthSyncCoordinator: ObservableObject {
         let now = Date()
         let from = Calendar.current.date(byAdding: .day, value: -Self.writeBackWindowDays, to: now) ?? now
         do {
-            let rows = try await entries.fetch(from: from, to: now, baseURL: baseURL, token: config.ingestToken)
+            let rows = try await entries.fetch(from: from, to: now, baseURL: baseURL, token: config.readToken)
             try await nutritionWriter.reconcile(entries: rows, from: from, to: now)
             lastWriteBackAt = Date()
             writeBackError = nil

@@ -1,6 +1,6 @@
 // AppConfig.swift — the app's small settings surface: WHERE to talk to the
-// backend (`baseURL`) and the optional shared `ingestToken`. The URL is a plain
-// preference (UserDefaults); the token is a secret (Keychain) and is never
+// backend (`baseURL`) plus separate ingest and device-read tokens. The URL is a plain
+// preference (UserDefaults); tokens are secrets (Keychain) and are never
 // mirrored into UserDefaults, a plist, or a log.
 //
 // This is the one place the PWA origin and the API origin are defined — the
@@ -16,10 +16,10 @@ final class AppConfig: ObservableObject {
     /// API path (`/api/apple/ingest`, `/api/today`) is resolved against it.
     @Published private(set) var baseURL: URL?
 
-    /// Whether an ingest token is currently stored. Published so the status UI
-    /// can show "token set / not set" WITHOUT ever reading the secret into view
-    /// state. The token value itself is fetched on demand via `ingestToken`.
-    @Published private(set) var hasToken: Bool = false
+    /// Token-presence flags let the UI report configuration without exposing a
+    /// credential in view state.
+    @Published private(set) var hasIngestToken: Bool = false
+    @Published private(set) var hasReadToken: Bool = false
 
     /// Whether the user has opted into writing logged nutrition to Apple
     /// Health (see Health/NutritionWriteBack.swift). Off by default — this is
@@ -32,7 +32,8 @@ final class AppConfig: ObservableObject {
     private let defaults: UserDefaults
     private let keychain: Keychain
     private static let baseURLKey = "fuel.baseURL"
-    private static let tokenAccount = "ingestToken"
+    private static let ingestTokenAccount = "ingestToken"
+    private static let readTokenAccount = "readToken"
     private static let writeBackKey = "fuel.writeBackEnabled"
 
     /// A clearly-marked placeholder so the field is never empty in the UI.
@@ -51,13 +52,19 @@ final class AppConfig: ObservableObject {
             // "not configured" state rather than pretending it can reach a host.
             self.baseURL = nil
         }
-        self.hasToken = keychain.get(account: Self.tokenAccount) != nil
+        self.hasIngestToken = keychain.get(account: Self.ingestTokenAccount) != nil
+        self.hasReadToken = keychain.get(account: Self.readTokenAccount) != nil
     }
 
     /// The ingest token, read straight from the keychain on demand. Callers pass
     /// it into a request and drop it — it is never held in a published property.
     var ingestToken: String? {
-        keychain.get(account: Self.tokenAccount)
+        keychain.get(account: Self.ingestTokenAccount)
+    }
+
+    /// Read-only companion token for `/api/apple/today` and `/api/apple/entries`.
+    var readToken: String? {
+        keychain.get(account: Self.readTokenAccount)
     }
 
     /// Set (or clear, with nil/"") the base origin. Trailing slashes are fine —
@@ -77,8 +84,14 @@ final class AppConfig: ObservableObject {
     /// `hasToken` so the UI reflects the change without seeing the value.
     func setIngestToken(_ token: String?) {
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
-        keychain.set(trimmed, account: Self.tokenAccount)
-        hasToken = (trimmed?.isEmpty == false)
+        keychain.set(trimmed, account: Self.ingestTokenAccount)
+        hasIngestToken = (trimmed?.isEmpty == false)
+    }
+
+    func setReadToken(_ token: String?) {
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        keychain.set(trimmed, account: Self.readTokenAccount)
+        hasReadToken = (trimmed?.isEmpty == false)
     }
 
     /// Accept a bare host ("fuel.example.com") by defaulting to https, and

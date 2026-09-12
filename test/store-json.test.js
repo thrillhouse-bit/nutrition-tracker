@@ -591,8 +591,8 @@ describe('JsonStore account export and hard deletion', () => {
     await s.setTargets(two.id, { calories: 1900 })
     await s.setProfile(one.id, { height_cm: 180 })
     await s.setProfile(two.id, { height_cm: 165 })
-    await s.setIntegration(one.id, 'apple', { settings: { ingest_token: 'apple-secret-one', device: 'watch' } })
-    await s.setIntegration(two.id, 'apple', { settings: { ingest_token: 'apple-secret-two', device: 'phone' } })
+    await s.setIntegration(one.id, 'apple', { settings: { ingest_token_digest: 'apple-secret-one-digest', read_token_digest: 'apple-read-one-digest', device: 'watch' } })
+    await s.setIntegration(two.id, 'apple', { settings: { ingest_token_digest: 'apple-secret-two-digest', read_token_digest: 'apple-read-two-digest', device: 'phone' } })
     const ouraOne = await s.saveOuraAccount(one.id, { access_token: 'oura-access-one', refresh_token: 'oura-refresh-one' })
     const ouraTwo = await s.saveOuraAccount(two.id, { access_token: 'oura-access-two', refresh_token: 'oura-refresh-two' })
     await s.saveOuraWorkouts(ouraOne.id, [{ id: 'one-workout', day: '2026-08-20', activity: 'running' }])
@@ -624,7 +624,7 @@ describe('JsonStore account export and hard deletion', () => {
     expect(exported.provider_connections.settings[0].settings).toEqual({ device: 'watch' })
     expect(exported.source_attribution.garmin).toBe('Garmin')
 
-    const forbidden = new Set(['password_hash', 'access_token', 'refresh_token', 'ingest_token', 'raw_api_response'])
+    const forbidden = new Set(['password_hash', 'access_token', 'refresh_token', 'ingest_token', 'ingest_token_digest', 'read_token_digest', 'raw_api_response'])
     const keys = []
     const visit = (value) => {
       if (!value || typeof value !== 'object') return
@@ -634,7 +634,7 @@ describe('JsonStore account export and hard deletion', () => {
     expect(keys.filter((key) => forbidden.has(key))).toEqual([])
     expect(JSON.stringify(exported)).not.toContain('hash-one')
     expect(JSON.stringify(exported)).not.toContain('oura-access-one')
-    expect(JSON.stringify(exported)).not.toContain('apple-secret-one')
+    expect(JSON.stringify(exported)).not.toContain('apple-secret-one-digest')
   })
 
   it('deletes only one user and every owned record while preserving the other account and shared foods', async () => {

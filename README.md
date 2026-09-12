@@ -90,8 +90,9 @@ to scan from a phone on your LAN, serve over HTTPS (e.g. a tunnel) or use the
   obtain credentials yet — see [Wearables](#wearables-oura).
 - **Wearable signals (Apple Health):** no OAuth — Apple has no cloud API, so it
   is an **ingest** provider. A native iOS companion (or a Health-export importer)
-  POSTs normalized samples to `POST /api/apple/ingest`, token-gated by the
-  optional `APPLE_INGEST_TOKEN`. See [Apple Health](#apple-health-ingest).
+  POSTs normalized samples to `POST /api/apple/ingest` with a per-account ingest
+  token. The companion uses a distinct, read-only device token for its two
+  companion endpoints. See [Apple Health](#apple-health-ingest).
 
 `GET /api/health` reports which of these are configured; the Connections screen
 shows the same status.
@@ -279,9 +280,12 @@ model, provenance/freshness, and influence toggles.
 - **The watch** is a minimal glance — next action, pre/post-workout fuel targets,
   today's calories/protein — plus a "Log later on iPhone" handoff (no scanning on
   the watch). The phone is the HealthKit bridge and sends it a `PlanSummary`.
-- **Token gate.** `POST /api/apple/ingest` is protected by the optional
-  `APPLE_INGEST_TOKEN` env var, sent as the **`x-ingest-token`** header. Unset =
-  open, acceptable only on a **private, non-public** instance.
+- **Scoped token pair.** Generate a pair from Connections. The ingest token can
+  only call `POST /api/apple/ingest` (and the Health Auto Export endpoint); the
+  separate device-read token can only call `GET /api/apple/today` and
+  `GET /api/apple/entries`. Tokens are stored as digests and rotation replaces
+  both. `APPLE_INGEST_TOKEN` is an ingestion-only legacy fallback for a
+  single-account installation.
 - **Storage & control.** The companion reads on your iPhone/Apple Watch and syncs
   to **your own server** — nothing is sent to any third party; you choose which
   signals influence the plan and can delete synced data at any time.
@@ -377,8 +381,10 @@ Full DDL in [`schema.sql`](./schema.sql).
 | DELETE | `/garmin/accounts/:id` | disconnect a Garmin account |
 | GET | `/garmin/summary?date=` | a stored Garmin day (served from the store, not fetched) |
 | GET | `/energy/summary?date=` | unified expenditure (out): Oura if connected, else Garmin |
-| POST | `/apple/token` | generate (and invalidate the previous) per-account pairing token for the companion — Connections tab has a "Generate pairing token" button for this |
-| POST | `/apple/ingest` | ingest Apple Health samples (token-gated by `APPLE_INGEST_TOKEN`) |
+| POST | `/apple/token` | generate (and invalidate the previous) per-account ingest + device-read pairing tokens |
+| POST | `/apple/ingest` | ingest Apple Health samples with the scoped ingest token |
+| GET | `/apple/today?date=` | companion today payload with the scoped device-read token |
+| GET | `/apple/entries?from=&to=` | companion nutrition entries with the scoped device-read token |
 | GET | `/connections` | provider statuses (incl. demo) + the plan-influence toggles |
 | PUT | `/connections/influence` | set which signal categories (readiness / sleep / workouts) may influence the plan |
 | PUT | `/connections/:provider` | set a provider's `enabled` / `demo` flags |

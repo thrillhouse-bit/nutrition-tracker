@@ -37,8 +37,8 @@ it('refresh reads server status, does not create credentials or claim successful
   expect(api.appleToken).not.toHaveBeenCalled()
   expect(container.querySelector('[data-apple-received]').textContent).toContain('No data received yet')
 })
-it('requires confirmation, masks the new header and never saves it in browser storage', async () => {
-  api.appleToken.mockResolvedValue({ token: 'private-pairing-token' })
+it('requires confirmation, separates the scoped tokens, and never saves either in browser storage', async () => {
+  api.appleToken.mockResolvedValue({ token: 'private-pairing-token', ingestToken: 'private-pairing-token', readToken: 'private-read-token' })
   await render()
   await click('Generate pairing token')
   expect(api.appleToken).not.toHaveBeenCalled()
@@ -46,6 +46,7 @@ it('requires confirmation, masks the new header and never saves it in browser st
   expect(api.appleToken).toHaveBeenCalledOnce()
   const field = container.querySelector('input[type="password"]')
   expect(field.value).toBe('Bearer private-pairing-token')
+  expect([...container.querySelectorAll('input[type="password"]')].some(input => input.value === 'private-read-token')).toBe(true)
   expect(localStorage.length).toBe(0)
   expect(sessionStorage.length).toBe(0)
   expect(container.querySelector('[data-apple-received]').textContent).toContain('No data received yet')

@@ -1,10 +1,10 @@
-// EntriesClient.swift — GETs the backend's `/api/entries?from=&to=` (the
+// EntriesClient.swift — GETs the backend's `/api/apple/entries?from=&to=` (the
 // user's logged nutrition, joined with each food's per-serving values) for
 // the Apple Health WRITE-BACK direction: HealthKitNutritionWriter turns each
 // row into a HealthKit Nutrition correlation. Read-only against the server
 // (this never logs anything itself) and authenticated the same way
-// TodayClient is — the per-user ingest token, since the companion has no
-// session cookie.
+// TodayClient is — a dedicated read token, since the companion has no session
+// cookie and the ingest token is write-only.
 
 import Foundation
 
@@ -29,7 +29,7 @@ struct EntriesClient {
     /// `/api/entries` already uses (see src/api/client.js `listEntries`).
     func fetch(from: Date, to: Date, baseURL: URL?, token: String?) async throws -> [LoggedEntry] {
         guard let baseURL else { throw EntriesError.notConfigured }
-        var comps = URLComponents(url: baseURL.appendingPathComponent("api/entries"),
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/apple/entries"),
                                   resolvingAgainstBaseURL: false)
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -54,7 +54,7 @@ struct EntriesClient {
             throw EntriesError.transport(error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse else {
-            throw EntriesError.transport("No HTTP response for /api/entries.")
+            throw EntriesError.transport("No HTTP response for /api/apple/entries.")
         }
         guard (200...299).contains(http.statusCode) else {
             throw EntriesError.http(http.statusCode)

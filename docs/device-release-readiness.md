@@ -8,7 +8,13 @@ Web invite distribution can proceed after the application release gates pass wit
 
 ### Existing Apple ingestion: preserve account pairing
 
-Production inspection confirmed 17 accounts and all three Apple integration rows already holding per-user tokens. Preserve those tokens; no forced rotation or pre-invite migration is indicated. The legacy global `APPLE_INGEST_TOKEN` is already rejected by the multi-user guard. New testers generate their own token under Connections → Apple Health and copy it into their chosen sender. Use `x-ingest-token` for the native adapter, or `Authorization: Bearer <token>` for Health Auto Export. Never put the token in a URL, handoff, or screenshot.
+The scoped-token release intentionally invalidates previously stored plaintext
+Apple tokens. Each active Apple sender must be re-paired from Connections →
+Apple Health: use the ingest token for Health Auto Export (`Authorization:
+Bearer <token>`) and both the ingest and read tokens for the native companion
+(`x-ingest-token`). The legacy global `APPLE_INGEST_TOKEN` remains an
+ingest-only single-user fallback. Never put either token in a URL, handoff, or
+screenshot.
 
 Each tester should trigger an actual device export and confirm an updated sync timestamp. Generating another token invalidates the previous token, so update every active sender only when intentionally rotating. The session-gated `/api/apple/token` and both ingest paths have rotation regression coverage in `test/api-routes.test.js`; server tests are not physical-device evidence.
 

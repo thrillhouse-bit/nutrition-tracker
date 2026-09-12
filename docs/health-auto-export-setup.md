@@ -25,18 +25,18 @@ HAE only ever receives it, it never creates one.
 1. Open the app in a browser, sign in, and go to **Connections**.
 2. Expand the **Apple Health** row.
 3. In the guided setup, click **Generate pairing token**, then confirm replacing any existing token. Opening the guide never rotates a token.
-4. Use **Copy header value** — this includes `Bearer ` followed by the token. The field is masked by default and available only while this guide remains open.
+4. Use **Copy export header** — this includes `Bearer ` followed by the ingest token. The field is masked by default and available only while this guide remains open.
    Losing it isn't fatal (see [Security](#security--privacy-the-token-is-a-password) below), but you'll need to
    generate a new one and re-paste it into HAE if you don't copy it now.
 
-This is the exact same token the native `ios/` companion uses
-(`POST /api/apple/token`, `server/index.js`) — HAE is a second consumer of
-it, not a separate credential.
+HAE uses only the ingest token. If you also use the native `ios/` companion,
+copy the separately displayed read token into that app; it cannot submit Apple
+Health data and the HAE ingest token cannot read nutrition data.
 
-> **Regenerating invalidates the previous token immediately.** Clicking
-> **Generate pairing token** again — here or from a native companion install —
-> throws away the old one. If you're running both the native companion and
-> HAE, generating a fresh token means re-pasting it into *both* places, or
+> **Regenerating invalidates the previous token pair immediately.** Clicking
+> **Generate pairing token** again throws away both old values. If you're
+> running both the native companion and HAE, generating a fresh pair means
+> re-pasting the appropriate values into both places, or
 > one of them silently starts getting 401s.
 
 ## Step 2 — configure Health Auto Export
@@ -137,10 +137,11 @@ now, trigger HAE manually.
 
 ## Security & privacy: the token is a password
 
-Anyone holding your pairing token can write workout/sleep/steps/HRV/RHR data
+Anyone holding your export token can write workout/sleep/steps/HRV/RHR data
 into **your account**, indistinguishably from your own phone — it's a bearer
-credential, exactly as sensitive as your account password, not a read-only
-API key.
+credential. It cannot read or modify other account data. The separately issued
+native read token can retrieve only the companion's Today and nutrition-entry
+payloads, and cannot write.
 
 - **It travels over HTTPS.** The URL you configure in HAE must be `https://`;
   don't point it at a plain `http://` address.

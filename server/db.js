@@ -110,7 +110,7 @@ function exportFood(f) {
 
 function exportIntegration(row) {
   if (!row) return row
-  const { ingest_token, ...settings } = row.settings || {}
+  const { ingest_token, ingest_token_digest, read_token_digest, ...settings } = row.settings || {}
   return { ...row, settings }
 }
 
@@ -282,7 +282,7 @@ export class PgStore {
         where id = (select user_id from claimed)
         returning id, email, legal_version, legal_accepted_at, session_version, created_at
       ), cleared_apple as (
-        update integrations set settings = settings - 'ingest_token'
+        update integrations set settings = settings - 'ingest_token' - 'ingest_token_digest' - 'read_token_digest'
         where user_id = (select id from updated_user) and provider = 'apple'
       )
       select * from updated_user`
@@ -313,13 +313,18 @@ export class PgStore {
     return rows.length === 1 ? rows[0].id : null
   }
 
-  // Apple's companion has no session cookie, so it authenticates with a
-  // per-user token stashed in integrations.apple.settings.ingest_token (set
-  // by POST /api/apple/token) — this is the reverse lookup an incoming
-  // ingest POST needs to find whose data it's carrying.
-  async findUserIdByAppleIngestToken(token) {
+  // Apple tokens are stored as digests. Ingest and device-read capabilities
+  // intentionally use distinct fields, so neither can be mistaken for a
+  // general account credential.
+  async findUserIdByAppleIngestTokenDigest(digest) {
     const sql = await this.ready()
-    const rows = await sql`select user_id from integrations where provider = 'apple' and settings ->> 'ingest_token' = ${token} limit 1`
+    const rows = await sql`select user_id from integrations where provider = 'apple' and settings ->> 'ingest_token_digest' = ${digest} limit 1`
+    return rows[0]?.user_id ?? null
+  }
+
+  async findUserIdByAppleReadTokenDigest(digest) {
+    const sql = await this.ready()
+    const rows = await sql`select user_id from integrations where provider = 'apple' and settings ->> 'read_token_digest' = ${digest} limit 1`
     return rows[0]?.user_id ?? null
   }
 
@@ -697,7 +702,14 @@ export class PgStore {
         connected_at = case when ${Object.hasOwn(patch, 'connected_at')} then excluded.connected_at else integrations.connected_at end,
         last_synced_at = case when ${Object.hasOwn(patch, 'last_synced_at')} then excluded.last_synced_at else integrations.last_synced_at end,
         error = case when ${Object.hasOwn(patch, 'error')} then excluded.error else integrations.error end,
-        settings = coalesce(integrations.settings, '{}'::jsonb) || excluded.settings
+        settings = (
+          case
+            when excluded.provider = 'apple'
+              and (excluded.settings ? 'ingest_token_digest' or excluded.settings ? 'read_token_digest')
+              then coalesce(integrations.settings, '{}'::jsonb) - 'ingest_token'
+            else coalesce(integrations.settings, '{}'::jsonb)
+          end
+        ) || excluded.settings
       returning *`
     return rows[0]
   }
@@ -1238,7 +1250,7 @@ export class PgStore {
       sql`select id, label, garmin_user_id, expires_at, created_at from garmin_accounts where user_id = ${userId} order by id asc`,
       sql`select d.* from garmin_dailies d join garmin_accounts a on a.id = d.account_id where a.user_id = ${userId} order by d.day asc, d.id asc`,
       sql`select user_id, provider, enabled, demo, connected_at, last_synced_at, error,
-                 settings - 'ingest_token' as settings
+                 settings - 'ingest_token' - 'ingest_token_digest' - 'read_token_digest' as settings
           from integrations where user_id = ${userId} order by provider asc`,
       sql`select * from wearable_signals where user_id = ${userId} order by day asc, id asc`,
       sql`select * from daily_plans where user_id = ${userId} order by date asc`,
@@ -1472,7 +1484,7 @@ export class JsonStore {
       const appleKey = `${user.id}:apple`
       const apple = d.integrations?.[appleKey]
       if (apple?.settings) {
-        const { ingest_token, ...settings } = apple.settings
+        const { ingest_token, ingest_token_digest, read_token_digest, ...settings } = apple.settings
         apple.settings = settings
       }
       await this.persist()
@@ -1503,10 +1515,18 @@ export class JsonStore {
     return d.users.length === 1 ? d.users[0].id : null
   }
 
-  async findUserIdByAppleIngestToken(token) {
+  async findUserIdByAppleIngestTokenDigest(digest) {
     const d = await this.load()
     for (const row of Object.values(d.integrations || {})) {
-      if (row.provider === 'apple' && row.settings?.ingest_token === token) return row.user_id
+      if (row.provider === 'apple' && row.settings?.ingest_token_digest === digest) return row.user_id
+    }
+    return null
+  }
+
+  async findUserIdByAppleReadTokenDigest(digest) {
+    const d = await this.load()
+    for (const row of Object.values(d.integrations || {})) {
+      if (row.provider === 'apple' && row.settings?.read_token_digest === digest) return row.user_id
     }
     return null
   }
@@ -1869,6 +1889,9 @@ export class JsonStore {
     const key = `${userId}:${provider}`
     const m = { ...(d.integrations[key] || { user_id: Number(userId), provider, enabled: true, demo: false, settings: {} }), ...patch, user_id: Number(userId), provider }
     m.settings = { ...(d.integrations[key]?.settings || {}), ...(patch.settings || {}) }
+    if (provider === 'apple' && (Object.hasOwn(patch.settings || {}, 'ingest_token_digest') || Object.hasOwn(patch.settings || {}, 'read_token_digest'))) {
+      delete m.settings.ingest_token
+    }
     d.integrations[key] = m
     await this.persist()
     return m

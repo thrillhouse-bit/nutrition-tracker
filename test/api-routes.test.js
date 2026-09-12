@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
+import crypto from 'node:crypto'
 import { computeTrend } from '../server/weightTrend.js'
 import { hashPassword } from '../server/auth.js'
 
@@ -8,6 +9,7 @@ import { hashPassword } from '../server/auth.js'
 // "server-local day" and "UTC day" visibly disagree — which is exactly what the
 // date-defaulting bugs here need to be observable.
 process.env.TZ = 'Pacific/Apia'
+const appleTokenDigest = (token) => crypto.createHash('sha256').update(`body-current/apple-token/v1\u0000${String(token || '')}`).digest('hex')
 
 // Multi-user: almost every route below is gated by requireAuth (session
 // cookie, see server/auth.js) and every store method now takes userId as its
@@ -102,6 +104,8 @@ const fake = vi.hoisted(() => {
       user.session_version = (user.session_version || 1) + 1
       if (state.integrations.apple?.user_id === user.id && state.integrations.apple.settings) {
         delete state.integrations.apple.settings.ingest_token
+        delete state.integrations.apple.settings.ingest_token_digest
+        delete state.integrations.apple.settings.read_token_digest
       }
       return { ...user }
     },
@@ -114,9 +118,15 @@ const fake = vi.hoisted(() => {
     },
     countUsers: async () => state.users.length,
     getSoleUserId: async () => (state.users.length === 1 ? state.users[0].id : null),
-    findUserIdByAppleIngestToken: async (token) => {
+    findUserIdByAppleIngestTokenDigest: async (digest) => {
       for (const row of Object.values(state.integrations)) {
-        if (row.provider === 'apple' && row.settings?.ingest_token === token) return row.user_id ?? null
+        if (row.provider === 'apple' && row.settings?.ingest_token_digest === digest) return row.user_id ?? null
+      }
+      return null
+    },
+    findUserIdByAppleReadTokenDigest: async (digest) => {
+      for (const row of Object.values(state.integrations)) {
+        if (row.provider === 'apple' && row.settings?.read_token_digest === digest) return row.user_id ?? null
       }
       return null
     },
@@ -522,7 +532,7 @@ describe('Oura-verified password recovery', () => {
     fake.state.ouraAccounts = [{ id: 91, user_id: user.id, label: 'mutable label', oura_user_id: 'oura-route-user', access_token: 'revoked-old-token', refresh_token: 'revoked-refresh', expires_at: new Date(0).toISOString() }]
     const oldLogin = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, password: originalPassword }) })
     const oldSession = cookiePair(oldLogin, 'nt_session')
-    fake.state.integrations.apple = { user_id: user.id, provider: 'apple', enabled: true, demo: false, settings: { ingest_token: 'old-device-token' } }
+    fake.state.integrations.apple = { user_id: user.id, provider: 'apple', enabled: true, demo: false, settings: { ingest_token_digest: appleTokenDigest('old-device-token'), read_token_digest: appleTokenDigest('old-read-token') } }
     const start = await startRecovery(' RECOVERY-BODY@example.com ')
     expect(start.status).toBe(202)
     expect(await start.json()).toEqual({ message: 'Continue with Oura to verify the account.', continueUrl: '/api/auth/recovery/oura' })
@@ -989,17 +999,23 @@ describe('POST /api/apple/token (per-user pairing token rotation)', () => {
   // token isn't merely superseded, it no longer exists anywhere to match
   // against — this test proves that end to end, not just that the route
   // returns a fresh-looking string.
-  it('generating a new token immediately invalidates the previous one, for both ingest routes', async () => {
+  it('generating a new token immediately invalidates both previous capabilities', async () => {
     const first = await post('/api/apple/token', {})
     expect(first.status).toBe(200)
-    const token1 = (await first.json()).token
+    const firstTokens = await first.json()
+    const token1 = firstTokens.ingestToken
+    const readToken1 = firstTokens.readToken
+    expect(firstTokens.token).toBe(token1) // Health Auto Export compatibility alias
     expect(typeof token1).toBe('string')
-    expect(token1.length).toBeGreaterThan(0)
+    expect(typeof readToken1).toBe('string')
 
     const second = await post('/api/apple/token', {})
     expect(second.status).toBe(200)
-    const token2 = (await second.json()).token
+    const secondTokens = await second.json()
+    const token2 = secondTokens.ingestToken
+    const readToken2 = secondTokens.readToken
     expect(token2).not.toBe(token1) // a real rotation, not the same value handed back
+    expect(readToken2).not.toBe(readToken1)
 
     const sample = { date: '2026-08-21', samples: [{ metric: 'steps', value: 1000 }] }
 
@@ -1018,6 +1034,25 @@ describe('POST /api/apple/token (per-user pairing token rotation)', () => {
     expect(oldOnHae.status).toBe(401)
     const newOnHae = await post('/api/apple/health-auto-export', haeSample, { authorization: `Bearer ${token2}` })
     expect(newOnHae.status).toBe(200)
+
+    const oldRead = await fetch(`${base}/api/apple/entries?from=2026-08-21T00:00:00.000Z&to=2026-08-22T00:00:00.000Z`, { headers: { 'x-ingest-token': readToken1 } })
+    expect(oldRead.status).toBe(401)
+    const newRead = await fetch(`${base}/api/apple/entries?from=2026-08-21T00:00:00.000Z&to=2026-08-22T00:00:00.000Z`, { headers: { 'x-ingest-token': readToken2 } })
+    expect(newRead.status).toBe(200)
+  })
+})
+
+describe('Apple credential scopes', () => {
+  it('allows ingest only on Apple POST routes and read only on the two companion GET routes', async () => {
+    const paired = await post('/api/apple/token', {})
+    const { ingestToken, readToken } = await paired.json()
+    const range = 'from=2026-08-21T00:00:00.000Z&to=2026-08-22T00:00:00.000Z'
+
+    expect((await fetch(`${base}/api/account/export`, { headers: { 'x-ingest-token': ingestToken } })).status).toBe(401)
+    expect((await fetch(`${base}/api/entries?${range}`, { headers: { 'x-ingest-token': ingestToken } })).status).toBe(401)
+    expect((await fetch(`${base}/api/apple/entries?${range}`, { headers: { 'x-ingest-token': ingestToken } })).status).toBe(401)
+    expect((await fetch(`${base}/api/apple/entries?${range}`, { headers: { 'x-ingest-token': readToken } })).status).toBe(200)
+    expect((await post('/api/apple/ingest', { date: '2026-08-21', samples: [] }, { 'x-ingest-token': readToken })).status).toBe(401)
   })
 })
 

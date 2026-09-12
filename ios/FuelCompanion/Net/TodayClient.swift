@@ -4,13 +4,10 @@
 // WatchConnectivity manager so the watch shows the SAME numbers as the app —
 // one source of truth, no re-derived fueling logic on the watch.
 //
-// Read-only, but NOT token-free: `/api/today` now sits behind the server's
-// multi-user auth (server/auth.js's requireAuth), and this companion has no
-// interactive login to carry a session cookie. It authenticates the same way
-// IngestClient does — the per-user ingest token on `x-ingest-token` — which
-// the server accepts for reads too (server/index.js's device-token fallback
-// right after `attachUser`), since that token already attributes all of this
-// user's synced HealthKit data.
+// Read-only, but NOT token-free: the companion calls its narrow
+// `/api/apple/today` read surface with a separate read token. The ingest token
+// is never accepted here, so a Health Auto Export credential cannot read the
+// account's nutrition data.
 
 import Foundation
 
@@ -59,7 +56,7 @@ struct TodayClient {
 
     func fetch(date: String? = nil, baseURL: URL?, token: String?) async throws -> TodayComposite {
         guard let baseURL else { throw TodayError.notConfigured }
-        var comps = URLComponents(url: baseURL.appendingPathComponent("api/today"),
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/apple/today"),
                                   resolvingAgainstBaseURL: false)
         comps?.queryItems = [URLQueryItem(name: "date", value: date ?? Self.localYmd())]
         guard let url = comps?.url else { throw TodayError.notConfigured }
@@ -79,7 +76,7 @@ struct TodayClient {
             throw TodayError.transport(error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse else {
-            throw TodayError.transport("No HTTP response for /api/today.")
+            throw TodayError.transport("No HTTP response for /api/apple/today.")
         }
         guard (200...299).contains(http.statusCode) else {
             throw TodayError.http(http.statusCode)

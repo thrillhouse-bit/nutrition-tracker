@@ -35,12 +35,12 @@ and syncs them to your own backend*; it does not reimplement the nutrition UI.
 ```
 
 The backend now sits behind multi-user auth (a signed session cookie the web
-PWA carries, but this companion has no interactive login for). Every request
-above — ingest, `/api/today`, and `/api/entries` — authenticates instead with
-the SAME per-user token, generated from the signed-in web app's Connections
-tab (`POST /api/apple/token`) and pasted into the Health tab below. It is no
-longer optional the way `APPLE_INGEST_TOKEN` alone once was: without it, none
-of these requests can identify which user's data to read or write.
+PWA carries, but this companion has no interactive login for). Ingest uses a
+per-user **ingest token**; the narrow `/api/apple/today` and
+`/api/apple/entries` reads use a separate **read token**. Both are generated
+from the signed-in web app's Connections tab (`POST /api/apple/token`) and
+pasted into the Health tab below. A token for one capability cannot access the
+other or any general account route.
 
 The contract both native targets share lives in [`Shared/`](Shared/):
 `HealthModel.swift` (the exact `/api/apple/ingest` body, plus the shared
@@ -85,13 +85,12 @@ replace building and signing with Xcode.
    `Background/BackgroundSync.swift`.
 4. **Server URL** — set at runtime in the app's **Health** tab, or the default
    in `Settings/AppConfig.swift`.
-5. **Ingest token** — generate one from the signed-in web app's Connections tab
-   (`POST /api/apple/token`) and enter it in the Health tab (stored in the
-   Keychain, sent as `x-ingest-token`). Required now, not optional: it is how
-   every request — ingest, `/api/today`, `/api/entries` — is attributed to a
-   user under multi-user auth. A legacy `APPLE_INGEST_TOKEN` env var still
-   works as a single-user fallback (server/index.js), but only while the box
-   has exactly one account.
+5. **Scoped tokens** — generate a pair from the signed-in web app's Connections
+   tab (`POST /api/apple/token`) and enter both in the Health tab. The ingest
+   token uploads Health samples; the read token retrieves only the native
+   companion's Today summary and nutrition write-back entries. Both live in
+   the Keychain and are sent as `x-ingest-token`. The legacy
+   `APPLE_INGEST_TOKEN` env var is an ingest-only single-user fallback.
 6. **Signing** — a real device is required for HealthKit (the simulator has no
    Health data); pair an Apple Watch for the watch flow.
 
